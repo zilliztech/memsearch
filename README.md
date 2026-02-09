@@ -1,25 +1,35 @@
-# memsearch
+# 🧠 memsearch
 
 **Give your AI agents persistent memory.** Semantic memory search for markdown knowledge bases — index your markdown files and Claude session logs, then search them using natural language.
 
-Inspired by [OpenClaw's memory architecture](https://manthanguptaa.in/posts/clawdbot_memory/), memsearch extracts and packages the memory layer so any agent can have 24/7 context retention: remembering conversations, building upon previous interactions, and recalling knowledge indefinitely. Your agents deserve memory that outlives their context window.
+🐾 Inspired by **[OpenClaw](https://github.com/openclaw/openclaw)** ([architecture deep-dive](https://manthanguptaa.in/posts/clawdbot_memory/)) — the open-source Claude Code memory system that gives Claude long-term recall across sessions. memsearch extracts and packages OpenClaw's battle-tested memory layer into a **standalone, reusable library** so *any* AI agent can have the same 24/7 context retention: remembering conversations, building upon previous interactions, and recalling knowledge indefinitely.
 
-Built on [Milvus](https://milvus.io/) (from local Milvus Lite to fully managed Zilliz Cloud) with pluggable embedding providers.
+> 💡 **Think of it as "OpenClaw's memory, but for everyone."** If you've seen how OpenClaw lets Claude remember everything across sessions, memsearch gives you that same superpower — as a pip-installable package, compatible with any agent framework, and backed by [Milvus](https://milvus.io/) vector database (from local Milvus Lite to fully managed Zilliz Cloud).
 
-## How It Works
+### ✨ Why memsearch?
 
-memsearch turns your markdown files and AI session logs into a searchable long-term memory:
+- 🐾 **OpenClaw-compatible** — Same two-layer memory architecture (`MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs), same chunking strategy, same composite chunk ID format
+- 🔌 **Pluggable embeddings** — OpenAI, Google, Voyage, Ollama, or fully local sentence-transformers
+- 🗄️ **Flexible storage** — Milvus Lite (zero config local file) → Milvus Server → Zilliz Cloud
+- ⚡ **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
+- 🔄 **Live sync** — File watcher auto-indexes on changes, deletes stale chunks when files are removed
+- 🧹 **Memory flush** — LLM-powered summarization compresses old memories, just like OpenClaw's flush cycle
+- 📦 **pip install and go** — No OpenClaw fork needed, works with any agent
 
-1. **Scan** — Recursively discover `.md` / `.markdown` files from the directories you point it at.
-2. **Chunk** — Split each document into semantically meaningful sections by headings and paragraph boundaries.
-3. **Dedup** — Each chunk gets a SHA-256 content hash (`chunk_hash`) used as the Milvus primary key. Before embedding, memsearch checks which hashes already exist — unchanged content is never re-embedded.
-4. **Embed & Store** — New chunks are converted to vector embeddings (via OpenAI, Google, Voyage, Ollama, or local models) and upserted into Milvus. Use Milvus Lite locally with zero config, or connect to a Milvus Server / Zilliz Cloud cluster for production scale.
-5. **Search** — Given a natural-language query, embed it and perform a cosine-similarity search across all stored chunks. Results come back ranked by relevance with source file, heading, and content.
-6. **Flush** — Optionally compress accumulated chunks into a condensed summary using an LLM (OpenAI / Anthropic / Gemini), then re-index the summary. This keeps your memory store lean while preserving key insights — much like how human memory consolidates during sleep.
+## 🔍 How It Works
 
-The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote Milvus backend or a cloud embedding provider.
+memsearch follows the same memory philosophy as [OpenClaw](https://github.com/openclaw/openclaw) — **markdown is the source of truth**, and the vector store is a derived index that can be rebuilt at any time:
 
-## Installation
+1. 📂 **Scan** — Recursively discover `.md` / `.markdown` files (same layout as OpenClaw's `MEMORY.md` + `memory/` daily logs).
+2. ✂️ **Chunk** — Split each document into semantically meaningful sections by headings and paragraph boundaries.
+3. 🔑 **Dedup** — Each chunk gets a composite ID (matching [OpenClaw's format](https://manthanguptaa.in/posts/clawdbot_memory/): `hash(source:startLine:endLine:contentHash:model)`) used as the Milvus primary key. Unchanged content is never re-embedded.
+4. 🧮 **Embed & Store** — New chunks are converted to vector embeddings (via OpenAI, Google, Voyage, Ollama, or local models) and upserted into Milvus. Use Milvus Lite locally with zero config, or connect to a Milvus Server / Zilliz Cloud cluster for production scale.
+5. 🔎 **Search** — Given a natural-language query, embed it and perform a cosine-similarity search across all stored chunks. Results come back ranked by relevance with source file, heading, and content.
+6. 🧹 **Flush** — Optionally compress accumulated chunks into a condensed summary using an LLM (OpenAI / Anthropic / Gemini), then write the summary to `memory/YYYY-MM-DD.md` and re-index it — exactly like OpenClaw's memory consolidation cycle.
+
+🔒 The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote Milvus backend or a cloud embedding provider.
+
+## 📦 Installation
 
 ```bash
 # Core + OpenAI embeddings (recommended)
@@ -41,7 +51,7 @@ pip install "memsearch[local]"       # sentence-transformers (local, no API key)
 pip install "memsearch[all]"         # Everything
 ```
 
-## Configuration
+## ⚙️ Configuration
 
 memsearch uses a layered configuration system.  Settings are resolved in priority order (lowest → highest):
 
@@ -109,7 +119,7 @@ export ANTHROPIC_API_KEY="..."         # for flush with Anthropic
 
 Data is stored locally at `~/.memsearch/milvus.db` by default (Milvus Lite). See [Milvus Backend Configuration](#milvus-backend-configuration) for remote / cloud options.
 
-## CLI Usage
+## 🖥️ CLI Usage
 
 ### Index markdown files
 
@@ -182,7 +192,7 @@ memsearch stats    # Show index statistics
 memsearch reset    # Drop all indexed data (with confirmation)
 ```
 
-## Python API
+## 🐍 Python API
 
 ```python
 import asyncio
@@ -213,7 +223,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Milvus Backend Configuration
+### 🗄️ Milvus Backend Configuration
 
 memsearch supports three Milvus deployment modes — just change `milvus_uri` and `milvus_token`:
 
@@ -261,7 +271,7 @@ ms = MemSearch(
 )
 ```
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 Markdown files ──► Scanner ──► Chunker ──► Milvus (check chunk_hash exists?)
@@ -283,7 +293,7 @@ Flush ──► Retrieve chunks ──► LLM summarize ──► Re-index summa
 | **Config** | Layered TOML configuration: global → project → env vars → CLI flags |
 | **Flush** | Compresses chunks into summaries via LLM (OpenAI / Anthropic / Gemini) |
 
-## Embedding Providers
+## 🔌 Embedding Providers
 
 | Provider | Install | Env Var | Default Model |
 |----------|---------|---------|---------------|
@@ -293,7 +303,25 @@ Flush ──► Retrieve chunks ──► LLM summarize ──► Re-index summa
 | Ollama | `memsearch[ollama]` | `OLLAMA_HOST` (optional) | `nomic-embed-text` |
 | Local | `memsearch[local]` | — | `all-MiniLM-L6-v2` |
 
-## Development
+## 🐾 OpenClaw Compatibility
+
+memsearch is designed to be a drop-in memory backend for projects following [OpenClaw's memory architecture](https://manthanguptaa.in/posts/clawdbot_memory/):
+
+| Feature | OpenClaw | memsearch |
+|---------|----------|-----------|
+| Memory layout | `MEMORY.md` + `memory/YYYY-MM-DD.md` | ✅ Same |
+| Chunk ID format | `hash(source:startLine:endLine:contentHash:model)` | ✅ Same |
+| Dedup strategy | Content-hash primary key | ✅ Same |
+| Flush target | Append to daily markdown log | ✅ Same |
+| Source of truth | Markdown files (vector DB is derived) | ✅ Same |
+| File watch debounce | 1500ms | ✅ Same default |
+| Vector backend | Built-in | Milvus (Lite / Server / Zilliz Cloud) |
+| Embedding providers | Built-in | Pluggable (OpenAI, Google, Voyage, Ollama, local) |
+| Packaging | Part of OpenClaw monorepo | Standalone `pip install` |
+
+If you're already using OpenClaw's memory directory layout, just point memsearch at it — no migration needed.
+
+## 🛠️ Development
 
 ```bash
 git clone https://github.com/zc277584121/memsearch.git
@@ -302,6 +330,6 @@ uv sync --dev --extra openai
 uv run pytest
 ```
 
-## License
+## 📄 License
 
 MIT
