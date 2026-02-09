@@ -123,6 +123,24 @@ class MilvusStore:
         }
         return self._client.query(**kwargs)
 
+    def hashes_by_source(self, source: str) -> set[str]:
+        """Return all chunk_hash values for a given source file."""
+        results = self._client.query(
+            collection_name=self._collection,
+            filter=f'source == "{source}"',
+            output_fields=["chunk_hash"],
+        )
+        return {r["chunk_hash"] for r in results}
+
+    def indexed_sources(self) -> set[str]:
+        """Return all distinct source values in the collection."""
+        results = self._client.query(
+            collection_name=self._collection,
+            filter='chunk_hash != ""',
+            output_fields=["source"],
+        )
+        return {r["source"] for r in results}
+
     def delete_by_source(self, source: str) -> None:
         """Delete all chunks from a given source file."""
         self._client.delete(

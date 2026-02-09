@@ -69,13 +69,24 @@ class MemSearch:
     async def index(self, *, force: bool = False) -> int:
         """Scan paths and index all markdown files.
 
-        Returns the number of chunks indexed.
+        Returns the number of chunks indexed.  Also removes chunks for
+        files that no longer exist on disk (deleted-file cleanup).
         """
         files = scan_paths(self._paths)
         total = 0
+        active_sources: set[str] = set()
         for f in files:
+            active_sources.add(str(f.path))
             n = await self._index_file(f, force=force)
             total += n
+
+        # Clean up chunks for files that no longer exist
+        indexed_sources = self._store.indexed_sources()
+        for source in indexed_sources:
+            if source not in active_sources:
+                self._store.delete_by_source(source)
+                logger.info("Removed stale chunks for deleted file: %s", source)
+
         logger.info("Indexed %d chunks from %d files", total, len(files))
         return total
 
@@ -86,16 +97,24 @@ class MemSearch:
         return await self._index_file(sf)
 
     async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
+        source = str(f.path)
         text = f.path.read_text(encoding="utf-8")
-        chunks = chunk_markdown(text, source=str(f.path))
+        chunks = chunk_markdown(text, source=source)
+
+        new_hashes = {c.chunk_hash for c in chunks}
+        old_hashes = self._store.hashes_by_source(source)
+
+        # Delete stale chunks that are no longer in the file
+        stale = old_hashes - new_hashes
+        if stale:
+            self._store.delete_by_hashes(list(stale))
+
         if not chunks:
             return 0
 
         if not force:
-            # Skip chunks whose hash already exists in Milvus
-            all_hashes = [c.chunk_hash for c in chunks]
-            existing = self._store.existing_hashes(all_hashes)
-            chunks = [c for c in chunks if c.chunk_hash not in existing]
+            # Only embed chunks whose hash doesn't already exist
+            chunks = [c for c in chunks if c.chunk_hash not in old_hashes]
             if not chunks:
                 return 0
 
