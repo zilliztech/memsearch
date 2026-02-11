@@ -20,29 +20,34 @@ The result: Claude has a persistent, searchable, ever-growing memory -- without 
 
 ## Quick Start
 
+### Install from Marketplace (recommended)
+
 ```bash
-# 1. Install memsearch
+# 1. Install the memsearch CLI
 pip install memsearch
 
-# 2. Initialize config (first time only)
+# 2. (Optional) Initialize config
 memsearch config init
 
-# 3. Launch Claude Code with the plugin
-claude --plugin-dir /path/to/memsearch/ccplugin
+# 3. In Claude Code, add the marketplace and install the plugin
+/plugin marketplace add zilliztech/memsearch
+/plugin install memsearch@memsearch
 
 # 4. Have a conversation, then exit. Check your memories:
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
 # 5. Start a new session -- Claude automatically remembers!
-claude --plugin-dir /path/to/memsearch/ccplugin
 ```
 
-!!! tip "Finding the plugin directory"
-    If you installed memsearch via pip, the ccplugin directory is inside the package. You can also clone the repo and point to `ccplugin/` directly:
-    ```bash
-    git clone https://github.com/zilliztech/memsearch.git
-    claude --plugin-dir ./memsearch/ccplugin
-    ```
+### Development mode
+
+For contributors or if you want to modify the plugin:
+
+```bash
+git clone https://github.com/zilliztech/memsearch.git
+pip install memsearch
+claude --plugin-dir ./memsearch/ccplugin
+```
 
 ---
 
