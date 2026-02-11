@@ -407,7 +407,7 @@ export ANTHROPIC_API_KEY="..."         # for flush with Anthropic
 | Provider | Install | Env Var | Default Model |
 |----------|---------|---------|---------------|
 | OpenAI | `memsearch` (included) | `OPENAI_API_KEY` | `text-embedding-3-small` |
-| Google | `memsearch[google]` | `GOOGLE_API_KEY` | `text-embedding-004` |
+| Google | `memsearch[google]` | `GOOGLE_API_KEY` | `gemini-embedding-001` |
 | Voyage | `memsearch[voyage]` | `VOYAGE_API_KEY` | `voyage-3-lite` |
 | Ollama | `memsearch[ollama]` | `OLLAMA_HOST` (optional) | `nomic-embed-text` |
 | Local | `memsearch[local]` | — | `all-MiniLM-L6-v2` |

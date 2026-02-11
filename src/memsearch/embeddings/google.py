@@ -11,7 +11,7 @@ from __future__ import annotations
 class GoogleEmbedding:
     """Google Generative AI embedding provider."""
 
-    def __init__(self, model: str = "text-embedding-004") -> None:
+    def __init__(self, model: str = "gemini-embedding-001") -> None:
         from google import genai
 
         self._client = genai.Client()  # reads GOOGLE_API_KEY

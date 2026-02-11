@@ -730,7 +730,7 @@ $ memsearch flush --llm-provider anthropic
 | Provider | Install | Default Model | Dimension | API Key Variable |
 |----------|---------|---------------|-----------|-----------------|
 | `openai` | included by default | `text-embedding-3-small` | 1536 | `OPENAI_API_KEY` |
-| `google` | `pip install "memsearch[google]"` | `text-embedding-004` | 768 | `GOOGLE_API_KEY` |
+| `google` | `pip install "memsearch[google]"` | `gemini-embedding-001` | 768 | `GOOGLE_API_KEY` |
 | `voyage` | `pip install "memsearch[voyage]"` | `voyage-3-lite` | 512 | `VOYAGE_API_KEY` |
 | `ollama` | `pip install "memsearch[ollama]"` | `nomic-embed-text` | 768 | *(none, local)* |
 | `local` | `pip install "memsearch[local]"` | `all-MiniLM-L6-v2` | 384 | *(none, local)* |
