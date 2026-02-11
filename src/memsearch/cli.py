@@ -163,6 +163,23 @@ def search(
         ms.close()
 
 
+# ======================================================================
+# Claude Code plugin commands (progressive disclosure L2/L3)
+#
+# The following commands (`expand` and `transcript`) are designed for
+# the Claude Code plugin's three-level progressive disclosure workflow:
+#   L1: `search` returns chunk snippets (injected into the prompt)
+#   L2: `expand` shows the full heading section around a chunk
+#   L3: `transcript` drills into the original JSONL conversation
+#
+# They work with memsearch's anchor comments embedded in memory files:
+#   <!-- session:UUID turn:UUID transcript:PATH -->
+#
+# These commands are fully functional standalone, but their primary
+# consumer is the ccplugin/ hooks that auto-inject memory context.
+# ======================================================================
+
+
 @cli.command()
 @click.argument("chunk_hash")
 @click.option("--section/--no-section", default=True, help="Show full heading section (default).")
@@ -180,10 +197,12 @@ def expand(
     milvus_uri: str | None,
     milvus_token: str | None,
 ) -> None:
-    """Expand a memory chunk to show full context.
+    """Expand a memory chunk to show full context. [Claude Code plugin: L2]
 
     Look up CHUNK_HASH in the index, then read the source markdown file
     to return the surrounding context (full heading section by default).
+
+    Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
     from .store import MilvusStore
 
@@ -312,11 +331,13 @@ def transcript(
     ctx: int,
     json_output: bool,
 ) -> None:
-    """View original conversation turns from a JSONL transcript.
+    """View original conversation turns from a JSONL transcript. [Claude Code plugin: L3]
 
     Parse JSONL_PATH and display conversation turns. If --turn is given,
     show context around that specific turn; otherwise show an index of
     all user turns.
+
+    Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
     from .transcript import (
         parse_transcript,
@@ -390,6 +411,7 @@ def watch(
 
 @cli.command()
 @click.option("--source", "-s", default=None, help="Only compact chunks from this source.")
+@click.option("--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into.")
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
 @click.option("--prompt", default=None, help="Custom prompt template (must contain {chunks}).")
@@ -397,6 +419,7 @@ def watch(
 @_common_options
 def compact(
     source: str | None,
+    output_dir: str | None,
     llm_provider: str | None,
     llm_model: str | None,
     prompt: str | None,
@@ -428,6 +451,7 @@ def compact(
             llm_provider=cfg.compact.llm_provider,
             llm_model=cfg.compact.llm_model or None,
             prompt_template=prompt_template,
+            output_dir=output_dir,
         ))
         if summary:
             click.echo("Compact complete. Summary:\n")

@@ -52,13 +52,13 @@ Indexed 38 chunks.
 
 $ memsearch search "how to configure Redis?"
 
---- Result 1 (score: 0.9215) ---
+--- Result 1 (score: 0.0328) ---
 Source: memory/2026-02-08.md
 Heading: Infrastructure Decisions
 We chose Redis for caching over Memcached. Config: host=localhost,
 port=6379, max_memory=256mb, eviction=allkeys-lru.
 
---- Result 2 (score: 0.8734) ---
+--- Result 2 (score: 0.0315) ---
 Source: memory/2026-02-07.md
 Heading: Redis Setup Notes
 Redis config for production: enable AOF persistence, set maxmemory-policy
@@ -143,15 +143,17 @@ ms = MemSearch(
 
 ## Embedding Providers
 
-| Provider | Install | Env Var | Default Model |
-|----------|---------|---------|---------------|
-| OpenAI | `memsearch` (included) | `OPENAI_API_KEY` | `text-embedding-3-small` |
-| Google | `memsearch[google]` | `GOOGLE_API_KEY` | `gemini-embedding-001` |
-| Voyage | `memsearch[voyage]` | `VOYAGE_API_KEY` | `voyage-3-lite` |
-| Ollama | `memsearch[ollama]` | `OLLAMA_HOST` (optional) | `nomic-embed-text` |
-| Local | `memsearch[local]` | -- | `all-MiniLM-L6-v2` |
+memsearch supports **5 embedding providers** out of the box -- from cloud APIs to fully local models:
 
-For fully local operation with no API keys, install `memsearch[ollama]` or `memsearch[local]`.
+| Provider | Install |
+|----------|---------|
+| OpenAI (default) | `memsearch` (included) |
+| Google Gemini | `memsearch[google]` |
+| Voyage AI | `memsearch[voyage]` |
+| Ollama (local) | `memsearch[ollama]` |
+| sentence-transformers (local) | `memsearch[local]` |
+
+For fully local operation with no API keys, install `memsearch[ollama]` or `memsearch[local]`. See [Getting Started](getting-started.md#api-keys) for API key setup and provider details.
 
 ---
 
@@ -164,6 +166,24 @@ memsearch supports three deployment modes -- just change the URI:
 | **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Local file, zero config, single user |
 | **Milvus Server** | `http://localhost:19530` | Self-hosted, multi-agent, team use |
 | **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | Fully managed, auto-scaling |
+
+See [Getting Started](getting-started.md#milvus-backends) for connection examples and Docker setup instructions.
+
+---
+
+## Configuration
+
+memsearch uses a layered configuration system (lowest → highest priority):
+
+**Built-in defaults** → **Global config** (`~/.memsearch/config.toml`) → **Project config** (`.memsearch.toml`) → **Env vars** (`MEMSEARCH_SECTION_FIELD`) → **CLI flags**
+
+```bash
+$ memsearch config init               # Interactive wizard
+$ memsearch config set milvus.uri http://localhost:19530
+$ memsearch config list --resolved    # Show merged config from all sources
+```
+
+See [Getting Started](getting-started.md#configuration) for the full configuration guide, TOML examples, and environment variable reference.
 
 ---
 

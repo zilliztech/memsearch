@@ -4,21 +4,21 @@ memsearch provides a command-line interface for indexing, searching, and managin
 
 ```bash
 $ memsearch --version
-memsearch, version 0.1.0
+memsearch, version 0.1.3
 
 $ memsearch --help
 Usage: memsearch [OPTIONS] COMMAND [ARGS]...
 
-  memsearch -- semantic memory search for markdown knowledge bases.
+  memsearch — semantic memory search for markdown knowledge bases.
 
 Options:
   --version  Show the version and exit.
   --help     Show this message and exit.
 
 Commands:
+  compact     Compress stored memories into a summary.
   config      Manage memsearch configuration.
   expand      Expand a memory chunk to show full context.
-  compact     Compress stored memories into a summary.
   index       Index markdown files from PATHS.
   reset       Drop all indexed data.
   search      Search indexed memory for QUERY.
@@ -35,11 +35,13 @@ Commands:
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
-| `memsearch expand` | Progressive disclosure L2: show full section around a chunk |
-| `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript |
+| `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
+| `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
 | `memsearch config` | Initialize, view, and modify configuration |
 | `memsearch stats` | Display index statistics (total chunk count) |
 | `memsearch reset` | Drop all indexed data from the Milvus collection |
+
+> 🔌 Commands marked with 🔌 are designed for the [Claude Code plugin](../ccplugin/README.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
 
 ---
 
@@ -232,6 +234,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--source` | `-s` | *(all chunks)* | Only compact chunks from this specific source file |
+| `--output-dir` | `-o` | first configured path | Directory to write the compact summary into |
 | `--llm-provider` | | `openai` | LLM backend for summarization (`openai`, `anthropic`, `gemini`) |
 | `--llm-model` | | provider default | Override the LLM model |
 | `--prompt` | | built-in template | Custom prompt template string (must contain `{chunks}` placeholder) |
@@ -301,6 +304,8 @@ $ memsearch compact --prompt-file ./prompts/compress.txt
 ---
 
 ## `memsearch expand`
+
+> 🔌 **Claude Code plugin command.** This command is part of the [ccplugin](../ccplugin/README.md)'s three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any memsearch index.
 
 Look up a chunk by its hash in the index and return the surrounding context from the original source markdown file. This is "progressive disclosure level 2" -- when a search result snippet is not enough, expand it to see the full heading section.
 
@@ -373,6 +378,8 @@ $ memsearch expand a1b2c3d4e5f6 --json-output
 ---
 
 ## `memsearch transcript`
+
+> 🔌 **Claude Code plugin command.** This command is part of the [ccplugin](../ccplugin/README.md)'s three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
 
 Parse a JSONL transcript file (e.g., from Claude Code) and display conversation turns. This is "progressive disclosure level 3" -- drill all the way down from a memory chunk to the original conversation that generated it.
 

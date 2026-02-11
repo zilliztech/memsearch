@@ -114,13 +114,13 @@ Indexed 8 chunks.
 
 ```bash
 $ memsearch search "what caching solution are we using?"
---- Result 1 (score: 0.8432) ---
+--- Result 1 (score: 0.0332) ---
 Source: MEMORY.md
 Heading: Architecture Decisions
 - ADR-003: Redis 7 for caching and sessions
 
 $ memsearch search "what did Bob work on recently?" --top-k 3
---- Result 1 (score: 0.8817) ---
+--- Result 1 (score: 0.0328) ---
 Source: memory/2026-02-10.md
 Heading: Standup Notes
 - Bob fixed the N+1 query in the order service — response time dropped from 800ms to 120ms
@@ -506,8 +506,8 @@ Environment variables follow the pattern `MEMSEARCH_SECTION_FIELD`:
 ```bash
 $ export MEMSEARCH_MILVUS_URI="http://10.0.0.5:19530"
 $ export MEMSEARCH_EMBEDDING_PROVIDER="google"
-$ export MEMSEARCH_CHUNKING_MAXCHUNKSIZE="2000"
-$ export MEMSEARCH_WATCH_DEBOUNCEMS="3000"
+$ export MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE="2000"
+$ export MEMSEARCH_WATCH_DEBOUNCE_MS="3000"
 ```
 
 These override both config files but are themselves overridden by CLI flags.
