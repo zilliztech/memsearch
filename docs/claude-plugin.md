@@ -31,7 +31,7 @@ memsearch config init
 
 # 3. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
-/plugin install memsearch@memsearch
+/plugin install memsearch
 
 # 4. Have a conversation, then exit. Check your memories:
 cat .memsearch/memory/$(date +%Y-%m-%d).md

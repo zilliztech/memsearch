@@ -86,7 +86,7 @@ pip install memsearch
 
 # 2. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
-/plugin install memsearch@memsearch
+/plugin install memsearch
 ```
 
 <details>

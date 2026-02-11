@@ -1,11 +1,12 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "memsearch",
-  "version": "1.0.0",
-  "description": "Semantic memory search plugin for Claude Code — markdown-first, backed by Milvus",
+  "name": "memsearch-plugins",
   "owner": {
     "name": "Zilliz",
     "email": "support@zilliz.com"
+  },
+  "metadata": {
+    "description": "Semantic memory search plugin for Claude Code — markdown-first, backed by Milvus",
+    "version": "1.0.0"
   },
   "plugins": [
     {
@@ -13,7 +14,14 @@
       "description": "Automatic semantic memory for Claude Code — remembers what you worked on across sessions",
       "version": "0.1.2",
       "source": "./ccplugin",
-      "category": "productivity"
+      "category": "productivity",
+      "author": {
+        "name": "Zilliz"
+      },
+      "homepage": "https://github.com/zilliztech/memsearch",
+      "repository": "https://github.com/zilliztech/memsearch",
+      "license": "MIT",
+      "keywords": ["memory", "semantic-search", "milvus", "markdown"]
     }
   ]
 }
