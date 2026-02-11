@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="assets/logo-banner.jpg" alt="memsearch" width="600">
+  <img src="assets/logo-icon.jpg" alt="memsearch" width="120">
 </p>
+
+<h1 align="center">memsearch</h1>
 
 <p align="center">
   <strong><a href="https://github.com/openclaw/openclaw">OpenClaw</a>'s memory, everywhere.</strong>
