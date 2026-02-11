@@ -81,10 +81,24 @@ https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of OpenClaw's memory running outside OpenClaw. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
 
 ```bash
-# Install memsearch, then launch Claude with the plugin
+# 1. Install the memsearch CLI
 pip install memsearch
-claude --plugin-dir ./ccplugin
+
+# 2. In Claude Code, add the marketplace and install the plugin
+/plugin marketplace add zilliztech/memsearch
+/plugin install memsearch@memsearch
 ```
+
+<details>
+<summary>🔧 <b>Development mode</b> — install from local clone</summary>
+
+```bash
+git clone https://github.com/zilliztech/memsearch.git
+pip install memsearch
+claude --plugin-dir ./memsearch/ccplugin
+```
+
+</details>
 
 ```
   Session start ──▶ start memsearch watch (singleton) ──▶ inject recent memories
