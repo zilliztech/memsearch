@@ -2,19 +2,19 @@
 /* Color palette: orange + blue on dark navy */
 
 :root {
-  --t-orange: #e0976b;
-  --t-orange-dim: #b07040;
-  --t-blue: #6ba3d6;
-  --t-blue-dim: #4a7faa;
-  --t-blue-bright: #85bde8;
-  --t-bg: #272b3a;
-  --t-surface: #2e3348;
-  --t-text: #a8b2c1;
-  --t-text-dim: #707a8a;
-  --t-heading: #d4a373;
-  --t-border: #3a3f55;
-  --t-code-bg: #22252f;
-  --t-header-bg: #1e2230;
+  --t-orange: #f0a870;
+  --t-orange-dim: #c07848;
+  --t-blue: #7db8e8;
+  --t-blue-dim: #5a94c0;
+  --t-blue-bright: #96cdf5;
+  --t-bg: #1f2137;
+  --t-surface: #252a44;
+  --t-text: #bcc6d4;
+  --t-text-dim: #808da0;
+  --t-heading: #e8b888;
+  --t-border: #303658;
+  --t-code-bg: #1a1c30;
+  --t-header-bg: #181a30;
 }
 
 /* ── Dark scheme background ── */
@@ -89,7 +89,7 @@
   color: var(--t-text);
 }
 [data-md-color-scheme="slate"] .md-typeset strong {
-  color: #c0c8d4;
+  color: #d8dfe8;
 }
 
 /* ── Code blocks ── */
