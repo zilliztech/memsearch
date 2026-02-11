@@ -291,7 +291,7 @@ This means:
 
 ## Comparison with claude-mem
 
-[claude-mem](https://github.com/nicobailey/claude-mem) is another memory solution for Claude Code. Here is a detailed comparison:
+[claude-mem](https://github.com/thedotmack/claude-mem) is another memory solution for Claude Code. Here is a detailed comparison:
 
 | Aspect | memsearch | claude-mem |
 |--------|-----------|------------|

@@ -21,7 +21,7 @@
 
 https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 
-> 💡 **memsearch extracts [OpenClaw](https://github.com/openclaw/openclaw)'s memory system into a standalone library** — same markdown-first architecture, same chunking, same chunk ID format. Pluggable into *any* agent framework, backed by [Milvus](https://milvus.io/) (local Milvus Lite → Milvus Server → Zilliz Cloud). See it in action with the included **[Claude Code plugin](ccplugin/README.md)**.
+> 💡 **Inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, memsearch brings the same markdown-first architecture to a standalone library** — same chunking, same chunk ID format. Pluggable into *any* agent framework, backed by [Milvus](https://milvus.io/) (local Milvus Lite → Milvus Server → Zilliz Cloud). See it in action with the included **[Claude Code plugin](ccplugin/README.md)**.
 
 ### ✨ Why memsearch?
 
@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 - ⚡ **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
 - 🔄 **Live sync** — File watcher auto-indexes on changes, deletes stale chunks when files are removed
 - 🧹 **Memory compact** — LLM-powered summarization compresses old memories, just like OpenClaw's compact cycle
-- 🧩 **Claude Code plugin included** — A real-world example: **[ccplugin/](ccplugin/README.md)** gives Claude persistent memory across sessions with zero config
+- 🧩 **[Ready-made Claude Code plugin](ccplugin/README.md)** — a drop-in example of agent memory built on memsearch
 
 ## 🔍 How It Works
 
@@ -84,9 +84,15 @@ memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-w
 # 1. Install the memsearch CLI
 pip install memsearch
 
-# 2. In Claude Code, add the marketplace and install the plugin
+# 2. Set your embedding API key (OpenAI is the default provider)
+export OPENAI_API_KEY="sk-..."
+
+# 3. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
+
+# 4. Restart Claude Code for the plugin to take effect, then start chatting!
+claude
 ```
 
 <details>
@@ -292,170 +298,58 @@ asyncio.run(main())
 
 </details>
 
-### 🗄️ Milvus Backend Configuration
+### 🗄️ Milvus Backend
 
-memsearch supports three Milvus deployment modes — just change `milvus_uri` and `milvus_token`:
+memsearch supports three Milvus deployment modes — just change `milvus_uri`:
 
-#### 1. Milvus Lite (default — zero config, local file)
+| Mode | `milvus_uri` | Best for |
+|------|-------------|----------|
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
+| **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
+| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed |
 
-```python
-ms = MemSearch(
-    paths=["./docs/"],
-    milvus_uri="~/.memsearch/milvus.db",    # local file, no server needed
-)
-```
-
-No server to install. Data is stored in a single `.db` file. Perfect for personal use, single-agent setups, and development.
-
-#### 2. Milvus Server (self-hosted)
-
-```python
-ms = MemSearch(
-    paths=["./docs/"],
-    milvus_uri="http://localhost:19530",     # your Milvus server
-    milvus_token="root:Milvus",              # default credentials, change in production
-)
-```
-
-Deploy via Docker (`docker compose`) or Kubernetes. Ideal for multi-agent workloads and team environments where you need a shared, always-on vector store.
-
-#### 3. Zilliz Cloud (fully managed)
-
-```python
-ms = MemSearch(
-    paths=["./docs/"],
-    milvus_uri="https://in03-xxx.api.gcp-us-west1.zillizcloud.com",
-    milvus_token="your-api-key",
-)
-```
-
-Zero-ops, auto-scaling managed service. Get your free cluster at [cloud.zilliz.com](https://cloud.zilliz.com). Great for production deployments and when you don't want to manage infrastructure.
+> 📖 Code examples and setup details → [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
 
 ## 🖥️ CLI Usage
 
-### Index markdown files
-
 ```bash
-# Index one or more directories / files
-memsearch index ./docs/ ./notes/
-
-# Use a different embedding provider
-memsearch index ./docs/ --provider google
-
-# Force re-index everything
-memsearch index ./docs/ --force
-
-# Use a remote Milvus server
-memsearch index ./docs/ --milvus-uri http://localhost:19530 --milvus-token root:Milvus
+memsearch index ./memory/                          # index markdown files
+memsearch search "how to configure Redis caching"  # semantic search
+memsearch watch ./memory/                          # auto-index on file changes
+memsearch compact                                  # LLM-powered memory summarization
+memsearch config init                              # interactive config wizard
+memsearch stats                                    # show index statistics
 ```
 
-### Search
-
-```bash
-memsearch search "how to configure Redis caching"
-
-# Return more results
-memsearch search "authentication flow" --top-k 10
-
-# JSON output (for piping to other tools)
-memsearch search "error handling" --json-output
-```
-
-### Watch for changes
-
-```bash
-# Auto-index on file changes (Ctrl+C to stop)
-memsearch watch ./docs/ ./notes/
-
-# Custom debounce interval
-memsearch watch ./docs/ --debounce-ms 3000
-```
-
-### Compact (compress memories)
-
-Summarize indexed chunks into a condensed memory using an LLM:
-
-```bash
-memsearch compact
-
-# Use a specific LLM
-memsearch compact --llm-provider anthropic
-memsearch compact --llm-provider gemini
-
-# Only compact chunks from a specific source
-memsearch compact --source ./docs/old-notes.md
-```
-
-### Configuration management
-
-```bash
-memsearch config init               # Interactive wizard
-memsearch config set milvus.uri http://localhost:19530
-memsearch config get milvus.uri
-memsearch config list --resolved    # Show merged config from all sources
-memsearch config list --global      # Show ~/.memsearch/config.toml only
-memsearch config list --project     # Show .memsearch.toml only
-```
-
-### Manage
-
-```bash
-memsearch stats    # Show index statistics
-memsearch reset    # Drop all indexed data (with confirmation)
-```
+> 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
 ## ⚙️ Configuration
 
-memsearch uses a layered configuration system.  Settings are resolved in priority order (lowest → highest):
+Settings are resolved in priority order (lowest → highest):
 
-1. **Built-in defaults**
-2. **Global config** — `~/.memsearch/config.toml`
-3. **Project config** — `.memsearch.toml` (in your working directory)
-4. **Environment variables** — `MEMSEARCH_SECTION_FIELD` (e.g. `MEMSEARCH_MILVUS_URI`)
-5. **CLI flags** — `--milvus-uri`, `--provider`, etc.
+1. **Built-in defaults** → 2. **Global** `~/.memsearch/config.toml` → 3. **Project** `.memsearch.toml` → 4. **CLI flags**
 
-### API keys
+API keys for embedding/LLM providers are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
 
-API keys for embedding and LLM providers are read from standard environment variables:
-
-```bash
-# Embedding providers (set the one you use)
-export OPENAI_API_KEY="sk-..."
-export OPENAI_BASE_URL="https://..."   # optional, for proxies / Azure
-export GOOGLE_API_KEY="..."
-export VOYAGE_API_KEY="..."
-
-# LLM for compact/summarization (set the one you use)
-export ANTHROPIC_API_KEY="..."         # for compact with Anthropic
-```
+> 📖 Config wizard, TOML examples, and all settings → [Getting Started — Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
 
 ## 🔌 Embedding Providers
 
-| Provider | Install | Env Var | Default Model |
-|----------|---------|---------|---------------|
-| OpenAI | `memsearch` (included) | `OPENAI_API_KEY` | `text-embedding-3-small` |
-| Google | `memsearch[google]` | `GOOGLE_API_KEY` | `gemini-embedding-001` |
-| Voyage | `memsearch[voyage]` | `VOYAGE_API_KEY` | `voyage-3-lite` |
-| Ollama | `memsearch[ollama]` | `OLLAMA_HOST` (optional) | `nomic-embed-text` |
-| Local | `memsearch[local]` | — | `all-MiniLM-L6-v2` |
+| Provider | Install | Default Model |
+|----------|---------|---------------|
+| OpenAI | `memsearch` (included) | `text-embedding-3-small` |
+| Google | `memsearch[google]` | `gemini-embedding-001` |
+| Voyage | `memsearch[voyage]` | `voyage-3-lite` |
+| Ollama | `memsearch[ollama]` | `nomic-embed-text` |
+| Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
+
+> 📖 Provider setup and env vars → [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
 
 ## 🐾 OpenClaw Compatibility
 
-memsearch is designed to be a drop-in memory backend for projects following [OpenClaw's memory architecture](https://github.com/openclaw/openclaw):
+memsearch is a drop-in memory backend for projects following [OpenClaw's memory architecture](https://github.com/openclaw/openclaw) — same memory layout, chunk ID format, dedup strategy, and compact cycle. If you're already using OpenClaw's memory directory layout, just point memsearch at it — no migration needed.
 
-| Feature | OpenClaw | memsearch |
-|---------|----------|-----------|
-| Memory layout | `MEMORY.md` + `memory/YYYY-MM-DD.md` | ✅ Same |
-| Chunk ID format | `hash(source:startLine:endLine:contentHash:model)` | ✅ Same |
-| Dedup strategy | Content-hash primary key | ✅ Same |
-| Compact target | Append to daily markdown log | ✅ Same |
-| Source of truth | Markdown files (vector DB is derived) | ✅ Same |
-| File watch debounce | 1500ms | ✅ Same default |
-| Vector backend | Built-in | Milvus (Lite / Server / Zilliz Cloud) |
-| Embedding providers | Built-in | Pluggable (OpenAI, Google, Voyage, Ollama, local) |
-| Packaging | Part of OpenClaw monorepo | Standalone `pip install` |
-
-If you're already using OpenClaw's memory directory layout, just point memsearch at it — no migration needed.
+> 📖 Full compatibility matrix → [Architecture — Inspired by OpenClaw](https://zilliztech.github.io/memsearch/architecture/#inspired-by-openclaw)
 
 ## 📄 License
 

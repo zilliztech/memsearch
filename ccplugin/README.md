@@ -26,17 +26,22 @@ The result: a memory system that's **simple enough to understand in 5 minutes**,
 # 1. Install the memsearch CLI
 pip install memsearch
 
-# 2. (Optional) Initialize config
+# 2. Set your embedding API key (OpenAI is the default provider)
+export OPENAI_API_KEY="sk-..."
+
+# 3. (Optional) Initialize config
 memsearch config init
 
-# 3. In Claude Code, add the marketplace and install the plugin
+# 4. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 4. Have a conversation, then exit. Check your memories:
+# 5. Restart Claude Code for the plugin to take effect, then start chatting:
+claude
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
-# 5. Start a new session — Claude remembers!
+# 6. Start a new session — Claude remembers!
+claude
 ```
 
 ### Development mode
