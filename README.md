@@ -14,22 +14,229 @@
   <a href="https://github.com/zilliztech/memsearch/blob/main/LICENSE"><img src="https://img.shields.io/github/license/zilliztech/memsearch?style=flat-square" alt="License"></a>
   <a href="https://zilliztech.github.io/memsearch/"><img src="https://img.shields.io/badge/docs-memsearch-blue?style=flat-square" alt="Docs"></a>
   <a href="https://github.com/zilliztech/memsearch/stargazers"><img src="https://img.shields.io/github/stars/zilliztech/memsearch?style=flat-square" alt="Stars"></a>
-  <a href="https://milvus.io/"><img src="https://img.shields.io/badge/powered%20by-Milvus-blue?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PHBhdGggZD0iTTEyIDJMMyA3djEwbDkgNSA5LTVWN3oiIGZpbGw9IiMwMEE1RkYiLz48L3N2Zz4=" alt="Milvus"></a>
-  <a href="https://discord.com/invite/FG6hMJStWu"><img src="https://img.shields.io/badge/Discord-Milvus-7289da?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.com/invite/FG6hMJStWu"><img src="https://img.shields.io/badge/Discord-chat-7289da?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="https://x.com/zilliz_universe"><img src="https://img.shields.io/badge/follow-%40zilliz__universe-000000?style=flat-square&logo=x&logoColor=white" alt="X (Twitter)"></a>
 </p>
 
 https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 
-> 💡 **Inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, memsearch brings the same markdown-first architecture to a standalone library** — same chunking, same chunk ID format. Pluggable into *any* agent framework, backed by [Milvus](https://milvus.io/) (local Milvus Lite → Milvus Server → Zilliz Cloud). See it in action with the included **[Claude Code plugin](ccplugin/README.md)**.
+> 💡 Give your AI agents persistent memory in a few lines of code. Write memories as markdown, search them semantically. Inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s markdown-first memory architecture. Pluggable into any agent framework.
 
 ### ✨ Why memsearch?
 
-- 🦞 **OpenClaw's memory, everywhere** — OpenClaw has one of the best memory designs in open-source AI: **markdown as the single source of truth** — simple, human-readable, `git`-friendly, zero vendor lock-in
+- 📝 **Markdown is the source of truth** — human-readable, `git`-friendly, zero vendor lock-in. Your memories are just `.md` files
 - ⚡ **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
-- 🔄 **Live sync** — File watcher auto-indexes on changes, deletes stale chunks when files are removed
-- 🧹 **Memory compact** — LLM-powered summarization compresses old memories, just like OpenClaw's compact cycle
+- 🔄 **Live sync** — File watcher auto-indexes changes to the vector DB, deletes stale chunks when files are removed
 - 🧩 **[Ready-made Claude Code plugin](ccplugin/README.md)** — a drop-in example of agent memory built on memsearch
+
+## 📦 Installation
+
+```bash
+pip install memsearch
+```
+
+<details>
+<summary><b>Optional embedding providers</b></summary>
+
+```bash
+pip install "memsearch[google]"      # Google Gemini
+pip install "memsearch[voyage]"      # Voyage AI
+pip install "memsearch[ollama]"      # Ollama (local)
+pip install "memsearch[local]"       # sentence-transformers (local, no API key)
+pip install "memsearch[all]"         # Everything
+```
+
+</details>
+
+## 🐍 Python API — Give Your Agent Memory
+
+```python
+from memsearch import MemSearch
+
+mem = MemSearch(paths=["./memory"])
+
+await mem.index()                                      # index markdown files
+results = await mem.search("Redis config", top_k=3)    # semantic search
+print(results[0]["content"], results[0]["score"])       # content + similarity
+```
+
+<details>
+<summary>🚀 <b>Full example — agent with memory (OpenAI)</b> — click to expand</summary>
+
+```python
+import asyncio
+from datetime import date
+from pathlib import Path
+from openai import OpenAI
+from memsearch import MemSearch
+
+MEMORY_DIR = "./memory"
+llm = OpenAI()                                        # your LLM client
+mem = MemSearch(paths=[MEMORY_DIR])                    # memsearch handles the rest
+
+def save_memory(content: str):
+    """Append a note to today's memory log (OpenClaw-style daily markdown)."""
+    p = Path(MEMORY_DIR) / f"{date.today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(f"\n{content}\n")
+
+async def agent_chat(user_input: str) -> str:
+    # 1. Recall — search past memories for relevant context
+    memories = await mem.search(user_input, top_k=3)
+    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
+
+    # 2. Think — call LLM with memory context
+    resp = llm.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": f"You have these memories:\n{context}"},
+            {"role": "user", "content": user_input},
+        ],
+    )
+    answer = resp.choices[0].message.content
+
+    # 3. Remember — save this exchange and index it
+    save_memory(f"## {user_input}\n{answer}")
+    await mem.index()
+
+    return answer
+
+async def main():
+    # Seed some knowledge
+    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+    save_memory("## Decision\nWe chose Redis for caching over Memcached.")
+    await mem.index()  # or mem.watch() to auto-index in the background
+
+    # Agent can now recall those memories
+    print(await agent_chat("Who is our frontend lead?"))
+    print(await agent_chat("What caching solution did we pick?"))
+
+asyncio.run(main())
+```
+
+</details>
+
+<details>
+<summary>💜 <b>Anthropic Claude example</b> — click to expand</summary>
+
+```bash
+pip install memsearch anthropic
+```
+
+```python
+import asyncio
+from datetime import date
+from pathlib import Path
+from anthropic import Anthropic
+from memsearch import MemSearch
+
+MEMORY_DIR = "./memory"
+llm = Anthropic()
+mem = MemSearch(paths=[MEMORY_DIR])
+
+def save_memory(content: str):
+    p = Path(MEMORY_DIR) / f"{date.today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(f"\n{content}\n")
+
+async def agent_chat(user_input: str) -> str:
+    # 1. Recall
+    memories = await mem.search(user_input, top_k=3)
+    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
+
+    # 2. Think — call Claude with memory context
+    resp = llm.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=1024,
+        system=f"You have these memories:\n{context}",
+        messages=[{"role": "user", "content": user_input}],
+    )
+    answer = resp.content[0].text
+
+    # 3. Remember
+    save_memory(f"## {user_input}\n{answer}")
+    await mem.index()
+    return answer
+
+async def main():
+    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+    await mem.index()
+    print(await agent_chat("Who is our frontend lead?"))
+
+asyncio.run(main())
+```
+
+</details>
+
+<details>
+<summary>🦙 <b>Ollama (fully local, no API key)</b> — click to expand</summary>
+
+```bash
+pip install "memsearch[ollama]"
+ollama pull nomic-embed-text          # embedding model
+ollama pull llama3.2                  # chat model
+```
+
+```python
+import asyncio
+from datetime import date
+from pathlib import Path
+from ollama import chat
+from memsearch import MemSearch
+
+MEMORY_DIR = "./memory"
+mem = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
+
+def save_memory(content: str):
+    p = Path(MEMORY_DIR) / f"{date.today()}.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        f.write(f"\n{content}\n")
+
+async def agent_chat(user_input: str) -> str:
+    # 1. Recall
+    memories = await mem.search(user_input, top_k=3)
+    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
+
+    # 2. Think — call Ollama locally
+    resp = chat(
+        model="llama3.2",
+        messages=[
+            {"role": "system", "content": f"You have these memories:\n{context}"},
+            {"role": "user", "content": user_input},
+        ],
+    )
+    answer = resp.message.content
+
+    # 3. Remember
+    save_memory(f"## {user_input}\n{answer}")
+    await mem.index()
+    return answer
+
+async def main():
+    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+    await mem.index()
+    print(await agent_chat("Who is our frontend lead?"))
+
+asyncio.run(main())
+```
+
+</details>
+
+## 🖥️ CLI Usage
+
+```bash
+memsearch index ./memory/                          # index markdown files
+memsearch search "how to configure Redis caching"  # semantic search
+memsearch watch ./memory/                          # auto-index on file changes
+memsearch compact                                  # LLM-powered memory summarization
+memsearch config init                              # interactive config wizard
+memsearch stats                                    # show index statistics
+```
+
+> 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
 ## 🔍 How It Works
 
@@ -74,11 +281,11 @@ https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
   └────────────────────────────────────────────────────────────────────┘
 ```
 
-🔒 The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote Milvus backend or a cloud embedding provider.
+🔒 The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote backend or a cloud embedding provider.
 
 ## 🧩 Claude Code Plugin
 
-memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of OpenClaw's memory running outside OpenClaw. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
+memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
 
 ```bash
 # 1. Install the memsearch CLI
@@ -95,233 +302,7 @@ export OPENAI_API_KEY="sk-..."
 claude
 ```
 
-<details>
-<summary>🔧 <b>Development mode</b> — install from local clone</summary>
-
-```bash
-git clone https://github.com/zilliztech/memsearch.git
-pip install memsearch
-claude --plugin-dir ./memsearch/ccplugin
-```
-
-</details>
-
-```
-  Session start ──▶ start memsearch watch (singleton) ──▶ inject recent memories
-                           │
-  User prompt ──▶ memsearch search ──▶ inject relevant memories
-                           │
-  Claude stops ──▶ haiku summary ──▶ write .memsearch/memory/YYYY-MM-DD.md
-                           │                                │
-  Session end ──▶ stop watch              watch auto-indexes ◀┘
-```
-
-Under the hood: 4 shell hooks + 1 watch process, all calling the `memsearch` CLI. Memories are transparent `.md` files — human-readable, git-friendly, rebuildable. See **[ccplugin/README.md](ccplugin/README.md)** for the full architecture, hook details, progressive disclosure model, and comparison with claude-mem.
-
-## 📦 Installation
-
-```bash
-pip install memsearch
-```
-
-### Additional embedding providers
-
-```bash
-pip install "memsearch[google]"      # Google Gemini
-pip install "memsearch[voyage]"      # Voyage AI
-pip install "memsearch[ollama]"      # Ollama (local)
-pip install "memsearch[local]"       # sentence-transformers (local, no API key)
-pip install "memsearch[all]"         # Everything
-```
-
-## 🐍 Python API — Build an Agent with Memory
-
-The example below shows a complete agent loop with memory: save knowledge to markdown, index it, and recall it later via semantic search.
-
-```python
-import asyncio
-from datetime import date
-from pathlib import Path
-from openai import OpenAI
-from memsearch import MemSearch
-
-MEMORY_DIR = "./memory"
-llm = OpenAI()                                        # your LLM client
-ms = MemSearch(paths=[MEMORY_DIR])                    # memsearch handles the rest
-
-def save_memory(content: str):
-    """Append a note to today's memory log (OpenClaw-style daily markdown)."""
-    p = Path(MEMORY_DIR) / f"{date.today()}.md"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
-        f.write(f"\n{content}\n")
-
-async def agent_chat(user_input: str) -> str:
-    # 1. Recall — search past memories for relevant context
-    memories = await ms.search(user_input, top_k=3)
-    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
-
-    # 2. Think — call LLM with memory context
-    resp = llm.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": f"You have these memories:\n{context}"},
-            {"role": "user", "content": user_input},
-        ],
-    )
-    answer = resp.choices[0].message.content
-
-    # 3. Remember — save this exchange and index it
-    save_memory(f"## {user_input}\n{answer}")
-    await ms.index()
-
-    return answer
-
-async def main():
-    # Seed some knowledge
-    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
-    save_memory("## Decision\nWe chose Redis for caching over Memcached.")
-    await ms.index()
-
-    # Agent can now recall those memories
-    print(await agent_chat("Who is our frontend lead?"))
-    print(await agent_chat("What caching solution did we pick?"))
-
-asyncio.run(main())
-```
-
-<details>
-<summary>💜 <b>Anthropic Claude example</b> — click to expand</summary>
-
-```bash
-pip install memsearch anthropic
-```
-
-```python
-import asyncio
-from datetime import date
-from pathlib import Path
-from anthropic import Anthropic
-from memsearch import MemSearch
-
-MEMORY_DIR = "./memory"
-llm = Anthropic()
-ms = MemSearch(paths=[MEMORY_DIR])
-
-def save_memory(content: str):
-    p = Path(MEMORY_DIR) / f"{date.today()}.md"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
-        f.write(f"\n{content}\n")
-
-async def agent_chat(user_input: str) -> str:
-    # 1. Recall
-    memories = await ms.search(user_input, top_k=3)
-    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
-
-    # 2. Think — call Claude with memory context
-    resp = llm.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=1024,
-        system=f"You have these memories:\n{context}",
-        messages=[{"role": "user", "content": user_input}],
-    )
-    answer = resp.content[0].text
-
-    # 3. Remember
-    save_memory(f"## {user_input}\n{answer}")
-    await ms.index()
-    return answer
-
-async def main():
-    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
-    await ms.index()
-    print(await agent_chat("Who is our frontend lead?"))
-
-asyncio.run(main())
-```
-
-</details>
-
-<details>
-<summary>🦙 <b>Ollama (fully local, no API key)</b> — click to expand</summary>
-
-```bash
-pip install "memsearch[ollama]"
-ollama pull nomic-embed-text          # embedding model
-ollama pull llama3.2                  # chat model
-```
-
-```python
-import asyncio
-from datetime import date
-from pathlib import Path
-from ollama import chat
-from memsearch import MemSearch
-
-MEMORY_DIR = "./memory"
-ms = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
-
-def save_memory(content: str):
-    p = Path(MEMORY_DIR) / f"{date.today()}.md"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
-        f.write(f"\n{content}\n")
-
-async def agent_chat(user_input: str) -> str:
-    # 1. Recall
-    memories = await ms.search(user_input, top_k=3)
-    context = "\n".join(f"- {m['content'][:200]}" for m in memories)
-
-    # 2. Think — call Ollama locally
-    resp = chat(
-        model="llama3.2",
-        messages=[
-            {"role": "system", "content": f"You have these memories:\n{context}"},
-            {"role": "user", "content": user_input},
-        ],
-    )
-    answer = resp.message.content
-
-    # 3. Remember
-    save_memory(f"## {user_input}\n{answer}")
-    await ms.index()
-    return answer
-
-async def main():
-    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
-    await ms.index()
-    print(await agent_chat("Who is our frontend lead?"))
-
-asyncio.run(main())
-```
-
-</details>
-
-### 🗄️ Milvus Backend
-
-memsearch supports three Milvus deployment modes — just change `milvus_uri`:
-
-| Mode | `milvus_uri` | Best for |
-|------|-------------|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
-| **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
-| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed |
-
-> 📖 Code examples and setup details → [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
-
-## 🖥️ CLI Usage
-
-```bash
-memsearch index ./memory/                          # index markdown files
-memsearch search "how to configure Redis caching"  # semantic search
-memsearch watch ./memory/                          # auto-index on file changes
-memsearch compact                                  # LLM-powered memory summarization
-memsearch config init                              # interactive config wizard
-memsearch stats                                    # show index statistics
-```
-
-> 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
+> 📖 Architecture, hook details, and development mode → [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/claude-plugin/)
 
 ## ⚙️ Configuration
 
@@ -345,12 +326,30 @@ API keys for embedding/LLM providers are read from standard environment variable
 
 > 📖 Provider setup and env vars → [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
 
-## 🐾 OpenClaw Compatibility
+## 🗄️ Milvus Backend
 
-memsearch is a drop-in memory backend for projects following [OpenClaw's memory architecture](https://github.com/openclaw/openclaw) — same memory layout, chunk ID format, dedup strategy, and compact cycle. If you're already using OpenClaw's memory directory layout, just point memsearch at it — no migration needed.
+memsearch supports three deployment modes — just change `milvus_uri`:
 
-> 📖 Full compatibility matrix → [Architecture — Inspired by OpenClaw](https://zilliztech.github.io/memsearch/architecture/#inspired-by-openclaw)
+| Mode | `milvus_uri` | Best for |
+|------|-------------|----------|
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
+| **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
+| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed |
+
+> 📖 Code examples and setup details → [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
+
+## 📚 Links
+
+- [Documentation](https://zilliztech.github.io/memsearch/) — Getting Started, CLI Reference, Architecture
+- [Claude Code Plugin](ccplugin/README.md) — hook details, progressive disclosure, comparison with claude-mem
+- [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
+- [Milvus](https://milvus.io/) — the vector database powering memsearch
+- [Changelog](https://github.com/zilliztech/memsearch/releases) — release history
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome on [GitHub](https://github.com/zilliztech/memsearch). For questions and discussions, join us on [Discord](https://discord.com/invite/FG6hMJStWu).
 
 ## 📄 License
 
-MIT
+[MIT](LICENSE)
