@@ -35,6 +35,7 @@ nav:
   - Architecture: architecture.md
   - Python API: python-api.md
   - CLI Reference: cli.md
+  - Integrations: integrations.md
   - Claude Code Plugin: claude-plugin.md
 
 markdown_extensions:
