@@ -66,35 +66,35 @@ Scan one or more directories (or files) and index all markdown files (`.md`, `.m
 Index a single directory:
 
 ```bash
-$ memsearch index ./docs/
+$ memsearch index ./memory/
 Indexed 42 chunks.
 ```
 
 Index multiple directories with a specific embedding provider:
 
 ```bash
-$ memsearch index ./docs/ ./notes/ --provider google
+$ memsearch index ./memory/ ./notes/ --provider google
 Indexed 87 chunks.
 ```
 
 Force re-index everything (ignores the content-hash dedup check):
 
 ```bash
-$ memsearch index ./docs/ --force
+$ memsearch index ./memory/ --force
 Indexed 42 chunks.
 ```
 
 Connect to a remote Milvus server instead of the default local file:
 
 ```bash
-$ memsearch index ./docs/ --milvus-uri http://localhost:19530
+$ memsearch index ./memory/ --milvus-uri http://localhost:19530
 Indexed 42 chunks.
 ```
 
 Use a custom embedding model:
 
 ```bash
-$ memsearch index ./docs/ --provider openai --model text-embedding-3-large
+$ memsearch index ./memory/ --provider openai --model text-embedding-3-large
 Indexed 42 chunks.
 ```
 
@@ -201,7 +201,7 @@ Start a long-running file watcher that monitors directories for markdown file ch
 Watch a single directory:
 
 ```bash
-$ memsearch watch ./docs/
+$ memsearch watch ./memory/
 Watching 1 path(s) for changes... (Ctrl+C to stop)
 Indexed 3 chunks from /home/user/docs/2026-02-11.md
 Removed chunks for /home/user/docs/old-draft.md
@@ -212,7 +212,7 @@ Stopping watcher.
 Watch multiple directories with a longer debounce:
 
 ```bash
-$ memsearch watch ./docs/ ./notes/ --debounce-ms 3000
+$ memsearch watch ./memory/ ./notes/ --debounce-ms 3000
 Watching 2 path(s) for changes... (Ctrl+C to stop)
 ```
 
@@ -270,7 +270,7 @@ Compact complete. Summary:
 Compact only chunks from a specific source file:
 
 ```bash
-$ memsearch compact --source ./docs/old-notes.md
+$ memsearch compact --source ./memory/old-notes.md
 Compact complete. Summary:
 
 ## Old Notes Summary
@@ -454,7 +454,7 @@ $ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6 --json-o
 Manage memsearch configuration. Configuration is stored in TOML files and follows a layered priority chain:
 
 ```
-dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> MEMSEARCH_* env vars -> CLI flags
+dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> CLI flags
 ```
 
 Higher-priority sources override lower-priority ones.
@@ -684,7 +684,7 @@ Dropped collection.
 
 ## Environment Variables
 
-memsearch reads API keys and configuration overrides from environment variables. API keys are required by the corresponding embedding and LLM providers.
+memsearch reads API keys from environment variables. These are required by the corresponding embedding and LLM provider SDKs and are **not** stored in memsearch config files.
 
 ### API Keys
 
@@ -697,23 +697,7 @@ memsearch reads API keys and configuration overrides from environment variables.
 | `ANTHROPIC_API_KEY` | `anthropic` LLM compact provider | Anthropic API key |
 | `OLLAMA_HOST` | `ollama` embedding provider *(optional)* | Ollama server URL (default: `http://localhost:11434`) |
 
-### Configuration Overrides
-
-All configuration keys can be set via environment variables using the pattern `MEMSEARCH_SECTION_FIELD`. These override values from config files but are overridden by CLI flags.
-
-| Variable | Config Key | Description |
-|----------|-----------|-------------|
-| `MEMSEARCH_MILVUS_URI` | `milvus.uri` | Milvus connection URI |
-| `MEMSEARCH_MILVUS_TOKEN` | `milvus.token` | Milvus auth token |
-| `MEMSEARCH_MILVUS_COLLECTION` | `milvus.collection` | Collection name |
-| `MEMSEARCH_EMBEDDING_PROVIDER` | `embedding.provider` | Embedding provider name |
-| `MEMSEARCH_EMBEDDING_MODEL` | `embedding.model` | Embedding model override |
-| `MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE` | `chunking.max_chunk_size` | Max chunk size (chars) |
-| `MEMSEARCH_CHUNKING_OVERLAP_LINES` | `chunking.overlap_lines` | Overlap lines between chunks |
-| `MEMSEARCH_WATCH_DEBOUNCE_MS` | `watch.debounce_ms` | Debounce delay (ms) |
-| `MEMSEARCH_COMPACT_LLM_PROVIDER` | `compact.llm_provider` | LLM provider for compact |
-| `MEMSEARCH_COMPACT_LLM_MODEL` | `compact.llm_model` | LLM model for compact |
-| `MEMSEARCH_COMPACT_PROMPT_FILE` | `compact.prompt_file` | Path to custom prompt file |
+All memsearch settings (Milvus URI, embedding provider, chunking parameters, etc.) are configured via TOML config files or CLI flags -- see [Configuration](getting-started.md#configuration) for details.
 
 ### Examples
 
@@ -722,13 +706,9 @@ All configuration keys can be set via environment variables using the pattern `M
 $ export OPENAI_API_KEY=sk-...
 $ memsearch search "database schema"
 
-# Override Milvus URI via environment
-$ export MEMSEARCH_MILVUS_URI=http://10.0.0.5:19530
-$ memsearch index ./docs/
-
-# Use Google for embedding via env var, Anthropic for compact via CLI
-$ export MEMSEARCH_EMBEDDING_PROVIDER=google
+# Use Google for embedding, Anthropic for compact
 $ export GOOGLE_API_KEY=AIza...
+$ memsearch index ./memory/ --provider google
 $ memsearch compact --llm-provider anthropic
 ```
 

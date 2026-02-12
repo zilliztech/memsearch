@@ -2,7 +2,7 @@
 
 **OpenClaw's memory, everywhere.**
 
-> memsearch extracts [OpenClaw](https://github.com/openclaw/openclaw)'s memory system into a standalone library -- same markdown-first architecture, same chunking, same chunk ID format. Pluggable into *any* agent framework, backed by [Milvus](https://milvus.io/).
+> Inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, memsearch brings the same markdown-first architecture to a standalone library. Pluggable into *any* agent framework, backed by [Milvus](https://milvus.io/).
 
 ---
 
@@ -19,7 +19,7 @@ The vector store is just a derived index — rebuildable anytime.
 - **Smart dedup** -- SHA-256 content hashing means unchanged content is never re-embedded
 - **Live sync** -- file watcher auto-indexes on changes, deletes stale chunks
 - **Memory compact** -- LLM-powered summarization compresses old memories
-- **Claude Code plugin included** -- persistent memory across sessions with zero config
+- **[Ready-made Claude Code plugin](claude-plugin.md)** -- a drop-in example of agent memory built on memsearch
 
 ---
 
@@ -44,7 +44,17 @@ memsearch scans your markdown directories, splits content into semantically mean
 $ pip install memsearch
 ```
 
-Index a directory of markdown files and search it:
+Say you have a directory of daily markdown logs (the same layout used by OpenClaw):
+
+```
+memory/
+├── MEMORY.md          # persistent facts & decisions
+├── 2026-02-07.md      # daily log
+├── 2026-02-08.md
+└── 2026-02-09.md
+```
+
+Index it and search:
 
 ```bash
 $ memsearch index ./memory/
@@ -105,7 +115,7 @@ See [Getting Started](getting-started.md) for a complete walkthrough with agent 
 
 ### Personal Knowledge Base
 
-Point memsearch at your notes directory and get instant semantic search across years of accumulated knowledge. Works with any markdown-based note-taking setup -- Obsidian vaults, Logseq graphs, or plain files.
+Point memsearch at your notes directory and get instant semantic search across years of accumulated knowledge.
 
 ```bash
 $ memsearch index ~/notes/
@@ -175,7 +185,7 @@ See [Getting Started](getting-started.md#milvus-backends) for connection example
 
 memsearch uses a layered configuration system (lowest → highest priority):
 
-**Built-in defaults** → **Global config** (`~/.memsearch/config.toml`) → **Project config** (`.memsearch.toml`) → **Env vars** (`MEMSEARCH_SECTION_FIELD`) → **CLI flags**
+**Built-in defaults** → **Global config** (`~/.memsearch/config.toml`) → **Project config** (`.memsearch.toml`) → **CLI flags**
 
 ```bash
 $ memsearch config init               # Interactive wizard
@@ -183,7 +193,7 @@ $ memsearch config set milvus.uri http://localhost:19530
 $ memsearch config list --resolved    # Show merged config from all sources
 ```
 
-See [Getting Started](getting-started.md#configuration) for the full configuration guide, TOML examples, and environment variable reference.
+API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`) are read from standard environment variables by their respective SDKs -- they are not stored in config files. See [Getting Started](getting-started.md#configuration) for the full configuration guide.
 
 ---
 

@@ -332,7 +332,7 @@ Data is stored in a single local `.db` file. No server to install, no ports to o
 
     ```python
     ms = MemSearch(
-        paths=["./docs/"],
+        paths=["./memory/"],
         milvus_uri="~/.memsearch/milvus.db",  # default, can be omitted
     )
     ```
@@ -340,7 +340,7 @@ Data is stored in a single local `.db` file. No server to install, no ports to o
 === "CLI"
 
     ```bash
-    $ memsearch index ./docs/
+    $ memsearch index ./memory/
     # Uses ~/.memsearch/milvus.db by default
     ```
 
@@ -354,7 +354,7 @@ Deploy Milvus via Docker or Kubernetes. Multiple agents and users can share the 
 
     ```python
     ms = MemSearch(
-        paths=["./docs/"],
+        paths=["./memory/"],
         milvus_uri="http://localhost:19530",
         milvus_token="root:Milvus",    # default credentials
     )
@@ -363,7 +363,7 @@ Deploy Milvus via Docker or Kubernetes. Multiple agents and users can share the 
 === "CLI"
 
     ```bash
-    $ memsearch index ./docs/ --milvus-uri http://localhost:19530 --milvus-token root:Milvus
+    $ memsearch index ./memory/ --milvus-uri http://localhost:19530 --milvus-token root:Milvus
     ```
 
 === "Docker"
@@ -384,7 +384,7 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
 
     ```python
     ms = MemSearch(
-        paths=["./docs/"],
+        paths=["./memory/"],
         milvus_uri="https://in03-xxx.api.gcp-us-west1.zillizcloud.com",
         milvus_token="your-api-key",
     )
@@ -393,7 +393,7 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
 === "CLI"
 
     ```bash
-    $ memsearch index ./docs/ \
+    $ memsearch index ./memory/ \
         --milvus-uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com" \
         --milvus-token "your-api-key"
     ```
@@ -407,10 +407,11 @@ memsearch uses a layered configuration system. Settings are resolved in priority
 1. **Built-in defaults** -- sensible out-of-the-box values
 2. **Global config** -- `~/.memsearch/config.toml`
 3. **Project config** -- `.memsearch.toml` in your working directory
-4. **Environment variables** -- `MEMSEARCH_SECTION_FIELD` format
-5. **CLI flags** -- `--milvus-uri`, `--provider`, etc.
+4. **CLI flags** -- `--milvus-uri`, `--provider`, etc.
 
 Higher-priority sources override lower ones. This means you can set defaults globally, customize per project, and override on the fly with CLI flags.
+
+> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are **not** stored in memsearch config files. See [API Keys](#api-keys) below.
 
 ### Interactive config wizard
 
@@ -499,25 +500,12 @@ $ memsearch config list --global      # Show ~/.memsearch/config.toml only
 $ memsearch config list --project     # Show .memsearch.toml only
 ```
 
-### Environment variable overrides
-
-Environment variables follow the pattern `MEMSEARCH_SECTION_FIELD`:
-
-```bash
-$ export MEMSEARCH_MILVUS_URI="http://10.0.0.5:19530"
-$ export MEMSEARCH_EMBEDDING_PROVIDER="google"
-$ export MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE="2000"
-$ export MEMSEARCH_WATCH_DEBOUNCE_MS="3000"
-```
-
-These override both config files but are themselves overridden by CLI flags.
-
 ### CLI flag overrides
 
 CLI flags always take the highest priority:
 
 ```bash
-$ memsearch index ./docs/ --provider google --milvus-uri http://localhost:19530
+$ memsearch index ./memory/ --provider google --milvus-uri http://localhost:19530
 $ memsearch search "Redis config" --top-k 10 --milvus-uri http://10.0.0.5:19530
 ```
 

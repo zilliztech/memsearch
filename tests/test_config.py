@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,6 @@ from memsearch.config import (
     deep_merge,
     get_config_value,
     load_config_file,
-    load_env_overrides,
     resolve_config,
     save_config,
     set_config_value,
@@ -56,35 +54,6 @@ def test_load_missing_file(tmp_path: Path):
     assert result == {}
 
 
-def test_env_overrides(monkeypatch: pytest.MonkeyPatch):
-    """MEMSEARCH_* env vars should produce correct nested dict."""
-    monkeypatch.setenv("MEMSEARCH_MILVUS_URI", "http://envhost:19530")
-    monkeypatch.setenv("MEMSEARCH_EMBEDDING_PROVIDER", "voyage")
-    monkeypatch.setenv("MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE", "2000")
-    result = load_env_overrides()
-    assert result["milvus"]["uri"] == "http://envhost:19530"
-    assert result["embedding"]["provider"] == "voyage"
-    assert result["chunking"]["max_chunk_size"] == 2000
-
-
-def test_int_type_conversion(monkeypatch: pytest.MonkeyPatch):
-    """Int fields should be auto-converted from env var strings."""
-    monkeypatch.setenv("MEMSEARCH_WATCH_DEBOUNCE_MS", "3000")
-    monkeypatch.setenv("MEMSEARCH_CHUNKING_OVERLAP_LINES", "5")
-    result = load_env_overrides()
-    assert result["watch"]["debounce_ms"] == 3000
-    assert isinstance(result["watch"]["debounce_ms"], int)
-    assert result["chunking"]["overlap_lines"] == 5
-
-
-def test_unknown_keys_ignored(monkeypatch: pytest.MonkeyPatch):
-    """Env vars with unknown sections or fields should be silently dropped."""
-    monkeypatch.setenv("MEMSEARCH_BOGUS_FIELD", "nope")
-    monkeypatch.setenv("MEMSEARCH_MILVUS_NONEXISTENT", "nope")
-    result = load_env_overrides()
-    assert "bogus" not in result
-    assert result.get("milvus", {}).get("nonexistent") is None
-
 
 def test_deep_merge_basic():
     """deep_merge should recursively merge nested dicts."""
@@ -103,7 +72,7 @@ def test_deep_merge_none_skipped():
 
 
 def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """resolve_config should layer: defaults < toml < env < cli."""
+    """resolve_config should layer: defaults < toml < cli."""
     # Write a "global" config
     global_cfg = tmp_path / "global.toml"
     save_config({"milvus": {"uri": "http://toml:19530"}}, global_cfg)
@@ -112,20 +81,16 @@ def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
     monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
 
-    # Set env override
-    monkeypatch.setenv("MEMSEARCH_EMBEDDING_PROVIDER", "google")
-
     # CLI override
     cli = {"milvus": {"collection": "cli_col"}}
 
     cfg = resolve_config(cli)
     # TOML wins over default
     assert cfg.milvus.uri == "http://toml:19530"
-    # env wins over default
-    assert cfg.embedding.provider == "google"
     # CLI wins over everything
     assert cfg.milvus.collection == "cli_col"
     # Untouched fields remain default
+    assert cfg.embedding.provider == "openai"
     assert cfg.chunking.max_chunk_size == 1500
 
 
@@ -134,11 +99,6 @@ def test_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cfg_path = tmp_path / "config.toml"
     monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
     monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
-
-    # Clear env to avoid interference
-    for key in list(os.environ):
-        if key.startswith("MEMSEARCH_"):
-            monkeypatch.delenv(key, raising=False)
 
     set_config_value("milvus.uri", "http://roundtrip:19530")
     cfg = resolve_config()

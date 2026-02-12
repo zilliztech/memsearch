@@ -8,7 +8,7 @@ This page explains the architecture, design philosophy, and key implementation d
 
 ### Markdown as the Source of Truth
 
-The foundational principle of memsearch is simple: **markdown files are the canonical data store**. The vector database is a derived index -- it can be dropped and rebuilt at any time from the markdown files on disk. This is the same philosophy used by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, and memsearch is designed to be a standalone extraction of that architecture.
+The foundational principle of memsearch is simple: **markdown files are the canonical data store**. The vector database is a derived index -- it can be dropped and rebuilt at any time from the markdown files on disk. This is the same philosophy used by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, and memsearch is designed as a standalone library inspired by that architecture.
 
 **Why markdown?**
 
@@ -229,14 +229,13 @@ All agents and projects share the same collection name (`memsearch_chunks`) by d
 
 ## Configuration System
 
-memsearch uses a 5-layer configuration system. Each layer overrides the one before it:
+memsearch uses a 4-layer configuration system. Each layer overrides the one before it:
 
 ```mermaid
 graph LR
     D["1. Defaults"] --> G["2. Global Config\n~/.memsearch/config.toml"]
     G --> P["3. Project Config\n.memsearch.toml"]
-    P --> E["4. Env Vars\nMEMSEARCH_*"]
-    E --> C["5. CLI Flags\n--milvus-uri, etc."]
+    P --> C["4. CLI Flags\n--milvus-uri, etc."]
 ```
 
 | Priority | Source | Scope | Example |
@@ -244,20 +243,9 @@ graph LR
 | 1 (lowest) | Built-in defaults | Hardcoded | `milvus.uri = ~/.memsearch/milvus.db` |
 | 2 | `~/.memsearch/config.toml` | User-global | Shared across all projects |
 | 3 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
-| 4 | `MEMSEARCH_*` env vars | Per-session | `MEMSEARCH_MILVUS_URI=http://...` |
-| 5 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
+| 4 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
 
-### Environment Variable Convention
-
-Environment variables follow the pattern `MEMSEARCH_SECTION_FIELD`. The `MEMSEARCH_` prefix is stripped, and the remainder is split on the first underscore to determine the config section and field:
-
-```bash
-MEMSEARCH_MILVUS_URI="http://localhost:19530"    # milvus.uri
-MEMSEARCH_MILVUS_TOKEN="root:Milvus"             # milvus.token
-MEMSEARCH_EMBEDDING_PROVIDER="google"            # embedding.provider
-MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE="2000"         # chunking.max_chunk_size
-MEMSEARCH_WATCH_DEBOUNCE_MS="3000"               # watch.debounce_ms
-```
+> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are not part of the memsearch configuration system and are never written to config files.
 
 ### Config Sections
 

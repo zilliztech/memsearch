@@ -1,12 +1,11 @@
 """Configuration system for memsearch.
 
 Priority chain (lowest to highest):
-  dataclass defaults → ~/.memsearch/config.toml → .memsearch.toml → MEMSEARCH_* env → CLI flags
+  dataclass defaults → ~/.memsearch/config.toml → .memsearch.toml → CLI flags
 """
 
 from __future__ import annotations
 
-import os
 import sys
 
 if sys.version_info >= (3, 11):
@@ -25,7 +24,7 @@ import tomli_w
 GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
-# Fields that should be parsed as int when coming from env vars
+# Fields that should be parsed as int when set via CLI strings
 _INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms"}
 
 
@@ -93,38 +92,6 @@ def load_config_file(path: Path | str) -> dict[str, Any]:
         return tomllib.load(f)
 
 
-def load_env_overrides() -> dict[str, Any]:
-    """Parse ``MEMSEARCH_*`` env vars into a nested dict.
-
-    Rule: ``MEMSEARCH_SECTION_FIELD`` → ``{section: {field: value}}``.
-    The prefix ``MEMSEARCH_`` is stripped, then ``split("_", 1)`` gives
-    ``(section, field)``.  Int fields are auto-converted.
-    """
-    result: dict[str, Any] = {}
-    prefix = "MEMSEARCH_"
-    for key, value in os.environ.items():
-        if not key.startswith(prefix):
-            continue
-        remainder = key[len(prefix):].lower()
-        parts = remainder.split("_", 1)
-        if len(parts) != 2:
-            continue
-        section, field_name = parts
-        if section not in _SECTION_CLASSES:
-            continue
-        # Validate field exists on the dataclass
-        cls = _SECTION_CLASSES[section]
-        valid_fields = {f.name for f in fields(cls)}
-        if field_name not in valid_fields:
-            continue
-        if field_name in _INT_FIELDS:
-            try:
-                value = int(value)  # type: ignore[assignment]
-            except ValueError:
-                continue
-        result.setdefault(section, {})[field_name] = value
-    return result
-
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge *override* into *base*.
@@ -160,12 +127,11 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
     """Layer all config sources and return the final MemSearchConfig.
 
     Priority (lowest → highest):
-      defaults → global TOML → project TOML → env vars → cli_overrides
+      defaults → global TOML → project TOML → cli_overrides
     """
     result = _default_dict()
     result = deep_merge(result, load_config_file(GLOBAL_CONFIG_PATH))
     result = deep_merge(result, load_config_file(PROJECT_CONFIG_PATH))
-    result = deep_merge(result, load_env_overrides())
     if cli_overrides:
         result = deep_merge(result, cli_overrides)
     return _dict_to_config(result)
