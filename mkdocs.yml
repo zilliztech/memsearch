@@ -10,6 +10,7 @@ theme:
     accent: deep orange
   features:
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.top
     - search.highlight
