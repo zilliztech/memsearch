@@ -134,7 +134,7 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
     - Extracts tool names with input summaries
     - Skips `file-history-snapshot` entries
 4. **Summarizes with Haiku.** Pipes the parsed transcript to `claude -p --model haiku --no-session-persistence` with a system prompt that requests 3-8 bullet points focusing on decisions, problems solved, code changes, and key findings.
-5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. The watcher detects the file change and auto-indexes the new content.
+5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then explicitly runs `memsearch index` to ensure the new content is indexed immediately, rather than relying on the watcher's debounce timer (which may not fire before SessionEnd kills the watcher).
 
 #### SessionEnd
 

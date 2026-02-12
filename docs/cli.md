@@ -182,7 +182,7 @@ $ memsearch search "database migrations" --provider google
 
 ## `memsearch watch`
 
-Start a long-running file watcher that monitors directories for markdown file changes. When a `.md` or `.markdown` file is created or modified, it is automatically re-indexed. When a file is deleted, its chunks are removed from the store.
+Start a long-running file watcher that monitors directories for markdown file changes. On startup, all existing markdown files are indexed first (dedup ensures no wasted API calls for unchanged content). Then the watcher monitors for changes: when a `.md` or `.markdown` file is created or modified, it is automatically re-indexed. When a file is deleted, its chunks are removed from the store.
 
 ### Options
 
@@ -202,6 +202,7 @@ Watch a single directory:
 
 ```bash
 $ memsearch watch ./memory/
+Indexed 8 chunks.
 Watching 1 path(s) for changes... (Ctrl+C to stop)
 Indexed 3 chunks from /home/user/docs/2026-02-11.md
 Removed chunks for /home/user/docs/old-draft.md
@@ -218,6 +219,7 @@ Watching 2 path(s) for changes... (Ctrl+C to stop)
 
 ### Notes
 
+- **Initial index on startup.** The watcher indexes all existing files before it starts monitoring. Content-hash dedup means unchanged files are skipped with zero API calls — only genuinely new or modified content is embedded.
 - **Debounce.** Editors that write files in multiple steps (e.g., write temp file, then rename) can trigger several events in quick succession. The debounce window collapses these into one re-index operation.
 - **Recursive.** The watcher monitors all subdirectories recursively.
 - **Singleton behavior.** Only one watcher process should run per directory set. Running multiple watchers on the same paths will cause duplicate indexing work (though dedup by content hash means the index stays consistent).

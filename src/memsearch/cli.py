@@ -394,6 +394,11 @@ def watch(
     ))
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg))
 
+    # Initial index: ensure existing files are indexed before watching
+    n = _run(ms.index())
+    if n:
+        click.echo(f"Indexed {n} chunks.")
+
     def _on_event(event_type: str, summary: str, file_path) -> None:
         click.echo(summary)
 

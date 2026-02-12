@@ -94,4 +94,7 @@ fi
   echo ""
 } >> "$MEMORY_FILE"
 
+# Index immediately — don't rely on watch (which may be killed by SessionEnd before debounce fires)
+run_memsearch index "$MEMORY_DIR"
+
 echo '{}'

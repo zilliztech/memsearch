@@ -75,6 +75,7 @@ Redis config for production: enable AOF persistence, set maxmemory-policy
 to volatile-lfu, bind to 127.0.0.1 only...
 
 $ memsearch watch ./memory/
+Indexed 8 chunks.
 Watching 1 path(s) for changes... (Ctrl+C to stop)
 Indexed 2 chunks from memory/2026-02-09.md
 ```
