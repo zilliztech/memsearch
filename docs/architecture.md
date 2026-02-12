@@ -27,8 +27,8 @@ In memsearch, the vector store is an acceleration layer -- nothing more. If the 
 
 ```mermaid
 graph LR
-    MD["Markdown Files\n(source of truth)"] -->|index| MIL[(Milvus\nderived index)]
-    MIL -->|lost or corrupted?| REBUILD["memsearch index\n(full rebuild)"]
+    MD["Markdown Files<br>(source of truth)"] -->|index| MIL[(Milvus<br>derived index)]
+    MIL -->|lost or corrupted?| REBUILD["memsearch index<br>(full rebuild)"]
     REBUILD --> MIL
 
     style MD fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
@@ -60,8 +60,8 @@ When a query arrives, it is embedded into a vector, then used for hybrid search 
 
 ```mermaid
 graph LR
-    Q[/"Query"/] --> E[Embed query] --> HS["Hybrid Search\n(Dense + BM25)"]
-    HS --> RRF["RRF Reranker\n(k=60)"] --> R[Top-K Results]
+    Q[/"Query"/] --> E[Embed query] --> HS["Hybrid Search<br>(Dense + BM25)"]
+    HS --> RRF["RRF Reranker<br>(k=60)"] --> R[Top-K Results]
 
     subgraph Milvus
         HS
@@ -75,7 +75,7 @@ Markdown files are scanned, chunked by headings, and deduplicated using SHA-256 
 
 ```mermaid
 graph LR
-    F["Markdown files"] --> SC[Scanner] --> C[Chunker] --> D{"Dedup\n(SHA-256)"}
+    F["Markdown files"] --> SC[Scanner] --> C[Chunker] --> D{"Dedup<br>(SHA-256)"}
     D -->|new| E[Embed & Upsert]
     D -->|exists| S[Skip]
     D -->|stale| DEL[Delete from Milvus]
@@ -154,11 +154,11 @@ memsearch uses content-addressable storage to avoid redundant embedding API call
 
 ```mermaid
 graph TD
-    C["Chunk content"] --> H["SHA-256\n(content_hash)"]
-    H --> CID["Composite ID\nhash(source:lines:contentHash:model)"]
-    CID --> CHECK{"Exists in\nMilvus?"}
+    C["Chunk content"] --> H["SHA-256<br>(content_hash)"]
+    H --> CID["Composite ID<br>hash(source:lines:contentHash:model)"]
+    CID --> CHECK{"Exists in<br>Milvus?"}
     CHECK -->|No| EMBED["Embed & Upsert"]
-    CHECK -->|Yes| SKIP["Skip\n(save API cost)"]
+    CHECK -->|Yes| SKIP["Skip<br>(save API cost)"]
 ```
 
 ### Why This Matters
@@ -206,9 +206,9 @@ memsearch supports three Milvus deployment modes. Switch between them by changin
 ```mermaid
 graph TD
     A["memsearch"] --> B{"milvus_uri"}
-    B -->|"~/.memsearch/milvus.db\n(default)"| C["Milvus Lite\nLocal .db file\nZero config"]
-    B -->|"http://host:19530"| D["Milvus Server\nSelf-hosted\nDocker / K8s"]
-    B -->|"https://...zillizcloud.com"| E["Zilliz Cloud\nFully managed\nAuto-scaling"]
+    B -->|"~/.memsearch/milvus.db<br>(default)"| C["Milvus Lite<br>Local .db file<br>Zero config"]
+    B -->|"http://host:19530"| D["Milvus Server<br>Self-hosted<br>Docker / K8s"]
+    B -->|"https://...zillizcloud.com"| E["Zilliz Cloud<br>Fully managed<br>Auto-scaling"]
 
     style C fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
     style D fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
@@ -233,9 +233,9 @@ memsearch uses a 4-layer configuration system. Each layer overrides the one befo
 
 ```mermaid
 graph LR
-    D["1. Defaults"] --> G["2. Global Config\n~/.memsearch/config.toml"]
-    G --> P["3. Project Config\n.memsearch.toml"]
-    P --> C["4. CLI Flags\n--milvus-uri, etc."]
+    D["1. Defaults"] --> G["2. Global Config<br>~/.memsearch/config.toml"]
+    G --> P["3. Project Config<br>.memsearch.toml"]
+    P --> C["4. CLI Flags<br>--milvus-uri, etc."]
 ```
 
 | Priority | Source | Scope | Example |
@@ -290,7 +290,7 @@ graph TB
 
     subgraph "Processing"
         SCAN[Scanner] --> CHUNK[Chunker]
-        CHUNK --> HASH["SHA-256\nDedup"]
+        CHUNK --> HASH["SHA-256<br>Dedup"]
     end
 
     subgraph "Storage (derived)"
@@ -313,11 +313,11 @@ The compact operation creates a feedback loop that keeps the knowledge base comp
 
 ```mermaid
 graph LR
-    CHUNKS["Indexed chunks\nin Milvus"] --> RETRIEVE["Retrieve all\n(or filtered)"]
-    RETRIEVE --> LLM["LLM Summarize\n(OpenAI / Anthropic / Gemini)"]
-    LLM --> WRITE["Append to\nmemory/YYYY-MM-DD.md"]
-    WRITE --> WATCH["File watcher\ndetects change"]
-    WATCH --> REINDEX["Auto re-index\nupdated file"]
+    CHUNKS["Indexed chunks<br>in Milvus"] --> RETRIEVE["Retrieve all<br>(or filtered)"]
+    RETRIEVE --> LLM["LLM Summarize<br>(OpenAI / Anthropic / Gemini)"]
+    LLM --> WRITE["Append to<br>memory/YYYY-MM-DD.md"]
+    WRITE --> WATCH["File watcher<br>detects change"]
+    WATCH --> REINDEX["Auto re-index<br>updated file"]
     REINDEX --> CHUNKS
 
     style WRITE fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1

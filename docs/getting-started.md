@@ -313,9 +313,9 @@ memsearch works with three Milvus deployment modes. Choose based on your needs:
 ```mermaid
 graph TD
     A[memsearch] --> B{Choose backend}
-    B -->|"Default\n(zero config)"| C["Milvus Lite\n~/.memsearch/milvus.db"]
-    B -->|"Self-hosted\n(multi-agent)"| D["Milvus Server\nlocalhost:19530"]
-    B -->|"Managed\n(production)"| E["Zilliz Cloud\ncloud.zilliz.com"]
+    B -->|"Default<br>(zero config)"| C["Milvus Lite<br>~/.memsearch/milvus.db"]
+    B -->|"Self-hosted<br>(multi-agent)"| D["Milvus Server<br>localhost:19530"]
+    B -->|"Managed<br>(production)"| E["Zilliz Cloud<br>cloud.zilliz.com"]
 
     style C fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
     style D fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
