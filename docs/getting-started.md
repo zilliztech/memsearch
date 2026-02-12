@@ -35,13 +35,13 @@ sequenceDiagram
     participant V as Milvus
 
     U->>M: save_memory("Redis config...")
-    U->>M: ms.index()
+    U->>M: mem.index()
     M->>M: Chunk markdown
     M->>M: SHA-256 dedup
     M->>E: Embed new chunks
     E-->>M: Vectors
     M->>V: Upsert
-    U->>M: ms.search("Redis?")
+    U->>M: mem.search("Redis?")
     M->>E: Embed query
     E-->>M: Query vector
     M->>V: Cosine similarity
@@ -141,15 +141,15 @@ import asyncio
 from memsearch import MemSearch
 
 async def main():
-    ms = MemSearch(paths=["."])
-    await ms.index()
+    mem = MemSearch(paths=["."])
+    await mem.index()
 
-    results = await ms.search("what caching solution are we using?", top_k=3)
+    results = await mem.search("what caching solution are we using?", top_k=3)
     for r in results:
         print(f"[{r['score']:.4f}] {r['source']} — {r['heading']}")
         print(f"  {r['content'][:200]}\n")
 
-    ms.close()
+    mem.close()
 
 asyncio.run(main())
 ```
@@ -175,7 +175,7 @@ from memsearch import MemSearch
 
 MEMORY_DIR = "./memory"
 llm = OpenAI()
-ms = MemSearch(paths=[MEMORY_DIR])
+mem = MemSearch(paths=[MEMORY_DIR])
 
 
 def save_memory(content: str):
@@ -190,7 +190,7 @@ def save_memory(content: str):
 
 async def agent_chat(user_input: str) -> str:
     # 1. Recall — search past memories for relevant context
-    memories = await ms.search(user_input, top_k=5)
+    memories = await mem.search(user_input, top_k=5)
     context = "\n".join(f"- {m['content'][:300]}" for m in memories)
 
     # 2. Think — call LLM with memory context
@@ -211,7 +211,7 @@ async def agent_chat(user_input: str) -> str:
 
     # 3. Remember — save this exchange and re-index
     save_memory(f"## User: {user_input}\n\n{answer}")
-    await ms.index()
+    await mem.index()
 
     return answer
 
@@ -220,7 +220,7 @@ async def main():
     # Seed some knowledge
     save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
     save_memory("## Decision\nWe chose Redis for caching over Memcached.")
-    await ms.index()
+    await mem.index()
 
     # Agent can now recall those memories
     print(await agent_chat("Who is our frontend lead?"))
@@ -268,7 +268,7 @@ from ollama import chat
 from memsearch import MemSearch
 
 # Use Ollama for embeddings too — everything stays local
-ms = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
+mem = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
 
 # In agent_chat(), replace the LLM call with:
 resp = chat(
@@ -331,7 +331,7 @@ Data is stored in a single local `.db` file. No server to install, no ports to o
 === "Python"
 
     ```python
-    ms = MemSearch(
+    mem = MemSearch(
         paths=["./memory/"],
         milvus_uri="~/.memsearch/milvus.db",  # default, can be omitted
     )
@@ -353,7 +353,7 @@ Deploy Milvus via Docker or Kubernetes. Multiple agents and users can share the 
 === "Python"
 
     ```python
-    ms = MemSearch(
+    mem = MemSearch(
         paths=["./memory/"],
         milvus_uri="http://localhost:19530",
         milvus_token="root:Milvus",    # default credentials
@@ -383,7 +383,7 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
 === "Python"
 
     ```python
-    ms = MemSearch(
+    mem = MemSearch(
         paths=["./memory/"],
         milvus_uri="https://in03-xxx.api.gcp-us-west1.zillizcloud.com",
         milvus_token="your-api-key",

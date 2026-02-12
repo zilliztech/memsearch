@@ -93,17 +93,17 @@ import asyncio
 from memsearch import MemSearch
 
 async def main():
-    ms = MemSearch(paths=["./memory/"])
+    mem = MemSearch(paths=["./memory/"])
 
     # Index all markdown files (skips unchanged content automatically)
-    await ms.index()
+    await mem.index()
 
     # Semantic search -- returns ranked results with source attribution
-    results = await ms.search("how to configure Redis?", top_k=5)
+    results = await mem.search("how to configure Redis?", top_k=5)
     for r in results:
         print(f"[{r['score']:.2f}] {r['source']} -- {r['content'][:80]}")
 
-    ms.close()
+    mem.close()
 
 asyncio.run(main())
 ```
@@ -128,14 +128,14 @@ $ memsearch search "that article about distributed consensus"
 Give your AI agent persistent, searchable memory. The agent writes observations to markdown files; memsearch indexes them and retrieves relevant context on the next turn. This is exactly how [OpenClaw](https://github.com/openclaw/openclaw) manages memory, and memsearch ships with a ready-made [Claude Code plugin](claude-plugin.md) that demonstrates the pattern.
 
 ```python
-ms = MemSearch(paths=["./agent-memory/"])
+mem = MemSearch(paths=["./agent-memory/"])
 
 # Agent recalls relevant past experiences before responding
-memories = await ms.search(user_question, top_k=3)
+memories = await mem.search(user_question, top_k=3)
 
 # Agent saves new knowledge after responding
 save_to_markdown("./agent-memory/", today, summary)
-await ms.index()
+await mem.index()
 ```
 
 ### Team Knowledge Sharing
@@ -143,7 +143,7 @@ await ms.index()
 Deploy a shared Milvus server and point multiple team members (or agents) at it. Everyone indexes their own markdown files into the same collection, creating a shared searchable knowledge base.
 
 ```python
-ms = MemSearch(
+mem = MemSearch(
     paths=["./docs/"],
     milvus_uri="http://milvus.internal:19530",
     milvus_token="root:Milvus",

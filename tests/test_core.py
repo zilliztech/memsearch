@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def ms(tmp_path: Path):
+def mem(tmp_path: Path):
     from memsearch.core import MemSearch
 
     m = MemSearch(
@@ -46,12 +46,12 @@ def sample_dir(tmp_path: Path) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_index_and_search(ms, sample_dir: Path):
-    ms._paths = [str(sample_dir)]
-    n = await ms.index()
+async def test_index_and_search(mem, sample_dir: Path):
+    mem._paths = [str(sample_dir)]
+    n = await mem.index()
     assert n > 0
 
-    results = await ms.search("virtual environment python")
+    results = await mem.search("virtual environment python")
     assert len(results) > 0
     # The top result should be about Python / virtual environments
     top = results[0]
@@ -60,9 +60,9 @@ async def test_index_and_search(ms, sample_dir: Path):
 
 
 @pytest.mark.asyncio
-async def test_index_single_file(ms, sample_dir: Path):
-    n = await ms.index_file(sample_dir / "notes.md")
+async def test_index_single_file(mem, sample_dir: Path):
+    n = await mem.index_file(sample_dir / "notes.md")
     assert n > 0
 
-    results = await ms.search("list comprehension")
+    results = await mem.search("list comprehension")
     assert len(results) > 0

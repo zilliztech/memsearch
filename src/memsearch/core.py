@@ -295,8 +295,8 @@ class MemSearch:
         -------
         ::
 
-            ms = MemSearch(paths=["./docs/"])
-            watcher = ms.watch()
+            mem = MemSearch(paths=["./docs/"])
+            watcher = mem.watch()
             # ... watcher auto-indexes in background ...
             watcher.stop()
         """
