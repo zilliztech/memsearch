@@ -14,9 +14,25 @@ class LocalEmbedding:
     """sentence-transformers embedding provider."""
 
     def __init__(self, model: str = "all-MiniLM-L6-v2") -> None:
-        from sentence_transformers import SentenceTransformer
+        import io
+        import os
+        import sys
 
-        self._st_model = SentenceTransformer(model)
+        # Suppress noisy "Loading weights" tqdm bar and safetensors LOAD REPORT
+        prev_tqdm = os.environ.get("TQDM_DISABLE")
+        os.environ["TQDM_DISABLE"] = "1"
+        old_stderr = sys.stderr
+        try:
+            sys.stderr = io.StringIO()
+            from sentence_transformers import SentenceTransformer
+
+            self._st_model = SentenceTransformer(model)
+        finally:
+            sys.stderr = old_stderr
+            if prev_tqdm is None:
+                os.environ.pop("TQDM_DISABLE", None)
+            else:
+                os.environ["TQDM_DISABLE"] = prev_tqdm
         self._model = model
         self._dimension = self._st_model.get_sentence_embedding_dimension() or 384
 

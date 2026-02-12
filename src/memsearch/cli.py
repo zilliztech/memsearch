@@ -214,6 +214,7 @@ def expand(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
         collection=cfg.milvus.collection,
+        dimension=None,
     )
     try:
         chunks = store.query(filter_expr=f'chunk_hash == "{chunk_hash}"')
@@ -481,6 +482,7 @@ def stats(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
         collection=cfg.milvus.collection,
+        dimension=None,
     )
     try:
         count = store.count()
@@ -509,6 +511,7 @@ def reset(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
         collection=cfg.milvus.collection,
+        dimension=None,
     )
     try:
         store.drop()

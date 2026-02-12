@@ -24,7 +24,7 @@ class MilvusStore:
         *,
         token: str | None = None,
         collection: str = DEFAULT_COLLECTION,
-        dimension: int = 1536,
+        dimension: int | None = 1536,
     ) -> None:
         from pymilvus import MilvusClient
 
@@ -41,7 +41,11 @@ class MilvusStore:
 
     def _ensure_collection(self) -> None:
         if self._client.has_collection(self._collection):
+            self._check_dimension()
             return
+
+        if self._dimension is None:
+            return  # read-only mode: don't create a new collection
 
         from pymilvus import DataType, Function, FunctionType
 
@@ -71,6 +75,27 @@ class MilvusStore:
             schema=schema,
             index_params=index_params,
         )
+
+    def _check_dimension(self) -> None:
+        """Verify that the existing collection's embedding dimension matches."""
+        if self._dimension is None:
+            return  # no dimension specified — skip check (read-only mode)
+        try:
+            info = self._client.describe_collection(self._collection)
+        except Exception:
+            return  # best-effort; skip if describe is not supported
+        for field in info.get("fields", []):
+            if field.get("name") == "embedding":
+                existing_dim = field.get("params", {}).get("dim")
+                if existing_dim is not None and int(existing_dim) != self._dimension:
+                    raise ValueError(
+                        f"Embedding dimension mismatch: collection '{self._collection}' "
+                        f"has dim={existing_dim} but the current embedding provider "
+                        f"outputs dim={self._dimension}. "
+                        f"Run 'memsearch reset --yes' to drop the collection and re-index, "
+                        f"or use a different --milvus-uri / --collection."
+                    )
+                break
 
     def existing_hashes(self, hashes: list[str]) -> set[str]:
         """Return the subset of *hashes* that already exist in the collection."""

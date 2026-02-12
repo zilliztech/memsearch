@@ -130,6 +130,16 @@ def test_hybrid_search(store: MilvusStore):
     assert results[0]["content"].startswith("Redis")
 
 
+def test_dimension_mismatch(tmp_path: Path):
+    db = str(tmp_path / "dim_test.db")
+    # Create collection with dim=4
+    s1 = MilvusStore(uri=db, dimension=4)
+    s1.close()
+    # Re-open with dim=8 — should raise ValueError
+    with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+        MilvusStore(uri=db, dimension=8)
+
+
 def test_drop(store: MilvusStore):
     chunk = {
         "embedding": [1.0, 0.0, 0.0, 0.0],
