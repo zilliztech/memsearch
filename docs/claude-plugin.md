@@ -34,55 +34,32 @@ The **memsearch Python library** provides the core engine (chunking, embedding, 
 
 ---
 
-## See It in Action
+## Without vs. With the Plugin
 
-Here is what a typical workflow looks like with the plugin installed:
+```mermaid
+sequenceDiagram
+    participant You
+    participant Claude as Claude Code
 
-**Monday morning** — you ask Claude to set up a Redis caching layer:
+    rect rgb(60, 30, 30)
+    note right of You: Without plugin
+    You->>Claude: Monday: "Add Redis caching with 5min TTL"
+    Claude->>You: ✅ Done — implements caching
+    note over Claude: Session ends. Context is gone.
+    You->>Claude: Wednesday: "The /orders endpoint is slow"
+    Claude->>You: ❌ Suggests solutions from scratch<br/>(forgot about the Redis cache from Monday)
+    end
 
-> *You:* "Add a Redis caching layer to the API with a 5-minute TTL."
->
-> *Claude implements it. When the session ends, the plugin automatically summarizes and saves:*
-
-```markdown
-# .memsearch/memory/2026-02-10.md
-
-## Session 09:15
-### 09:15
-<!-- session:abc123 turn:def456 transcript:/.../abc123.jsonl -->
-- Added Redis caching middleware to API with 5-minute TTL
-- Used redis-py async client with connection pooling (max 10 connections)
-- Cache key format: `api:v1:{endpoint}:{hash(params)}`
-- Added cache hit/miss Prometheus counters for monitoring
-- Wrote integration tests with fakeredis
+    rect rgb(20, 50, 30)
+    note right of You: With plugin
+    You->>Claude: Monday: "Add Redis caching with 5min TTL"
+    Claude->>You: ✅ Done — implements caching
+    note over Claude: Plugin auto-summarizes → memory/2026-02-10.md
+    You->>Claude: Wednesday: "The /orders endpoint is slow"
+    note over Claude: Plugin injects: "Added Redis caching<br/>middleware with 5min TTL..."
+    Claude->>You: ✅ "We already have Redis caching —<br/>let me add the /orders endpoint to it"
+    end
 ```
-
-**Wednesday** — you are working on something else entirely, but mention performance:
-
-> *You:* "The `/orders` endpoint is slow, can we optimize it?"
->
-> *Before Claude even starts thinking, the plugin injects:*
-
-```
-## Relevant Memories
-- [memory/2026-02-10.md:09:15]  Added Redis caching middleware to API
-  with 5-minute TTL. Used redis-py async client with connection pooling...
-  `chunk_hash: 7a3f9b21e4c08d56`
-```
-
-Claude now knows about the caching system you built on Monday — without you reminding it — and can suggest using it for the `/orders` endpoint.
-
----
-
-## What It Does
-
-When you launch Claude Code with the memsearch plugin:
-
-1. **Every session is remembered.** When Claude finishes responding, a Haiku model summarizes the exchange and appends it to a daily markdown log (`YYYY-MM-DD.md`).
-2. **Every prompt triggers recall.** Before Claude sees your message, a semantic search runs against all past memories and injects the most relevant ones into context.
-3. **No manual intervention.** You never need to run a command, tag a memory, or tell Claude to "remember this". The hooks handle everything.
-
-The result: Claude has a persistent, searchable, ever-growing memory -- without you lifting a finger.
 
 ---
 
