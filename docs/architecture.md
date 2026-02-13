@@ -23,7 +23,7 @@ The foundational principle of memsearch is simple: **markdown files are the cano
 - **Vendor lock-in.** Each database engine has its own storage format, query language, and migration tooling. Switching costs are high.
 - **Fragile.** Database corruption, version incompatibilities, and backup complexity are real operational concerns for what should be a simple knowledge store.
 
-In memsearch, the vector store is an acceleration layer -- nothing more. If the Milvus database is lost, corrupted, or simply out of date, a single `memsearch index` command rebuilds the entire index from the markdown files.
+In memsearch, the vector store is an acceleration layer -- nothing more. If the [Milvus](https://milvus.io/) database is lost, corrupted, or simply out of date, a single `memsearch index` command rebuilds the entire index from the markdown files.
 
 ```mermaid
 graph LR
@@ -146,7 +146,7 @@ memsearch uses content-addressable storage to avoid redundant embedding API call
 
 ### How It Works
 
-1. Each chunk's content is hashed with SHA-256 (truncated to 16 hex characters).
+1. Each chunk's content is hashed with [SHA-256](https://en.wikipedia.org/wiki/SHA-2) (truncated to 16 hex characters).
 2. A composite chunk ID is computed from the source path, line range, content hash, and embedding model name -- matching OpenClaw's format: `hash(markdown:source:startLine:endLine:contentHash:model)`.
 3. Before embedding, the set of existing chunk IDs for the source file is queried from Milvus.
 4. Only chunks whose composite ID is **not** already present get embedded and upserted.
@@ -194,8 +194,8 @@ The `sparse_vector` field is populated automatically by a Milvus BM25 Function t
 Search combines two retrieval strategies and merges their results:
 
 1. **Dense vector search** -- cosine similarity on the `embedding` field (semantic meaning).
-2. **BM25 sparse search** -- keyword matching on the `sparse_vector` field (exact term overlap).
-3. **RRF reranking** -- Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
+2. **[BM25](https://en.wikipedia.org/wiki/Okapi_BM25) sparse search** -- keyword matching on the `sparse_vector` field (exact term overlap).
+3. **[RRF](https://en.wikipedia.org/wiki/Reciprocal_rank_fusion) reranking** -- Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
 
 This hybrid approach catches results that pure semantic search might miss (exact names, error codes, configuration values) while still benefiting from the semantic understanding that dense embeddings provide.
 

@@ -1,8 +1,8 @@
 # Claude Code Plugin
 
-**Automatic persistent memory for Claude Code.** No commands to learn, no manual saving -- just install the plugin and Claude remembers what you worked on across sessions.
+**Automatic persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).** No commands to learn, no manual saving -- just install the plugin and Claude remembers what you worked on across sessions.
 
-The plugin is built entirely on Claude Code's own primitives: **Hooks** for lifecycle events, **CLI** for tool access, and **Agent** for autonomous decisions. No MCP servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
+The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[CLI](cli.md)** for tool access, and **Agent** for autonomous decisions. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
 
 ### How the pieces fit together
 
@@ -506,7 +506,7 @@ This means:
 | **Memory recall** | **Automatic** -- semantic search on every prompt via hook | **Agent-driven** -- Claude must explicitly call MCP `search` tool |
 | **Progressive disclosure** | **3-layer, auto-triggered**: hook injects top-k (L1), then `expand` (L2), then `transcript` (L3) | **3-layer, all manual**: `search`, `timeline`, `get_observations` all require explicit tool calls |
 | **Session summary cost** | 1 `claude -p --model haiku` call, runs async | Observation on every tool use + session summary (more API calls at scale) |
-| **Vector backend** | Milvus -- hybrid search (dense + BM25), scales from embedded to distributed cluster | Chroma -- dense only, limited scaling path |
+| **Vector backend** | [Milvus](https://milvus.io/) -- [hybrid search](architecture.md#hybrid-search) (dense + BM25), scales from embedded to distributed cluster | [Chroma](https://www.trychroma.com/) -- dense only, limited scaling path |
 | **Storage format** | Transparent `.md` files -- human-readable, git-friendly | Opaque SQLite + Chroma binary |
 | **Index sync** | `memsearch watch` singleton -- auto-debounced background sync | Automatic observation writes, but no unified background sync |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild | Export from SQLite + Chroma |

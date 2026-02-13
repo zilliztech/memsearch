@@ -1,6 +1,6 @@
 # Integrations
 
-memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **LangChain**, **LangGraph**, **LlamaIndex**, and **CrewAI**.
+memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
 
 !!! note "Prerequisites"
     Each integration requires its own packages:

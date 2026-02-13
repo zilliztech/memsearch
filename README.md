@@ -339,6 +339,17 @@ memsearch supports three deployment modes — just change `milvus_uri`:
 
 > 📖 Code examples and setup details → [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
 
+## 🔗 Integrations
+
+memsearch works with any Python agent framework. Ready-made examples for:
+
+- **[LangChain](https://www.langchain.com/)** — use as a `BaseRetriever` in any LCEL chain
+- **[LangGraph](https://langchain-ai.github.io/langgraph/)** — wrap as a tool in a ReAct agent
+- **[LlamaIndex](https://www.llamaindex.ai/)** — plug in as a custom retriever
+- **[CrewAI](https://www.crewai.com/)** — add as a tool for crew agents
+
+> 📖 Copy-paste code for each framework → [Integrations docs](https://zilliztech.github.io/memsearch/integrations/)
+
 ## 📚 Links
 
 - [Documentation](https://zilliztech.github.io/memsearch/) — Getting Started, CLI Reference, Architecture
