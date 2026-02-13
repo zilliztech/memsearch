@@ -84,16 +84,6 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 # 5. Start a new session -- Claude automatically remembers!
 ```
 
-### Development mode
-
-For contributors or if you want to modify the plugin:
-
-```bash
-git clone https://github.com/zilliztech/memsearch.git
-pip install memsearch
-claude --plugin-dir ./memsearch/ccplugin
-```
-
 ---
 
 ## How It Works
@@ -609,3 +599,15 @@ The plugin is built entirely on the `memsearch` CLI -- every hook is a shell scr
 | `reset` | Manual | Drop all indexed data (requires `--yes` to confirm) |
 
 For the full CLI reference, see the [CLI Reference](cli.md) page.
+
+---
+
+## Development Mode
+
+For contributors or if you want to modify the plugin locally:
+
+```bash
+git clone https://github.com/zilliztech/memsearch.git
+pip install memsearch
+claude --plugin-dir ./memsearch/ccplugin
+```
