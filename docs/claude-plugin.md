@@ -1,7 +1,5 @@
 # Claude Code Plugin
 
-https://github.com/user-attachments/assets/190a9973-8e23-4ca1-b2a4-a5cf09dad10a
-
 **Automatic persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).** No commands to learn, no manual saving -- just install the plugin and Claude remembers what you worked on across sessions.
 
 The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[CLI](cli.md)** for tool access, and **Agent** for autonomous decisions. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
