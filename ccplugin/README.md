@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/190a9973-8e23-4ca1-b2a4-a5cf09dad10a
 
 **Automatic persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).** No commands to learn, no manual saving — just install the plugin and Claude remembers what you worked on across sessions.
 
-The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[CLI](https://zilliztech.github.io/memsearch/cli/)** for tool access, and **Agent** for autonomous decisions. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
+Built on Claude Code's native [Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) and [CLI](https://zilliztech.github.io/memsearch/cli/) — no MCP servers, no sidecar services. Everything runs locally as shell scripts and a Python CLI.
 
 ### How the Pieces Fit Together
 
@@ -113,12 +113,14 @@ stateDiagram-v2
 
     state Prompting {
         [*] --> UserInput
-        UserInput --> SemanticSearch: memsearch search
+        UserInput --> SemanticSearch: UserPromptSubmit hook
         SemanticSearch --> InjectMemories: top-k results
-        InjectMemories --> ClaudeThinks
-        ClaudeThinks --> Summary: haiku summarize
-        Summary --> WriteMD: write YYYY-MM-DD.md
-        WriteMD --> UserInput: next turn
+        InjectMemories --> ClaudeResponds: Claude processes & replies
+        ClaudeResponds --> fork1
+        state fork1 <<fork>>
+        fork1 --> UserInput: next turn (non-blocking)
+        fork1 --> Summary: Stop hook (async background)
+        Summary --> WriteMD: append to YYYY-MM-DD.md
     }
 
     Prompting --> SessionEnd: user exits

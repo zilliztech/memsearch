@@ -228,13 +228,59 @@ asyncio.run(main())
 
 ## 🖥️ CLI Usage
 
+### Set Up — `config init`
+
+Interactive wizard to configure embedding provider, Milvus backend, and chunking parameters:
+
 ```bash
-memsearch index ./memory/                          # index markdown files
-memsearch search "how to configure Redis caching"  # semantic search
-memsearch watch ./memory/                          # auto-index on file changes
-memsearch compact                                  # LLM-powered memory summarization
-memsearch config init                              # interactive config wizard
-memsearch stats                                    # show index statistics
+memsearch config init                    # write to ~/.memsearch/config.toml
+memsearch config init --project          # write to .memsearch.toml (per-project)
+memsearch config set milvus.uri http://localhost:19530
+memsearch config list --resolved         # show merged config from all sources
+```
+
+### Index Markdown — `index`
+
+Scan directories and embed all markdown into the vector store. Unchanged chunks are auto-skipped via content-hash dedup:
+
+```bash
+memsearch index ./memory/
+memsearch index ./memory/ ./notes/ --provider google
+memsearch index ./memory/ --force        # re-embed everything
+```
+
+### Semantic Search — `search`
+
+Hybrid search (dense vector + BM25 full-text) with RRF reranking:
+
+```bash
+memsearch search "how to configure Redis caching"
+memsearch search "auth flow" --top-k 10 --json-output
+```
+
+### Live Sync — `watch`
+
+File watcher that auto-indexes on markdown changes (creates, edits, deletes):
+
+```bash
+memsearch watch ./memory/
+memsearch watch ./memory/ ./notes/ --debounce-ms 3000
+```
+
+### LLM Summarization — `compact`
+
+Compress indexed chunks into a condensed markdown summary using an LLM:
+
+```bash
+memsearch compact
+memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
+```
+
+### Utilities — `stats` / `reset`
+
+```bash
+memsearch stats                          # show total indexed chunk count
+memsearch reset                          # drop all indexed data (with confirmation)
 ```
 
 > 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)

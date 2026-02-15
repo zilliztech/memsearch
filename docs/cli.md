@@ -31,17 +31,176 @@ Commands:
 
 | Command | Description |
 |---------|-------------|
+| `memsearch config` | Initialize, view, and modify configuration |
 | `memsearch index` | Scan directories and index markdown files into the vector store |
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
 | `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
 | `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
-| `memsearch config` | Initialize, view, and modify configuration |
 | `memsearch stats` | Display index statistics (total chunk count) |
 | `memsearch reset` | Drop all indexed data from the Milvus collection |
 
 > 🔌 Commands marked with 🔌 are designed for the [Claude Code plugin](claude-plugin.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
+
+---
+
+## `memsearch config`
+
+Manage memsearch configuration. Configuration is stored in TOML files and follows a layered priority chain:
+
+```
+dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> CLI flags
+```
+
+Higher-priority sources override lower-priority ones.
+
+### Subcommands
+
+#### `memsearch config init`
+
+Launch an interactive wizard that walks through all configuration sections and writes a TOML config file.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project` | `false` | Write to `.memsearch.toml` (project-level) instead of the global config |
+
+```bash
+$ memsearch config init
+memsearch configuration wizard
+Writing to: /home/user/.memsearch/config.toml
+
+-- Milvus --
+  Milvus URI [~/.memsearch/milvus.db]:
+  Milvus token (empty for none) []:
+  Collection name [memsearch_chunks]:
+
+-- Embedding --
+  Provider (openai/google/voyage/ollama/local) [openai]:
+  Model (empty for provider default) []:
+
+-- Chunking --
+  Max chunk size (chars) [1500]:
+  Overlap lines [2]:
+
+-- Watch --
+  Debounce (ms) [1500]:
+
+-- Compact --
+  LLM provider [openai]:
+  LLM model (empty for default) []:
+  Prompt file path (empty for built-in) []:
+
+Config saved to /home/user/.memsearch/config.toml
+```
+
+Create a project-level config:
+
+```bash
+$ memsearch config init --project
+memsearch configuration wizard
+Writing to: .memsearch.toml
+...
+```
+
+#### `memsearch config set`
+
+Set a single configuration value by dotted key. Keys follow the `section.field` format.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `KEY` | *(required)* | Dotted config key (e.g., `milvus.uri`) |
+| `VALUE` | *(required)* | Value to set |
+| `--project` | `false` | Write to `.memsearch.toml` instead of global config |
+
+```bash
+$ memsearch config set milvus.uri http://localhost:19530
+Set milvus.uri = http://localhost:19530 in /home/user/.memsearch/config.toml
+
+$ memsearch config set embedding.provider google --project
+Set embedding.provider = google in .memsearch.toml
+
+$ memsearch config set chunking.max_chunk_size 2000
+Set chunking.max_chunk_size = 2000 in /home/user/.memsearch/config.toml
+```
+
+#### `memsearch config get`
+
+Read a single resolved configuration value (merged from all sources).
+
+```bash
+$ memsearch config get milvus.uri
+http://localhost:19530
+
+$ memsearch config get embedding.provider
+openai
+
+$ memsearch config get chunking.max_chunk_size
+1500
+```
+
+#### `memsearch config list`
+
+Display configuration in TOML format.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--resolved` | *(default)* | Show the fully merged configuration from all sources |
+| `--global` | | Show only the global config file (`~/.memsearch/config.toml`) |
+| `--project` | | Show only the project config file (`.memsearch.toml`) |
+
+```bash
+$ memsearch config list --resolved
+# Resolved (all sources merged)
+
+[milvus]
+uri = "~/.memsearch/milvus.db"
+token = ""
+collection = "memsearch_chunks"
+
+[embedding]
+provider = "openai"
+model = ""
+
+[chunking]
+max_chunk_size = 1500
+overlap_lines = 2
+
+[watch]
+debounce_ms = 1500
+
+[compact]
+llm_provider = "openai"
+llm_model = ""
+prompt_file = ""
+```
+
+```bash
+$ memsearch config list --global
+# Global (/home/user/.memsearch/config.toml)
+
+[milvus]
+uri = "http://localhost:19530"
+
+[embedding]
+provider = "openai"
+```
+
+### Available Config Keys
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `milvus.uri` | string | `~/.memsearch/milvus.db` | Milvus connection URI |
+| `milvus.token` | string | `""` | Auth token for Milvus Server / Zilliz Cloud |
+| `milvus.collection` | string | `memsearch_chunks` | Collection name |
+| `embedding.provider` | string | `openai` | Embedding provider name |
+| `embedding.model` | string | `""` | Override embedding model (empty = provider default) |
+| `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
+| `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
+| `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
+| `compact.llm_provider` | string | `openai` | LLM provider for compact summarization |
+| `compact.llm_model` | string | `""` | Override LLM model (empty = provider default) |
+| `compact.prompt_file` | string | `""` | Path to a custom prompt template file |
 
 ---
 
@@ -448,165 +607,6 @@ $ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6 --json-o
 - **UUID prefix matching.** You do not need to provide the full UUID. The first 6-8 characters are usually enough to uniquely identify a turn.
 - **The `>>>` marker** in text output highlights the target turn when using `--turn`.
 - **Three-level progressive disclosure workflow:** `search` (L1: chunk snippet) -> `expand` (L2: full section) -> `transcript` (L3: original conversation).
-
----
-
-## `memsearch config`
-
-Manage memsearch configuration. Configuration is stored in TOML files and follows a layered priority chain:
-
-```
-dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> CLI flags
-```
-
-Higher-priority sources override lower-priority ones.
-
-### Subcommands
-
-#### `memsearch config init`
-
-Launch an interactive wizard that walks through all configuration sections and writes a TOML config file.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--project` | `false` | Write to `.memsearch.toml` (project-level) instead of the global config |
-
-```bash
-$ memsearch config init
-memsearch configuration wizard
-Writing to: /home/user/.memsearch/config.toml
-
--- Milvus --
-  Milvus URI [~/.memsearch/milvus.db]:
-  Milvus token (empty for none) []:
-  Collection name [memsearch_chunks]:
-
--- Embedding --
-  Provider (openai/google/voyage/ollama/local) [openai]:
-  Model (empty for provider default) []:
-
--- Chunking --
-  Max chunk size (chars) [1500]:
-  Overlap lines [2]:
-
--- Watch --
-  Debounce (ms) [1500]:
-
--- Compact --
-  LLM provider [openai]:
-  LLM model (empty for default) []:
-  Prompt file path (empty for built-in) []:
-
-Config saved to /home/user/.memsearch/config.toml
-```
-
-Create a project-level config:
-
-```bash
-$ memsearch config init --project
-memsearch configuration wizard
-Writing to: .memsearch.toml
-...
-```
-
-#### `memsearch config set`
-
-Set a single configuration value by dotted key. Keys follow the `section.field` format.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `KEY` | *(required)* | Dotted config key (e.g., `milvus.uri`) |
-| `VALUE` | *(required)* | Value to set |
-| `--project` | `false` | Write to `.memsearch.toml` instead of global config |
-
-```bash
-$ memsearch config set milvus.uri http://localhost:19530
-Set milvus.uri = http://localhost:19530 in /home/user/.memsearch/config.toml
-
-$ memsearch config set embedding.provider google --project
-Set embedding.provider = google in .memsearch.toml
-
-$ memsearch config set chunking.max_chunk_size 2000
-Set chunking.max_chunk_size = 2000 in /home/user/.memsearch/config.toml
-```
-
-#### `memsearch config get`
-
-Read a single resolved configuration value (merged from all sources).
-
-```bash
-$ memsearch config get milvus.uri
-http://localhost:19530
-
-$ memsearch config get embedding.provider
-openai
-
-$ memsearch config get chunking.max_chunk_size
-1500
-```
-
-#### `memsearch config list`
-
-Display configuration in TOML format.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--resolved` | *(default)* | Show the fully merged configuration from all sources |
-| `--global` | | Show only the global config file (`~/.memsearch/config.toml`) |
-| `--project` | | Show only the project config file (`.memsearch.toml`) |
-
-```bash
-$ memsearch config list --resolved
-# Resolved (all sources merged)
-
-[milvus]
-uri = "~/.memsearch/milvus.db"
-token = ""
-collection = "memsearch_chunks"
-
-[embedding]
-provider = "openai"
-model = ""
-
-[chunking]
-max_chunk_size = 1500
-overlap_lines = 2
-
-[watch]
-debounce_ms = 1500
-
-[compact]
-llm_provider = "openai"
-llm_model = ""
-prompt_file = ""
-```
-
-```bash
-$ memsearch config list --global
-# Global (/home/user/.memsearch/config.toml)
-
-[milvus]
-uri = "http://localhost:19530"
-
-[embedding]
-provider = "openai"
-```
-
-### Available Config Keys
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `milvus.uri` | string | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `milvus.token` | string | `""` | Auth token for Milvus Server / Zilliz Cloud |
-| `milvus.collection` | string | `memsearch_chunks` | Collection name |
-| `embedding.provider` | string | `openai` | Embedding provider name |
-| `embedding.model` | string | `""` | Override embedding model (empty = provider default) |
-| `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
-| `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
-| `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
-| `compact.llm_provider` | string | `openai` | LLM provider for compact summarization |
-| `compact.llm_model` | string | `""` | Override LLM model (empty = provider default) |
-| `compact.prompt_file` | string | `""` | Path to a custom prompt template file |
 
 ---
 
