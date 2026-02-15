@@ -8,6 +8,15 @@ Environment variables:
 from __future__ import annotations
 
 
+# Known dimensions for common Google embedding models.
+# gemini-embedding-001 natively outputs 3072, but 768 is the recommended
+# default for most use cases (Matryoshka truncation, saves storage).
+_KNOWN_DIMENSIONS: dict[str, int] = {
+    "gemini-embedding-001": 768,
+    "text-embedding-004": 768,
+}
+
+
 class GoogleEmbedding:
     """Google Generative AI embedding provider."""
 
@@ -16,7 +25,7 @@ class GoogleEmbedding:
 
         self._client = genai.Client()  # reads GOOGLE_API_KEY
         self._model = model
-        self._dimension = 768
+        self._dimension = _detect_dimension(self._client, model)
 
     @property
     def model_name(self) -> str:
@@ -35,3 +44,16 @@ class GoogleEmbedding:
             config=types.EmbedContentConfig(output_dimensionality=self._dimension),
         )
         return [e.values for e in result.embeddings]
+
+
+def _detect_dimension(client, model: str) -> int:
+    """Return the embedding dimension for *model*.
+
+    Uses a lookup table for well-known models.  For unknown models, a
+    trial embed is performed to discover the native dimension.
+    """
+    if model in _KNOWN_DIMENSIONS:
+        return _KNOWN_DIMENSIONS[model]
+    # Unknown model: trial embed without output_dimensionality to get native dim
+    result = client.models.embed_content(model=model, contents=["dim"])
+    return len(result.embeddings[0].values)

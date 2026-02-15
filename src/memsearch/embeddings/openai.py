@@ -24,7 +24,7 @@ class OpenAIEmbedding:
 
         self._client = openai.AsyncOpenAI(**kwargs)  # reads OPENAI_API_KEY
         self._model = model
-        self._dimension = _default_dimension(model)
+        self._dimension = _detect_dimension(model, kwargs)
 
     @property
     def model_name(self) -> str:
@@ -39,10 +39,23 @@ class OpenAIEmbedding:
         return [item.embedding for item in resp.data]
 
 
-def _default_dimension(model: str) -> int:
-    dimensions: dict[str, int] = {
-        "text-embedding-3-small": 1536,
-        "text-embedding-3-large": 3072,
-        "text-embedding-ada-002": 1536,
-    }
-    return dimensions.get(model, 1536)
+_KNOWN_DIMENSIONS: dict[str, int] = {
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+    "text-embedding-ada-002": 1536,
+}
+
+
+def _detect_dimension(model: str, client_kwargs: dict) -> int:
+    """Return the embedding dimension for *model*.
+
+    Uses a lookup table for well-known OpenAI models.  For unknown models
+    (e.g. custom models via OPENAI_BASE_URL), a trial embed is performed.
+    """
+    if model in _KNOWN_DIMENSIONS:
+        return _KNOWN_DIMENSIONS[model]
+    import openai
+
+    sync_client = openai.OpenAI(**client_kwargs)
+    trial = sync_client.embeddings.create(input=["dim"], model=model)
+    return len(trial.data[0].embedding)

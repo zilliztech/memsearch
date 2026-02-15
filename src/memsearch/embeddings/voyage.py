@@ -16,7 +16,7 @@ class VoyageEmbedding:
 
         self._client = voyageai.AsyncClient()  # reads VOYAGE_API_KEY
         self._model = model
-        self._dimension = _default_dimension(model)
+        self._dimension = _detect_dimension(model)
 
     @property
     def model_name(self) -> str:
@@ -31,10 +31,23 @@ class VoyageEmbedding:
         return result.embeddings
 
 
-def _default_dimension(model: str) -> int:
-    dimensions: dict[str, int] = {
-        "voyage-3-lite": 512,
-        "voyage-3": 1024,
-        "voyage-code-3": 1024,
-    }
-    return dimensions.get(model, 1024)
+_KNOWN_DIMENSIONS: dict[str, int] = {
+    "voyage-3-lite": 512,
+    "voyage-3": 1024,
+    "voyage-code-3": 1024,
+}
+
+
+def _detect_dimension(model: str) -> int:
+    """Return the embedding dimension for *model*.
+
+    Uses a lookup table for well-known Voyage models.  For unknown models,
+    a trial embed is performed.
+    """
+    if model in _KNOWN_DIMENSIONS:
+        return _KNOWN_DIMENSIONS[model]
+    import voyageai
+
+    sync_client = voyageai.Client()
+    trial = sync_client.embed(["dim"], model=model)
+    return len(trial.embeddings[0])

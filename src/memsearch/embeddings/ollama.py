@@ -16,7 +16,10 @@ class OllamaEmbedding:
 
         self._client = ollama.AsyncClient()  # reads OLLAMA_HOST
         self._model = model
-        self._dimension = 768  # varies by model; nomic-embed-text is 768
+        # Auto-detect dimension via a trial embed (each model has its own)
+        _sync = ollama.Client()
+        trial = _sync.embed(model=model, input=["dim"])
+        self._dimension = len(trial["embeddings"][0])
 
     @property
     def model_name(self) -> str:
