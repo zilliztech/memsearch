@@ -158,7 +158,12 @@ def search(
                 click.echo(f"Source: {source}")
                 if heading:
                     click.echo(f"Heading: {heading}")
-                click.echo(content[:500])
+                if len(content) > 500:
+                    click.echo(content[:500])
+                    chunk_hash = r.get("chunk_hash", "")
+                    click.echo(f"  ... [truncated, run 'memsearch expand {chunk_hash}' for full content]")
+                else:
+                    click.echo(content)
     finally:
         ms.close()
 
