@@ -1,6 +1,6 @@
 """Google (Gemini) embedding provider.
 
-Requires: ``pip install 'memsearch[google]'``
+Requires: ``pip install 'memsearch[google]'`` or ``uv add 'memsearch[google]'``
 Environment variables:
     GOOGLE_API_KEY — required
 """

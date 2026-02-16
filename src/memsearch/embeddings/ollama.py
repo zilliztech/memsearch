@@ -1,6 +1,6 @@
 """Ollama embedding provider (local models via Ollama server).
 
-Requires: ``pip install 'memsearch[ollama]'``
+Requires: ``pip install 'memsearch[ollama]'`` or ``uv add 'memsearch[ollama]'``
 Environment variables:
     OLLAMA_HOST — optional, default http://localhost:11434
 """

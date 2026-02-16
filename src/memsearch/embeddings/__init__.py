@@ -28,11 +28,11 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
 }
 
 _INSTALL_HINTS: dict[str, str] = {
-    "openai": 'pip install memsearch  # openai is included by default',
-    "google": 'pip install "memsearch[google]"',
-    "voyage": 'pip install "memsearch[voyage]"',
-    "ollama": 'pip install "memsearch[ollama]"',
-    "local": 'pip install "memsearch[local]"',
+    "openai": 'pip install memsearch  (or: uv add memsearch)',
+    "google": 'pip install "memsearch[google]"  (or: uv add "memsearch[google]")',
+    "voyage": 'pip install "memsearch[voyage]"  (or: uv add "memsearch[voyage]")',
+    "ollama": 'pip install "memsearch[ollama]"  (or: uv add "memsearch[ollama]")',
+    "local": 'pip install "memsearch[local]"  (or: uv add "memsearch[local]")',
 }
 
 
