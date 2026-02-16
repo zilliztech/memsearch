@@ -400,11 +400,11 @@ memsearch works with any Python agent framework. Ready-made examples for:
 
 ## 📚 Links
 
-- [Documentation](https://zilliztech.github.io/memsearch/) — Getting Started, CLI Reference, Architecture, [FAQ](https://zilliztech.github.io/memsearch/faq/)
+- [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
 - [Claude Code Plugin](ccplugin/README.md) — hook details, progressive disclosure, comparison with claude-mem
 - [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
 - [Milvus](https://milvus.io/) — the vector database powering memsearch
-- [Changelog](https://github.com/zilliztech/memsearch/releases) — release history
+- [FAQ](https://zilliztech.github.io/memsearch/faq/) — common questions and troubleshooting
 
 ## Contributing
 
