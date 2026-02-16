@@ -226,6 +226,8 @@ asyncio.run(main())
 
 </details>
 
+> 📖 Full Python API reference with all parameters → [Python API docs](https://zilliztech.github.io/memsearch/python-api/)
+
 ## 🖥️ CLI Usage
 
 ### Set Up — `config init`
@@ -406,7 +408,7 @@ memsearch works with any Python agent framework. Ready-made examples for:
 
 ## Contributing
 
-Bug reports, feature requests, and pull requests are welcome on [GitHub](https://github.com/zilliztech/memsearch). For questions and discussions, join us on [Discord](https://discord.com/invite/FG6hMJStWu).
+Bug reports, feature requests, and pull requests are welcome! See the [Contributing Guide](CONTRIBUTING.md) for development setup, testing, and plugin development instructions. For questions and discussions, join us on [Discord](https://discord.com/invite/FG6hMJStWu).
 
 ## 📄 License
 
