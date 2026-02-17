@@ -11,6 +11,13 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
 
+# Skip summarization when OPENAI_API_KEY is missing — the session would only
+# contain the "please set your API key" exchange, which is not useful memory.
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  echo '{}'
+  exit 0
+fi
+
 # Extract transcript path from hook input
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
