@@ -16,14 +16,19 @@ done
 MEMSEARCH_DIR="${CLAUDE_PROJECT_DIR:-.}/.memsearch"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
-# Find memsearch binary: prefer PATH, fallback to uv run
-MEMSEARCH_CMD=""
-if command -v memsearch &>/dev/null; then
-  MEMSEARCH_CMD="memsearch"
-elif command -v uv &>/dev/null; then
-  # Run uv from the project dir so it can find pyproject.toml
-  MEMSEARCH_CMD="uv run --project ${CLAUDE_PROJECT_DIR:-.} memsearch"
-fi
+# Find memsearch binary: prefer PATH, fallback to uvx
+_detect_memsearch() {
+  MEMSEARCH_CMD=""
+  if command -v memsearch &>/dev/null; then
+    MEMSEARCH_CMD="memsearch"
+  elif command -v uvx &>/dev/null; then
+    MEMSEARCH_CMD="uvx memsearch"
+  fi
+}
+_detect_memsearch
+
+# Short command prefix for injected instructions (falls back to "memsearch" even if unavailable)
+MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
 
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
