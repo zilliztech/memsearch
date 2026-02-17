@@ -70,24 +70,20 @@ sequenceDiagram
 ### Install from Marketplace (recommended)
 
 ```bash
-# 1. Install the memsearch CLI
-pip install memsearch
-
-# 2. Set your embedding API key (OpenAI is the default provider)
+# 1. Set your embedding API key (OpenAI is the default provider)
 export OPENAI_API_KEY="sk-..."
 
-# 3. (Optional) Initialize config
-memsearch config init
-
-# 4. In Claude Code, add the marketplace and install the plugin
+# 2. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 5. Have a conversation, then exit. Check your memories:
+# 3. Have a conversation, then exit. Check your memories:
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
-# 6. Start a new session — Claude automatically remembers!
+# 4. Start a new session — Claude automatically remembers!
 ```
+
+> **Note:** You don't need to install memsearch manually — the plugin auto-installs it via [`uvx`](https://docs.astral.sh/uv/) on first run.
 
 ---
 
@@ -446,6 +442,22 @@ For contributors or if you want to modify the plugin locally:
 
 ```bash
 git clone https://github.com/zilliztech/memsearch.git
-pip install memsearch
-claude --plugin-dir ./memsearch/ccplugin
+cd memsearch && uv sync
+claude --plugin-dir ./ccplugin
 ```
+
+---
+
+## Troubleshooting
+
+### "OPENAI_API_KEY not set — memory search disabled"
+
+The plugin shows this warning at session start when `OPENAI_API_KEY` is not set. Without it, memory recording still writes `.md` files, but semantic search and indexing are disabled.
+
+**Fix:** get an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and export it:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+To make it permanent, add the line to your `~/.bashrc`, `~/.zshrc`, or equivalent.

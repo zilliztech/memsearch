@@ -337,17 +337,14 @@ memsearch reset                          # drop all indexed data (with confirmat
 memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
 
 ```bash
-# 1. Install the memsearch CLI
-pip install memsearch
-
-# 2. Set your embedding API key (OpenAI is the default provider)
+# 1. Set your embedding API key (OpenAI is the default provider)
 export OPENAI_API_KEY="sk-..."
 
-# 3. In Claude Code, add the marketplace and install the plugin
+# 2. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 4. Restart Claude Code for the plugin to take effect, then start chatting!
+# 3. Restart Claude Code for the plugin to take effect, then start chatting!
 claude
 ```
 
