@@ -642,3 +642,20 @@ memsearch config set embedding.provider ollama
 ```
 
 To make it permanent, add the export to your `~/.bashrc`, `~/.zshrc`, or equivalent.
+
+### "UPDATE: v0.x.x available"
+
+The plugin checks PyPI at session start and shows this hint when a newer version exists. How to upgrade depends on your installation method:
+
+```bash
+# If installed via uv tool
+uv tool upgrade memsearch
+
+# If installed via pip
+pip install --upgrade memsearch
+
+# If using uvx (auto-upgraded on each session -- you shouldn't see this)
+uvx --upgrade memsearch --version
+```
+
+> **Note:** `uvx` users get automatic upgrades -- the plugin runs `uvx --upgrade` on every bootstrap. The `UPDATE` hint primarily helps `pip`/`uv tool` users who have no automatic update mechanism.
