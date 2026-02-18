@@ -2,7 +2,7 @@
 
 **Automatic persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).** No commands to learn, no manual saving -- just install the plugin and Claude remembers what you worked on across sessions.
 
-The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[CLI](cli.md)** for tool access, and **Agent** for autonomous decisions. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
+The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[Skills](https://docs.anthropic.com/en/docs/claude-code/skills)** for intelligent retrieval, and **[CLI](cli.md)** for tool access. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts, a skill definition, and a Python CLI.
 
 ### How the pieces fit together
 
@@ -18,11 +18,14 @@ graph LR
 
     subgraph "Claude Code Plugin (ccplugin)"
         HOOKS["Shell hooks:<br/>SessionStart · UserPromptSubmit<br/>Stop · SessionEnd"]
+        SKILL["Skill:<br/>memory-recall (context: fork)"]
     end
 
     LIB --> CLI
     CLI --> HOOKS
+    CLI --> SKILL
     HOOKS -->|"runs inside"| CC[Claude Code]
+    SKILL -->|"subagent"| CC
 
     style LIB fill:#1a2744,stroke:#6ba3d6,color:#a8b2c1
     style CLI fill:#1a2744,stroke:#e0976b,color:#a8b2c1
@@ -30,7 +33,7 @@ graph LR
     style CC fill:#2a1a44,stroke:#c97bdb,color:#a8b2c1
 ```
 
-The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle — so everything happens automatically without user intervention.
+The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle and skill system — hooks handle session management and memory capture, while the **memory-recall skill** handles intelligent retrieval in a forked subagent context.
 
 ---
 
@@ -87,7 +90,7 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 
 ## How It Works
 
-The plugin hooks into **4 Claude Code lifecycle events**. A singleton `memsearch watch` process runs in the background, keeping the vector index in sync with markdown files as they change.
+The plugin hooks into **4 Claude Code lifecycle events** and provides a **memory-recall skill**. A singleton `memsearch watch` process runs in the background, keeping the vector index in sync with markdown files as they change.
 
 ### Lifecycle Diagram
 
@@ -95,7 +98,7 @@ The plugin hooks into **4 Claude Code lifecycle events**. A singleton `memsearch
 stateDiagram-v2
     [*] --> SessionStart
     SessionStart --> WatchRunning: start memsearch watch
-    SessionStart --> InjectRecent: load recent memories
+    SessionStart --> InjectRecent: load recent memories (cold start)
 
     state WatchRunning {
         [*] --> Watching
@@ -107,9 +110,12 @@ stateDiagram-v2
 
     state Prompting {
         [*] --> UserInput
-        UserInput --> SemanticSearch: UserPromptSubmit hook
-        SemanticSearch --> InjectMemories: top-k results
-        InjectMemories --> ClaudeResponds: Claude processes & replies
+        UserInput --> Hint: UserPromptSubmit hook
+        Hint --> ClaudeProcesses: "[memsearch] Memory available"
+        ClaudeProcesses --> MemoryRecall: needs context?
+        MemoryRecall --> Subagent: memory-recall skill (context: fork)
+        Subagent --> ClaudeResponds: curated summary
+        ClaudeProcesses --> ClaudeResponds: no memory needed
         ClaudeResponds --> UserInput: next turn
         ClaudeResponds --> Summary: Stop hook (async, non-blocking)
         Summary --> WriteMD: append to YYYY-MM-DD.md
@@ -126,8 +132,8 @@ The plugin defines exactly 4 hooks, all declared in `hooks/hooks.json`:
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent memories and Memory Tools instructions via `additionalContext` |
-| **UserPromptSubmit** | command | no | 15s | Semantic search on user prompt (skip if < 10 chars), inject top-3 relevant memories with `chunk_hash` IDs via `additionalContext` |
+| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext` |
+| **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
 | **Stop** | command | **yes** | 120s | Parse transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize, append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
@@ -139,22 +145,17 @@ Fires once when a Claude Code session begins. This hook:
 
 1. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce.
 2. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
-3. **Injects recent memories.** Reads the last 30 lines from the 2 most recent daily logs. If memsearch is available, also runs `memsearch search "recent session summary" --top-k 3` for semantic results.
-4. **Injects Memory Tools instructions.** Tells Claude about `memsearch expand` and `memsearch transcript` commands for progressive disclosure (L2 and L3).
-
-All of this is returned as `additionalContext` in the hook output JSON.
+3. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
 
 #### UserPromptSubmit
 
 Fires on every user prompt before Claude processes it. This hook:
 
 1. **Extracts the prompt** from the hook input JSON.
-2. **Skips short prompts** (under 10 characters) -- greetings and single words are not worth searching.
-3. **Runs semantic search.** Calls `memsearch search "$PROMPT" --top-k 3 --json-output`.
-4. **Formats results** as a compact index with source file, heading, a 200-character preview, and the `chunk_hash` for each result.
-5. **Injects as context.** Returns formatted results under a `## Relevant Memories` heading via `additionalContext`.
+2. **Skips short prompts** (under 10 characters) -- greetings and single words don't need memory hints.
+3. **Returns a lightweight hint.** Outputs `systemMessage: "[memsearch] Memory available"` -- a visible one-liner that keeps Claude aware of the memory system without performing any search.
 
-This is the key mechanism that makes memory recall automatic -- Claude does not need to decide to search, it simply receives relevant context on every prompt.
+The actual memory retrieval is handled by the **memory-recall skill** (see below), which Claude invokes automatically when it judges the user's question needs historical context.
 
 #### Stop
 
@@ -178,47 +179,44 @@ Fires when the user exits Claude Code. Simply calls `stop_watch` to kill the `me
 
 ## Progressive Disclosure
 
-Memory retrieval uses a **three-layer progressive disclosure model**. Layer 1 is fully automatic; layers 2 and 3 are available on demand when Claude needs more context.
+Memory retrieval uses a **three-layer progressive disclosure model**, all handled autonomously by the **memory-recall skill** running in a forked subagent context. Claude invokes the skill when it judges the user's question needs historical context -- no manual intervention required.
 
 ```mermaid
 graph TD
-    L1["L1: Auto-injected<br/>(UserPromptSubmit hook)"] --> L2["L2: On-demand expand<br/>(memsearch expand)"]
+    SKILL["memory-recall skill<br/>(context: fork subagent)"]
+    SKILL --> L1["L1: Search<br/>(memsearch search)"]
+    L1 --> L2["L2: Expand<br/>(memsearch expand)"]
     L2 --> L3["L3: Transcript drill-down<br/>(memsearch transcript)"]
+    L3 --> RETURN["Curated summary<br/>→ main agent"]
 
+    style SKILL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
     style L1 fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
     style L2 fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
     style L3 fill:#2a3a5c,stroke:#d66b6b,color:#a8b2c1
+    style RETURN fill:#2a3a5c,stroke:#7bc67e,color:#a8b2c1
 ```
 
-### L1: Auto-Injected (Automatic)
+### How the Skill Works
 
-On every user prompt, the `UserPromptSubmit` hook injects the top-3 semantic search results. Each result includes:
+When Claude detects that a user's question could benefit from past context, it automatically invokes the `memory-recall` skill. The skill runs in a **forked subagent context** (`context: fork`), meaning it has its own context window and does not pollute the main conversation. The subagent:
 
-- Source file and heading
-- A 200-character content preview
-- The `chunk_hash` identifier
+1. **Searches** for relevant memories using `memsearch search`
+2. **Evaluates** which results are truly relevant (skips noise)
+3. **Expands** promising results with `memsearch expand` to get full markdown sections
+4. **Drills into transcripts** when needed with `memsearch transcript`
+5. **Returns a curated summary** to the main agent
 
-This happens transparently -- no action from Claude or the user is required.
+The main agent only sees the final summary -- all intermediate search results, raw expand output, and transcript parsing happen inside the subagent.
 
-**Example injection** (this is what Claude sees before processing each message):
+Users can also manually invoke the skill with `/memory-recall <query>` if Claude doesn't trigger it automatically.
 
-```
-## Relevant Memories
-- [.memsearch/memory/2026-02-10.md:09:15]  Added Redis caching middleware
-  to API with 5-minute TTL. Used redis-py async client with connection
-  pooling (max 10 connections). Cache key format: api:v1:{endpoint}:...
-  `chunk_hash: 7a3f9b21e4c08d56`
-- [.memsearch/memory/2026-02-09.md:14:30]  Fixed N+1 query in order-service
-  by switching from lazy loading to selectinload. Reduced /orders response
-  time from 1.2s to 180ms...
-  `chunk_hash: 31cbaf74856ad1ed`
-```
+### L1: Search
 
-The preview is enough for Claude to answer most follow-up questions. But when it needs the full picture, it moves to L2.
+The subagent runs `memsearch search` to find relevant chunks from the indexed memory files.
 
-### L2: On-Demand Expand
+### L2: Expand
 
-When an L1 preview is not enough, Claude runs `memsearch expand` to retrieve the **full markdown section** surrounding a chunk:
+For promising search results, the subagent runs `memsearch expand` to retrieve the **full markdown section** surrounding a chunk:
 
 ```bash
 $ memsearch expand 7a3f9b21e4c08d56
@@ -248,7 +246,7 @@ Transcript: /home/user/.claude/projects/.../abc123de...7890.jsonl
 - Wrote integration tests with fakeredis
 ```
 
-Now Claude sees the full context including the neighboring `### 04:13` section. The embedded `<!-- session:... -->` anchors link to the original conversation -- if Claude needs to go even deeper, it moves to L3.
+The subagent sees the full context including neighboring sections. The embedded `<!-- session:... -->` anchors link to the original conversation -- if the subagent needs to go even deeper, it moves to L3.
 
 Additional flags:
 
@@ -502,26 +500,26 @@ This means:
 |--------|-----------|------------|
 | **Architecture** | 4 shell hooks + 1 watch process | Node.js/Bun worker service + Express server + React UI |
 | **Integration** | Native hooks + CLI (zero IPC overhead) | MCP server (stdio); tool definitions permanently consume context window |
-| **Memory recall** | **Automatic** -- semantic search on every prompt via hook | **Agent-driven** -- Claude must explicitly call MCP `search` tool |
-| **Progressive disclosure** | **3-layer, auto-triggered**: hook injects top-k (L1), then `expand` (L2), then `transcript` (L3) | **3-layer, all manual**: `search`, `timeline`, `get_observations` all require explicit tool calls |
+| **Memory recall** | **Skill-based auto-recall** -- Claude auto-invokes memory-recall skill in a forked subagent when context is needed | **Agent-driven** -- Claude must explicitly call MCP `search` tool |
+| **Progressive disclosure** | **3-layer, skill-driven**: subagent autonomously handles search (L1), expand (L2), transcript (L3) and returns curated summary | **3-layer, all manual**: `search`, `timeline`, `get_observations` all require explicit tool calls |
 | **Session summary cost** | 1 `claude -p --model haiku` call, runs async | Observation on every tool use + session summary (more API calls at scale) |
 | **Vector backend** | [Milvus](https://milvus.io/) -- [hybrid search](architecture.md#hybrid-search) (dense + BM25), scales from embedded to distributed cluster | [Chroma](https://www.trychroma.com/) -- dense only, limited scaling path |
 | **Storage format** | Transparent `.md` files -- human-readable, git-friendly | Opaque SQLite + Chroma binary |
 | **Index sync** | `memsearch watch` singleton -- auto-debounced background sync | Automatic observation writes, but no unified background sync |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild | Export from SQLite + Chroma |
 | **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js + Bun + MCP runtime |
-| **Context window cost** | Minimal -- hook injects only top-k results as plain text | MCP tool definitions always loaded + each tool call/result consumes context |
+| **Context window cost** | Minimal -- skill runs in forked context, only curated summary enters main context | MCP tool definitions always loaded + each tool call/result consumes context |
 | **Cost per session** | ~1 Haiku call for summary | Multiple Claude API calls for observation compression |
 
 ### The Key Insight: Automatic vs. Agent-Driven Recall
 
 The fundamental architectural difference is **when** memory recall happens.
 
-**memsearch injects relevant memories into every prompt via hooks.** Claude does not need to decide whether to search -- it simply receives relevant context before processing each message. This means memories are **never missed due to Claude forgetting to look them up**. Progressive disclosure starts automatically at L1 (the hook injects top-k results), and only deeper layers (L2 expand, L3 transcript) require explicit CLI calls from the agent.
+**memsearch uses a skill-based approach.** The `memory-recall` skill runs in a forked subagent context (`context: fork`), meaning all search, expand, and transcript operations happen in an isolated context window. Claude auto-invokes the skill when it judges historical context would be useful. The subagent autonomously handles all three progressive disclosure layers and returns only a curated summary to the main conversation. Combined with cold-start context from the `SessionStart` hook and a lightweight `systemMessage` hint on every prompt, Claude reliably triggers the skill when past context is relevant.
 
-**claude-mem gives Claude MCP tools to search, explore timelines, and fetch observations.** All three layers require Claude to **proactively decide** to invoke them. While this is more flexible (Claude controls when and what to recall), it means memories are only retrieved when Claude thinks to ask. In practice, Claude often does not call the search tool unless the conversation explicitly references past work -- which means relevant context can be silently lost.
+**claude-mem gives Claude MCP tools to search, explore timelines, and fetch observations.** All three layers require Claude to **proactively decide** to invoke them in the main conversation context. While this is more flexible (Claude controls when and what to recall), it means memories are only retrieved when Claude thinks to ask, and every search/expand operation consumes the main context window.
 
-The difference is analogous to push vs. pull: memsearch **pushes** memories to Claude on every turn, while claude-mem requires Claude to **pull** them on demand.
+The key advantages of the skill-based approach: (1) the subagent handles multi-step retrieval autonomously without distracting the main agent, (2) intermediate search results don't pollute the main context window, and (3) Claude only recalls memories when they're actually needed -- no unnecessary context injection on every prompt.
 
 ---
 
@@ -532,7 +530,7 @@ Claude Code has built-in memory features: `CLAUDE.md` files and auto-memory (the
 | Aspect | Claude Native Memory | memsearch |
 |--------|---------------------|-----------|
 | **Storage** | Single `CLAUDE.md` file (or per-project) | Unlimited daily `.md` files with full history |
-| **Recall mechanism** | File is loaded at session start (no search) | Semantic search on every prompt (embedding-based) |
+| **Recall mechanism** | File is loaded at session start (no search) | Skill-based semantic search -- Claude auto-invokes when context is needed |
 | **Granularity** | One monolithic file, manually edited | Per-session bullet points, automatically generated |
 | **Search** | None -- Claude reads the whole file or nothing | Hybrid semantic search (dense + BM25) returning top-k relevant chunks |
 | **History depth** | Limited to what fits in one file | Unlimited -- every session is logged, every entry is searchable |
@@ -545,7 +543,7 @@ Claude Code has built-in memory features: `CLAUDE.md` files and auto-memory (the
 
 `CLAUDE.md` is a blunt instrument: it loads the entire file into context at session start, regardless of relevance. As the file grows, it wastes context window on irrelevant information and eventually hits size limits. There is no search -- Claude cannot selectively recall a specific decision from three weeks ago.
 
-memsearch solves this with **semantic search and progressive disclosure**. Instead of loading everything, it injects only the top-k most relevant memories for each specific prompt. History can grow indefinitely without degrading performance, because the vector index handles the filtering. And the three-layer model means Claude starts with lightweight previews and only drills deeper when needed, keeping context window usage minimal.
+memsearch solves this with **skill-based semantic search and progressive disclosure**. When Claude judges that historical context would help, it auto-invokes the memory-recall skill, which runs in a forked subagent and autonomously searches, expands, and curates relevant memories. History can grow indefinitely without degrading performance, because the vector index handles the filtering. And the three-layer model (search → expand → transcript) runs entirely in the subagent, keeping the main context window clean.
 
 ---
 
@@ -557,14 +555,17 @@ The plugin lives in the `ccplugin/` directory at the root of the memsearch repos
 ccplugin/
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest (name, version, description)
-└── hooks/
-    ├── hooks.json               # Hook definitions (4 lifecycle hooks)
-    ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
-    ├── session-start.sh         # Start watch + write session heading + inject memories & tools
-    ├── user-prompt-submit.sh    # Semantic search on prompt -> inject memories with chunk_hash
-    ├── stop.sh                  # Parse transcript -> haiku summary -> append to daily .md
-    ├── parse-transcript.sh      # Deterministic JSONL-to-text parser with truncation
-    └── session-end.sh           # Stop watch process (cleanup)
+├── hooks/
+│   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
+│   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
+│   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
+│   ├── user-prompt-submit.sh    # Lightweight systemMessage hint ("[memsearch] Memory available")
+│   ├── stop.sh                  # Parse transcript -> haiku summary -> append to daily .md
+│   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser with truncation
+│   └── session-end.sh           # Stop watch process (cleanup)
+└── skills/
+    └── memory-recall/
+        └── SKILL.md             # Memory retrieval skill (context: fork subagent)
 ```
 
 ### File Descriptions
@@ -574,8 +575,8 @@ ccplugin/
 | `plugin.json` | Claude Code plugin manifest. Declares the plugin name (`memsearch`), version, and description. |
 | `hooks.json` | Defines the 4 lifecycle hooks (SessionStart, UserPromptSubmit, Stop, SessionEnd) with their types, timeouts, and async flags. |
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). |
-| `session-start.sh` | SessionStart hook implementation. Starts the watcher, writes the session heading, reads recent memory files, runs a semantic search for recent context, and injects Memory Tools instructions. |
-| `user-prompt-submit.sh` | UserPromptSubmit hook implementation. Extracts the user prompt, runs `memsearch search` with `--top-k 3 --json-output`, and formats results with `chunk_hash` for progressive disclosure. |
+| `session-start.sh` | SessionStart hook implementation. Starts the watcher, writes the session heading, and reads recent memory files for cold-start context injection. |
+| `user-prompt-submit.sh` | UserPromptSubmit hook implementation. Returns a lightweight `systemMessage` hint to keep Claude aware of the memory system. No search -- retrieval is handled by the memory-recall skill. |
 | `stop.sh` | Stop hook implementation. Extracts the transcript path, validates it, delegates parsing to `parse-transcript.sh`, calls Haiku for summarization, and appends the result with session anchors to the daily memory file. |
 | `parse-transcript.sh` | Standalone transcript parser. Processes the last 200 lines of a JSONL transcript, truncates content to 500 characters, extracts tool call summaries, and skips file-history-snapshot entries. Used by `stop.sh`. |
 | `session-end.sh` | SessionEnd hook implementation. Calls `stop_watch` to terminate the background watcher and clean up. |
@@ -588,11 +589,11 @@ The plugin is built entirely on the `memsearch` CLI -- every hook is a shell scr
 
 | Command | Used By | What It Does |
 |---------|---------|-------------|
-| `search <query>` | UserPromptSubmit hook | Semantic search over indexed memories (`--top-k` for result count, `--json-output` for JSON) |
+| `search <query>` | memory-recall skill | Semantic search over indexed memories (`--top-k` for result count, `--json-output` for JSON) |
 | `watch <paths>` | SessionStart hook | Background watcher that auto-indexes on file changes (1500ms debounce) |
 | `index <paths>` | Manual / rebuild | One-shot index of markdown files (`--force` to re-index all) |
-| `expand <chunk_hash>` | Agent (L2 disclosure) | Show full markdown section around a chunk, with anchor metadata |
-| `transcript <jsonl>` | Agent (L3 disclosure) | Parse Claude Code JSONL transcript into readable conversation turns |
+| `expand <chunk_hash>` | memory-recall skill (L2) | Show full markdown section around a chunk, with anchor metadata |
+| `transcript <jsonl>` | memory-recall skill (L3) | Parse Claude Code JSONL transcript into readable conversation turns |
 | `config init` | Quick Start | Interactive config wizard for first-time setup |
 | `stats` | Manual | Show index statistics (collection size, chunk count) |
 | `reset` | Manual | Drop all indexed data (requires `--yes` to confirm) |

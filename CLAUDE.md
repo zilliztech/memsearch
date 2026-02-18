@@ -58,32 +58,40 @@ Markdown files → Scanner → Chunker → Embedder → MilvusStore
 
 The plugin is a first-class component of memsearch — it's the primary real-world application that demonstrates the library in action. It gives Claude Code automatic persistent memory across sessions with zero user intervention.
 
-**Architecture: 4 shell hooks + 1 background watcher**
+**Architecture: 4 shell hooks + 1 skill + 1 background watcher**
 
 ```
-ccplugin/hooks/
-├── common.sh                # Shared setup: PATH, memsearch detection, watch PID management
-├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
-├── user-prompt-submit.sh    # UserPromptSubmit: semantic search → inject top-k via additionalContext
-├── stop.sh                  # Stop: parse transcript → haiku summarize → append to daily .md (async)
-├── session-end.sh           # SessionEnd: stop watch process
-└── parse-transcript.sh      # Deterministic JSONL-to-text parser (used by stop.sh)
+ccplugin/
+├── hooks/
+│   ├── common.sh                # Shared setup: PATH, memsearch detection, watch PID management
+│   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
+│   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
+│   ├── stop.sh                  # Stop: parse transcript → haiku summarize → append to daily .md (async)
+│   ├── session-end.sh           # SessionEnd: stop watch process
+│   └── parse-transcript.sh      # Deterministic JSONL-to-text parser (used by stop.sh)
+└── skills/
+    └── memory-recall/
+        └── SKILL.md             # Skill (context: fork): search → expand → transcript in subagent
 ```
 
-**Key design: push-based memory.** The `UserPromptSubmit` hook runs `memsearch search` on every user prompt and injects relevant memories as `additionalContext` — Claude never needs to decide whether to search. This is fundamentally different from MCP-based approaches where the agent must proactively pull memories.
+**Key design: skill-based memory recall.** Memory retrieval is handled by a `memory-recall` skill that runs in a forked subagent context (`context: fork`). Claude automatically invokes the skill when it judges the user's question could benefit from historical context. The subagent autonomously performs search, evaluates relevance, expands promising results, and returns a curated summary — all without polluting the main conversation context.
 
-**Three-layer progressive disclosure:**
-1. **L1 (automatic):** Hook injects top-k search results with 200-char previews and `chunk_hash` IDs
-2. **L2 (on-demand):** Claude runs `memsearch expand <chunk_hash>` to see the full markdown section
-3. **L3 (on-demand):** Claude runs `memsearch transcript <jsonl>` to drill into the original conversation
+**Three-layer progressive disclosure (all in subagent):**
+1. **L1 (search):** Subagent runs `memsearch search` to find relevant chunks
+2. **L2 (expand):** Subagent runs `memsearch expand <chunk_hash>` to get full markdown sections
+3. **L3 (transcript):** Subagent runs `memsearch transcript <jsonl>` to drill into original conversations
 
-**Stop hook is async and non-blocking.** It fires after Claude finishes each response, calls `claude -p --model haiku` to summarize, and appends to `.memsearch/memory/YYYY-MM-DD.md` with session anchors. The user can continue chatting immediately.
+**Supporting hooks:**
+- `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists
+- `UserPromptSubmit` returns a lightweight `systemMessage` hint ("[memsearch] Memory available") to increase skill trigger awareness
+- `Stop` hook is async and non-blocking — calls `claude -p --model haiku` to summarize, appends to daily `.md`
 
-When modifying hooks, keep in mind:
-- All hooks output JSON to stdout (`additionalContext` for context injection, or empty `{}`)
+When modifying hooks/skills, keep in mind:
+- All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`)
 - `common.sh` is sourced by every hook — changes there affect all hooks
 - The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior
 - `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally
+- The `memory-recall` skill uses `context: fork` — the subagent has its own context window and does not see main conversation history
 
 ## Key Design Decisions
 

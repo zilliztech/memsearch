@@ -66,27 +66,9 @@ if [ -n "$recent_files" ]; then
   done
 fi
 
-# If memsearch is available, also do a semantic search for recent context
-if [ -n "$MEMSEARCH_CMD" ]; then
-  search_results=$($MEMSEARCH_CMD search "recent session summary" --top-k 3 --json-output 2>/dev/null || true)
-  if [ -n "$search_results" ] && [ "$search_results" != "[]" ] && [ "$search_results" != "null" ]; then
-    formatted=$(echo "$search_results" | jq -r '
-      .[]? |
-      "- [\(.source // "unknown"):\(.heading // "")]  \(.content // "" | .[0:200])"
-    ' 2>/dev/null || true)
-    if [ -n "$formatted" ]; then
-      context+="\n## Semantic Search: Recent Sessions\n$formatted\n"
-    fi
-  fi
-fi
-
-# Add memory tools instructions for progressive disclosure
-context+="\n## Memory Tools\n"
-context+="When injected memories above need more context, use these commands via Bash:\n"
-context+="- \`${MEMSEARCH_CMD_PREFIX} expand <chunk_hash>\` — show the full section around a memory chunk\n"
-context+="- \`${MEMSEARCH_CMD_PREFIX} expand <chunk_hash> --json-output\` — JSON output with anchor metadata for L3 drill-down\n"
-context+="- \`${MEMSEARCH_CMD_PREFIX} transcript <jsonl_path> --turn <uuid> --context 3\` — view original conversation turns from the JSONL transcript\n"
-context+="chunk_hash is shown in Relevant Memories injected on each prompt. Anchors (session/turn/transcript path) are embedded in expand output.\n"
+# Note: Detailed memory search is handled by the memory-recall skill (pull-based).
+# The cold-start context above gives Claude enough awareness of recent sessions
+# to decide when to invoke the skill for deeper recall.
 
 if [ -n "$context" ]; then
   json_context=$(printf '%s' "$context" | jq -Rs .)
