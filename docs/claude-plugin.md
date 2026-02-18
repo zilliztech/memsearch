@@ -132,7 +132,7 @@ The plugin defines exactly 4 hooks, all declared in `hooks/hooks.json`:
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext` |
+| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
 | **Stop** | command | **yes** | 120s | Parse transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize, append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
@@ -143,9 +143,11 @@ The plugin defines exactly 4 hooks, all declared in `hooks/hooks.json`:
 
 Fires once when a Claude Code session begins. This hook:
 
-1. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce.
-2. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
-3. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
+1. **Reads config and checks API key.** Runs `memsearch config get` to read the configured embedding provider, model, and Milvus URI. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`; `ollama` and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
+2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce.
+3. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
+4. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
+5. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db`.
 
 #### UserPromptSubmit
 
@@ -616,14 +618,26 @@ claude --plugin-dir ./ccplugin
 
 ## Troubleshooting
 
-### "OPENAI_API_KEY not set — memory search disabled"
+### "ERROR: \<KEY\> not set — memory search disabled"
 
-The plugin shows this warning at session start when `OPENAI_API_KEY` is not set. Without it, memory recording still writes `.md` files, but semantic search and indexing are disabled.
+The plugin detects the configured embedding provider and checks for the required API key at session start. If missing, memory recording still writes `.md` files, but semantic search and indexing are disabled.
 
-**Fix:** get an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and export it:
+| Provider | Required environment variable |
+|----------|------------------------------|
+| `openai` (default) | `OPENAI_API_KEY` |
+| `google` | `GOOGLE_API_KEY` |
+| `voyage` | `VOYAGE_API_KEY` |
+| `ollama` | None (local) |
+| `local` | None (local) |
+
+**Fix:** export the key for your configured provider:
 
 ```bash
+# For OpenAI (default)
 export OPENAI_API_KEY="sk-..."
+
+# Or switch to a provider that needs no key
+memsearch config set embedding.provider ollama
 ```
 
-To make it permanent, add the line to your `~/.bashrc`, `~/.zshrc`, or equivalent.
+To make it permanent, add the export to your `~/.bashrc`, `~/.zshrc`, or equivalent.
