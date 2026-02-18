@@ -147,7 +147,8 @@ Fires once when a Claude Code session begins. This hook:
 2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce.
 3. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
 4. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
-5. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db`.
+5. **Checks for updates.** Queries PyPI (2s timeout) and compares with the installed version. If a newer version is available, appends an `UPDATE` hint to the status line.
+6. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch v0.1.10] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db` (with `| UPDATE: v0.1.12 available` when outdated).
 
 #### UserPromptSubmit
 

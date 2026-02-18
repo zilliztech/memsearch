@@ -42,9 +42,19 @@ if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   KEY_MISSING=true
 fi
 
-# Build status line: version | provider/model | milvus | optional error
+# Check PyPI for newer version (2s timeout, non-blocking on failure)
+UPDATE_HINT=""
+if [ -n "$VERSION" ]; then
+  LATEST=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null \
+    | jq -r '.info.version // empty' 2>/dev/null || true)
+  if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
+    UPDATE_HINT=" | UPDATE: v${LATEST} available"
+  fi
+fi
+
+# Build status line: version | provider/model | milvus | optional update/error
 VERSION_TAG="${VERSION:+ v${VERSION}}"
-status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}"
+status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${UPDATE_HINT}"
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
 fi
