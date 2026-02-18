@@ -10,17 +10,20 @@ if [ -z "$MEMSEARCH_CMD" ]; then
     curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null
     export PATH="$HOME/.local/bin:$PATH"
   fi
-  # Warm up uvx cache (first run downloads packages, ~2s; subsequent <0.3s)
-  uvx memsearch --version &>/dev/null || true
+  # Warm up uvx cache with --upgrade to pull latest version
+  # First run downloads packages (~2s); subsequent runs use cache (<0.3s)
+  uvx --upgrade memsearch --version &>/dev/null || true
   _detect_memsearch
 fi
 
-# Read resolved config for status display
-PROVIDER="openai"; MODEL=""; MILVUS_URI=""
+# Read resolved config and version for status display
+PROVIDER="openai"; MODEL=""; MILVUS_URI=""; VERSION=""
 if [ -n "$MEMSEARCH_CMD" ]; then
   PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
   MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
   MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  # "memsearch, version 0.1.10" → "0.1.10"
+  VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
 
 # Determine required API key for the configured provider
@@ -39,8 +42,9 @@ if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   KEY_MISSING=true
 fi
 
-# Build status line: provider/model | milvus | optional error
-status="[memsearch] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}"
+# Build status line: version | provider/model | milvus | optional error
+VERSION_TAG="${VERSION:+ v${VERSION}}"
+status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}"
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
 fi
