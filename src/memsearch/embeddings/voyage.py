@@ -26,6 +26,10 @@ class VoyageEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    @property
+    def max_batch_size(self) -> int:
+        return 128
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         result = await self._client.embed(texts, model=self._model)
         return result.embeddings

@@ -15,6 +15,9 @@ class EmbeddingProvider(Protocol):
     @property
     def dimension(self) -> int: ...
 
+    @property
+    def max_batch_size(self) -> int: ...
+
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 

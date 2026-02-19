@@ -44,6 +44,10 @@ class LocalEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    @property
+    def max_batch_size(self) -> int:
+        return 512
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(
