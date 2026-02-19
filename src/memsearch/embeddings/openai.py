@@ -34,6 +34,10 @@ class OpenAIEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    @property
+    def max_batch_size(self) -> int:
+        return 2048
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         resp = await self._client.embeddings.create(input=texts, model=self._model)
         return [item.embedding for item in resp.data]

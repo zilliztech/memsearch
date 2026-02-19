@@ -35,6 +35,10 @@ class GoogleEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    @property
+    def max_batch_size(self) -> int:
+        return 100
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         from google.genai import types
 
