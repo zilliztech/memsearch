@@ -9,6 +9,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _escape_filter_value(value: str) -> str:
+    """Escape backslashes and double quotes for Milvus filter expressions."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 class MilvusStore:
     """Thin wrapper around ``pymilvus.MilvusClient`` for chunk storage.
 
@@ -185,9 +190,10 @@ class MilvusStore:
 
     def hashes_by_source(self, source: str) -> set[str]:
         """Return all chunk_hash values for a given source file."""
+        escaped = _escape_filter_value(source)
         results = self._client.query(
             collection_name=self._collection,
-            filter=f'source == "{source}"',
+            filter=f'source == "{escaped}"',
             output_fields=["chunk_hash"],
         )
         return {r["chunk_hash"] for r in results}
@@ -203,9 +209,10 @@ class MilvusStore:
 
     def delete_by_source(self, source: str) -> None:
         """Delete all chunks from a given source file."""
+        escaped = _escape_filter_value(source)
         self._client.delete(
             collection_name=self._collection,
-            filter=f'source == "{source}"',
+            filter=f'source == "{escaped}"',
         )
 
     def delete_by_hashes(self, hashes: list[str]) -> None:

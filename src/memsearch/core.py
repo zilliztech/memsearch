@@ -234,7 +234,8 @@ class MemSearch:
         str
             The generated summary markdown.
         """
-        filter_expr = f'source == "{source}"' if source else ""
+        from .store import _escape_filter_value
+        filter_expr = f'source == "{_escape_filter_value(source)}"' if source else ""
         all_chunks = self._store.query(filter_expr=filter_expr)
         if not all_chunks:
             return ""
