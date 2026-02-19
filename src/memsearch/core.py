@@ -143,7 +143,13 @@ class MemSearch:
 
         model = self._embedder.model_name
         contents = [c.content for c in chunks]
-        embeddings = await self._embedder.embed(contents)
+
+        # Batch embedding requests to respect provider-specific API limits
+        batch_size = self._embedder.max_batch_size
+        embeddings: list[list[float]] = []
+        for i in range(0, len(contents), batch_size):
+            batch = contents[i:i + batch_size]
+            embeddings.extend(await self._embedder.embed(batch))
 
         records: list[dict[str, Any]] = []
         for i, chunk in enumerate(chunks):
