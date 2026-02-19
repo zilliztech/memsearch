@@ -643,21 +643,21 @@ Hooks communicate with Claude Code by returning JSON. Two key fields:
 Here is what a session looks like with the plugin installed:
 
 ```
- ╭──────────────────────────────────────────────────────────────╮
- │ ✻ Welcome to Claude Code!                                    │
- │                                                              │
- │   /help for help, /status for your current setup             │
- │   cwd: ~/my-project                                         │
- ╰──────────────────────────────────────────────────────────────╯
+   ✻
+   |
+  ▟█▙     Claude Code v2.x.x
+▐▛███▜▌   Model · Plan
+▝▜█████▛▘  ~/my-project
+ ▘▘ ▝▝
+ ⎿  SessionStart:startup says: [memsearch v0.1.11]        ← systemMessage
+    embedding: openai/text-embedding-3-small | milvus:       (SessionStart hook)
+    ~/.memsearch/milvus.db
 
- ℹ [memsearch v0.1.11] embedding: openai/text-embedding-3-      ← SessionStart
-   small | milvus: ~/.memsearch/milvus.db                          systemMessage
+❯ How does the caching layer work?
 
- > How does the caching layer work?
-
- ℹ [memsearch] Memory available                                  ← UserPromptSubmit
-                                                                   systemMessage
- Based on our previous sessions, the caching layer uses...
+ ⎿  UserPromptSubmit says: [memsearch] Memory available    ← systemMessage
+                                                             (UserPromptSubmit hook)
+✶ Thinking…
 ```
 
 The SessionStart hook also loads the 2 most recent daily logs as `additionalContext` — Claude reads this silently to decide when to invoke the memory-recall skill, but you won't see it in the terminal.
