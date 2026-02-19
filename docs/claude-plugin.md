@@ -137,35 +137,6 @@ The plugin defines exactly 4 hooks, all declared in `hooks/hooks.json`:
 | **Stop** | command | **yes** | 120s | Parse transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize, append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
-!!! tip "What `systemMessage` and `additionalContext` look like"
-
-    Hooks return JSON to Claude Code. Two key fields appear throughout this page:
-
-    - **`systemMessage`** — A **visible** info line shown in the terminal, like a status bar.
-    - **`additionalContext`** — **Invisible** to the user; injected into Claude's context silently. Only appears in debug logs (`claude --debug`).
-
-    Here is what a session looks like with the plugin installed:
-
-    ```
-     ╭──────────────────────────────────────────────────────────────╮
-     │ ✻ Welcome to Claude Code!                                    │
-     │                                                              │
-     │   /help for help, /status for your current setup             │
-     │   cwd: ~/my-project                                         │
-     ╰──────────────────────────────────────────────────────────────╯
-
-     ℹ [memsearch v0.1.11] embedding: openai/text-embedding-3-      ← SessionStart
-       small | milvus: ~/.memsearch/milvus.db                          systemMessage
-
-     > How does the caching layer work?
-
-     ℹ [memsearch] Memory available                                  ← UserPromptSubmit
-                                                                       systemMessage
-     Based on our previous sessions, the caching layer uses...
-    ```
-
-    The SessionStart hook also loads the 2 most recent daily logs as `additionalContext` — Claude reads this silently to decide when to invoke the memory-recall skill, but you won't see it in the terminal.
-
 ### What Each Hook Does
 
 #### SessionStart
@@ -663,6 +634,33 @@ The plugin provides several observability mechanisms, from always-on status line
 ### 1. SessionStart Status Line
 
 Every session starts with a status line in `systemMessage`. This is the first thing to check when something seems wrong.
+
+Hooks communicate with Claude Code by returning JSON. Two key fields:
+
+- **`systemMessage`** — A **visible** info line shown in the terminal, like a status bar.
+- **`additionalContext`** — **Invisible** to the user; injected into Claude's context silently. Only appears in debug logs (`claude --debug`).
+
+Here is what a session looks like with the plugin installed:
+
+```
+ ╭──────────────────────────────────────────────────────────────╮
+ │ ✻ Welcome to Claude Code!                                    │
+ │                                                              │
+ │   /help for help, /status for your current setup             │
+ │   cwd: ~/my-project                                         │
+ ╰──────────────────────────────────────────────────────────────╯
+
+ ℹ [memsearch v0.1.11] embedding: openai/text-embedding-3-      ← SessionStart
+   small | milvus: ~/.memsearch/milvus.db                          systemMessage
+
+ > How does the caching layer work?
+
+ ℹ [memsearch] Memory available                                  ← UserPromptSubmit
+                                                                   systemMessage
+ Based on our previous sessions, the caching layer uses...
+```
+
+The SessionStart hook also loads the 2 most recent daily logs as `additionalContext` — Claude reads this silently to decide when to invoke the memory-recall skill, but you won't see it in the terminal.
 
 **Normal:**
 
