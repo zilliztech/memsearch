@@ -302,12 +302,19 @@ class MemSearch:
         """
         from .watcher import FileWatcher
 
+        # Use a persistent event loop for watcher callbacks. asyncio.run()
+        # creates and *closes* a new loop each time, which breaks async
+        # clients (httpx/ollama) that cache connections tied to the first
+        # loop — causing "RuntimeError: Event loop is closed" on the second
+        # file change.  A dedicated loop avoids this entirely.
+        loop = asyncio.new_event_loop()
+
         def _on_change(event_type: str, file_path: Path) -> None:
             if event_type == "deleted":
                 self._store.delete_by_source(str(file_path))
                 summary = f"Removed chunks for {file_path}"
             else:
-                n = asyncio.run(self.index_file(file_path))
+                n = loop.run_until_complete(self.index_file(file_path))
                 summary = f"Indexed {n} chunks from {file_path}"
             logger.info(summary)
             if on_event is not None:
