@@ -302,11 +302,15 @@ class MemSearch:
         """
         from .watcher import FileWatcher
 
-        # Use a persistent event loop for watcher callbacks. asyncio.run()
-        # creates and *closes* a new loop each time, which breaks async
-        # clients (httpx/ollama) that cache connections tied to the first
-        # loop — causing "RuntimeError: Event loop is closed" on the second
-        # file change.  A dedicated loop avoids this entirely.
+        # Persistent event loop for watcher callbacks.
+        #
+        # asyncio.run() creates and closes a new loop on every call. Async
+        # HTTP clients (httpx — used by ollama, openai, voyage) cache
+        # connections tied to that loop, so a second asyncio.run() hits the
+        # closed loop and raises RuntimeError: Event loop is closed.
+        # This is a known httpx limitation:
+        #   https://github.com/encode/httpx/discussions/2489
+        #   https://github.com/encode/httpx/discussions/2959
         loop = asyncio.new_event_loop()
 
         def _on_change(event_type: str, file_path: Path) -> None:
