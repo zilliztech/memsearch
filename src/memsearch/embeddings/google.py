@@ -35,15 +35,25 @@ class GoogleEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    # Google's BatchEmbedContentsRequest supports at most 100 items.
+    _MAX_BATCH = 100
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         from google.genai import types
 
-        result = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=texts,
-            config=types.EmbedContentConfig(output_dimensionality=self._dimension),
-        )
-        return [e.values for e in result.embeddings]
+        # Batch into chunks of _MAX_BATCH to avoid 400 INVALID_ARGUMENT
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), self._MAX_BATCH):
+            batch = texts[i : i + self._MAX_BATCH]
+            result = await self._client.aio.models.embed_content(
+                model=self._model,
+                contents=batch,
+                config=types.EmbedContentConfig(
+                    output_dimensionality=self._dimension
+                ),
+            )
+            all_embeddings.extend(e.values for e in result.embeddings)
+        return all_embeddings
 
 
 def _detect_dimension(client, model: str) -> int:
