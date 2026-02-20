@@ -302,12 +302,23 @@ class MemSearch:
         """
         from .watcher import FileWatcher
 
+        # Persistent event loop for watcher callbacks.
+        #
+        # asyncio.run() creates and closes a new loop on every call. Async
+        # HTTP clients (httpx — used by ollama, openai, voyage) cache
+        # connections tied to that loop, so a second asyncio.run() hits the
+        # closed loop and raises RuntimeError: Event loop is closed.
+        # This is a known httpx limitation:
+        #   https://github.com/encode/httpx/discussions/2489
+        #   https://github.com/encode/httpx/discussions/2959
+        loop = asyncio.new_event_loop()
+
         def _on_change(event_type: str, file_path: Path) -> None:
             if event_type == "deleted":
                 self._store.delete_by_source(str(file_path))
                 summary = f"Removed chunks for {file_path}"
             else:
-                n = asyncio.run(self.index_file(file_path))
+                n = loop.run_until_complete(self.index_file(file_path))
                 summary = f"Indexed {n} chunks from {file_path}"
             logger.info(summary)
             if on_event is not None:
