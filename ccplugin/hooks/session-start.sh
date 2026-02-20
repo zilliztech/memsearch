@@ -59,8 +59,12 @@ if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
 fi
 
-# Write session heading to today's memory file
+# Flush any pending summaries from crashed sessions where SessionEnd didn't fire.
+# Safety net: ensures no staged summaries are lost between sessions.
 ensure_memory_dir
+flush_pending
+
+# Write session heading to today's memory file
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date +%H:%M)
 MEMORY_FILE="$MEMORY_DIR/$TODAY.md"

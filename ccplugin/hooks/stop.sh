@@ -1,117 +1,45 @@
 #!/usr/bin/env bash
-# Stop hook: parse transcript, summarize with claude -p, and save to memory.
+# Stop hook: record the transcript path for deferred summarization.
+#
+# This hook fires after every assistant turn, but summarization is expensive
+# (Haiku API call). Instead of summarizing on every turn, we just save the
+# transcript path to a lightweight state file. The actual summarization
+# happens once in flush_pending() — called by SessionEnd (or SessionStart
+# as a safety net for crashed sessions).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# Prevent infinite loop: if this Stop was triggered by a previous Stop hook, bail out
+# Prevent infinite loop: if this Stop was triggered by a claude -p call
+# inside flush_pending, bail out.
 STOP_HOOK_ACTIVE=$(_json_val "$INPUT" "stop_hook_active" "false")
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   echo '{}'
   exit 0
 fi
 
-# Skip summarization when the required API key is missing — embedding/search
-# would fail, and the session likely only contains the "key not set" warning.
-_required_env_var() {
-  case "$1" in
-    openai) echo "OPENAI_API_KEY" ;;
-    google) echo "GOOGLE_API_KEY" ;;
-    voyage) echo "VOYAGE_API_KEY" ;;
-    *) echo "" ;;  # ollama, local — no API key needed
-  esac
-}
-_PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
-_REQ_KEY=$(_required_env_var "$_PROVIDER")
-if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
+# Skip when the required API key is missing — the session likely only
+# contains the "key not set" warning, and flush would skip anyway.
+if ! _check_embedding_key; then
   echo '{}'
   exit 0
 fi
 
-# Extract transcript path from hook input
+# Extract and validate transcript path from hook input
 TRANSCRIPT_PATH=$(_json_val "$INPUT" "transcript_path" "")
-
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   echo '{}'
   exit 0
 fi
 
-# Check if transcript is empty (< 3 lines = no real content)
-LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
-if [ "$LINE_COUNT" -lt 3 ]; then
-  echo '{}'
-  exit 0
-fi
-
-ensure_memory_dir
-
-# Parse transcript into concise text
-PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
-
-if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ]; then
-  echo '{}'
-  exit 0
-fi
-
-# Determine today's date and current time
-TODAY=$(date +%Y-%m-%d)
-NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-
-# Extract session ID and last user turn UUID for progressive disclosure anchors
+# Save transcript path to a pending state file.
+# Filename = session ID (derived from transcript). Content = path + date.
+# Each Stop invocation overwrites the same file (last-writer-wins),
+# so only the final transcript state is summarized.
 SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
-LAST_USER_TURN_UUID=$(python3 -c "
-import json, sys
-uuid = ''
-with open(sys.argv[1]) as f:
-    for line in f:
-        try:
-            obj = json.loads(line)
-            if obj.get('type') == 'user' and isinstance(obj.get('message', {}).get('content'), str):
-                uuid = obj.get('uuid', '')
-        except: pass
-print(uuid)
-" "$TRANSCRIPT_PATH" 2>/dev/null || true)
+TODAY=$(date +%Y-%m-%d)
 
-# Use claude -p to summarize the parsed transcript into concise bullet points.
-# --model haiku: cheap and fast model for summarization
-# --no-session-persistence: don't save this throwaway session to disk
-# --no-chrome: skip browser integration
-# --system-prompt: separate role instructions from data (transcript via stdin)
-SUMMARY=""
-if command -v claude &>/dev/null; then
-  SUMMARY=$(printf '%s' "$PARSED" | claude -p \
-    --model haiku \
-    --no-session-persistence \
-    --no-chrome \
-    --system-prompt "You are a session memory writer. Your ONLY job is to output bullet-point summaries. Output NOTHING else — no greetings, no questions, no offers to help, no preamble, no closing remarks.
-
-Rules:
-- Output 3-8 bullet points, each starting with '- '
-- Focus on: decisions made, problems solved, code changes, key findings
-- Be specific and factual — mention file names, function names, and concrete details
-- Do NOT include timestamps, headers, or any formatting beyond bullet points
-- Do NOT add any text before or after the bullet points" \
-    2>/dev/null || true)
-fi
-
-# If claude is not available or returned empty, fall back to raw parsed output
-if [ -z "$SUMMARY" ]; then
-  SUMMARY="$PARSED"
-fi
-
-# Append as a sub-heading under the session heading written by SessionStart
-# Include HTML comment anchor for progressive disclosure (L3 transcript lookup)
-{
-  echo "### $NOW"
-  if [ -n "$SESSION_ID" ]; then
-    echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
-  fi
-  echo "$SUMMARY"
-  echo ""
-} >> "$MEMORY_FILE"
-
-# Index immediately — don't rely on watch (which may be killed by SessionEnd before debounce fires)
-run_memsearch index "$MEMORY_DIR"
+mkdir -p "$PENDING_DIR"
+printf '%s\n%s\n' "$TRANSCRIPT_PATH" "$TODAY" > "$PENDING_DIR/$SESSION_ID"
 
 echo '{}'
