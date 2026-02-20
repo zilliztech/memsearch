@@ -137,13 +137,21 @@ class MemSearch:
 
         return await self._embed_and_store(chunks)
 
-    async def _embed_and_store(self, chunks: list[Chunk]) -> int:
+    async def _embed_and_store(
+        self, chunks: list[Chunk], *, batch_size: int = 96
+    ) -> int:
         if not chunks:
             return 0
 
         model = self._embedder.model_name
         contents = [c.content for c in chunks]
-        embeddings = await self._embedder.embed(contents)
+
+        # Batch embedding calls to stay within provider limits (e.g. Google: 100)
+        embeddings: list[list[float]] = []
+        for i in range(0, len(contents), batch_size):
+            batch = contents[i : i + batch_size]
+            batch_embeddings = await self._embedder.embed(batch)
+            embeddings.extend(batch_embeddings)
 
         records: list[dict[str, Any]] = []
         for i, chunk in enumerate(chunks):
