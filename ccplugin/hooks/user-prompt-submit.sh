@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook: lightweight hint reminding Claude about the memory-recall skill.
-# The actual search + expand is handled by the memory-recall skill (pull-based, context: fork).
+# UserPromptSubmit hook — emit a hint so Claude knows the memory-recall skill
+# is available. The actual search is handled by the skill itself (context: fork).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
 source "$SCRIPT_DIR/common.sh"
 
-# Skip short prompts (greetings, single words, etc.)
+# Ignore trivially short prompts (greetings, single words, etc.).
 PROMPT=$(_json_val "$INPUT" "prompt" "")
 if [ -z "$PROMPT" ] || [ "${#PROMPT}" -lt 10 ]; then
   echo '{}'
   exit 0
 fi
 
-# Need memsearch available
-if [ -z "$MEMSEARCH_CMD" ]; then
+[ -z "$MEMSEARCH_CMD" ] && {
   echo '{}'
   exit 0
-fi
+}
 
 echo '{"systemMessage": "[memsearch] Memory available"}'
