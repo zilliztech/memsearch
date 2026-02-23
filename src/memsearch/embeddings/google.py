@@ -38,12 +38,18 @@ class GoogleEmbedding:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         from google.genai import types
 
-        result = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=texts,
-            config=types.EmbedContentConfig(output_dimensionality=self._dimension),
-        )
-        return [e.values for e in result.embeddings]
+        # Google API limits batch size to 100 texts per request.
+        batch_size = 100
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            result = await self._client.aio.models.embed_content(
+                model=self._model,
+                contents=batch,
+                config=types.EmbedContentConfig(output_dimensionality=self._dimension),
+            )
+            all_embeddings.extend(e.values for e in result.embeddings)
+        return all_embeddings
 
 
 def _detect_dimension(client, model: str) -> int:
