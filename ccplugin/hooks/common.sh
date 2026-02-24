@@ -30,6 +30,9 @@ _detect_memsearch
 # Short command prefix for injected instructions (falls back to "memsearch" even if unavailable)
 MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
 
+# Derive per-project collection name from project directory
+COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || true)
+
 # --- JSON helpers (jq preferred, python3 fallback) ---
 
 # _json_val <json_string> <dotted_key> [default]
@@ -89,7 +92,9 @@ ensure_memory_dir() {
 
 # Helper: run memsearch with arguments, silently fail if not available
 run_memsearch() {
-  if [ -n "$MEMSEARCH_CMD" ]; then
+  if [ -n "$MEMSEARCH_CMD" ] && [ -n "$COLLECTION_NAME" ]; then
+    $MEMSEARCH_CMD "$@" --collection "$COLLECTION_NAME" 2>/dev/null || true
+  elif [ -n "$MEMSEARCH_CMD" ]; then
     $MEMSEARCH_CMD "$@" 2>/dev/null || true
   fi
 }
@@ -137,6 +142,10 @@ start_watch() {
   # Always restart: ensures latest config (milvus_uri, etc.) is used
   stop_watch
 
-  nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" &>/dev/null &
+  if [ -n "$COLLECTION_NAME" ]; then
+    nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" &>/dev/null &
+  else
+    nohup $MEMSEARCH_CMD watch "$MEMORY_DIR" &>/dev/null &
+  fi
   echo $! > "$WATCH_PIDFILE"
 }

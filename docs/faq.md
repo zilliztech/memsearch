@@ -36,7 +36,7 @@ def get_user_memory(user_id: str) -> MemSearch:
 
 Each user gets a physically separate database file. This is the simplest model when you don't need cross-user search.
 
-The [Claude Code plugin](claude-plugin.md) happens to use a per-project layout because that matches its use case (developer working on a codebase). But the underlying memsearch library has no such constraint — a consumer chat app can instantiate one `MemSearch` per user and get clean isolation.
+The [Claude Code plugin](claude-plugin.md) uses per-project isolation — each project automatically gets its own Milvus collection (e.g. `ms_my_app_a1b2c3d4`) derived from the project path, so searches never leak across projects. But the underlying memsearch library has no such constraint — a consumer chat app can instantiate one `MemSearch` per user and get clean isolation.
 
 ---
 

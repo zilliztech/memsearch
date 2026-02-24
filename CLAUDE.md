@@ -63,12 +63,14 @@ The plugin is a first-class component of memsearch — it's the primary real-wor
 ```
 ccplugin/
 ├── hooks/
-│   ├── common.sh                # Shared setup: PATH, memsearch detection, watch PID management
+│   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
 │   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
 │   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
 │   ├── stop.sh                  # Stop: parse transcript → haiku summarize → append to daily .md (async)
 │   ├── session-end.sh           # SessionEnd: stop watch process
 │   └── parse-transcript.sh      # Deterministic JSONL-to-text parser (used by stop.sh)
+├── scripts/
+│   └── derive-collection.sh     # Derive per-project collection name from project path
 └── skills/
     └── memory-recall/
         └── SKILL.md             # Skill (context: fork): search → expand → transcript in subagent
@@ -88,7 +90,7 @@ ccplugin/
 
 When modifying hooks/skills, keep in mind:
 - All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`)
-- `common.sh` is sourced by every hook — changes there affect all hooks
+- `common.sh` is sourced by every hook — changes there affect all hooks. It derives a per-project `COLLECTION_NAME` via `derive-collection.sh` and passes `--collection` automatically through `run_memsearch()` and `start_watch()`
 - The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior
 - `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally
 - The `memory-recall` skill uses `context: fork` — the subagent has its own context window and does not see main conversation history

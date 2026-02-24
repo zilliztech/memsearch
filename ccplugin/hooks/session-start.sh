@@ -54,7 +54,11 @@ fi
 
 # Build status line: version | provider/model | milvus | optional update/error
 VERSION_TAG="${VERSION:+ v${VERSION}}"
-status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${UPDATE_HINT}"
+COLLECTION_HINT=""
+if [ -n "$COLLECTION_NAME" ]; then
+  COLLECTION_HINT=" | collection: ${COLLECTION_NAME}"
+fi
+status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${COLLECTION_HINT}${UPDATE_HINT}"
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
 fi
