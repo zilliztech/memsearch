@@ -1,5 +1,5 @@
 {
   "name": "memsearch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Automatic semantic memory for Claude Code — remembers what you worked on across sessions"
 }

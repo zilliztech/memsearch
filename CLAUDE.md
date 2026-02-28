@@ -102,6 +102,25 @@ When modifying hooks/skills, keep in mind:
 - **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them.
 - **Remote Milvus `query()` requires a filter.** Use `chunk_hash != ""` as a "match all" filter when no filter is provided (Milvus Lite doesn't enforce this, but Milvus Server does).
 
+## Versioning & Release
+
+**Two independent version numbers:**
+- **memsearch** (PyPI library): version in `pyproject.toml` (e.g. `0.1.13`)
+- **ccplugin** (Claude Code plugin): version in `ccplugin/.claude-plugin/plugin.json` (e.g. `0.2.0`)
+
+They evolve independently — bump only the one that changed. If both changed, bump both.
+
+**memsearch release flow:**
+1. Bump `version` in `pyproject.toml`
+2. Commit and push
+3. Create a git tag matching the version: `git tag v0.1.14`
+4. Push the tag: `git push --tags`
+5. GitHub Actions (`release.yml`) automatically builds and publishes to PyPI
+
+**ccplugin versioning:**
+- Bump `version` in `ccplugin/.claude-plugin/plugin.json` when hooks, skills, or plugin config change
+- No automated publish — users install ccplugin by cloning or symlinking
+
 ## Project Conventions
 
 - Uses `uv` + `pyproject.toml` for dependency management (not pip).
