@@ -1,0 +1,3030 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenClaw's memory, everywhere — markdown-first semantic memory backed by Milvus">
+      
+      
+      
+        <link rel="canonical" href="https://zilliztech.github.io/memsearch/cli/">
+      
+      
+        <link rel="prev" href="../python-api/">
+      
+      
+        <link rel="next" href="../integrations/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo-icon.jpg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>CLI Reference - memsearch</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Fira+Code:300,300i,400,400i,700,700i%7CFira+Code:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Fira Code";--md-code-font:"Fira Code"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/terminal.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="memsearch" class="md-header__button md-logo" aria-label="memsearch" data-md-component="logo">
+      
+  <img src="../assets/logo-icon.jpg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            memsearch
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/zilliztech/memsearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zilliztech/memsearch
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../python-api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Python API
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../integrations/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Integrations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../claude-plugin/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Claude Code Plugin
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="memsearch" class="md-nav__button md-logo" aria-label="memsearch" data-md-component="logo">
+      
+  <img src="../assets/logo-icon.jpg" alt="logo">
+
+    </a>
+    memsearch
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/zilliztech/memsearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zilliztech/memsearch
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#command-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subcommands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config list
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-config-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Config Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch index
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch index">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch watch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch watch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-compact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch compact
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch compact">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-llm-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default LLM Models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-expand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch expand
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch expand">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-transcript" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch transcript
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch transcript">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch stats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch stats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch reset
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch reset">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Environment Variables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embedding-provider-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedding Provider Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-plugin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#command-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Subcommands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memsearch-config-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch config list
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#available-config-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Config Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch index
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch index">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch watch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch watch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-compact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch compact
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch compact">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-llm-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default LLM Models
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-expand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch expand
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch expand">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-transcript" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch transcript
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch transcript">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch stats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch stats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memsearch-reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memsearch reset
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="memsearch reset">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Environment Variables
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Environment Variables">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embedding-provider-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedding Provider Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<p>memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>--version
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>memsearch,<span class="w"> </span>version<span class="w"> </span><span class="m">0</span>.1.3
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>$<span class="w"> </span>memsearch<span class="w"> </span>--help
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Usage:<span class="w"> </span>memsearch<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span>memsearch<span class="w"> </span>—<span class="w"> </span>semantic<span class="w"> </span>memory<span class="w"> </span>search<span class="w"> </span><span class="k">for</span><span class="w"> </span>markdown<span class="w"> </span>knowledge<span class="w"> </span>bases.
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Options:
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span>--version<span class="w">  </span>Show<span class="w"> </span>the<span class="w"> </span>version<span class="w"> </span>and<span class="w"> </span>exit.
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span>--help<span class="w">     </span>Show<span class="w"> </span>this<span class="w"> </span>message<span class="w"> </span>and<span class="w"> </span>exit.
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>Commands:
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span>compact<span class="w">     </span>Compress<span class="w"> </span>stored<span class="w"> </span>memories<span class="w"> </span>into<span class="w"> </span>a<span class="w"> </span>summary.
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span>config<span class="w">      </span>Manage<span class="w"> </span>memsearch<span class="w"> </span>configuration.
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span>expand<span class="w">      </span>Expand<span class="w"> </span>a<span class="w"> </span>memory<span class="w"> </span>chunk<span class="w"> </span>to<span class="w"> </span>show<span class="w"> </span>full<span class="w"> </span>context.
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">  </span>index<span class="w">       </span>Index<span class="w"> </span>markdown<span class="w"> </span>files<span class="w"> </span>from<span class="w"> </span>PATHS.
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">  </span>reset<span class="w">       </span>Drop<span class="w"> </span>all<span class="w"> </span>indexed<span class="w"> </span>data.
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">  </span>search<span class="w">      </span>Search<span class="w"> </span>indexed<span class="w"> </span>memory<span class="w"> </span><span class="k">for</span><span class="w"> </span>QUERY.
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span>stats<span class="w">       </span>Show<span class="w"> </span>statistics<span class="w"> </span>about<span class="w"> </span>the<span class="w"> </span>index.
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span>transcript<span class="w">  </span>View<span class="w"> </span>original<span class="w"> </span>conversation<span class="w"> </span>turns<span class="w"> </span>from<span class="w"> </span>a<span class="w"> </span>JSONL<span class="w"> </span>transcript.
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">  </span>watch<span class="w">       </span>Watch<span class="w"> </span>PATHS<span class="w"> </span><span class="k">for</span><span class="w"> </span>markdown<span class="w"> </span>changes<span class="w"> </span>and<span class="w"> </span>auto-index.
+</code></pre></div>
+<h2 id="command-summary">Command Summary<a class="headerlink" href="#command-summary" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memsearch config</code></td>
+<td>Initialize, view, and modify configuration</td>
+</tr>
+<tr>
+<td><code>memsearch index</code></td>
+<td>Scan directories and index markdown files into the vector store</td>
+</tr>
+<tr>
+<td><code>memsearch search</code></td>
+<td>Semantic search across indexed chunks using natural language</td>
+</tr>
+<tr>
+<td><code>memsearch watch</code></td>
+<td>Monitor directories and auto-index on file changes</td>
+</tr>
+<tr>
+<td><code>memsearch compact</code></td>
+<td>Compress indexed chunks into an LLM-generated summary</td>
+</tr>
+<tr>
+<td><code>memsearch expand</code></td>
+<td>Progressive disclosure L2: show full section around a chunk 🔌</td>
+</tr>
+<tr>
+<td><code>memsearch transcript</code></td>
+<td>Progressive disclosure L3: view turns from a JSONL transcript 🔌</td>
+</tr>
+<tr>
+<td><code>memsearch stats</code></td>
+<td>Display index statistics (total chunk count)</td>
+</tr>
+<tr>
+<td><code>memsearch reset</code></td>
+<td>Drop all indexed data from the Milvus collection</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>🔌 Commands marked with 🔌 are designed for the <a href="../claude-plugin/">Claude Code plugin</a>'s progressive disclosure workflow, but work as standalone CLI tools too.</p>
+</blockquote>
+<hr />
+<h2 id="memsearch-config"><code>memsearch config</code><a class="headerlink" href="#memsearch-config" title="Permanent link">&para;</a></h2>
+<p>Manage memsearch configuration. Configuration is stored in TOML files and follows a layered priority chain:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dataclass defaults -&gt; ~/.memsearch/config.toml -&gt; .memsearch.toml -&gt; CLI flags
+</code></pre></div>
+<p>Higher-priority sources override lower-priority ones.</p>
+<h3 id="subcommands">Subcommands<a class="headerlink" href="#subcommands" title="Permanent link">&para;</a></h3>
+<h4 id="memsearch-config-init"><code>memsearch config init</code><a class="headerlink" href="#memsearch-config-init" title="Permanent link">&para;</a></h4>
+<p>Launch an interactive wizard that walks through all configuration sections and writes a TOML config file.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--project</code></td>
+<td><code>false</code></td>
+<td>Write to <code>.memsearch.toml</code> (project-level) instead of the global config</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>init
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>memsearch<span class="w"> </span>configuration<span class="w"> </span>wizard
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>Writing<span class="w"> </span>to:<span class="w"> </span>/home/user/.memsearch/config.toml
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>--<span class="w"> </span>Milvus<span class="w"> </span>--
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>Milvus<span class="w"> </span>URI<span class="w"> </span><span class="o">[</span>~/.memsearch/milvus.db<span class="o">]</span>:
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span>Milvus<span class="w"> </span>token<span class="w"> </span><span class="o">(</span>empty<span class="w"> </span><span class="k">for</span><span class="w"> </span>none<span class="o">)</span><span class="w"> </span><span class="o">[]</span>:
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span>Collection<span class="w"> </span>name<span class="w"> </span><span class="o">[</span>memsearch_chunks<span class="o">]</span>:
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>--<span class="w"> </span>Embedding<span class="w"> </span>--
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span>Provider<span class="w"> </span><span class="o">(</span>openai/google/voyage/ollama/local<span class="o">)</span><span class="w"> </span><span class="o">[</span>openai<span class="o">]</span>:
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span>Model<span class="w"> </span><span class="o">(</span>empty<span class="w"> </span><span class="k">for</span><span class="w"> </span>provider<span class="w"> </span>default<span class="o">)</span><span class="w"> </span><span class="o">[]</span>:
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>--<span class="w"> </span>Chunking<span class="w"> </span>--
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span>Max<span class="w"> </span>chunk<span class="w"> </span>size<span class="w"> </span><span class="o">(</span>chars<span class="o">)</span><span class="w"> </span><span class="o">[</span><span class="m">1500</span><span class="o">]</span>:
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span>Overlap<span class="w"> </span>lines<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>--<span class="w"> </span>Watch<span class="w"> </span>--
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span>Debounce<span class="w"> </span><span class="o">(</span>ms<span class="o">)</span><span class="w"> </span><span class="o">[</span><span class="m">1500</span><span class="o">]</span>:
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>--<span class="w"> </span>Compact<span class="w"> </span>--
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">  </span>LLM<span class="w"> </span>provider<span class="w"> </span><span class="o">[</span>openai<span class="o">]</span>:
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">  </span>LLM<span class="w"> </span>model<span class="w"> </span><span class="o">(</span>empty<span class="w"> </span><span class="k">for</span><span class="w"> </span>default<span class="o">)</span><span class="w"> </span><span class="o">[]</span>:
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">  </span>Prompt<span class="w"> </span>file<span class="w"> </span>path<span class="w"> </span><span class="o">(</span>empty<span class="w"> </span><span class="k">for</span><span class="w"> </span>built-in<span class="o">)</span><span class="w"> </span><span class="o">[]</span>:
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>Config<span class="w"> </span>saved<span class="w"> </span>to<span class="w"> </span>/home/user/.memsearch/config.toml
+</code></pre></div>
+<p>Create a project-level config:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>init<span class="w"> </span>--project
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>memsearch<span class="w"> </span>configuration<span class="w"> </span>wizard
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>Writing<span class="w"> </span>to:<span class="w"> </span>.memsearch.toml
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>...
+</code></pre></div>
+<h4 id="memsearch-config-set"><code>memsearch config set</code><a class="headerlink" href="#memsearch-config-set" title="Permanent link">&para;</a></h4>
+<p>Set a single configuration value by dotted key. Keys follow the <code>section.field</code> format.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KEY</code></td>
+<td><em>(required)</em></td>
+<td>Dotted config key (e.g., <code>milvus.uri</code>)</td>
+</tr>
+<tr>
+<td><code>VALUE</code></td>
+<td><em>(required)</em></td>
+<td>Value to set</td>
+</tr>
+<tr>
+<td><code>--project</code></td>
+<td><code>false</code></td>
+<td>Write to <code>.memsearch.toml</code> instead of global config</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>milvus.uri<span class="w"> </span>http://localhost:19530
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Set<span class="w"> </span>milvus.uri<span class="w"> </span><span class="o">=</span><span class="w"> </span>http://localhost:19530<span class="w"> </span><span class="k">in</span><span class="w"> </span>/home/user/.memsearch/config.toml
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>embedding.provider<span class="w"> </span>google<span class="w"> </span>--project
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>Set<span class="w"> </span>embedding.provider<span class="w"> </span><span class="o">=</span><span class="w"> </span>google<span class="w"> </span><span class="k">in</span><span class="w"> </span>.memsearch.toml
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>chunking.max_chunk_size<span class="w"> </span><span class="m">2000</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>Set<span class="w"> </span>chunking.max_chunk_size<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">2000</span><span class="w"> </span><span class="k">in</span><span class="w"> </span>/home/user/.memsearch/config.toml
+</code></pre></div>
+<h4 id="memsearch-config-get"><code>memsearch config get</code><a class="headerlink" href="#memsearch-config-get" title="Permanent link">&para;</a></h4>
+<p>Read a single resolved configuration value (merged from all sources).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>milvus.uri
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>http://localhost:19530
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>embedding.provider
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>openai
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>chunking.max_chunk_size
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="m">1500</span>
+</code></pre></div>
+<h4 id="memsearch-config-list"><code>memsearch config list</code><a class="headerlink" href="#memsearch-config-list" title="Permanent link">&para;</a></h4>
+<p>Display configuration in TOML format.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--resolved</code></td>
+<td><em>(default)</em></td>
+<td>Show the fully merged configuration from all sources</td>
+</tr>
+<tr>
+<td><code>--global</code></td>
+<td></td>
+<td>Show only the global config file (<code>~/.memsearch/config.toml</code>)</td>
+</tr>
+<tr>
+<td><code>--project</code></td>
+<td></td>
+<td>Show only the project config file (<code>.memsearch.toml</code>)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>list<span class="w"> </span>--resolved
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># Resolved (all sources merged)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="o">[</span>milvus<span class="o">]</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nv">uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;~/.memsearch/milvus.db&quot;</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nv">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nv">collection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;memsearch_chunks&quot;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="o">[</span>embedding<span class="o">]</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="nv">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;openai&quot;</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="nv">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="o">[</span>chunking<span class="o">]</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="nv">max_chunk_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1500</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="nv">overlap_lines</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">2</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="o">[</span>watch<span class="o">]</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="nv">debounce_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1500</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="o">[</span>compact<span class="o">]</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="nv">llm_provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;openai&quot;</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="nv">llm_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="nv">prompt_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>config<span class="w"> </span>list<span class="w"> </span>--global
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># Global (/home/user/.memsearch/config.toml)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="o">[</span>milvus<span class="o">]</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nv">uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://localhost:19530&quot;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="o">[</span>embedding<span class="o">]</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nv">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;openai&quot;</span>
+</code></pre></div>
+<h3 id="available-config-keys">Available Config Keys<a class="headerlink" href="#available-config-keys" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>milvus.uri</code></td>
+<td>string</td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>milvus.token</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Auth token for Milvus Server / Zilliz Cloud</td>
+</tr>
+<tr>
+<td><code>milvus.collection</code></td>
+<td>string</td>
+<td><code>memsearch_chunks</code></td>
+<td>Collection name</td>
+</tr>
+<tr>
+<td><code>embedding.provider</code></td>
+<td>string</td>
+<td><code>openai</code></td>
+<td>Embedding provider name</td>
+</tr>
+<tr>
+<td><code>embedding.model</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Override embedding model (empty = provider default)</td>
+</tr>
+<tr>
+<td><code>chunking.max_chunk_size</code></td>
+<td>int</td>
+<td><code>1500</code></td>
+<td>Maximum chunk size in characters</td>
+</tr>
+<tr>
+<td><code>chunking.overlap_lines</code></td>
+<td>int</td>
+<td><code>2</code></td>
+<td>Number of overlapping lines between adjacent chunks</td>
+</tr>
+<tr>
+<td><code>watch.debounce_ms</code></td>
+<td>int</td>
+<td><code>1500</code></td>
+<td>File watcher debounce delay in milliseconds</td>
+</tr>
+<tr>
+<td><code>compact.llm_provider</code></td>
+<td>string</td>
+<td><code>openai</code></td>
+<td>LLM provider for compact summarization</td>
+</tr>
+<tr>
+<td><code>compact.llm_model</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Override LLM model (empty = provider default)</td>
+</tr>
+<tr>
+<td><code>compact.prompt_file</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Path to a custom prompt template file</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="memsearch-index"><code>memsearch index</code><a class="headerlink" href="#memsearch-index" title="Permanent link">&para;</a></h2>
+<p>Scan one or more directories (or files) and index all markdown files (<code>.md</code>, <code>.markdown</code>) into the Milvus vector store. Only new or changed chunks are embedded by default -- unchanged chunks are skipped. Chunks belonging to deleted files are automatically removed from the index.</p>
+<h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PATHS</code></td>
+<td></td>
+<td><em>(required)</em></td>
+<td>One or more directories or files to index</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>-p</code></td>
+<td><code>openai</code></td>
+<td>Embedding provider (<code>openai</code>, <code>google</code>, <code>voyage</code>, <code>ollama</code>, <code>local</code>)</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td>provider default</td>
+<td>Override the embedding model name</td>
+</tr>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token (for server or Zilliz Cloud)</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td></td>
+<td><code>false</code></td>
+<td>Re-embed and re-index all chunks, even if unchanged</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<p>Index a single directory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Indexed<span class="w"> </span><span class="m">42</span><span class="w"> </span>chunks.
+</code></pre></div>
+<p>Index multiple directories with a specific embedding provider:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/<span class="w"> </span>./notes/<span class="w"> </span>--provider<span class="w"> </span>google
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>Indexed<span class="w"> </span><span class="m">87</span><span class="w"> </span>chunks.
+</code></pre></div>
+<p>Force re-index everything (ignores the content-hash dedup check):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/<span class="w"> </span>--force
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Indexed<span class="w"> </span><span class="m">42</span><span class="w"> </span>chunks.
+</code></pre></div>
+<p>Connect to a remote Milvus server instead of the default local file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/<span class="w"> </span>--milvus-uri<span class="w"> </span>http://localhost:19530
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>Indexed<span class="w"> </span><span class="m">42</span><span class="w"> </span>chunks.
+</code></pre></div>
+<p>Use a custom embedding model:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/<span class="w"> </span>--provider<span class="w"> </span>openai<span class="w"> </span>--model<span class="w"> </span>text-embedding-3-large
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Indexed<span class="w"> </span><span class="m">42</span><span class="w"> </span>chunks.
+</code></pre></div>
+<h3 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Incremental by default.</strong> Each chunk is identified by a composite hash of its source file, line range, content hash, and embedding model. Only chunks with new IDs are embedded and stored.</li>
+<li><strong>Stale cleanup.</strong> If a file that was previously indexed no longer exists on disk, its chunks are automatically deleted from the index during the next <code>index</code> run.</li>
+<li><strong><code>--force</code> re-embeds everything.</strong> Use this when you switch embedding providers or models, since the same content will produce different vectors with a different model.</li>
+</ul>
+<hr />
+<h2 id="memsearch-search"><code>memsearch search</code><a class="headerlink" href="#memsearch-search" title="Permanent link">&para;</a></h2>
+<p>Run a semantic search query against indexed chunks. Uses <a href="https://milvus.io/docs/multi-vector-search.md">hybrid search</a> (dense vector cosine similarity + <a href="https://en.wikipedia.org/wiki/Okapi_BM25">BM25</a> full-text) with <a href="https://en.wikipedia.org/wiki/Reciprocal_rank_fusion">RRF</a> reranking for best results.</p>
+<h3 id="options_1">Options<a class="headerlink" href="#options_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QUERY</code></td>
+<td></td>
+<td><em>(required)</em></td>
+<td>Natural-language search query</td>
+</tr>
+<tr>
+<td><code>--top-k</code></td>
+<td><code>-k</code></td>
+<td><code>5</code></td>
+<td>Maximum number of results to return</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>-p</code></td>
+<td><code>openai</code></td>
+<td>Embedding provider (must match the provider used at index time)</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td>provider default</td>
+<td>Override the embedding model</td>
+</tr>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+<tr>
+<td><code>--json-output</code></td>
+<td><code>-j</code></td>
+<td><code>false</code></td>
+<td>Output results as JSON</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_1">Examples<a class="headerlink" href="#examples_1" title="Permanent link">&para;</a></h3>
+<p>Basic search:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;how to configure Redis caching&quot;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>---<span class="w"> </span>Result<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">(</span>score:<span class="w"> </span><span class="m">0</span>.0328<span class="o">)</span><span class="w"> </span>---
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>Source:<span class="w"> </span>/home/user/docs/2026-01-15.md
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>Heading:<span class="w"> </span>Redis<span class="w"> </span>Configuration
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>Set<span class="w"> </span>REDIS_URL<span class="w"> </span><span class="k">in</span><span class="w"> </span>.env<span class="w"> </span>to<span class="w"> </span>point<span class="w"> </span>to<span class="w"> </span>your<span class="w"> </span>Redis<span class="w"> </span>instance.
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>Use<span class="w"> </span><span class="sb">`</span>cache.set<span class="o">(</span>key,<span class="w"> </span>value,<span class="w"> </span><span class="nv">ttl</span><span class="o">=</span><span class="m">300</span><span class="o">)</span><span class="sb">`</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="m">5</span>-minute<span class="w"> </span>expiry...
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>---<span class="w"> </span>Result<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="o">(</span>score:<span class="w"> </span><span class="m">0</span>.0326<span class="o">)</span><span class="w"> </span>---
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>Source:<span class="w"> </span>/home/user/docs/architecture.md
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>Heading:<span class="w"> </span>Caching<span class="w"> </span>Layer
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>We<span class="w"> </span>use<span class="w"> </span>Redis<span class="w"> </span>as<span class="w"> </span>the<span class="w"> </span>primary<span class="w"> </span>caching<span class="w"> </span>backend...
+</code></pre></div>
+<p>Return more results:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;authentication flow&quot;</span><span class="w"> </span>--top-k<span class="w"> </span><span class="m">10</span>
+</code></pre></div>
+<p>Output as JSON (useful for piping to <code>jq</code> or other tools):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;error handling&quot;</span><span class="w"> </span>--json-output
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="o">[</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="o">{</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="s2">&quot;content&quot;</span>:<span class="w"> </span><span class="s2">&quot;All API endpoints should return structured error...&quot;</span>,
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="s2">&quot;source&quot;</span>:<span class="w"> </span><span class="s2">&quot;/home/user/docs/api-design.md&quot;</span>,
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">    </span><span class="s2">&quot;heading&quot;</span>:<span class="w"> </span><span class="s2">&quot;Error Handling&quot;</span>,
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">    </span><span class="s2">&quot;chunk_hash&quot;</span>:<span class="w"> </span><span class="s2">&quot;a1b2c3d4e5f6...&quot;</span>,
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="s2">&quot;heading_level&quot;</span>:<span class="w"> </span><span class="m">2</span>,
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">    </span><span class="s2">&quot;start_line&quot;</span>:<span class="w"> </span><span class="m">45</span>,
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="s2">&quot;end_line&quot;</span>:<span class="w"> </span><span class="m">62</span>,
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">    </span><span class="s2">&quot;score&quot;</span>:<span class="w"> </span><span class="m">0</span>.0330
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">  </span><span class="o">}</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="o">]</span>
+</code></pre></div>
+<p>Use with a different provider (must match the one used for indexing):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;database migrations&quot;</span><span class="w"> </span>--provider<span class="w"> </span>google
+</code></pre></div>
+<h3 id="notes_1">Notes<a class="headerlink" href="#notes_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Provider must match.</strong> The search embedding provider and model must match whatever was used during indexing. Mixing providers will return poor results because the vector spaces are incompatible.</li>
+<li><strong>Hybrid search.</strong> Results are ranked using Reciprocal Rank Fusion (RRF) across both dense (cosine) and sparse (BM25) retrieval, giving you the best of semantic and keyword matching.</li>
+<li><strong>Content is truncated.</strong> In the default text output, each result's content is truncated to 500 characters. Use <code>--json-output</code> to get the full content.</li>
+</ul>
+<hr />
+<h2 id="memsearch-watch"><code>memsearch watch</code><a class="headerlink" href="#memsearch-watch" title="Permanent link">&para;</a></h2>
+<p>Start a long-running file watcher that monitors directories for markdown file changes. On startup, all existing markdown files are indexed first (dedup ensures no wasted API calls for unchanged content). Then the watcher monitors for changes: when a <code>.md</code> or <code>.markdown</code> file is created or modified, it is automatically re-indexed. When a file is deleted, its chunks are removed from the store.</p>
+<h3 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PATHS</code></td>
+<td></td>
+<td><em>(required)</em></td>
+<td>One or more directories to watch</td>
+</tr>
+<tr>
+<td><code>--debounce-ms</code></td>
+<td></td>
+<td><code>1500</code></td>
+<td>Debounce delay in milliseconds; multiple rapid changes to the same file within this window are collapsed into a single re-index</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>-p</code></td>
+<td><code>openai</code></td>
+<td>Embedding provider</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td>provider default</td>
+<td>Override the embedding model</td>
+</tr>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_2">Examples<a class="headerlink" href="#examples_2" title="Permanent link">&para;</a></h3>
+<p>Watch a single directory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>watch<span class="w"> </span>./memory/
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Indexed<span class="w"> </span><span class="m">8</span><span class="w"> </span>chunks.
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>Watching<span class="w"> </span><span class="m">1</span><span class="w"> </span>path<span class="o">(</span>s<span class="o">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>changes...<span class="w"> </span><span class="o">(</span>Ctrl+C<span class="w"> </span>to<span class="w"> </span>stop<span class="o">)</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Indexed<span class="w"> </span><span class="m">3</span><span class="w"> </span>chunks<span class="w"> </span>from<span class="w"> </span>/home/user/docs/2026-02-11.md
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>Removed<span class="w"> </span>chunks<span class="w"> </span><span class="k">for</span><span class="w"> </span>/home/user/docs/old-draft.md
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>^C
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>Stopping<span class="w"> </span>watcher.
+</code></pre></div>
+<p>Watch multiple directories with a longer debounce:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>watch<span class="w"> </span>./memory/<span class="w"> </span>./notes/<span class="w"> </span>--debounce-ms<span class="w"> </span><span class="m">3000</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>Watching<span class="w"> </span><span class="m">2</span><span class="w"> </span>path<span class="o">(</span>s<span class="o">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>changes...<span class="w"> </span><span class="o">(</span>Ctrl+C<span class="w"> </span>to<span class="w"> </span>stop<span class="o">)</span>
+</code></pre></div>
+<h3 id="notes_2">Notes<a class="headerlink" href="#notes_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Initial index on startup.</strong> The watcher indexes all existing files before it starts monitoring. Content-hash dedup means unchanged files are skipped with zero API calls — only genuinely new or modified content is embedded.</li>
+<li><strong>Debounce.</strong> Editors that write files in multiple steps (e.g., write temp file, then rename) can trigger several events in quick succession. The debounce window collapses these into one re-index operation.</li>
+<li><strong>Recursive.</strong> The watcher monitors all subdirectories recursively.</li>
+<li><strong>Singleton behavior.</strong> Only one watcher process should run per directory set. Running multiple watchers on the same paths will cause duplicate indexing work (though dedup by content hash means the index stays consistent).</li>
+<li><strong>Stop with Ctrl+C.</strong> The watcher runs until you interrupt it.</li>
+</ul>
+<hr />
+<h2 id="memsearch-compact"><code>memsearch compact</code><a class="headerlink" href="#memsearch-compact" title="Permanent link">&para;</a></h2>
+<p>Use an LLM to compress all indexed chunks (or a subset) into a condensed markdown summary. The summary is appended to a daily log file at <code>memory/YYYY-MM-DD.md</code> inside the first configured path, keeping markdown as the single source of truth.</p>
+<h3 id="options_3">Options<a class="headerlink" href="#options_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--source</code></td>
+<td><code>-s</code></td>
+<td><em>(all chunks)</em></td>
+<td>Only compact chunks from this specific source file</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>-o</code></td>
+<td>first configured path</td>
+<td>Directory to write the compact summary into</td>
+</tr>
+<tr>
+<td><code>--llm-provider</code></td>
+<td></td>
+<td><code>openai</code></td>
+<td>LLM backend for summarization (<code>openai</code>, <code>anthropic</code>, <code>gemini</code>)</td>
+</tr>
+<tr>
+<td><code>--llm-model</code></td>
+<td></td>
+<td>provider default</td>
+<td>Override the LLM model</td>
+</tr>
+<tr>
+<td><code>--prompt</code></td>
+<td></td>
+<td>built-in template</td>
+<td>Custom prompt template string (must contain <code>{chunks}</code> placeholder)</td>
+</tr>
+<tr>
+<td><code>--prompt-file</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Read the prompt template from a file instead</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>-p</code></td>
+<td><code>openai</code></td>
+<td>Embedding provider (used to access the index)</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td>provider default</td>
+<td>Override the embedding model</td>
+</tr>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+</tbody>
+</table>
+<h3 id="default-llm-models">Default LLM Models<a class="headerlink" href="#default-llm-models" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Default Model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openai</code></td>
+<td><code>gpt-4o-mini</code></td>
+</tr>
+<tr>
+<td><code>anthropic</code></td>
+<td><code>claude-sonnet-4-5-20250929</code></td>
+</tr>
+<tr>
+<td><code>gemini</code></td>
+<td><code>gemini-2.0-flash</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_3">Examples<a class="headerlink" href="#examples_3" title="Permanent link">&para;</a></h3>
+<p>Compact all chunks using the default LLM (OpenAI):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>Compact<span class="w"> </span>complete.<span class="w"> </span>Summary:
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1">## Key Decisions</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>-<span class="w"> </span>Use<span class="w"> </span>Redis<span class="w"> </span><span class="k">for</span><span class="w"> </span>session<span class="w"> </span>caching<span class="w"> </span>with<span class="w"> </span><span class="m">5</span>-minute<span class="w"> </span>TTL
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>-<span class="w"> </span>All<span class="w"> </span>API<span class="w"> </span>errors<span class="w"> </span><span class="k">return</span><span class="w"> </span>structured<span class="w"> </span>JSON<span class="w"> </span>responses
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>...
+</code></pre></div>
+<p>Compact only chunks from a specific source file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact<span class="w"> </span>--source<span class="w"> </span>./memory/old-notes.md
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>Compact<span class="w"> </span>complete.<span class="w"> </span>Summary:
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1">## Old Notes Summary</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>-<span class="w"> </span>Initial<span class="w"> </span>architecture<span class="w"> </span>decisions<span class="w"> </span>from<span class="w"> </span>January<span class="w"> </span>meeting...
+</code></pre></div>
+<p>Use Anthropic Claude for summarization:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact<span class="w"> </span>--llm-provider<span class="w"> </span>anthropic
+</code></pre></div>
+<p>Use a custom prompt template:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact<span class="w"> </span>--prompt<span class="w"> </span><span class="s2">&quot;Summarize these notes into action items:\n{chunks}&quot;</span>
+</code></pre></div>
+<p>Use a prompt file for complex templates:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact<span class="w"> </span>--prompt-file<span class="w"> </span>./prompts/compress.txt
+</code></pre></div>
+<h3 id="notes_3">Notes<a class="headerlink" href="#notes_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Output location.</strong> The summary is appended to <code>&lt;first-path&gt;/memory/YYYY-MM-DD.md</code>. This file is then automatically eligible for future indexing.</li>
+<li><strong>The <code>{chunks}</code> placeholder is required.</strong> Whether using <code>--prompt</code> or <code>--prompt-file</code>, the template must contain <code>{chunks}</code> which will be replaced with the concatenated chunk contents.</li>
+<li><strong>API key required.</strong> The chosen LLM provider requires its corresponding API key in the environment (see <a href="#environment-variables">Environment Variables</a>).</li>
+</ul>
+<hr />
+<h2 id="memsearch-expand"><code>memsearch expand</code><a class="headerlink" href="#memsearch-expand" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>🔌 <strong>Claude Code plugin command.</strong> This command is part of the <a href="../claude-plugin/">Claude Code plugin</a>'s three-level progressive disclosure workflow (<code>search</code> → <code>expand</code> → <code>transcript</code>), but works as a standalone CLI tool for any memsearch index.</p>
+</blockquote>
+<p>Look up a chunk by its hash in the index and return the surrounding context from the original source markdown file. This is "progressive disclosure level 2" -- when a search result snippet is not enough, expand it to see the full heading section.</p>
+<h3 id="options_4">Options<a class="headerlink" href="#options_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CHUNK_HASH</code></td>
+<td></td>
+<td><em>(required)</em></td>
+<td>The chunk hash (primary key) to look up</td>
+</tr>
+<tr>
+<td><code>--section/--no-section</code></td>
+<td></td>
+<td><code>--section</code></td>
+<td>Show the full heading section (default behavior)</td>
+</tr>
+<tr>
+<td><code>--lines</code></td>
+<td><code>-n</code></td>
+<td><em>(full section)</em></td>
+<td>Instead of the full section, show N lines before and after the chunk</td>
+</tr>
+<tr>
+<td><code>--json-output</code></td>
+<td><code>-j</code></td>
+<td><code>false</code></td>
+<td>Output as JSON</td>
+</tr>
+<tr>
+<td><code>--provider</code></td>
+<td><code>-p</code></td>
+<td><code>openai</code></td>
+<td>Embedding provider</td>
+</tr>
+<tr>
+<td><code>--model</code></td>
+<td><code>-m</code></td>
+<td>provider default</td>
+<td>Override the embedding model</td>
+</tr>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_4">Examples<a class="headerlink" href="#examples_4" title="Permanent link">&para;</a></h3>
+<p>Expand a chunk to see its full heading section:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>expand<span class="w"> </span>a1b2c3d4e5f6
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>Source:<span class="w"> </span>/home/user/docs/architecture.md<span class="w"> </span><span class="o">(</span>lines<span class="w"> </span><span class="m">10</span>-35<span class="o">)</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>Heading:<span class="w"> </span>Caching<span class="w"> </span>Layer
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="c1">## Caching Layer</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a>We<span class="w"> </span>use<span class="w"> </span>Redis<span class="w"> </span>as<span class="w"> </span>the<span class="w"> </span>primary<span class="w"> </span>caching<span class="w"> </span>backend.<span class="w"> </span>All<span class="w"> </span>cache<span class="w"> </span>keys
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>follow<span class="w"> </span>the<span class="w"> </span>pattern<span class="w"> </span><span class="sb">`</span>service:entity:id<span class="sb">`</span>.
+<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>
+<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a><span class="c1">### Configuration</span>
+<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a>Set<span class="w"> </span>REDIS_URL<span class="w"> </span><span class="k">in</span><span class="w"> </span>.env<span class="w"> </span>to<span class="w"> </span>point<span class="w"> </span>to<span class="w"> </span>your<span class="w"> </span>Redis<span class="w"> </span>instance.
+<a id="__codelineno-24-12" name="__codelineno-24-12" href="#__codelineno-24-12"></a>Use<span class="w"> </span><span class="sb">`</span>cache.set<span class="o">(</span>key,<span class="w"> </span>value,<span class="w"> </span><span class="nv">ttl</span><span class="o">=</span><span class="m">300</span><span class="o">)</span><span class="sb">`</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="m">5</span>-minute<span class="w"> </span>expiry.
+<a id="__codelineno-24-13" name="__codelineno-24-13" href="#__codelineno-24-13"></a>...
+</code></pre></div>
+<p>Show only 5 lines of context around the chunk:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>expand<span class="w"> </span>a1b2c3d4e5f6<span class="w"> </span>--lines<span class="w"> </span><span class="m">5</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>Source:<span class="w"> </span>/home/user/docs/architecture.md<span class="w"> </span><span class="o">(</span>lines<span class="w"> </span><span class="m">18</span>-28<span class="o">)</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>Heading:<span class="w"> </span>Caching<span class="w"> </span>Layer
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>Set<span class="w"> </span>REDIS_URL<span class="w"> </span><span class="k">in</span><span class="w"> </span>.env<span class="w"> </span>to<span class="w"> </span>point<span class="w"> </span>to<span class="w"> </span>your<span class="w"> </span>Redis<span class="w"> </span>instance.
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>Use<span class="w"> </span><span class="sb">`</span>cache.set<span class="o">(</span>key,<span class="w"> </span>value,<span class="w"> </span><span class="nv">ttl</span><span class="o">=</span><span class="m">300</span><span class="o">)</span><span class="sb">`</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="m">5</span>-minute<span class="w"> </span>expiry.
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>...
+</code></pre></div>
+<p>Get JSON output (includes anchor metadata if present):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>expand<span class="w"> </span>a1b2c3d4e5f6<span class="w"> </span>--json-output
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="o">{</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span><span class="s2">&quot;chunk_hash&quot;</span>:<span class="w"> </span><span class="s2">&quot;a1b2c3d4e5f6&quot;</span>,
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">  </span><span class="s2">&quot;source&quot;</span>:<span class="w"> </span><span class="s2">&quot;/home/user/docs/architecture.md&quot;</span>,
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="w">  </span><span class="s2">&quot;heading&quot;</span>:<span class="w"> </span><span class="s2">&quot;Caching Layer&quot;</span>,
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="w">  </span><span class="s2">&quot;start_line&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="w">  </span><span class="s2">&quot;end_line&quot;</span>:<span class="w"> </span><span class="m">35</span>,
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="w">  </span><span class="s2">&quot;content&quot;</span>:<span class="w"> </span><span class="s2">&quot;## Caching Layer\n\nWe use Redis as the primary...&quot;</span>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="o">}</span>
+</code></pre></div>
+<h3 id="notes_4">Notes<a class="headerlink" href="#notes_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Source file must exist.</strong> The <code>expand</code> command reads the original markdown file from disk. If the source file has been moved or deleted, the command will fail with an error.</li>
+<li><strong>Anchor parsing.</strong> If the expanded text contains an HTML anchor comment in the format <code>&lt;!-- session:ID turn:ID transcript:PATH --&gt;</code>, the command parses it and displays the session, turn, and transcript file information. This connects memory chunks to their original conversation transcripts.</li>
+<li><strong>Workflow: search then expand.</strong> A typical workflow is to <code>search</code> first, note the <code>chunk_hash</code> from a result, then <code>expand</code> it to see more context.</li>
+</ul>
+<hr />
+<h2 id="memsearch-transcript"><code>memsearch transcript</code><a class="headerlink" href="#memsearch-transcript" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>🔌 <strong>Claude Code plugin command.</strong> This command is part of the <a href="../claude-plugin/">Claude Code plugin</a>'s three-level progressive disclosure workflow (<code>search</code> → <code>expand</code> → <code>transcript</code>), but works as a standalone CLI tool for any JSONL transcript.</p>
+</blockquote>
+<p>Parse a JSONL transcript file (e.g., from Claude Code) and display conversation turns. This is "progressive disclosure level 3" -- drill all the way down from a memory chunk to the original conversation that generated it.</p>
+<h3 id="options_5">Options<a class="headerlink" href="#options_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>JSONL_PATH</code></td>
+<td></td>
+<td><em>(required)</em></td>
+<td>Path to the JSONL transcript file</td>
+</tr>
+<tr>
+<td><code>--turn</code></td>
+<td><code>-t</code></td>
+<td><em>(show all)</em></td>
+<td>Target turn UUID (prefix match supported)</td>
+</tr>
+<tr>
+<td><code>--context</code></td>
+<td><code>-c</code></td>
+<td><code>3</code></td>
+<td>Number of turns to show before and after the target turn</td>
+</tr>
+<tr>
+<td><code>--json-output</code></td>
+<td><code>-j</code></td>
+<td><code>false</code></td>
+<td>Output as JSON</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_5">Examples<a class="headerlink" href="#examples_5" title="Permanent link">&para;</a></h3>
+<p>List all turns in a transcript:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>transcript<span class="w"> </span>./transcripts/session-abc123.jsonl
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>All<span class="w"> </span>turns<span class="w"> </span><span class="o">(</span><span class="m">12</span><span class="o">)</span>:
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="w">  </span>a1b2c3d4e5f6<span class="w">  </span><span class="m">14</span>:23:05<span class="w">  </span>Show<span class="w"> </span>me<span class="w"> </span>the<span class="w"> </span>Redis<span class="w"> </span>configuration<span class="w"> </span>code
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="w">  </span>d4e5f6a1b2c3<span class="w">  </span><span class="m">14</span>:23:42<span class="w">  </span>Can<span class="w"> </span>you<span class="w"> </span>add<span class="w"> </span>TTL<span class="w"> </span>support<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>cache?
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">  </span>f6a1b2c3d4e5<span class="w">  </span><span class="m">14</span>:25:10<span class="w">  </span>Write<span class="w"> </span>tests<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span>cache<span class="w"> </span>module
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="w">  </span>...
+</code></pre></div>
+<p>Show context around a specific turn (prefix match on UUID):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>transcript<span class="w"> </span>./transcripts/session-abc123.jsonl<span class="w"> </span>--turn<span class="w"> </span>d4e5f6
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Showing<span class="w"> </span><span class="m">5</span><span class="w"> </span>turns<span class="w"> </span>around<span class="w"> </span>d4e5f6a1b2c3:
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="o">[</span><span class="m">14</span>:22:30<span class="o">]</span><span class="w"> </span>a1b2c3d4
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>Show<span class="w"> </span>me<span class="w"> </span>the<span class="w"> </span>Redis<span class="w"> </span>configuration<span class="w"> </span>code
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>**Assistant**:<span class="w"> </span>Here<span class="w"> </span>is<span class="w"> </span>the<span class="w"> </span>current<span class="w"> </span>Redis<span class="w"> </span>configuration...
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>&gt;&gt;&gt;<span class="w"> </span><span class="o">[</span><span class="m">14</span>:23:42<span class="o">]</span><span class="w"> </span>d4e5f6a1
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>Can<span class="w"> </span>you<span class="w"> </span>add<span class="w"> </span>TTL<span class="w"> </span>support<span class="w"> </span>to<span class="w"> </span>the<span class="w"> </span>cache?
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>**Assistant**:<span class="w"> </span>I<span class="err">&#39;</span>ll<span class="w"> </span>add<span class="w"> </span>TTL<span class="w"> </span>support.<span class="w"> </span>Here<span class="w"> </span>are<span class="w"> </span>the<span class="w"> </span>changes...
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w">  </span>Tools:<span class="w"> </span>Edit<span class="o">(</span>/src/cache.py<span class="o">)</span>,<span class="w"> </span>Bash<span class="o">(</span>pytest<span class="w"> </span>tests/<span class="o">)</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a>
+<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a><span class="o">[</span><span class="m">14</span>:25:10<span class="o">]</span><span class="w"> </span>f6a1b2c3
+<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a>Write<span class="w"> </span>tests<span class="w"> </span><span class="k">for</span><span class="w"> </span>the<span class="w"> </span>cache<span class="w"> </span>module
+</code></pre></div>
+<p>Output as JSON:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>transcript<span class="w"> </span>./transcripts/session-abc123.jsonl<span class="w"> </span>--turn<span class="w"> </span>d4e5f6<span class="w"> </span>--json-output
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="o">[</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">  </span><span class="o">{</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">    </span><span class="s2">&quot;uuid&quot;</span>:<span class="w"> </span><span class="s2">&quot;a1b2c3d4-...&quot;</span>,
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="w">    </span><span class="s2">&quot;timestamp&quot;</span>:<span class="w"> </span><span class="s2">&quot;2026-02-10T14:22:30Z&quot;</span>,
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a><span class="w">    </span><span class="s2">&quot;content&quot;</span>:<span class="w"> </span><span class="s2">&quot;Show me the Redis configuration code\n\n**Assistant**: ...&quot;</span>,
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="w">    </span><span class="s2">&quot;tool_calls&quot;</span>:<span class="w"> </span><span class="o">[]</span>
+<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a><span class="w">  </span><span class="o">}</span>
+<a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a><span class="o">]</span>
+</code></pre></div>
+<h3 id="notes_5">Notes<a class="headerlink" href="#notes_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>UUID prefix matching.</strong> You do not need to provide the full UUID. The first 6-8 characters are usually enough to uniquely identify a turn.</li>
+<li><strong>The <code>&gt;&gt;&gt;</code> marker</strong> in text output highlights the target turn when using <code>--turn</code>.</li>
+<li><strong>Three-level progressive disclosure workflow:</strong> <code>search</code> (L1: chunk snippet) -&gt; <code>expand</code> (L2: full section) -&gt; <code>transcript</code> (L3: original conversation).</li>
+</ul>
+<hr />
+<h2 id="memsearch-stats"><code>memsearch stats</code><a class="headerlink" href="#memsearch-stats" title="Permanent link">&para;</a></h2>
+<p>Show statistics about the current index, including the total number of stored chunks.</p>
+<h3 id="options_6">Options<a class="headerlink" href="#options_6" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_6">Examples<a class="headerlink" href="#examples_6" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>stats
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>Total<span class="w"> </span>indexed<span class="w"> </span>chunks:<span class="w"> </span><span class="m">142</span>
+</code></pre></div>
+<p>Check stats for a specific collection on a remote server:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>stats<span class="w"> </span>--milvus-uri<span class="w"> </span>http://localhost:19530<span class="w"> </span>--collection<span class="w"> </span>my_project
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>Total<span class="w"> </span>indexed<span class="w"> </span>chunks:<span class="w"> </span><span class="m">87</span>
+</code></pre></div>
+<h3 id="notes_6">Notes<a class="headerlink" href="#notes_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Stats may lag on remote Milvus Server.</strong> The <code>get_collection_stats()</code> API on a remote Milvus Server may return stale counts immediately after an upsert. Stats are updated after segment flush and compaction. Search results are always up to date.</li>
+</ul>
+<hr />
+<h2 id="memsearch-reset"><code>memsearch reset</code><a class="headerlink" href="#memsearch-reset" title="Permanent link">&para;</a></h2>
+<p>Drop the entire Milvus collection, permanently deleting all indexed chunks. A confirmation prompt is shown before proceeding.</p>
+<h3 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Short</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--collection</code></td>
+<td><code>-c</code></td>
+<td><code>memsearch_chunks</code></td>
+<td>Milvus collection name</td>
+</tr>
+<tr>
+<td><code>--milvus-uri</code></td>
+<td></td>
+<td><code>~/.memsearch/milvus.db</code></td>
+<td>Milvus connection URI</td>
+</tr>
+<tr>
+<td><code>--milvus-token</code></td>
+<td></td>
+<td><em>(none)</em></td>
+<td>Milvus auth token</td>
+</tr>
+<tr>
+<td><code>--yes</code></td>
+<td><code>-y</code></td>
+<td></td>
+<td>Skip the confirmation prompt</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_7">Examples<a class="headerlink" href="#examples_7" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>reset
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>This<span class="w"> </span>will<span class="w"> </span>delete<span class="w"> </span>all<span class="w"> </span>indexed<span class="w"> </span>data.<span class="w"> </span>Continue?<span class="w"> </span><span class="o">[</span>y/N<span class="o">]</span>:<span class="w"> </span>y
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>Dropped<span class="w"> </span>collection.
+</code></pre></div>
+<p>Skip the confirmation prompt (useful in scripts):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>reset<span class="w"> </span>--yes
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>Dropped<span class="w"> </span>collection.
+</code></pre></div>
+<p>Reset a specific collection on a remote server:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>$<span class="w"> </span>memsearch<span class="w"> </span>reset<span class="w"> </span>--milvus-uri<span class="w"> </span>http://localhost:19530<span class="w"> </span>--collection<span class="w"> </span>old_project<span class="w"> </span>--yes
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>Dropped<span class="w"> </span>collection.
+</code></pre></div>
+<h3 id="notes_7">Notes<a class="headerlink" href="#notes_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>This is destructive and irreversible.</strong> All indexed data will be lost. Your original markdown files are not affected -- you can always re-index them with <code>memsearch index</code>.</li>
+<li><strong>Only drops the collection, not the database.</strong> If you are using Milvus Lite (a local <code>.db</code> file), the file itself remains; only the collection inside it is removed.</li>
+</ul>
+<hr />
+<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<p>memsearch reads API keys from environment variables. These are required by the corresponding embedding and LLM provider SDKs and are <strong>not</strong> stored in memsearch config files.</p>
+<h3 id="api-keys">API Keys<a class="headerlink" href="#api-keys" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required By</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td><code>openai</code> embedding provider, <code>openai</code> LLM compact provider</td>
+<td>OpenAI API key</td>
+</tr>
+<tr>
+<td><code>OPENAI_BASE_URL</code></td>
+<td><em>(optional)</em></td>
+<td>Override the OpenAI API base URL (for proxies or compatible APIs)</td>
+</tr>
+<tr>
+<td><code>GOOGLE_API_KEY</code></td>
+<td><code>google</code> embedding provider, <code>gemini</code> LLM compact provider</td>
+<td>Google AI API key</td>
+</tr>
+<tr>
+<td><code>VOYAGE_API_KEY</code></td>
+<td><code>voyage</code> embedding provider</td>
+<td>Voyage AI API key</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td><code>anthropic</code> LLM compact provider</td>
+<td>Anthropic API key</td>
+</tr>
+<tr>
+<td><code>OLLAMA_HOST</code></td>
+<td><code>ollama</code> embedding provider <em>(optional)</em></td>
+<td>Ollama server URL (default: <code>http://localhost:11434</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>All memsearch settings (Milvus URI, embedding provider, chunking parameters, etc.) are configured via TOML config files or CLI flags -- see <a href="../getting-started/#configuration">Configuration</a> for details.</p>
+<h3 id="examples_8">Examples<a class="headerlink" href="#examples_8" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="c1"># Set API key and run a search</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>$<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="nv">OPENAI_API_KEY</span><span class="o">=</span>sk-...
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>$<span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;database schema&quot;</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="c1"># Use Google for embedding, Anthropic for compact</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>$<span class="w"> </span><span class="nb">export</span><span class="w"> </span><span class="nv">GOOGLE_API_KEY</span><span class="o">=</span>AIza...
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>$<span class="w"> </span>memsearch<span class="w"> </span>index<span class="w"> </span>./memory/<span class="w"> </span>--provider<span class="w"> </span>google
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>$<span class="w"> </span>memsearch<span class="w"> </span>compact<span class="w"> </span>--llm-provider<span class="w"> </span>anthropic
+</code></pre></div>
+<h3 id="embedding-provider-reference">Embedding Provider Reference<a class="headerlink" href="#embedding-provider-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Install</th>
+<th>Default Model</th>
+<th>Dimension</th>
+<th>API Key Variable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openai</code></td>
+<td>included by default</td>
+<td><code>text-embedding-3-small</code></td>
+<td>1536</td>
+<td><code>OPENAI_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>google</code></td>
+<td><code>pip install "memsearch[google]"</code></td>
+<td><code>gemini-embedding-001</code></td>
+<td>768</td>
+<td><code>GOOGLE_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>voyage</code></td>
+<td><code>pip install "memsearch[voyage]"</code></td>
+<td><code>voyage-3-lite</code></td>
+<td>512</td>
+<td><code>VOYAGE_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>ollama</code></td>
+<td><code>pip install "memsearch[ollama]"</code></td>
+<td><code>nomic-embed-text</code></td>
+<td>768</td>
+<td><em>(none, local)</em></td>
+</tr>
+<tr>
+<td><code>local</code></td>
+<td><code>pip install "memsearch[local]"</code></td>
+<td><code>all-MiniLM-L6-v2</code></td>
+<td>384</td>
+<td><em>(none, local)</em></td>
+</tr>
+</tbody>
+</table>
+<p>Install all optional providers at once:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;memsearch[all]&quot;</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/architecture/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/claude-plugin/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/cli/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/faq/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/getting-started/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/integrations/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+    <url>
+         <loc>https://zilliztech.github.io/memsearch/python-api/</loc>
+         <lastmod>2026-02-28</lastmod>
+    </url>
+</urlset>
