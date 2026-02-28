@@ -11,7 +11,11 @@ from __future__ import annotations
 class OllamaEmbedding:
     """Ollama embedding provider."""
 
-    def __init__(self, model: str = "nomic-embed-text") -> None:
+    _DEFAULT_BATCH_SIZE = 512
+
+    def __init__(
+        self, model: str = "nomic-embed-text", *, batch_size: int = 0,
+    ) -> None:
         import ollama
 
         self._client = ollama.AsyncClient()  # reads OLLAMA_HOST
@@ -20,6 +24,7 @@ class OllamaEmbedding:
         _sync = ollama.Client()
         trial = _sync.embed(model=model, input=["dim"])
         self._dimension = len(trial["embeddings"][0])
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
 
     @property
     def model_name(self) -> str:
@@ -30,5 +35,10 @@ class OllamaEmbedding:
         return self._dimension
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        from .utils import batched_embed
+
+        return await batched_embed(texts, self._embed_batch, self._batch_size)
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         result = await self._client.embed(model=self._model, input=texts)
         return result["embeddings"]

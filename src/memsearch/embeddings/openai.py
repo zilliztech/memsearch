@@ -14,7 +14,11 @@ import os
 class OpenAIEmbedding:
     """OpenAI text-embedding provider."""
 
-    def __init__(self, model: str = "text-embedding-3-small") -> None:
+    _DEFAULT_BATCH_SIZE = 2048
+
+    def __init__(
+        self, model: str = "text-embedding-3-small", *, batch_size: int = 0,
+    ) -> None:
         import openai
 
         kwargs: dict = {}
@@ -25,6 +29,7 @@ class OpenAIEmbedding:
         self._client = openai.AsyncOpenAI(**kwargs)  # reads OPENAI_API_KEY
         self._model = model
         self._dimension = _detect_dimension(model, kwargs)
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
 
     @property
     def model_name(self) -> str:
@@ -35,6 +40,11 @@ class OpenAIEmbedding:
         return self._dimension
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        from .utils import batched_embed
+
+        return await batched_embed(texts, self._embed_batch, self._batch_size)
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         resp = await self._client.embeddings.create(input=texts, model=self._model)
         return [item.embedding for item in resp.data]
 

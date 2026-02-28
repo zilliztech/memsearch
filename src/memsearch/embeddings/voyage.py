@@ -11,12 +11,17 @@ from __future__ import annotations
 class VoyageEmbedding:
     """Voyage AI embedding provider."""
 
-    def __init__(self, model: str = "voyage-3-lite") -> None:
+    _DEFAULT_BATCH_SIZE = 128
+
+    def __init__(
+        self, model: str = "voyage-3-lite", *, batch_size: int = 0,
+    ) -> None:
         import voyageai
 
         self._client = voyageai.AsyncClient()  # reads VOYAGE_API_KEY
         self._model = model
         self._dimension = _detect_dimension(model)
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
 
     @property
     def model_name(self) -> str:
@@ -27,6 +32,11 @@ class VoyageEmbedding:
         return self._dimension
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        from .utils import batched_embed
+
+        return await batched_embed(texts, self._embed_batch, self._batch_size)
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         result = await self._client.embed(texts, model=self._model)
         return result.embeddings
 

@@ -25,7 +25,7 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms"}
+_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size"}
 
 
 @dataclass
@@ -39,6 +39,7 @@ class MilvusConfig:
 class EmbeddingConfig:
     provider: str = "openai"
     model: str = ""
+    batch_size: int = 0  # 0 = use provider default
 
 
 @dataclass

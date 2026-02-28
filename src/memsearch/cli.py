@@ -32,6 +32,7 @@ def _run(coro):
 _PARAM_MAP = {
     "provider": "embedding.provider",
     "model": "embedding.model",
+    "batch_size": "embedding.batch_size",
     "collection": "milvus.collection",
     "milvus_uri": "milvus.uri",
     "milvus_token": "milvus.token",
@@ -64,6 +65,7 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
     return {
         "embedding_provider": cfg.embedding.provider,
         "embedding_model": cfg.embedding.model or None,
+        "embedding_batch_size": cfg.embedding.batch_size,
         "milvus_uri": cfg.milvus.uri,
         "milvus_token": cfg.milvus.token or None,
         "collection": cfg.milvus.collection,
@@ -78,6 +80,7 @@ def _common_options(f):
     """Shared options for commands that create a MemSearch instance."""
     f = click.option("--provider", "-p", default=None, help="Embedding provider.")(f)
     f = click.option("--model", "-m", default=None, help="Override embedding model.")(f)
+    f = click.option("--batch-size", default=None, type=int, help="Embedding batch size (0 = provider default).")(f)
     f = click.option("--collection", "-c", default=None, help="Milvus collection name.")(f)
     f = click.option("--milvus-uri", default=None, help="Milvus connection URI.")(f)
     f = click.option("--milvus-token", default=None, help="Milvus auth token.")(f)
@@ -98,6 +101,7 @@ def index(
     paths: tuple[str, ...],
     provider: str | None,
     model: str | None,
+    batch_size: int | None,
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
@@ -107,7 +111,8 @@ def index(
     from .core import MemSearch
 
     cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, collection=collection,
+        provider=provider, model=model, batch_size=batch_size,
+        collection=collection,
         milvus_uri=milvus_uri, milvus_token=milvus_token,
     ))
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg))
@@ -128,6 +133,7 @@ def search(
     top_k: int | None,
     provider: str | None,
     model: str | None,
+    batch_size: int | None,
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
@@ -137,7 +143,8 @@ def search(
     from .core import MemSearch
 
     cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, collection=collection,
+        provider=provider, model=model, batch_size=batch_size,
+        collection=collection,
         milvus_uri=milvus_uri, milvus_token=milvus_token,
     ))
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
@@ -198,6 +205,7 @@ def expand(
     json_output: bool,
     provider: str | None,
     model: str | None,
+    batch_size: int | None,
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
@@ -212,7 +220,8 @@ def expand(
     from .store import MilvusStore
 
     cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, collection=collection,
+        provider=provider, model=model, batch_size=batch_size,
+        collection=collection,
         milvus_uri=milvus_uri, milvus_token=milvus_token,
     ))
     store = MilvusStore(
@@ -384,6 +393,7 @@ def watch(
     paths: tuple[str, ...],
     provider: str | None,
     model: str | None,
+    batch_size: int | None,
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
@@ -393,7 +403,8 @@ def watch(
     from .core import MemSearch
 
     cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, collection=collection,
+        provider=provider, model=model, batch_size=batch_size,
+        collection=collection,
         milvus_uri=milvus_uri, milvus_token=milvus_token,
         debounce_ms=debounce_ms,
     ))
@@ -437,6 +448,7 @@ def compact(
     prompt_file: str | None,
     provider: str | None,
     model: str | None,
+    batch_size: int | None,
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
@@ -445,7 +457,8 @@ def compact(
     from .core import MemSearch
 
     cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, collection=collection,
+        provider=provider, model=model, batch_size=batch_size,
+        collection=collection,
         milvus_uri=milvus_uri, milvus_token=milvus_token,
         llm_provider=llm_provider, llm_model=llm_model,
         prompt_file=prompt_file,

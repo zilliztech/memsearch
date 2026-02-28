@@ -20,12 +20,17 @@ _KNOWN_DIMENSIONS: dict[str, int] = {
 class GoogleEmbedding:
     """Google Generative AI embedding provider."""
 
-    def __init__(self, model: str = "gemini-embedding-001") -> None:
+    _DEFAULT_BATCH_SIZE = 100
+
+    def __init__(
+        self, model: str = "gemini-embedding-001", *, batch_size: int = 0,
+    ) -> None:
         from google import genai
 
         self._client = genai.Client()  # reads GOOGLE_API_KEY
         self._model = model
         self._dimension = _detect_dimension(self._client, model)
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
 
     @property
     def model_name(self) -> str:
@@ -36,6 +41,11 @@ class GoogleEmbedding:
         return self._dimension
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        from .utils import batched_embed
+
+        return await batched_embed(texts, self._embed_batch, self._batch_size)
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         from google.genai import types
 
         result = await self._client.aio.models.embed_content(
