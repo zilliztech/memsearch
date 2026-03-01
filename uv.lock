@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
@@ -1253,8 +1253,9 @@ version = "0.1.13"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "milvus-lite", marker = "sys_platform != 'win32'" },
     { name = "openai" },
-    { name = "pymilvus", extra = ["milvus-lite"] },
+    { name = "pymilvus" },
     { name = "setuptools" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "tomli-w" },
@@ -1302,9 +1303,10 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.0" },
     { name = "memsearch", extras = ["google", "voyage", "ollama", "local", "anthropic"], marker = "extra == 'all'" },
+    { name = "milvus-lite", marker = "sys_platform != 'win32'", specifier = ">=2.5.0" },
     { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.4" },
     { name = "openai", specifier = ">=1.0" },
-    { name = "pymilvus", extras = ["milvus-lite"], specifier = ">=2.5.0" },
+    { name = "pymilvus", specifier = ">=2.5.0" },
     { name = "sentence-transformers", marker = "extra == 'local'", specifier = ">=3.0" },
     { name = "setuptools", specifier = "<75" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
@@ -2632,11 +2634,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/71/68/9b8bac2267af60035d65fb5a4247c5ac8da175d66ec794d84d9cd3486524/pymilvus-2.6.8.tar.gz", hash = "sha256:15232f5f66805bf2f50b30bbad59637b62f5258d9343f7615353ce1221fab6b5", size = 1421303, upload-time = "2026-01-29T07:32:16.519Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/27/3af2199afaabd48791584fa5da5929f08d1a3c8c37a2ef12c15fc9309111/pymilvus-2.6.8-py3-none-any.whl", hash = "sha256:c4c413ffdef2599064301fd831de6f9839a753abe27c68c6148707629711d069", size = 300995, upload-time = "2026-01-29T07:32:14.199Z" },
-]
-
-[package.optional-dependencies]
-milvus-lite = [
-    { name = "milvus-lite", marker = "sys_platform != 'win32'" },
 ]
 
 [[package]]

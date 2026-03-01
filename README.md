@@ -378,7 +378,7 @@ memsearch supports three deployment modes — just change `milvus_uri`:
 
 | Mode | `milvus_uri` | Best for |
 |------|-------------|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config ⚠️ *not available on Windows* |
 | **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
 | **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed |
 

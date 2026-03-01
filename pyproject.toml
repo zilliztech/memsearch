@@ -16,7 +16,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "pymilvus[milvus_lite]>=2.5.0",
+    "pymilvus>=2.5.0",
+    "milvus-lite>=2.5.0; sys_platform != 'win32'",
     "click>=8.1",
     "watchdog>=4.0",
     "setuptools<75",
