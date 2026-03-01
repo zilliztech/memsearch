@@ -328,6 +328,9 @@ Data is stored in a single local `.db` file. No server to install, no ports to o
 
 **Best for:** personal use, single-agent setups, prototyping, development.
 
+!!! warning "Windows not supported"
+    Milvus Lite does not provide Windows binaries ([milvus-lite#176](https://github.com/milvus-io/milvus-lite/issues/176)). On Windows, use **Milvus Server** (Docker) or **Zilliz Cloud** instead. Alternatively, run memsearch inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
+
 === "Python"
 
     ```python

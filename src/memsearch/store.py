@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +34,18 @@ class MilvusStore:
     ) -> None:
         from pymilvus import MilvusClient
 
-        resolved = str(Path(uri).expanduser()) if not uri.startswith(("http", "tcp")) else uri
-        if not uri.startswith(("http", "tcp")):
+        is_local = not uri.startswith(("http", "tcp"))
+        if is_local and sys.platform == "win32":
+            raise RuntimeError(
+                "milvus-lite does not support Windows (no wheels on PyPI).\n"
+                "Use a remote Milvus server instead:\n"
+                "  docker run -d -p 19530:19530 milvusdb/milvus:latest standalone\n"
+                "  MemSearch(milvus_uri='http://localhost:19530')\n"
+                "Or run memsearch inside WSL2: "
+                "https://learn.microsoft.com/en-us/windows/wsl/install"
+            )
+        resolved = str(Path(uri).expanduser()) if is_local else uri
+        if is_local:
             Path(resolved).parent.mkdir(parents=True, exist_ok=True)
         connect_kwargs: dict[str, Any] = {"uri": resolved}
         if token:

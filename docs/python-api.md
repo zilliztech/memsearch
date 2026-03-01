@@ -39,7 +39,7 @@ MemSearch(
 | `paths` | `list[str \| Path]` | `[]` | Directories or files to index |
 | `embedding_provider` | `str` | `"openai"` | Embedding backend (`"openai"`, `"google"`, `"voyage"`, `"ollama"`, `"local"`) |
 | `embedding_model` | `str \| None` | `None` | Override the default model for the chosen provider |
-| `milvus_uri` | `str` | `"~/.memsearch/milvus.db"` | Milvus connection URI — local `.db` path for Milvus Lite, `http://host:port` for Milvus Server, or `https://*.zillizcloud.com` for Zilliz Cloud |
+| `milvus_uri` | `str` | `"~/.memsearch/milvus.db"` | Milvus connection URI — local `.db` path for Milvus Lite (Linux/macOS only), `http://host:port` for Milvus Server, or `https://*.zillizcloud.com` for Zilliz Cloud |
 | `milvus_token` | `str \| None` | `None` | Auth token for Milvus Server or Zilliz Cloud |
 | `collection` | `str` | `"memsearch_chunks"` | Milvus collection name. Use different names to isolate agents sharing the same backend |
 | `max_chunk_size` | `int` | `1500` | Maximum chunk size in characters |
