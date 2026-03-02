@@ -37,7 +37,7 @@ nav:
   - CLI Reference: cli.md
   - Integrations: integrations.md
   - Claude Code Plugin: claude-plugin.md
-  - FAQ: faq.md
+  - FAQ & Troubleshooting: faq.md
 
 markdown_extensions:
   - admonition

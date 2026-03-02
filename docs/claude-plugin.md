@@ -4,6 +4,9 @@
 
 The plugin is built entirely on Claude Code's own primitives: **[Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)** for lifecycle events, **[Skills](https://docs.anthropic.com/en/docs/claude-code/skills)** for intelligent retrieval, and **[CLI](cli.md)** for tool access. No [MCP](https://modelcontextprotocol.io/) servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts, a skill definition, and a Python CLI.
 
+**On this page:**
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [Progressive Disclosure](#progressive-disclosure) · [Memory Storage](#memory-storage) · [Comparisons](#comparison-with-claude-mem) · [Plugin Files](#plugin-files) · [Development Mode](#development-mode) · [Troubleshooting](#troubleshooting)
+
 ### How the pieces fit together
 
 ```mermaid
@@ -842,7 +845,7 @@ pgrep -f "memsearch watch" && echo "found orphans" || echo "clean"
 
 The watch process is started by `SessionStart` and stopped by `SessionEnd`. If Claude Code crashes or is killed with SIGKILL, the `SessionEnd` hook won't fire and the process may become orphaned. The next `SessionStart` always stops any existing watch before starting a new one.
 
-> **Note:** Milvus Lite does not support concurrent access, so the plugin falls back to one-time indexing at session start instead of a persistent watcher. For real-time indexing, use [Milvus Server or Zilliz Cloud](getting-started.md#milvus-backend).
+> **Note:** Milvus Lite does not support concurrent access, so the plugin falls back to one-time indexing at session start instead of a persistent watcher. For real-time indexing, use [Milvus Server or Zilliz Cloud](getting-started.md#milvus-backends).
 
 ---
 

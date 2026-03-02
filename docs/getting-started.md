@@ -23,6 +23,42 @@ $ pip install "memsearch[all]"         # Everything above
 
 ---
 
+## Zero-Config Quick Start (No API Key)
+
+Don't have an API key yet? Use a fully local embedding model — no sign-up, no network calls:
+
+```bash
+$ pip install "memsearch[local]"
+```
+
+```python
+import asyncio
+from memsearch import MemSearch
+
+async def main():
+    mem = MemSearch(paths=["./memory"], embedding_provider="local")
+    await mem.index()
+
+    results = await mem.search("your query here", top_k=3)
+    for r in results:
+        print(f"[{r['score']:.4f}] {r['heading']}: {r['content'][:120]}")
+
+    mem.close()
+
+asyncio.run(main())
+```
+
+Or with the CLI:
+
+```bash
+$ memsearch index ./memory/ --provider local
+$ memsearch search "your query here" --provider local
+```
+
+The `local` provider uses `all-MiniLM-L6-v2` (384 dimensions, English-optimized). For multilingual content, switch to `paraphrase-multilingual-MiniLM-L12-v2` via `--model`. To use a cloud provider with better accuracy, set up an [API key](#api-keys) and remove `--provider local`.
+
+---
+
 ## How It All Fits Together
 
 The diagram below shows the full lifecycle: writing markdown, indexing chunks, and searching them later.
@@ -516,6 +552,7 @@ $ memsearch search "Redis config" --top-k 10 --milvus-uri http://10.0.0.5:19530
 
 ## What's Next
 
-- **[Architecture](architecture.md)** -- deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
-- **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
-- **[Claude Code Plugin](claude-plugin.md)** -- give Claude automatic persistent memory across sessions with zero configuration
+- **[Architecture](architecture.md)** — deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
+- **[CLI Reference](cli.md)** — complete reference for all `memsearch` commands, flags, and options
+- **[Claude Code Plugin](claude-plugin.md)** — give Claude automatic persistent memory across sessions with zero configuration
+- **[FAQ & Troubleshooting](faq.md)** — common questions, platform support, error fixes

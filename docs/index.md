@@ -15,11 +15,11 @@ Simple. Readable. Git-friendly. Zero vendor lock-in.
 The vector store is just a derived index — rebuildable anytime.
 ```
 
-- **OpenClaw's memory, everywhere** -- markdown as the single source of truth
-- **Smart dedup** -- SHA-256 content hashing means unchanged content is never re-embedded
-- **Live sync** -- file watcher auto-indexes on changes, deletes stale chunks
-- **Memory compact** -- LLM-powered summarization compresses old memories
-- **[Ready-made Claude Code plugin](claude-plugin.md)** -- a drop-in example of agent memory built on memsearch
+- **OpenClaw's memory, everywhere** — markdown as the single source of truth
+- **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
+- **Live sync** — file watcher auto-indexes on changes, deletes stale chunks
+- **Memory compact** — LLM-powered summarization compresses old memories
+- **[Ready-made Claude Code plugin](claude-plugin.md)** — a drop-in example of agent memory built on memsearch
 
 ---
 
@@ -29,12 +29,10 @@ Most memory systems treat the vector database as the source of truth. memsearch 
 
 This means:
 
-- **Your data is always human-readable** -- plain `.md` files you can open, edit, grep, and `git diff`
-- **No vendor lock-in** -- switch embedding providers or vector backends without losing anything
-- **Rebuild on demand** -- corrupted index? Just re-run `memsearch index` and you are back in seconds
-- **Git-native** -- version your knowledge base with standard git workflows
-
-memsearch scans your markdown directories, splits content into semantically meaningful chunks (by heading structure and paragraph boundaries), embeds them, and stores the vectors in Milvus. When you search, it finds the most relevant chunks by cosine similarity and returns them with full source attribution.
+- **Your data is always human-readable** — plain `.md` files you can open, edit, grep, and `git diff`
+- **No vendor lock-in** — switch embedding providers or vector backends without losing anything
+- **Rebuild on demand** — corrupted index? Just re-run `memsearch index` and you are back in seconds
+- **Git-native** — version your knowledge base with standard git workflows
 
 ---
 
@@ -67,20 +65,15 @@ Source: memory/2026-02-08.md
 Heading: Infrastructure Decisions
 We chose Redis for caching over Memcached. Config: host=localhost,
 port=6379, max_memory=256mb, eviction=allkeys-lru.
+```
 
---- Result 2 (score: 0.0315) ---
-Source: memory/2026-02-07.md
-Heading: Redis Setup Notes
-Redis config for production: enable AOF persistence, set maxmemory-policy
-to volatile-lfu, bind to 127.0.0.1 only...
+The `watch` command monitors your files and auto-indexes changes in the background:
 
+```bash
 $ memsearch watch ./memory/
 Indexed 8 chunks.
 Watching 1 path(s) for changes... (Ctrl+C to stop)
-Indexed 2 chunks from memory/2026-02-09.md
 ```
-
-The `watch` command monitors your files and auto-indexes changes in the background -- ideal for use alongside editors or agent processes that write to your knowledge base.
 
 ---
 
@@ -108,7 +101,7 @@ async def main():
 asyncio.run(main())
 ```
 
-See [Getting Started](getting-started.md) for a complete walkthrough with agent memory loops.
+See [Getting Started](getting-started.md) for a complete walkthrough including agent memory loops, API key setup, and Milvus backend options.
 
 ---
 
@@ -154,47 +147,34 @@ mem = MemSearch(
 
 ## Embedding Providers
 
-memsearch supports **5 embedding providers** out of the box -- from cloud APIs to fully local models:
+memsearch supports **5 embedding providers** — from cloud APIs to fully local models with no API key required:
 
-| Provider | Install |
-|----------|---------|
-| OpenAI (default) | `memsearch` (included) |
-| Google Gemini | `memsearch[google]` |
-| Voyage AI | `memsearch[voyage]` |
-| Ollama (local) | `memsearch[ollama]` |
-| sentence-transformers (local) | `memsearch[local]` |
+| Provider | Install | API Key |
+|----------|---------|---------|
+| OpenAI (default) | `pip install memsearch` | `OPENAI_API_KEY` |
+| Google Gemini | `pip install "memsearch[google]"` | `GOOGLE_API_KEY` |
+| Voyage AI | `pip install "memsearch[voyage]"` | `VOYAGE_API_KEY` |
+| Ollama (local) | `pip install "memsearch[ollama]"` | none |
+| sentence-transformers (local) | `pip install "memsearch[local]"` | none |
 
-For fully local operation with no API keys, install `memsearch[ollama]` or `memsearch[local]`. See [Getting Started](getting-started.md#api-keys) for API key setup and provider details.
+For zero-config local operation with no API keys, install `memsearch[local]` or `memsearch[ollama]`. See [Getting Started — API Keys](getting-started.md#api-keys) for details and provider comparison.
 
 ---
 
-## Milvus Backend
+## Milvus Backends
 
-memsearch supports three deployment modes -- just change the URI:
+Just change the URI to switch backends — no other code changes needed:
 
-| Mode | URI | Use Case |
+| Mode | URI | Platform |
 |------|-----|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Local file, zero config, single user |
-| **Milvus Server** | `http://localhost:19530` | Self-hosted, multi-agent, team use |
-| **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | Fully managed, auto-scaling |
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Linux, macOS |
+| **Milvus Server** | `http://localhost:19530` | All (via Docker) |
+| **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | All (managed) |
 
-See [Getting Started](getting-started.md#milvus-backends) for connection examples and Docker setup instructions.
+!!! warning "Windows"
+    Milvus Lite does not provide Windows binaries. On Windows use Milvus Server (Docker) or Zilliz Cloud. See [FAQ — Does memsearch work on Windows?](faq.md#does-memsearch-work-on-windows)
 
----
-
-## Configuration
-
-memsearch uses a layered configuration system (lowest → highest priority):
-
-**Built-in defaults** → **Global config** (`~/.memsearch/config.toml`) → **Project config** (`.memsearch.toml`) → **CLI flags**
-
-```bash
-$ memsearch config init               # Interactive wizard
-$ memsearch config set milvus.uri http://localhost:19530
-$ memsearch config list --resolved    # Show merged config from all sources
-```
-
-API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`) are read from standard environment variables by their respective SDKs -- they are not stored in config files. See [Getting Started](getting-started.md#configuration) for the full configuration guide.
+See [Getting Started — Milvus Backends](getting-started.md#milvus-backends) for connection examples and Docker setup.
 
 ---
 
