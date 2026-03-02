@@ -28,36 +28,36 @@ uv run python -m pytest tests/test_store.py::test_upsert_and_search -v
 ## Project Structure
 
 ```
-src/memsearch/          # Core Python library
-├── core.py             # MemSearch public API
-├── cli.py              # Click CLI
-├── store.py            # Milvus vector store
-├── chunker.py          # Markdown chunking
-├── embeddings/         # Pluggable embedding providers
-├── scanner.py          # File discovery
-├── config.py           # TOML config system
-├── watcher.py          # File watcher
-├── compact.py          # LLM summarization
-└── transcript.py       # JSONL transcript parser
+src/memsearch/                   # Core Python library
+├── core.py                      # MemSearch public API
+├── cli.py                       # Click CLI
+├── store.py                     # Milvus vector store
+├── chunker.py                   # Markdown chunking
+├── embeddings/                  # Pluggable embedding providers
+├── scanner.py                   # File discovery
+├── config.py                    # TOML config system
+├── watcher.py                   # File watcher
+├── compact.py                   # LLM summarization
+└── transcript.py                # JSONL transcript parser
 
-ccplugin/               # Claude Code plugin
-├── .claude-plugin/     # Plugin manifest
-├── hooks/              # 4 lifecycle hooks + shared utilities
-│   ├── hooks.json      # Hook definitions
-│   ├── common.sh       # Shared setup sourced by all hooks
+ccplugin/                        # Claude Code plugin
+├── .claude-plugin/              # Plugin manifest
+├── hooks/                       # 4 lifecycle hooks + shared utilities
+│   ├── hooks.json               # Hook definitions
+│   ├── common.sh                # Shared setup sourced by all hooks
 │   ├── session-start.sh
 │   ├── user-prompt-submit.sh
 │   ├── stop.sh
 │   ├── parse-transcript.sh
 │   └── session-end.sh
 ├── scripts/
-│   └── derive-collection.sh  # Per-project collection name derivation
+│   └── derive-collection.sh     # Per-project collection name derivation
 └── skills/
     └── memory-recall/
-        └── SKILL.md    # Memory retrieval skill (context: fork)
+        └── SKILL.md             # Memory retrieval skill (context: fork)
 
-tests/                  # pytest test suite
-docs/                   # mkdocs-material documentation
+tests/                           # pytest test suite
+docs/                            # mkdocs-material documentation
 ```
 
 ## Making Changes
