@@ -50,6 +50,8 @@ async def compact_chunks(
     str
         The compressed summary markdown.
     """
+    if not chunks:
+        return ""
     combined = "\n\n---\n\n".join(c["content"] for c in chunks)
     template = prompt_template or COMPACT_PROMPT
     prompt = template.format(chunks=combined)
