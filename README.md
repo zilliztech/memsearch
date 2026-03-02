@@ -25,11 +25,11 @@ https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 
 ### Why memsearch?
 
-- **Markdown is the source of truth** -- human-readable, `git`-friendly, zero vendor lock-in. Your memories are just `.md` files
-- **Smart dedup** -- SHA-256 content hashing means unchanged content is never re-embedded
-- **Live sync** -- file watcher auto-indexes changes to the vector DB, deletes stale chunks when files are removed
-- **Hybrid search** -- dense vector (cosine) + BM25 full-text with RRF reranking
-- **[Ready-made Claude Code plugin](ccplugin/README.md)** -- a drop-in example of agent memory built on memsearch
+- **Markdown is the source of truth** — human-readable, `git`-friendly, zero vendor lock-in. Your memories are just `.md` files
+- **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
+- **Live sync** — file watcher auto-indexes changes to the vector DB, deletes stale chunks when files are removed
+- **Hybrid search** — dense vector (cosine) + BM25 full-text with RRF reranking
+- **[Ready-made Claude Code plugin](ccplugin/README.md)** — a drop-in example of agent memory built on memsearch
 
 ---
 
@@ -67,7 +67,7 @@ print(results[0]["content"], results[0]["score"])       # content + similarity
 ```
 
 <details>
-<summary><b>Full example -- agent with memory (OpenAI)</b></summary>
+<summary><b>Full example — agent with memory (OpenAI)</b></summary>
 
 ```python
 import asyncio
@@ -88,11 +88,11 @@ def save_memory(content: str):
         f.write(f"\n{content}\n")
 
 async def agent_chat(user_input: str) -> str:
-    # 1. Recall -- search past memories for relevant context
+    # 1. Recall — search past memories for relevant context
     memories = await mem.search(user_input, top_k=3)
     context = "\n".join(f"- {m['content'][:200]}" for m in memories)
 
-    # 2. Think -- call LLM with memory context
+    # 2. Think — call LLM with memory context
     resp = llm.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -102,7 +102,7 @@ async def agent_chat(user_input: str) -> str:
     )
     answer = resp.choices[0].message.content
 
-    # 3. Remember -- save this exchange and index it
+    # 3. Remember — save this exchange and index it
     save_memory(f"## {user_input}\n{answer}")
     await mem.index()
 
@@ -223,13 +223,13 @@ asyncio.run(main())
 
 </details>
 
-> Full Python API reference with all parameters -- [Python API docs](https://zilliztech.github.io/memsearch/python-api/)
+> Full Python API reference with all parameters — [Python API docs](https://zilliztech.github.io/memsearch/python-api/)
 
 ---
 
 ## CLI Usage
 
-### Set Up -- `config init`
+### Set Up — `config init`
 
 Interactive wizard to configure embedding provider, Milvus backend, and chunking parameters:
 
@@ -240,7 +240,7 @@ memsearch config set milvus.uri http://localhost:19530
 memsearch config list --resolved         # show merged config from all sources
 ```
 
-### Index Markdown -- `index`
+### Index Markdown — `index`
 
 Scan directories and embed all markdown into the vector store. Unchanged chunks are auto-skipped via content-hash dedup:
 
@@ -250,7 +250,7 @@ memsearch index ./memory/ ./notes/ --provider google
 memsearch index ./memory/ --force        # re-embed everything
 ```
 
-### Semantic Search -- `search`
+### Semantic Search — `search`
 
 Hybrid search (dense vector + BM25 full-text) with RRF reranking:
 
@@ -259,7 +259,7 @@ memsearch search "how to configure Redis caching"
 memsearch search "auth flow" --top-k 10 --json-output
 ```
 
-### Live Sync -- `watch`
+### Live Sync — `watch`
 
 File watcher that auto-indexes on markdown changes (creates, edits, deletes):
 
@@ -268,7 +268,7 @@ memsearch watch ./memory/
 memsearch watch ./memory/ ./notes/ --debounce-ms 3000
 ```
 
-### LLM Summarization -- `compact`
+### LLM Summarization — `compact`
 
 Compress indexed chunks into a condensed markdown summary using an LLM:
 
@@ -277,20 +277,20 @@ memsearch compact
 memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
 ```
 
-### Utilities -- `stats` / `reset`
+### Utilities — `stats` / `reset`
 
 ```bash
 memsearch stats                          # show total indexed chunk count
 memsearch reset                          # drop all indexed data (with confirmation)
 ```
 
-> Full command reference with all flags and examples -- [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
+> Full command reference with all flags and examples — [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
 ---
 
 ## How It Works
 
-**Markdown is the source of truth** -- the vector store is just a derived index, rebuildable anytime.
+**Markdown is the source of truth** — the vector store is just a derived index, rebuildable anytime.
 
 ```
   +--- Search -------------------------------------------------------------+
@@ -331,13 +331,13 @@ memsearch reset                          # drop all indexed data (with confirmat
   +------------------------------------------------------------------------+
 ```
 
-The entire pipeline runs locally by default -- your data never leaves your machine unless you choose a remote backend or a cloud embedding provider.
+The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote backend or a cloud embedding provider.
 
 ---
 
 ## Claude Code Plugin
 
-memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** -- a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving -- just install and go.
+memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
 
 ```bash
 # 1. Set your embedding API key (OpenAI is the default provider)
@@ -351,7 +351,7 @@ export OPENAI_API_KEY="sk-..."
 claude
 ```
 
-> Architecture, hook details, and development mode -- [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/claude-plugin/)
+> Architecture, hook details, and development mode — [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/claude-plugin/)
 
 ---
 
@@ -359,11 +359,11 @@ claude
 
 Settings are resolved in priority order (lowest to highest):
 
-1. **Built-in defaults** -- 2. **Global** `~/.memsearch/config.toml` -- 3. **Project** `.memsearch.toml` -- 4. **CLI flags**
+1. **Built-in defaults** — 2. **Global** `~/.memsearch/config.toml` — 3. **Project** `.memsearch.toml` — 4. **CLI flags**
 
 API keys for embedding/LLM providers are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
 
-> Config wizard, TOML examples, and all settings -- [Getting Started -- Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
+> Config wizard, TOML examples, and all settings — [Getting Started — Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
 
 ---
 
@@ -377,23 +377,23 @@ API keys for embedding/LLM providers are read from standard environment variable
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` | none (local) |
 | Local | `memsearch[local]` | `all-MiniLM-L6-v2` | none (local) |
 
-> Provider setup and env vars -- [CLI Reference -- Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
+> Provider setup and env vars — [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
 
 ---
 
 ## Milvus Backends
 
-memsearch supports three deployment modes -- just change `milvus_uri`:
+memsearch supports three deployment modes — just change `milvus_uri`:
 
 | Mode | `milvus_uri` | Best for | Platform |
 |------|-------------|----------|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev -- zero config | Linux, macOS |
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config | Linux, macOS |
 | **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments | All (via Docker) |
 | **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed | All |
 
 > **Note:** Milvus Lite does not provide Windows binaries. On Windows use Milvus Server (Docker) or Zilliz Cloud. See [FAQ](https://zilliztech.github.io/memsearch/faq/#does-memsearch-work-on-windows) for details.
 
-> Code examples and setup details -- [Getting Started -- Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
+> Code examples and setup details — [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
 
 ---
 
@@ -401,22 +401,22 @@ memsearch supports three deployment modes -- just change `milvus_uri`:
 
 memsearch works with any Python agent framework. Ready-made examples for:
 
-- **[LangChain](https://www.langchain.com/)** -- use as a `BaseRetriever` in any LCEL chain
-- **[LangGraph](https://langchain-ai.github.io/langgraph/)** -- wrap as a tool in a ReAct agent
-- **[LlamaIndex](https://www.llamaindex.ai/)** -- plug in as a custom retriever
-- **[CrewAI](https://www.crewai.com/)** -- add as a tool for crew agents
+- **[LangChain](https://www.langchain.com/)** — use as a `BaseRetriever` in any LCEL chain
+- **[LangGraph](https://langchain-ai.github.io/langgraph/)** — wrap as a tool in a ReAct agent
+- **[LlamaIndex](https://www.llamaindex.ai/)** — plug in as a custom retriever
+- **[CrewAI](https://www.crewai.com/)** — add as a tool for crew agents
 
-> Copy-paste code for each framework -- [Integrations docs](https://zilliztech.github.io/memsearch/integrations/)
+> Copy-paste code for each framework — [Integrations docs](https://zilliztech.github.io/memsearch/integrations/)
 
 ---
 
 ## Links
 
-- [Documentation](https://zilliztech.github.io/memsearch/) -- full guides, API reference, and architecture details
-- [Claude Code Plugin](ccplugin/README.md) -- hook details, progressive disclosure, comparison with claude-mem
-- [OpenClaw](https://github.com/openclaw/openclaw) -- the memory architecture that inspired memsearch
-- [Milvus](https://milvus.io/) -- the vector database powering memsearch
-- [FAQ & Troubleshooting](https://zilliztech.github.io/memsearch/faq/) -- common questions, platform support, error fixes
+- [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
+- [Claude Code Plugin](ccplugin/README.md) — hook details, progressive disclosure, comparison with claude-mem
+- [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
+- [Milvus](https://milvus.io/) — the vector database powering memsearch
+- [FAQ & Troubleshooting](https://zilliztech.github.io/memsearch/faq/) — common questions, platform support, error fixes
 
 ## Contributing
 
