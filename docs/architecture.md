@@ -8,12 +8,12 @@ This page explains the architecture, design philosophy, and key implementation d
 
 ### Markdown as the Source of Truth
 
-The foundational principle of memsearch is simple: **markdown files are the canonical data store**. The vector database is a derived index -- it can be dropped and rebuilt at any time from the markdown files on disk. This is the same philosophy used by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, and memsearch is designed as a standalone library inspired by that architecture.
+The foundational principle of memsearch is simple: **markdown files are the canonical data store**. The vector database is a derived index — it can be dropped and rebuilt at any time from the markdown files on disk. This is the same philosophy used by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, and memsearch is designed as a standalone library inspired by that architecture.
 
 **Why markdown?**
 
 - **Human-readable.** Any developer can open a memory file in any text editor and understand what the agent knows. There is no binary format to decode, no special viewer required.
-- **Git-friendly.** Markdown diffs are clean and meaningful. You get full version history, blame, branching, and merge conflict resolution for free -- the same tools you already use for code.
+- **Git-friendly.** Markdown diffs are clean and meaningful. You get full version history, blame, branching, and merge conflict resolution for free — the same tools you already use for code.
 - **Zero vendor lock-in.** Markdown is a plain-text format that has been stable for decades. If you stop using memsearch tomorrow, your knowledge base is still right there on disk, fully intact.
 - **Trivially portable.** Copy the files to another machine, another tool, another agent framework. No export step, no migration script, no schema translation.
 
@@ -23,7 +23,7 @@ The foundational principle of memsearch is simple: **markdown files are the cano
 - **Vendor lock-in.** Each database engine has its own storage format, query language, and migration tooling. Switching costs are high.
 - **Fragile.** Database corruption, version incompatibilities, and backup complexity are real operational concerns for what should be a simple knowledge store.
 
-In memsearch, the vector store is an acceleration layer -- nothing more. If the [Milvus](https://milvus.io/) database is lost, corrupted, or simply out of date, a single `memsearch index` command rebuilds the entire index from the markdown files.
+In memsearch, the vector store is an acceleration layer — nothing more. If the [Milvus](https://milvus.io/) database is lost, corrupted, or simply out of date, a single `memsearch index` command rebuilds the entire index from the markdown files.
 
 ```mermaid
 graph LR
@@ -48,7 +48,7 @@ memsearch follows [OpenClaw](https://github.com/openclaw/openclaw)'s memory arch
 | Source of truth | Markdown files (vector DB is derived) | Same |
 | File watch debounce | 1500ms | Same default |
 
-If you are already using OpenClaw's memory directory layout, memsearch works with it directly -- no migration needed.
+If you are already using OpenClaw's memory directory layout, memsearch works with it directly — no migration needed.
 
 ---
 
@@ -83,7 +83,7 @@ graph LR
 
 ### Watch and Compact
 
-The file watcher monitors directories for markdown changes and automatically re-indexes modified files. The compact operation compresses indexed chunks into an LLM-generated summary and writes it back to a daily markdown log -- which the watcher then picks up and indexes, closing the loop.
+The file watcher monitors directories for markdown changes and automatically re-indexes modified files. The compact operation compresses indexed chunks into an LLM-generated summary and writes it back to a daily markdown log — which the watcher then picks up and indexes, closing the loop.
 
 ```mermaid
 graph LR
@@ -147,7 +147,7 @@ memsearch uses content-addressable storage to avoid redundant embedding API call
 ### How It Works
 
 1. Each chunk's content is hashed with [SHA-256](https://en.wikipedia.org/wiki/SHA-2) (truncated to 16 hex characters).
-2. A composite chunk ID is computed from the source path, line range, content hash, and embedding model name -- matching OpenClaw's format: `hash(markdown:source:startLine:endLine:contentHash:model)`.
+2. A composite chunk ID is computed from the source path, line range, content hash, and embedding model name — matching OpenClaw's format: `hash(markdown:source:startLine:endLine:contentHash:model)`.
 3. Before embedding, the set of existing chunk IDs for the source file is queried from Milvus.
 4. Only chunks whose composite ID is **not** already present get embedded and upserted.
 5. Chunks whose composite ID **no longer appears** in the re-chunked file are deleted (stale chunk cleanup).
@@ -177,7 +177,7 @@ All chunks are stored in a single Milvus collection named `memsearch_chunks` (co
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `chunk_hash` | `VARCHAR(64)` | **Primary key** -- composite SHA-256 chunk ID |
+| `chunk_hash` | `VARCHAR(64)` | **Primary key** — composite SHA-256 chunk ID |
 | `embedding` | `FLOAT_VECTOR` | Dense embedding from the configured provider |
 | `content` | `VARCHAR(65535)` | Raw chunk text (also feeds BM25 via Milvus Function) |
 | `sparse_vector` | `SPARSE_FLOAT_VECTOR` | Auto-generated BM25 sparse vector |
@@ -187,15 +187,15 @@ All chunks are stored in a single Milvus collection named `memsearch_chunks` (co
 | `start_line` | `INT64` | First line number in source file |
 | `end_line` | `INT64` | Last line number in source file |
 
-The `sparse_vector` field is populated automatically by a Milvus BM25 Function that processes the `content` field -- no application-side sparse encoding is needed.
+The `sparse_vector` field is populated automatically by a Milvus BM25 Function that processes the `content` field — no application-side sparse encoding is needed.
 
 ### Hybrid Search
 
 Search combines two retrieval strategies and merges their results:
 
-1. **Dense vector search** -- cosine similarity on the `embedding` field (semantic meaning).
-2. **[BM25](https://en.wikipedia.org/wiki/Okapi_BM25) sparse search** -- keyword matching on the `sparse_vector` field (exact term overlap).
-3. **[RRF](https://en.wikipedia.org/wiki/Reciprocal_rank_fusion) reranking** -- Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
+1. **Dense vector search** — cosine similarity on the `embedding` field (semantic meaning).
+2. **[BM25](https://en.wikipedia.org/wiki/Okapi_BM25) sparse search** — keyword matching on the `sparse_vector` field (exact term overlap).
+3. **[RRF](https://en.wikipedia.org/wiki/Reciprocal_rank_fusion) reranking** — Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
 
 This hybrid approach catches results that pure semantic search might miss (exact names, error codes, configuration values) while still benefiting from the semantic understanding that dense embeddings provide.
 
@@ -223,56 +223,7 @@ graph TD
 
 ### Physical Isolation
 
-All agents and projects share the same collection name (`memsearch_chunks`) by default. Physical isolation between agents is achieved by pointing each one to a **different `milvus_uri`** -- each agent gets its own Milvus Lite database file, its own Milvus server, or its own Zilliz Cloud cluster. This avoids the complexity of multi-tenant collection management while keeping the schema simple.
-
----
-
-## Configuration System
-
-memsearch uses a 4-layer configuration system. Each layer overrides the one before it:
-
-```mermaid
-graph LR
-    D["1. Defaults"] --> G["2. Global Config<br>~/.memsearch/config.toml"]
-    G --> P["3. Project Config<br>.memsearch.toml"]
-    P --> C["4. CLI Flags<br>--milvus-uri, etc."]
-```
-
-| Priority | Source | Scope | Example |
-|----------|--------|-------|---------|
-| 1 (lowest) | Built-in defaults | Hardcoded | `milvus.uri = ~/.memsearch/milvus.db` |
-| 2 | `~/.memsearch/config.toml` | User-global | Shared across all projects |
-| 3 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
-| 4 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
-
-> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are not part of the memsearch configuration system and are never written to config files.
-
-### Config Sections
-
-The full configuration is organized into five sections:
-
-```toml
-[milvus]
-uri = "~/.memsearch/milvus.db"
-token = ""
-collection = "memsearch_chunks"
-
-[embedding]
-provider = "openai"
-model = ""                           # empty = provider default
-
-[compact]
-llm_provider = "openai"
-llm_model = ""                       # empty = provider default
-prompt_file = ""                     # custom prompt template path
-
-[chunking]
-max_chunk_size = 1500
-overlap_lines = 2
-
-[watch]
-debounce_ms = 1500
-```
+All agents and projects share the same collection name (`memsearch_chunks`) by default. Physical isolation between agents is achieved by pointing each one to a **different `milvus_uri`** — each agent gets its own Milvus Lite database file, its own Milvus server, or its own Zilliz Cloud cluster. This avoids the complexity of multi-tenant collection management while keeping the schema simple.
 
 ---
 

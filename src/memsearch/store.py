@@ -113,18 +113,6 @@ class MilvusStore:
                     )
                 break
 
-    def existing_hashes(self, hashes: list[str]) -> set[str]:
-        """Return the subset of *hashes* that already exist in the collection."""
-        if not hashes:
-            return set()
-        hash_list = ", ".join(f'"{h}"' for h in hashes)
-        results = self._client.query(
-            collection_name=self._collection,
-            filter=f"chunk_hash in [{hash_list}]",
-            output_fields=["chunk_hash"],
-        )
-        return {r["chunk_hash"] for r in results}
-
     def upsert(self, chunks: list[dict[str, Any]]) -> int:
         """Insert or update chunks (keyed by ``chunk_hash`` primary key).
 

@@ -32,12 +32,18 @@ repo_name: zilliztech/memsearch
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Reference:
+    - Python API: python-api.md
+    - CLI: cli.md
   - Architecture: architecture.md
-  - Python API: python-api.md
-  - CLI Reference: cli.md
   - Integrations: integrations.md
-  - Claude Code Plugin: claude-plugin.md
-  - FAQ: faq.md
+  - Claude Code Plugin:
+    - Overview: claude-plugin/index.md
+    - Hooks: claude-plugin/hooks.md
+    - Progressive Disclosure: claude-plugin/progressive-disclosure.md
+    - Troubleshooting: claude-plugin/troubleshooting.md
+  - FAQ & Troubleshooting: faq.md
+  - Contributing: contributing.md
 
 markdown_extensions:
   - admonition

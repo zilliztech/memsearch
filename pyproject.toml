@@ -20,7 +20,7 @@ dependencies = [
     "milvus-lite>=2.5.0; sys_platform != 'win32'",
     "click>=8.1",
     "watchdog>=4.0",
-    "setuptools<75",
+    "setuptools<75",  # milvus-lite uses pkg_resources but doesn't declare it
     "tomli_w>=1.0",
     "tomli>=2.0; python_version < '3.11'",
     "openai>=1.0",

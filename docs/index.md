@@ -15,100 +15,50 @@ Simple. Readable. Git-friendly. Zero vendor lock-in.
 The vector store is just a derived index — rebuildable anytime.
 ```
 
-- **OpenClaw's memory, everywhere** -- markdown as the single source of truth
-- **Smart dedup** -- SHA-256 content hashing means unchanged content is never re-embedded
-- **Live sync** -- file watcher auto-indexes on changes, deletes stale chunks
-- **Memory compact** -- LLM-powered summarization compresses old memories
-- **[Ready-made Claude Code plugin](claude-plugin.md)** -- a drop-in example of agent memory built on memsearch
-
----
-
-## What is memsearch?
-
-Most memory systems treat the vector database as the source of truth. memsearch flips this around: **your markdown files are the source of truth**, and the vector store is just a derived index -- like a database index that can be dropped and rebuilt at any time.
+Most memory systems treat the vector database as the source of truth. memsearch flips this around: **your markdown files are the canonical data store**, and the vector store is just a derived index — like a database index that can be dropped and rebuilt at any time.
 
 This means:
 
-- **Your data is always human-readable** -- plain `.md` files you can open, edit, grep, and `git diff`
-- **No vendor lock-in** -- switch embedding providers or vector backends without losing anything
-- **Rebuild on demand** -- corrupted index? Just re-run `memsearch index` and you are back in seconds
-- **Git-native** -- version your knowledge base with standard git workflows
-
-memsearch scans your markdown directories, splits content into semantically meaningful chunks (by heading structure and paragraph boundaries), embeds them, and stores the vectors in Milvus. When you search, it finds the most relevant chunks by cosine similarity and returns them with full source attribution.
+- **Your data is always human-readable** — plain `.md` files you can open, edit, grep, and `git diff`
+- **No vendor lock-in** — switch embedding providers or vector backends without losing anything
+- **Rebuild on demand** — corrupted index? Just re-run `memsearch index` and you are back in seconds
+- **Git-native** — version your knowledge base with standard git workflows
 
 ---
 
-## Quick Install
+## Key Features
 
-```bash
-$ pip install memsearch
-```
-
-Say you have a directory of daily markdown logs (the same layout used by OpenClaw):
-
-```
-memory/
-├── MEMORY.md          # persistent facts & decisions
-├── 2026-02-07.md      # daily log
-├── 2026-02-08.md
-└── 2026-02-09.md
-```
-
-Index it and search:
-
-```bash
-$ memsearch index ./memory/
-Indexed 38 chunks.
-
-$ memsearch search "how to configure Redis?"
-
---- Result 1 (score: 0.0328) ---
-Source: memory/2026-02-08.md
-Heading: Infrastructure Decisions
-We chose Redis for caching over Memcached. Config: host=localhost,
-port=6379, max_memory=256mb, eviction=allkeys-lru.
-
---- Result 2 (score: 0.0315) ---
-Source: memory/2026-02-07.md
-Heading: Redis Setup Notes
-Redis config for production: enable AOF persistence, set maxmemory-policy
-to volatile-lfu, bind to 127.0.0.1 only...
-
-$ memsearch watch ./memory/
-Indexed 8 chunks.
-Watching 1 path(s) for changes... (Ctrl+C to stop)
-Indexed 2 chunks from memory/2026-02-09.md
-```
-
-The `watch` command monitors your files and auto-indexes changes in the background -- ideal for use alongside editors or agent processes that write to your knowledge base.
+- **Markdown is the source of truth** — human-readable, `git`-friendly, zero vendor lock-in
+- **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
+- **Hybrid search** — dense vector (cosine) + BM25 full-text with RRF reranking
+- **Live sync** — file watcher auto-indexes changes, deletes stale chunks
+- **Memory compact** — LLM-powered summarization compresses old memories
+- **[Ready-made Claude Code plugin](claude-plugin/index.md)** — a drop-in example of agent memory built on memsearch
 
 ---
 
-## Python API
+## Quick Start
 
-The core workflow is three lines: create a `MemSearch` instance, index your files, and search.
+```bash
+pip install memsearch
+```
 
 ```python
-import asyncio
 from memsearch import MemSearch
 
-async def main():
-    mem = MemSearch(paths=["./memory/"])
+mem = MemSearch(paths=["./memory"])
 
-    # Index all markdown files (skips unchanged content automatically)
-    await mem.index()
-
-    # Semantic search -- returns ranked results with source attribution
-    results = await mem.search("how to configure Redis?", top_k=5)
-    for r in results:
-        print(f"[{r['score']:.2f}] {r['source']} -- {r['content'][:80]}")
-
-    mem.close()
-
-asyncio.run(main())
+await mem.index()                                      # index markdown files
+results = await mem.search("Redis config", top_k=3)    # semantic search
+print(results[0]["content"], results[0]["score"])       # content + similarity
 ```
 
-See [Getting Started](getting-started.md) for a complete walkthrough with agent memory loops.
+```bash
+memsearch index ./memory/
+memsearch search "how to configure Redis?"
+```
+
+See [Getting Started](getting-started.md) for a complete walkthrough including agent memory loops, API key setup, and Milvus backend options.
 
 ---
 
@@ -119,82 +69,62 @@ See [Getting Started](getting-started.md) for a complete walkthrough with agent 
 Point memsearch at your notes directory and get instant semantic search across years of accumulated knowledge.
 
 ```bash
-$ memsearch index ~/notes/
-$ memsearch search "that article about distributed consensus"
+memsearch index ~/notes/
+memsearch search "that article about distributed consensus"
 ```
 
 ### Agent Memory
 
-Give your AI agent persistent, searchable memory. The agent writes observations to markdown files; memsearch indexes them and retrieves relevant context on the next turn. This is exactly how [OpenClaw](https://github.com/openclaw/openclaw) manages memory, and memsearch ships with a ready-made [Claude Code plugin](claude-plugin.md) that demonstrates the pattern.
-
-```python
-mem = MemSearch(paths=["./agent-memory/"])
-
-# Agent recalls relevant past experiences before responding
-memories = await mem.search(user_question, top_k=3)
-
-# Agent saves new knowledge after responding
-save_to_markdown("./agent-memory/", today, summary)
-await mem.index()
-```
+Give your AI agent persistent, searchable memory. The agent writes observations to markdown files; memsearch indexes them and retrieves relevant context on the next turn. This is exactly how [OpenClaw](https://github.com/openclaw/openclaw) manages memory, and memsearch ships with a ready-made [Claude Code plugin](claude-plugin/index.md) that demonstrates the pattern.
 
 ### Team Knowledge Sharing
 
 Deploy a shared Milvus server and point multiple team members (or agents) at it. Everyone indexes their own markdown files into the same collection, creating a shared searchable knowledge base.
 
-```python
-mem = MemSearch(
-    paths=["./docs/"],
-    milvus_uri="http://milvus.internal:19530",
-    milvus_token="root:Milvus",
-)
-```
-
 ---
 
 ## Embedding Providers
 
-memsearch supports **5 embedding providers** out of the box -- from cloud APIs to fully local models:
+memsearch supports **5 embedding providers** — from cloud APIs to fully local models with no API key required:
 
-| Provider | Install |
-|----------|---------|
-| OpenAI (default) | `memsearch` (included) |
-| Google Gemini | `memsearch[google]` |
-| Voyage AI | `memsearch[voyage]` |
-| Ollama (local) | `memsearch[ollama]` |
-| sentence-transformers (local) | `memsearch[local]` |
+| Provider | Install | API Key |
+|----------|---------|---------|
+| OpenAI (default) | `pip install memsearch` | `OPENAI_API_KEY` |
+| Google Gemini | `pip install "memsearch[google]"` | `GOOGLE_API_KEY` |
+| Voyage AI | `pip install "memsearch[voyage]"` | `VOYAGE_API_KEY` |
+| Ollama (local) | `pip install "memsearch[ollama]"` | none |
+| sentence-transformers (local) | `pip install "memsearch[local]"` | none |
 
-For fully local operation with no API keys, install `memsearch[ollama]` or `memsearch[local]`. See [Getting Started](getting-started.md#api-keys) for API key setup and provider details.
+For zero-config local operation with no API keys, install `memsearch[local]` or `memsearch[ollama]`. See [CLI Reference — Embedding Provider Reference](cli.md#embedding-provider-reference) for model details and dimensions.
 
 ---
 
-## Milvus Backend
+## Milvus Backends
 
-memsearch supports three deployment modes -- just change the URI:
+Just change the URI to switch backends — no other code changes needed:
 
-| Mode | URI | Use Case |
+| Mode | URI | Platform |
 |------|-----|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Local file, zero config, single user |
-| **Milvus Server** | `http://localhost:19530` | Self-hosted, multi-agent, team use |
-| **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | Fully managed, auto-scaling |
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Linux, macOS |
+| **Milvus Server** | `http://localhost:19530` | All (via Docker) |
+| **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | All (managed) |
 
-See [Getting Started](getting-started.md#milvus-backends) for connection examples and Docker setup instructions.
+!!! warning "Windows"
+    Milvus Lite does not provide Windows binaries. On Windows use Milvus Server (Docker) or Zilliz Cloud. See [FAQ — Does memsearch work on Windows?](faq.md#does-memsearch-work-on-windows)
+
+See [Getting Started — Milvus Backends](getting-started.md#milvus-backends) for connection examples and Docker setup.
 
 ---
 
-## Configuration
+## Next Steps
 
-memsearch uses a layered configuration system (lowest → highest priority):
-
-**Built-in defaults** → **Global config** (`~/.memsearch/config.toml`) → **Project config** (`.memsearch.toml`) → **CLI flags**
-
-```bash
-$ memsearch config init               # Interactive wizard
-$ memsearch config set milvus.uri http://localhost:19530
-$ memsearch config list --resolved    # Show merged config from all sources
-```
-
-API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`) are read from standard environment variables by their respective SDKs -- they are not stored in config files. See [Getting Started](getting-started.md#configuration) for the full configuration guide.
+- **[Getting Started](getting-started.md)** — installation, configuration, and your first memory search
+- **[Python API](python-api.md)** — full reference for the `MemSearch` class
+- **[CLI Reference](cli.md)** — complete reference for all `memsearch` commands
+- **[Architecture](architecture.md)** — deep dive into chunking, dedup, and hybrid search
+- **[Integrations](integrations.md)** — LangChain, LangGraph, LlamaIndex, CrewAI
+- **[Claude Code Plugin](claude-plugin/index.md)** — give Claude automatic persistent memory across sessions
+- **[FAQ & Troubleshooting](faq.md)** — common questions and error fixes
 
 ---
 

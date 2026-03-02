@@ -20,7 +20,7 @@ elif [ -d "$PROJECT_DIR" ]; then
 else
   # If directory doesn't exist and no realpath, ensure it starts with /
   case "$PROJECT_DIR" in
-    /*) ;; # already absolute
+    /*) ;;  # already absolute
     *)  PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
   esac
 fi

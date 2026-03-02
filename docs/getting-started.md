@@ -5,7 +5,7 @@
 Install memsearch with pip (OpenAI embeddings are included by default):
 
 ```bash
-$ pip install memsearch
+pip install memsearch
 ```
 
 ### Extras for additional embedding providers
@@ -13,13 +13,49 @@ $ pip install memsearch
 Each optional extra pulls in the provider SDK you need:
 
 ```bash
-$ pip install "memsearch[google]"      # Google Gemini embeddings
-$ pip install "memsearch[voyage]"      # Voyage AI embeddings
-$ pip install "memsearch[ollama]"      # Ollama (local, no API key)
-$ pip install "memsearch[local]"       # sentence-transformers (local, no API key)
-$ pip install "memsearch[anthropic]"   # Anthropic (for compact/summarization LLM)
-$ pip install "memsearch[all]"         # Everything above
+pip install "memsearch[google]"      # Google Gemini embeddings
+pip install "memsearch[voyage]"      # Voyage AI embeddings
+pip install "memsearch[ollama]"      # Ollama (local, no API key)
+pip install "memsearch[local]"       # sentence-transformers (local, no API key)
+pip install "memsearch[anthropic]"   # Anthropic (for compact/summarization LLM)
+pip install "memsearch[all]"         # Everything above
 ```
+
+---
+
+## Zero-Config Quick Start (No API Key)
+
+Don't have an API key yet? Use a fully local embedding model — no sign-up, no network calls:
+
+```bash
+pip install "memsearch[local]"
+```
+
+```python
+import asyncio
+from memsearch import MemSearch
+
+async def main():
+    mem = MemSearch(paths=["./memory"], embedding_provider="local")
+    await mem.index()
+
+    results = await mem.search("your query here", top_k=3)
+    for r in results:
+        print(f"[{r['score']:.4f}] {r['heading']}: {r['content'][:120]}")
+
+    mem.close()
+
+asyncio.run(main())
+```
+
+Or with the CLI:
+
+```bash
+memsearch index ./memory/ --provider local
+memsearch search "your query here" --provider local
+```
+
+The `local` provider uses `all-MiniLM-L6-v2` (384 dimensions, English-optimized). For multilingual content, switch to `paraphrase-multilingual-MiniLM-L12-v2` via `--model`. To use a cloud provider with better accuracy, set up an [API key](#api-keys) and remove `--provider local`.
 
 ---
 
@@ -44,12 +80,12 @@ sequenceDiagram
     U->>M: mem.search("Redis?")
     M->>E: Embed query
     E-->>M: Query vector
-    M->>V: Cosine similarity
-    V-->>M: Top-K matches
+    M->>V: Hybrid search (dense + BM25)
+    V-->>M: RRF-reranked Top-K matches
     M-->>U: Results with source info
 ```
 
-**Markdown is the source of truth.** The vector store is a derived index -- rebuildable anytime from the original `.md` files. This means your memory is human-readable, `git`-friendly, and never locked into a proprietary format.
+**Markdown is the source of truth.** The vector store is a derived index — rebuildable anytime from the original `.md` files. This means your memory is human-readable, `git`-friendly, and never locked into a proprietary format.
 
 ---
 
@@ -62,14 +98,14 @@ This section walks through the complete flow: create a memory directory, write s
 memsearch follows the OpenClaw memory layout: a `MEMORY.md` file for persistent facts, plus daily logs in a `memory/` subdirectory.
 
 ```bash
-$ mkdir -p my-project/memory
-$ cd my-project
+mkdir -p my-project/memory
+cd my-project
 ```
 
 Write a `MEMORY.md` with long-lived facts:
 
 ```bash
-$ cat > MEMORY.md << 'EOF'
+cat > MEMORY.md << 'EOF'
 # MEMORY.md
 
 ## Team
@@ -88,7 +124,7 @@ EOF
 Write a daily log:
 
 ```bash
-$ cat > memory/2026-02-10.md << 'EOF'
+cat > memory/2026-02-10.md << 'EOF'
 # 2026-02-10
 
 ## Standup Notes
@@ -105,21 +141,21 @@ EOF
 ### Index with the CLI
 
 ```bash
-$ export OPENAI_API_KEY="sk-..."
-$ memsearch index .
+export OPENAI_API_KEY="sk-..."
+memsearch index .
 Indexed 8 chunks.
 ```
 
 ### Search with the CLI
 
 ```bash
-$ memsearch search "what caching solution are we using?"
+memsearch search "what caching solution are we using?"
 --- Result 1 (score: 0.0332) ---
 Source: MEMORY.md
 Heading: Architecture Decisions
 - ADR-003: Redis 7 for caching and sessions
 
-$ memsearch search "what did Bob work on recently?" --top-k 3
+memsearch search "what did Bob work on recently?" --top-k 3
 --- Result 1 (score: 0.0328) ---
 Source: memory/2026-02-10.md
 Heading: Standup Notes
@@ -129,7 +165,7 @@ Heading: Standup Notes
 Use `--json-output` to get structured results for piping into other tools:
 
 ```bash
-$ memsearch search "inter-service communication" --json-output | python -m json.tool
+memsearch search "inter-service communication" --json-output | python -m json.tool
 ```
 
 ### Search with the Python API
@@ -160,132 +196,132 @@ asyncio.run(main())
 
 The real power of memsearch is giving an LLM agent persistent memory across conversations. The pattern is simple: **recall, think, remember**.
 
-1. **Recall** -- search past memories for context relevant to the user's question
-2. **Think** -- call the LLM with that context injected into the system prompt
-3. **Remember** -- save the exchange to a daily markdown log and re-index
+1. **Recall** — search past memories for context relevant to the user's question
+2. **Think** — call the LLM with that context injected into the system prompt
+3. **Remember** — save the exchange to a daily markdown log and re-index
 
-### OpenAI example (default)
+=== "OpenAI (default)"
 
-```python
-import asyncio
-from datetime import date
-from pathlib import Path
-from openai import OpenAI
-from memsearch import MemSearch
+    ```python
+    import asyncio
+    from datetime import date
+    from pathlib import Path
+    from openai import OpenAI
+    from memsearch import MemSearch
 
-MEMORY_DIR = "./memory"
-llm = OpenAI()
-mem = MemSearch(paths=[MEMORY_DIR])
-
-
-def save_memory(content: str):
-    """Append a note to today's memory log (OpenClaw-style daily markdown)."""
-    p = Path(MEMORY_DIR) / f"{date.today()}.md"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "a") as f:
-        if p.stat().st_size == 0:
-            f.write(f"# {date.today()}\n")
-        f.write(f"\n{content}\n")
+    MEMORY_DIR = "./memory"
+    llm = OpenAI()
+    mem = MemSearch(paths=[MEMORY_DIR])
 
 
-async def agent_chat(user_input: str) -> str:
-    # 1. Recall — search past memories for relevant context
-    memories = await mem.search(user_input, top_k=5)
-    context = "\n".join(f"- {m['content'][:300]}" for m in memories)
+    def save_memory(content: str):
+        """Append a note to today's memory log (OpenClaw-style daily markdown)."""
+        p = Path(MEMORY_DIR) / f"{date.today()}.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a") as f:
+            if p.stat().st_size == 0:
+                f.write(f"# {date.today()}\n")
+            f.write(f"\n{content}\n")
 
-    # 2. Think — call LLM with memory context
-    resp = llm.chat.completions.create(
-        model="gpt-4o-mini",
+
+    async def agent_chat(user_input: str) -> str:
+        # 1. Recall — search past memories for relevant context
+        memories = await mem.search(user_input, top_k=5)
+        context = "\n".join(f"- {m['content'][:300]}" for m in memories)
+
+        # 2. Think — call LLM with memory context
+        resp = llm.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful assistant with access to the user's memory.\n"
+                        f"Relevant memories:\n{context}"
+                    ),
+                },
+                {"role": "user", "content": user_input},
+            ],
+        )
+        answer = resp.choices[0].message.content
+
+        # 3. Remember — save this exchange and re-index
+        save_memory(f"## User: {user_input}\n\n{answer}")
+        await mem.index()
+
+        return answer
+
+
+    async def main():
+        # Seed some knowledge
+        save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
+        save_memory("## Decision\nWe chose Redis for caching over Memcached.")
+        await mem.index()
+
+        # Agent can now recall those memories
+        print(await agent_chat("Who is our frontend lead?"))
+        print(await agent_chat("What caching solution did we pick?"))
+
+
+    asyncio.run(main())
+    ```
+
+=== "Anthropic Claude"
+
+    Install the Anthropic extra:
+
+    ```bash
+    pip install "memsearch[anthropic]"
+    ```
+
+    Then swap the LLM call:
+
+    ```python
+    from anthropic import Anthropic
+
+    llm = Anthropic()
+
+    # In agent_chat(), replace the OpenAI call with:
+    resp = llm.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=1024,
+        system=f"You have these memories:\n{context}",
+        messages=[{"role": "user", "content": user_input}],
+    )
+    answer = resp.content[0].text
+    ```
+
+=== "Ollama (fully local)"
+
+    ```bash
+    pip install "memsearch[ollama]"
+    ollama pull nomic-embed-text    # embedding model
+    ollama pull llama3.2            # chat model
+    ```
+
+    ```python
+    from ollama import chat
+    from memsearch import MemSearch
+
+    # Use Ollama for embeddings too — everything stays local
+    mem = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
+
+    # In agent_chat(), replace the LLM call with:
+    resp = chat(
+        model="llama3.2",
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant with access to the user's memory.\n"
-                    f"Relevant memories:\n{context}"
-                ),
-            },
+            {"role": "system", "content": f"You have these memories:\n{context}"},
             {"role": "user", "content": user_input},
         ],
     )
-    answer = resp.choices[0].message.content
-
-    # 3. Remember — save this exchange and re-index
-    save_memory(f"## User: {user_input}\n\n{answer}")
-    await mem.index()
-
-    return answer
-
-
-async def main():
-    # Seed some knowledge
-    save_memory("## Team\n- Alice: frontend lead\n- Bob: backend lead")
-    save_memory("## Decision\nWe chose Redis for caching over Memcached.")
-    await mem.index()
-
-    # Agent can now recall those memories
-    print(await agent_chat("Who is our frontend lead?"))
-    print(await agent_chat("What caching solution did we pick?"))
-
-
-asyncio.run(main())
-```
-
-### Anthropic Claude variant
-
-Install the Anthropic extra:
-
-```bash
-$ pip install "memsearch[anthropic]"
-```
-
-Then swap the LLM call:
-
-```python
-from anthropic import Anthropic
-
-llm = Anthropic()
-
-# In agent_chat(), replace the OpenAI call with:
-resp = llm.messages.create(
-    model="claude-sonnet-4-5-20250929",
-    max_tokens=1024,
-    system=f"You have these memories:\n{context}",
-    messages=[{"role": "user", "content": user_input}],
-)
-answer = resp.content[0].text
-```
-
-### Ollama variant (fully local, no API key)
-
-```bash
-$ pip install "memsearch[ollama]"
-$ ollama pull nomic-embed-text    # embedding model
-$ ollama pull llama3.2            # chat model
-```
-
-```python
-from ollama import chat
-from memsearch import MemSearch
-
-# Use Ollama for embeddings too — everything stays local
-mem = MemSearch(paths=[MEMORY_DIR], embedding_provider="ollama")
-
-# In agent_chat(), replace the LLM call with:
-resp = chat(
-    model="llama3.2",
-    messages=[
-        {"role": "system", "content": f"You have these memories:\n{context}"},
-        {"role": "user", "content": user_input},
-    ],
-)
-answer = resp.message.content
-```
+    answer = resp.message.content
+    ```
 
 ---
 
 ## API Keys
 
-Set the environment variable for your chosen embedding provider. memsearch reads standard SDK environment variables -- no custom key names.
+Set the environment variable for your chosen embedding provider. memsearch reads standard SDK environment variables — no custom key names.
 
 | Provider | Env Var | Notes |
 |----------|---------|-------|
@@ -294,14 +330,14 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 | Google Gemini | `GOOGLE_API_KEY` | Requires `memsearch[google]` |
 | Voyage AI | `VOYAGE_API_KEY` | Requires `memsearch[voyage]` |
 | Ollama | `OLLAMA_HOST` (optional) | Defaults to `http://localhost:11434` |
-| Local (sentence-transformers) | -- | No API key needed |
+| Local (sentence-transformers) | — | No API key needed |
 | Anthropic | `ANTHROPIC_API_KEY` | Used by `compact` summarization only |
 
 ```bash
-$ export OPENAI_API_KEY="sk-..."         # OpenAI embeddings (default)
-$ export GOOGLE_API_KEY="..."            # Google Gemini embeddings
-$ export VOYAGE_API_KEY="..."            # Voyage AI embeddings
-$ export ANTHROPIC_API_KEY="..."         # Anthropic (for compact summarization)
+export OPENAI_API_KEY="sk-..."         # OpenAI embeddings (default)
+export GOOGLE_API_KEY="..."            # Google Gemini embeddings
+export VOYAGE_API_KEY="..."            # Voyage AI embeddings
+export ANTHROPIC_API_KEY="..."         # Anthropic (for compact summarization)
 ```
 
 ---
@@ -322,7 +358,7 @@ graph TD
     style E fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
 ```
 
-### Milvus Lite (default -- zero config)
+### Milvus Lite (default — zero config)
 
 Data is stored in a single local `.db` file. No server to install, no ports to open.
 
@@ -343,7 +379,7 @@ Data is stored in a single local `.db` file. No server to install, no ports to o
 === "CLI"
 
     ```bash
-    $ memsearch index ./memory/
+    memsearch index ./memory/
     # Uses ~/.memsearch/milvus.db by default
     ```
 
@@ -366,13 +402,13 @@ Deploy Milvus via Docker or Kubernetes. Multiple agents and users can share the 
 === "CLI"
 
     ```bash
-    $ memsearch index ./memory/ --milvus-uri http://localhost:19530 --milvus-token root:Milvus
+    memsearch index ./memory/ --milvus-uri http://localhost:19530 --milvus-token root:Milvus
     ```
 
 === "Docker"
 
     ```bash
-    $ docker run -d --name milvus \
+    docker run -d --name milvus \
         -p 19530:19530 -p 9091:9091 \
         milvusdb/milvus:latest milvus run standalone
     ```
@@ -396,7 +432,7 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
 === "CLI"
 
     ```bash
-    $ memsearch index ./memory/ \
+    memsearch index ./memory/ \
         --milvus-uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com" \
         --milvus-token "your-api-key"
     ```
@@ -407,21 +443,21 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
 
 memsearch uses a layered configuration system. Settings are resolved in priority order (lowest to highest):
 
-1. **Built-in defaults** -- sensible out-of-the-box values
-2. **Global config** -- `~/.memsearch/config.toml`
-3. **Project config** -- `.memsearch.toml` in your working directory
-4. **CLI flags** -- `--milvus-uri`, `--provider`, etc.
+1. **Built-in defaults** — sensible out-of-the-box values
+2. **Global config** — `~/.memsearch/config.toml`
+3. **Project config** — `.memsearch.toml` in your working directory
+4. **CLI flags** — `--milvus-uri`, `--provider`, etc.
 
 Higher-priority sources override lower ones. This means you can set defaults globally, customize per project, and override on the fly with CLI flags.
 
-> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are **not** stored in memsearch config files. See [API Keys](#api-keys) below.
+> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are **not** stored in memsearch config files. See [API Keys](#api-keys) above.
 
 ### Interactive config wizard
 
 The fastest way to configure memsearch:
 
 ```bash
-$ memsearch config init
+memsearch config init
 memsearch configuration wizard
 Writing to: /home/user/.memsearch/config.toml
 
@@ -445,7 +481,7 @@ Config saved to /home/user/.memsearch/config.toml
 Use `--project` to write to `.memsearch.toml` in the current directory instead:
 
 ```bash
-$ memsearch config init --project
+memsearch config init --project
 ```
 
 ### Config file locations
@@ -468,6 +504,7 @@ collection = "memsearch_chunks"
 [embedding]
 provider = "openai"
 model = ""
+batch_size = 0           # 0 = use provider default
 
 [chunking]
 max_chunk_size = 1500
@@ -485,22 +522,22 @@ prompt_file = ""
 ### Get and set individual values
 
 ```bash
-$ memsearch config set milvus.uri http://localhost:19530
+memsearch config set milvus.uri http://localhost:19530
 Set milvus.uri = http://localhost:19530 in /home/user/.memsearch/config.toml
 
-$ memsearch config get milvus.uri
+memsearch config get milvus.uri
 http://localhost:19530
 
-$ memsearch config set embedding.provider ollama --project
+memsearch config set embedding.provider ollama --project
 Set embedding.provider = ollama in .memsearch.toml
 ```
 
 ### View resolved configuration
 
 ```bash
-$ memsearch config list --resolved    # Final merged config from all sources
-$ memsearch config list --global      # Show ~/.memsearch/config.toml only
-$ memsearch config list --project     # Show .memsearch.toml only
+memsearch config list --resolved    # Final merged config from all sources
+memsearch config list --global      # Show ~/.memsearch/config.toml only
+memsearch config list --project     # Show .memsearch.toml only
 ```
 
 ### CLI flag overrides
@@ -508,14 +545,18 @@ $ memsearch config list --project     # Show .memsearch.toml only
 CLI flags always take the highest priority:
 
 ```bash
-$ memsearch index ./memory/ --provider google --milvus-uri http://localhost:19530
-$ memsearch search "Redis config" --top-k 10 --milvus-uri http://10.0.0.5:19530
+memsearch index ./memory/ --provider google --milvus-uri http://localhost:19530
+memsearch search "Redis config" --top-k 10 --milvus-uri http://10.0.0.5:19530
 ```
+
+For the full list of config keys, see [CLI Reference — Available Config Keys](cli.md#available-config-keys).
 
 ---
 
 ## What's Next
 
-- **[Architecture](architecture.md)** -- deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
-- **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
-- **[Claude Code Plugin](claude-plugin.md)** -- give Claude automatic persistent memory across sessions with zero configuration
+- **[Python API](python-api.md)** — full reference for the `MemSearch` class with all parameters
+- **[CLI Reference](cli.md)** — complete reference for all `memsearch` commands, flags, and config keys
+- **[Architecture](architecture.md)** — deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
+- **[Claude Code Plugin](claude-plugin/index.md)** — give Claude automatic persistent memory across sessions with zero configuration
+- **[FAQ & Troubleshooting](faq.md)** — common questions, platform support, error fixes

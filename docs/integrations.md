@@ -1,6 +1,6 @@
 # Integrations
 
-memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
+memsearch is a plain Python library — it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
 
 ---
 
@@ -145,7 +145,7 @@ for msg in result["messages"]:
         print(f"{role}: {msg.content[:200]}")
 ```
 
-The agent will autonomously decide when to call `search_memory` based on the user's question -- no manual retrieval logic needed.
+The agent will autonomously decide when to call `search_memory` based on the user's question — no manual retrieval logic needed.
 
 ---
 

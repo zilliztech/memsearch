@@ -19,7 +19,6 @@ from .config import (
     set_config_value,
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
-    _SECTION_CLASSES,
 )
 
 

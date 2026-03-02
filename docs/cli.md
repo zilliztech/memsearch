@@ -1,10 +1,10 @@
 # CLI Reference
 
-memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases.
+memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases. If you are new to memsearch, start with [Getting Started](getting-started.md) for a full walkthrough before diving into flags and options here.
 
 ```bash
 $ memsearch --version
-memsearch, version 0.1.3
+memsearch, version 0.1.13
 
 $ memsearch --help
 Usage: memsearch [OPTIONS] COMMAND [ARGS]...
@@ -36,12 +36,29 @@ Commands:
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
-| `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
-| `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
+| `memsearch expand` | Show full section around a chunk (progressive disclosure L2) |
+| `memsearch transcript` | View turns from a JSONL transcript (progressive disclosure L3) |
 | `memsearch stats` | Display index statistics (total chunk count) |
 | `memsearch reset` | Drop all indexed data from the Milvus collection |
 
-> 🔌 Commands marked with 🔌 are designed for the [Claude Code plugin](claude-plugin.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
+> Commands `expand` and `transcript` are designed for the [Claude Code plugin](claude-plugin/index.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
+
+---
+
+## Shared Options
+
+Most commands that interact with the vector store accept the following common options:
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--provider` | `-p` | `openai` | Embedding provider (`openai`, `google`, `voyage`, `ollama`, `local`) |
+| `--model` | `-m` | provider default | Override the embedding model name |
+| `--batch-size` | | `0` (provider default) | Number of texts to embed per API call |
+| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
+| `--milvus-token` | | *(none)* | Milvus auth token (for server or Zilliz Cloud) |
+
+These options apply to: `index`, `search`, `watch`, `compact`, `expand`, `stats`, `reset`.
 
 ---
 
@@ -53,7 +70,7 @@ Manage memsearch configuration. Configuration is stored in TOML files and follow
 dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> CLI flags
 ```
 
-Higher-priority sources override lower-priority ones.
+Higher-priority sources override lower-priority ones. For a full walkthrough, see [Getting Started — Configuration](getting-started.md#configuration).
 
 ### Subcommands
 
@@ -161,6 +178,7 @@ collection = "memsearch_chunks"
 [embedding]
 provider = "openai"
 model = ""
+batch_size = 0
 
 [chunking]
 max_chunk_size = 1500
@@ -175,17 +193,6 @@ llm_model = ""
 prompt_file = ""
 ```
 
-```bash
-$ memsearch config list --global
-# Global (/home/user/.memsearch/config.toml)
-
-[milvus]
-uri = "http://localhost:19530"
-
-[embedding]
-provider = "openai"
-```
-
 ### Available Config Keys
 
 | Key | Type | Default | Description |
@@ -195,6 +202,7 @@ provider = "openai"
 | `milvus.collection` | string | `memsearch_chunks` | Collection name |
 | `embedding.provider` | string | `openai` | Embedding provider name |
 | `embedding.model` | string | `""` | Override embedding model (empty = provider default) |
+| `embedding.batch_size` | int | `0` | Number of texts per embedding API call (0 = provider default) |
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
 | `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
@@ -206,55 +214,37 @@ provider = "openai"
 
 ## `memsearch index`
 
-Scan one or more directories (or files) and index all markdown files (`.md`, `.markdown`) into the Milvus vector store. Only new or changed chunks are embedded by default -- unchanged chunks are skipped. Chunks belonging to deleted files are automatically removed from the index.
+Scan one or more directories (or files) and index all markdown files (`.md`, `.markdown`) into the Milvus vector store. Only new or changed chunks are embedded by default — unchanged chunks are skipped. Chunks belonging to deleted files are automatically removed from the index.
 
 ### Options
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `PATHS` | | *(required)* | One or more directories or files to index |
-| `--provider` | `-p` | `openai` | Embedding provider (`openai`, `google`, `voyage`, `ollama`, `local`) |
-| `--model` | `-m` | provider default | Override the embedding model name |
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token (for server or Zilliz Cloud) |
 | `--force` | | `false` | Re-embed and re-index all chunks, even if unchanged |
+
+Plus all [shared options](#shared-options).
 
 ### Examples
 
-Index a single directory:
-
 ```bash
+# Index a single directory
 $ memsearch index ./memory/
 Indexed 42 chunks.
-```
 
-Index multiple directories with a specific embedding provider:
-
-```bash
+# Index multiple directories with a specific embedding provider
 $ memsearch index ./memory/ ./notes/ --provider google
 Indexed 87 chunks.
-```
 
-Force re-index everything (ignores the content-hash dedup check):
-
-```bash
+# Force re-index everything (ignores the content-hash dedup check)
 $ memsearch index ./memory/ --force
 Indexed 42 chunks.
-```
 
-Connect to a remote Milvus server instead of the default local file:
-
-```bash
+# Connect to a remote Milvus server
 $ memsearch index ./memory/ --milvus-uri http://localhost:19530
-Indexed 42 chunks.
-```
 
-Use a custom embedding model:
-
-```bash
+# Use a custom embedding model
 $ memsearch index ./memory/ --provider openai --model text-embedding-3-large
-Indexed 42 chunks.
 ```
 
 ### Notes
@@ -275,18 +265,14 @@ Run a semantic search query against indexed chunks. Uses [hybrid search](https:/
 |------|-------|---------|-------------|
 | `QUERY` | | *(required)* | Natural-language search query |
 | `--top-k` | `-k` | `5` | Maximum number of results to return |
-| `--provider` | `-p` | `openai` | Embedding provider (must match the provider used at index time) |
-| `--model` | `-m` | provider default | Override the embedding model |
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
 | `--json-output` | `-j` | `false` | Output results as JSON |
+
+Plus all [shared options](#shared-options).
 
 ### Examples
 
-Basic search:
-
 ```bash
+# Basic search
 $ memsearch search "how to configure Redis caching"
 
 --- Result 1 (score: 0.0328) ---
@@ -295,21 +281,10 @@ Heading: Redis Configuration
 Set REDIS_URL in .env to point to your Redis instance.
 Use `cache.set(key, value, ttl=300)` for 5-minute expiry...
 
---- Result 2 (score: 0.0326) ---
-Source: /home/user/docs/architecture.md
-Heading: Caching Layer
-We use Redis as the primary caching backend...
-```
-
-Return more results:
-
-```bash
+# Return more results
 $ memsearch search "authentication flow" --top-k 10
-```
 
-Output as JSON (useful for piping to `jq` or other tools):
-
-```bash
+# Output as JSON (useful for piping to jq or other tools)
 $ memsearch search "error handling" --json-output
 [
   {
@@ -323,12 +298,6 @@ $ memsearch search "error handling" --json-output
     "score": 0.0330
   }
 ]
-```
-
-Use with a different provider (must match the one used for indexing):
-
-```bash
-$ memsearch search "database migrations" --provider google
 ```
 
 ### Notes
@@ -348,18 +317,14 @@ Start a long-running file watcher that monitors directories for markdown file ch
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `PATHS` | | *(required)* | One or more directories to watch |
-| `--debounce-ms` | | `1500` | Debounce delay in milliseconds; multiple rapid changes to the same file within this window are collapsed into a single re-index |
-| `--provider` | `-p` | `openai` | Embedding provider |
-| `--model` | `-m` | provider default | Override the embedding model |
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
+| `--debounce-ms` | | `1500` | Debounce delay in milliseconds |
+
+Plus all [shared options](#shared-options).
 
 ### Examples
 
-Watch a single directory:
-
 ```bash
+# Watch a single directory
 $ memsearch watch ./memory/
 Indexed 8 chunks.
 Watching 1 path(s) for changes... (Ctrl+C to stop)
@@ -367,18 +332,14 @@ Indexed 3 chunks from /home/user/docs/2026-02-11.md
 Removed chunks for /home/user/docs/old-draft.md
 ^C
 Stopping watcher.
-```
 
-Watch multiple directories with a longer debounce:
-
-```bash
+# Watch multiple directories with a longer debounce
 $ memsearch watch ./memory/ ./notes/ --debounce-ms 3000
-Watching 2 path(s) for changes... (Ctrl+C to stop)
 ```
 
 ### Notes
 
-- **Initial index on startup.** The watcher indexes all existing files before it starts monitoring. Content-hash dedup means unchanged files are skipped with zero API calls — only genuinely new or modified content is embedded.
+- **Initial index on startup.** The watcher indexes all existing files before it starts monitoring. Content-hash dedup means unchanged files are skipped with zero API calls.
 - **Debounce.** Editors that write files in multiple steps (e.g., write temp file, then rename) can trigger several events in quick succession. The debounce window collapses these into one re-index operation.
 - **Recursive.** The watcher monitors all subdirectories recursively.
 - **Singleton behavior.** Only one watcher process should run per directory set. Running multiple watchers on the same paths will cause duplicate indexing work (though dedup by content hash means the index stays consistent).
@@ -400,11 +361,8 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 | `--llm-model` | | provider default | Override the LLM model |
 | `--prompt` | | built-in template | Custom prompt template string (must contain `{chunks}` placeholder) |
 | `--prompt-file` | | *(none)* | Read the prompt template from a file instead |
-| `--provider` | `-p` | `openai` | Embedding provider (used to access the index) |
-| `--model` | `-m` | provider default | Override the embedding model |
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
+
+Plus all [shared options](#shared-options).
 
 ### Default LLM Models
 
@@ -416,43 +374,20 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 
 ### Examples
 
-Compact all chunks using the default LLM (OpenAI):
-
 ```bash
+# Compact all chunks using the default LLM (OpenAI)
 $ memsearch compact
-Compact complete. Summary:
 
-## Key Decisions
-- Use Redis for session caching with 5-minute TTL
-- All API errors return structured JSON responses
-...
-```
-
-Compact only chunks from a specific source file:
-
-```bash
+# Compact only chunks from a specific source file
 $ memsearch compact --source ./memory/old-notes.md
-Compact complete. Summary:
 
-## Old Notes Summary
-- Initial architecture decisions from January meeting...
-```
-
-Use Anthropic Claude for summarization:
-
-```bash
+# Use Anthropic Claude for summarization
 $ memsearch compact --llm-provider anthropic
-```
 
-Use a custom prompt template:
-
-```bash
+# Use a custom prompt template
 $ memsearch compact --prompt "Summarize these notes into action items:\n{chunks}"
-```
 
-Use a prompt file for complex templates:
-
-```bash
+# Use a prompt file for complex templates
 $ memsearch compact --prompt-file ./prompts/compress.txt
 ```
 
@@ -466,9 +401,9 @@ $ memsearch compact --prompt-file ./prompts/compress.txt
 
 ## `memsearch expand`
 
-> 🔌 **Claude Code plugin command.** This command is part of the [Claude Code plugin](claude-plugin.md)'s three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any memsearch index.
+> Part of the [Claude Code plugin](claude-plugin/progressive-disclosure.md)'s three-level progressive disclosure workflow (`search` -> `expand` -> `transcript`), but works as a standalone CLI tool for any memsearch index.
 
-Look up a chunk by its hash in the index and return the surrounding context from the original source markdown file. This is "progressive disclosure level 2" -- when a search result snippet is not enough, expand it to see the full heading section.
+Look up a chunk by its hash in the index and return the surrounding context from the original source markdown file. This is "progressive disclosure level 2" — when a search result snippet is not enough, expand it to see the full heading section.
 
 ### Options
 
@@ -478,17 +413,13 @@ Look up a chunk by its hash in the index and return the surrounding context from
 | `--section/--no-section` | | `--section` | Show the full heading section (default behavior) |
 | `--lines` | `-n` | *(full section)* | Instead of the full section, show N lines before and after the chunk |
 | `--json-output` | `-j` | `false` | Output as JSON |
-| `--provider` | `-p` | `openai` | Embedding provider |
-| `--model` | `-m` | provider default | Override the embedding model |
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
+
+Plus all [shared options](#shared-options).
 
 ### Examples
 
-Expand a chunk to see its full heading section:
-
 ```bash
+# Expand a chunk to see its full heading section
 $ memsearch expand a1b2c3d4e5f6
 Source: /home/user/docs/architecture.md (lines 10-35)
 Heading: Caching Layer
@@ -502,47 +433,27 @@ follow the pattern `service:entity:id`.
 Set REDIS_URL in .env to point to your Redis instance.
 Use `cache.set(key, value, ttl=300)` for 5-minute expiry.
 ...
-```
 
-Show only 5 lines of context around the chunk:
-
-```bash
+# Show only 5 lines of context around the chunk
 $ memsearch expand a1b2c3d4e5f6 --lines 5
-Source: /home/user/docs/architecture.md (lines 18-28)
-Heading: Caching Layer
 
-Set REDIS_URL in .env to point to your Redis instance.
-Use `cache.set(key, value, ttl=300)` for 5-minute expiry.
-...
-```
-
-Get JSON output (includes anchor metadata if present):
-
-```bash
+# Get JSON output (includes anchor metadata if present)
 $ memsearch expand a1b2c3d4e5f6 --json-output
-{
-  "chunk_hash": "a1b2c3d4e5f6",
-  "source": "/home/user/docs/architecture.md",
-  "heading": "Caching Layer",
-  "start_line": 10,
-  "end_line": 35,
-  "content": "## Caching Layer\n\nWe use Redis as the primary..."
-}
 ```
 
 ### Notes
 
 - **Source file must exist.** The `expand` command reads the original markdown file from disk. If the source file has been moved or deleted, the command will fail with an error.
-- **Anchor parsing.** If the expanded text contains an HTML anchor comment in the format `<!-- session:ID turn:ID transcript:PATH -->`, the command parses it and displays the session, turn, and transcript file information. This connects memory chunks to their original conversation transcripts.
+- **Anchor parsing.** If the expanded text contains an HTML anchor comment in the format `<!-- session:ID turn:ID transcript:PATH -->`, the command parses it and displays the session, turn, and transcript file information.
 - **Workflow: search then expand.** A typical workflow is to `search` first, note the `chunk_hash` from a result, then `expand` it to see more context.
 
 ---
 
 ## `memsearch transcript`
 
-> 🔌 **Claude Code plugin command.** This command is part of the [Claude Code plugin](claude-plugin.md)'s three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
+> Part of the [Claude Code plugin](claude-plugin/progressive-disclosure.md)'s three-level progressive disclosure workflow (`search` -> `expand` -> `transcript`), but works as a standalone CLI tool for any JSONL transcript.
 
-Parse a JSONL transcript file (e.g., from Claude Code) and display conversation turns. This is "progressive disclosure level 3" -- drill all the way down from a memory chunk to the original conversation that generated it.
+Parse a JSONL transcript file (e.g., from Claude Code) and display conversation turns. This is "progressive disclosure level 3" — drill all the way down from a memory chunk to the original conversation that generated it.
 
 ### Options
 
@@ -555,51 +466,20 @@ Parse a JSONL transcript file (e.g., from Claude Code) and display conversation 
 
 ### Examples
 
-List all turns in a transcript:
-
 ```bash
+# List all turns in a transcript
 $ memsearch transcript ./transcripts/session-abc123.jsonl
 All turns (12):
 
   a1b2c3d4e5f6  14:23:05  Show me the Redis configuration code
   d4e5f6a1b2c3  14:23:42  Can you add TTL support to the cache?
-  f6a1b2c3d4e5  14:25:10  Write tests for the cache module
   ...
-```
 
-Show context around a specific turn (prefix match on UUID):
-
-```bash
+# Show context around a specific turn (prefix match on UUID)
 $ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6
-Showing 5 turns around d4e5f6a1b2c3:
 
-[14:22:30] a1b2c3d4
-Show me the Redis configuration code
-
-**Assistant**: Here is the current Redis configuration...
-
->>> [14:23:42] d4e5f6a1
-Can you add TTL support to the cache?
-
-**Assistant**: I'll add TTL support. Here are the changes...
-  Tools: Edit(/src/cache.py), Bash(pytest tests/)
-
-[14:25:10] f6a1b2c3
-Write tests for the cache module
-```
-
-Output as JSON:
-
-```bash
+# Output as JSON
 $ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6 --json-output
-[
-  {
-    "uuid": "a1b2c3d4-...",
-    "timestamp": "2026-02-10T14:22:30Z",
-    "content": "Show me the Redis configuration code\n\n**Assistant**: ...",
-    "tool_calls": []
-  }
-]
 ```
 
 ### Notes
@@ -616,22 +496,15 @@ Show statistics about the current index, including the total number of stored ch
 
 ### Options
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
+Only [shared options](#shared-options) (`--collection`, `--milvus-uri`, `--milvus-token`).
 
 ### Examples
 
 ```bash
 $ memsearch stats
 Total indexed chunks: 142
-```
 
-Check stats for a specific collection on a remote server:
-
-```bash
+# Check stats for a specific collection on a remote server
 $ memsearch stats --milvus-uri http://localhost:19530 --collection my_project
 Total indexed chunks: 87
 ```
@@ -650,10 +523,9 @@ Drop the entire Milvus collection, permanently deleting all indexed chunks. A co
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
-| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
-| `--milvus-token` | | *(none)* | Milvus auth token |
 | `--yes` | `-y` | | Skip the confirmation prompt |
+
+Plus `--collection`, `--milvus-uri`, `--milvus-token` from [shared options](#shared-options).
 
 ### Examples
 
@@ -661,32 +533,24 @@ Drop the entire Milvus collection, permanently deleting all indexed chunks. A co
 $ memsearch reset
 This will delete all indexed data. Continue? [y/N]: y
 Dropped collection.
-```
 
-Skip the confirmation prompt (useful in scripts):
-
-```bash
+# Skip the confirmation prompt (useful in scripts)
 $ memsearch reset --yes
-Dropped collection.
-```
 
-Reset a specific collection on a remote server:
-
-```bash
+# Reset a specific collection on a remote server
 $ memsearch reset --milvus-uri http://localhost:19530 --collection old_project --yes
-Dropped collection.
 ```
 
 ### Notes
 
-- **This is destructive and irreversible.** All indexed data will be lost. Your original markdown files are not affected -- you can always re-index them with `memsearch index`.
+- **This is destructive and irreversible.** All indexed data will be lost. Your original markdown files are not affected — you can always re-index them with `memsearch index`.
 - **Only drops the collection, not the database.** If you are using Milvus Lite (a local `.db` file), the file itself remains; only the collection inside it is removed.
 
 ---
 
 ## Environment Variables
 
-memsearch reads API keys from environment variables. These are required by the corresponding embedding and LLM provider SDKs and are **not** stored in memsearch config files.
+memsearch reads API keys from environment variables. These are required by the corresponding embedding and LLM provider SDKs and are **not** stored in memsearch config files. For a full walkthrough, see [Getting Started — API Keys](getting-started.md#api-keys).
 
 ### API Keys
 
@@ -698,10 +562,6 @@ memsearch reads API keys from environment variables. These are required by the c
 | `VOYAGE_API_KEY` | `voyage` embedding provider | Voyage AI API key |
 | `ANTHROPIC_API_KEY` | `anthropic` LLM compact provider | Anthropic API key |
 | `OLLAMA_HOST` | `ollama` embedding provider *(optional)* | Ollama server URL (default: `http://localhost:11434`) |
-
-All memsearch settings (Milvus URI, embedding provider, chunking parameters, etc.) are configured via TOML config files or CLI flags -- see [Configuration](getting-started.md#configuration) for details.
-
-### Examples
 
 ```bash
 # Set API key and run a search
