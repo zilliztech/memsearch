@@ -174,8 +174,8 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
 
 1. **Guards against recursion.** Checks `stop_hook_active` to prevent infinite loops (since the hook itself calls `claude -p`).
 2. **Validates the transcript.** Skips if the transcript file is missing or has fewer than 3 lines.
-3. **Extracts the last turn.** Calls `parse-transcript.sh` (Python3 inline, no `jq` dependency), which finds the last real user message and extracts everything from there to EOF. Skips progress, `file-history-snapshot`, system, and thinking blocks. Tool results are truncated to 1000 characters (configurable via `MEMSEARCH_MAX_RESULT_CHARS`).
-4. **Summarizes with Haiku.** Pipes the parsed turn to `CLAUDECODE= claude -p --model haiku --no-session-persistence` with a third-person note-taker system prompt requesting 2-6 bullet points in the same language as the user's message.
+3. **Extracts the last turn.** Calls `parse-transcript.sh` (Python3 inline, no `jq` dependency), which finds the last real user message and extracts everything from there to EOF. Skips progress, `file-history-snapshot`, system, and thinking blocks. Formats output with clear role labels (`[Human]`, `[Claude Code]`, `[Claude Code calls tool]`, `[Tool output]`/`[Tool error]`) so the summarizer treats the content as a third-party transcript. Tool results are truncated to 1000 characters (configurable via `MEMSEARCH_MAX_RESULT_CHARS`).
+4. **Summarizes with Haiku.** Pipes the parsed turn to `CLAUDECODE= claude -p --model haiku --no-session-persistence` with an external-observer system prompt requesting 2-6 third-person bullet points in the same language as the user's message.
 5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then runs `memsearch index` to ensure immediate indexing.
 
 #### SessionEnd
@@ -427,7 +427,7 @@ ccplugin/
 │   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
 │   ├── user-prompt-submit.sh    # Lightweight systemMessage hint ("[memsearch] Memory available")
 │   ├── stop.sh                  # Extract last turn → haiku summary (third-person) → append to daily .md
-│   ├── parse-transcript.sh      # Extract last turn from JSONL transcript (Python3, no jq)
+│   ├── parse-transcript.sh      # Extract last turn from JSONL, format with role labels (Python3, no jq)
 │   └── session-end.sh           # Stop watch process (cleanup)
 └── skills/
     └── memory-recall/

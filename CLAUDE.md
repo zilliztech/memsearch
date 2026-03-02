@@ -68,7 +68,7 @@ ccplugin/
 │   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
 │   ├── stop.sh                  # Stop: extract last turn → haiku summarize (third-person) → append to daily .md (async)
 │   ├── session-end.sh           # SessionEnd: stop watch process
-│   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats for LLM (Python 3, no jq)
+│   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats with role labels for LLM (Python 3, no jq)
 ├── scripts/
 │   └── derive-collection.sh     # Derive per-project collection name from project path
 └── skills/

@@ -178,9 +178,9 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
     - Scans backward from EOF to find the last real user message (content is a string, not a `tool_result`)
     - Extracts only the last turn: from that user message to EOF
     - Skips `progress`, `file-history-snapshot`, `system`, and `thinking` blocks
-    - Keeps user/assistant text and tool call summaries; truncates tool results to 1000 characters
-    - Uses Python 3 (no `jq` dependency)
-4. **Summarizes with Haiku.** Pipes the parsed last turn to `claude -p --model haiku --no-session-persistence` with a third-person note-taker system prompt that requests 2-6 bullet points recording what the user asked and what Claude did (tools called, files changed, key findings). The summary language matches the user's language.
+    - Formats output with clear role labels: `[Human]` for user messages, `[Claude Code]` for assistant text, `[Claude Code calls tool]` for tool invocations, `[Tool output]`/`[Tool error]` for tool results — these labels help the summarizer treat the content as a third-party transcript rather than its own conversation
+    - Truncates tool results to 1000 characters; uses Python 3 (no `jq` dependency)
+4. **Summarizes with Haiku.** Pipes the parsed last turn to `claude -p --model haiku --no-session-persistence` with an external-observer system prompt that requests 2-6 third-person bullet points recording what the user asked and what Claude did (tools called, files changed, key findings). The summary language matches the user's language.
 5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then explicitly runs `memsearch index` to ensure the new content is indexed immediately, rather than relying on the watcher's debounce timer (which may not fire before SessionEnd kills the watcher).
 
 #### SessionEnd
@@ -589,7 +589,7 @@ ccplugin/
 | `session-start.sh` | SessionStart hook implementation. Starts the watcher, writes the session heading, and reads recent memory files for cold-start context injection. |
 | `user-prompt-submit.sh` | UserPromptSubmit hook implementation. Returns a lightweight `systemMessage` hint to keep Claude aware of the memory system. No search -- retrieval is handled by the memory-recall skill. |
 | `stop.sh` | Stop hook implementation. Extracts the transcript path, validates it, delegates parsing to `parse-transcript.sh`, calls Haiku for summarization (with `CLAUDECODE=` to bypass nested session detection), and appends the result with session anchors to the daily memory file. |
-| `parse-transcript.sh` | Standalone transcript parser. Extracts the last turn (last user question + all responses to EOF) from a JSONL transcript using Python 3. Skips progress, thinking, and file-history-snapshot entries. No `jq` dependency. Used by `stop.sh`. |
+| `parse-transcript.sh` | Standalone transcript parser. Extracts the last turn (last user question + all responses to EOF) from a JSONL transcript using Python 3. Outputs with role labels (`[Human]`, `[Claude Code]`, `[Claude Code calls tool]`, `[Tool output]`/`[Tool error]`) so the summarizer treats it as a third-party transcript. Skips progress, thinking, and file-history-snapshot entries. No `jq` dependency. Used by `stop.sh`. |
 | `session-end.sh` | SessionEnd hook implementation. Calls `stop_watch` to terminate the background watcher and clean up. |
 
 ---

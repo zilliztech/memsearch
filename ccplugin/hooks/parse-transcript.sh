@@ -53,7 +53,7 @@ def find_last_turn_start(lines):
 
 def format_turn(lines):
     """Format a turn into structured text for LLM summarization."""
-    output = []
+    output = ["=== Transcript of a conversation between a human and Claude Code ==="]
     for raw_line in lines:
         try:
             obj = json.loads(raw_line)
@@ -69,7 +69,7 @@ def format_turn(lines):
         if msg_type == "user":
             content = obj.get("message", {}).get("content")
             if isinstance(content, str) and content.strip():
-                output.append(f"USER: {content.strip()}")
+                output.append(f"[Human]: {content.strip()}")
             elif isinstance(content, list):
                 for block in content:
                     if not isinstance(block, dict):
@@ -85,7 +85,8 @@ def format_turn(lines):
                         result = truncate(str(result), MAX_RESULT_CHARS)
                         is_error = block.get("is_error", False)
                         prefix = "ERROR" if is_error else "RESULT"
-                        output.append(f"{prefix}: {result}")
+                        label = "[Tool error]" if is_error else "[Tool output]"
+                        output.append(f"{label}: {result}")
 
         elif msg_type == "assistant":
             content = obj.get("message", {}).get("content", [])
@@ -97,7 +98,7 @@ def format_turn(lines):
                 if block_type == "text":
                     text = block.get("text", "").strip()
                     if text:
-                        output.append(f"ASSISTANT: {text}")
+                        output.append(f"[Claude Code]: {text}")
 
                 elif block_type == "tool_use":
                     name = block.get("name", "unknown")
@@ -112,7 +113,7 @@ def format_turn(lines):
                     input_summary = ", ".join(parts)
                     if len(input_summary) > 400:
                         input_summary = input_summary[:400] + "..."
-                    output.append(f"TOOL: {name}({input_summary})")
+                    output.append(f"[Claude Code calls tool]: {name}({input_summary})")
 
                 # Skip thinking blocks — internal reasoning, not useful for memory
 
