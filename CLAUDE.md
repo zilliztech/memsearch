@@ -62,7 +62,10 @@ The plugin is a first-class component of memsearch — it's the primary real-wor
 
 ```
 ccplugin/
+├── .claude-plugin/
+│   └── plugin.json              # Plugin manifest (name, version, description)
 ├── hooks/
+│   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
 │   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
 │   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill

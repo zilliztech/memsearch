@@ -227,55 +227,6 @@ All agents and projects share the same collection name (`memsearch_chunks`) by d
 
 ---
 
-## Configuration System
-
-memsearch uses a 4-layer configuration system. Each layer overrides the one before it:
-
-```mermaid
-graph LR
-    D["1. Defaults"] --> G["2. Global Config<br>~/.memsearch/config.toml"]
-    G --> P["3. Project Config<br>.memsearch.toml"]
-    P --> C["4. CLI Flags<br>--milvus-uri, etc."]
-```
-
-| Priority | Source | Scope | Example |
-|----------|--------|-------|---------|
-| 1 (lowest) | Built-in defaults | Hardcoded | `milvus.uri = ~/.memsearch/milvus.db` |
-| 2 | `~/.memsearch/config.toml` | User-global | Shared across all projects |
-| 3 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
-| 4 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
-
-> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are not part of the memsearch configuration system and are never written to config files.
-
-### Config Sections
-
-The full configuration is organized into five sections:
-
-```toml
-[milvus]
-uri = "~/.memsearch/milvus.db"
-token = ""
-collection = "memsearch_chunks"
-
-[embedding]
-provider = "openai"
-model = ""                           # empty = provider default
-
-[compact]
-llm_provider = "openai"
-llm_model = ""                       # empty = provider default
-prompt_file = ""                     # custom prompt template path
-
-[chunking]
-max_chunk_size = 1500
-overlap_lines = 2
-
-[watch]
-debounce_ms = 1500
-```
-
----
-
 ## Data Flow Overview
 
 The following diagram shows the complete data flow from source-of-truth markdown files through processing and into the derived vector store:

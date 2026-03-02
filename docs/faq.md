@@ -224,15 +224,6 @@ memsearch reset --yes
 memsearch index ./memory/ --provider <new-provider>
 ```
 
-### Claude Code plugin: `realpath: illegal option -- m` (macOS)
+### Claude Code plugin issues
 
-This was a bug in `ccplugin/scripts/derive-collection.sh` where the script called `realpath -m`, which is a GNU-only flag not supported by BSD `realpath` on macOS. It is fixed in ccplugin v0.2.1+.
-
-If you see this error, update the plugin:
-
-```bash
-# Marketplace install
-claude /plugins update memsearch
-```
-
-Or manually update the `derive-collection.sh` script as described in [issue #95](https://github.com/zilliztech/memsearch/issues/95).
+For plugin-specific troubleshooting (API key errors, watcher issues, skill not triggering, `realpath -m` on macOS), see [Claude Code Plugin -- Troubleshooting](claude-plugin/troubleshooting.md).

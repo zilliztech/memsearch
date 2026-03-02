@@ -40,9 +40,21 @@ src/memsearch/          # Core Python library
 ├── compact.py          # LLM summarization
 └── transcript.py       # JSONL transcript parser
 
-ccplugin/               # Claude Code plugin (shell hooks)
+ccplugin/               # Claude Code plugin
 ├── .claude-plugin/     # Plugin manifest
-└── hooks/              # 4 lifecycle hooks + shared utilities
+├── hooks/              # 4 lifecycle hooks + shared utilities
+│   ├── hooks.json      # Hook definitions
+│   ├── common.sh       # Shared setup sourced by all hooks
+│   ├── session-start.sh
+│   ├── user-prompt-submit.sh
+│   ├── stop.sh
+│   ├── parse-transcript.sh
+│   └── session-end.sh
+├── scripts/
+│   └── derive-collection.sh  # Per-project collection name derivation
+└── skills/
+    └── memory-recall/
+        └── SKILL.md    # Memory retrieval skill (context: fork)
 
 tests/                  # pytest test suite
 docs/                   # mkdocs-material documentation
