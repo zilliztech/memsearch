@@ -1,6 +1,6 @@
 """Tests for the markdown chunker."""
 
-from memsearch.chunker import Chunk, chunk_markdown
+from memsearch.chunker import chunk_markdown
 
 
 def test_simple_heading_split():
@@ -48,7 +48,7 @@ def test_content_hash_is_deterministic():
 
 def test_large_section_splitting():
     # Create a section larger than max_chunk_size
-    paragraphs = ["Paragraph %d. " % i + "x" * 200 for i in range(20)]
+    paragraphs = [f"Paragraph {i}. " + "x" * 200 for i in range(20)]
     md = "# Big Section\n\n" + "\n\n".join(paragraphs)
     chunks = chunk_markdown(md, source="test.md", max_chunk_size=500)
     assert len(chunks) > 1

@@ -38,7 +38,7 @@ DEFAULT_MODELS: dict[str, str] = {
 }
 
 _INSTALL_HINTS: dict[str, str] = {
-    "openai": 'pip install memsearch  (or: uv add memsearch)',
+    "openai": "pip install memsearch  (or: uv add memsearch)",
     "google": 'pip install "memsearch[google]"  (or: uv add "memsearch[google]")',
     "voyage": 'pip install "memsearch[voyage]"  (or: uv add "memsearch[voyage]")',
     "ollama": 'pip install "memsearch[ollama]"  (or: uv add "memsearch[ollama]")',
@@ -71,10 +71,7 @@ def get_provider(
         Override the API key (currently only used by the openai provider).
     """
     if name not in _PROVIDERS:
-        raise ValueError(
-            f"Unknown embedding provider {name!r}. "
-            f"Available: {', '.join(sorted(_PROVIDERS))}"
-        )
+        raise ValueError(f"Unknown embedding provider {name!r}. Available: {', '.join(sorted(_PROVIDERS))}")
 
     module_path, class_name = _PROVIDERS[name]
     try:
@@ -83,10 +80,7 @@ def get_provider(
         mod = importlib.import_module(module_path)
     except ImportError as exc:
         hint = _INSTALL_HINTS.get(name, "")
-        raise ImportError(
-            f"Embedding provider {name!r} requires extra dependencies. "
-            f"Install with: {hint}"
-        ) from exc
+        raise ImportError(f"Embedding provider {name!r} requires extra dependencies. Install with: {hint}") from exc
 
     cls = getattr(mod, class_name)
     kwargs: dict = {}

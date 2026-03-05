@@ -7,7 +7,6 @@ Environment variables:
 
 from __future__ import annotations
 
-
 # Known dimensions for common Google embedding models.
 # gemini-embedding-001 natively outputs 3072, but 768 is the recommended
 # default for most use cases (Matryoshka truncation, saves storage).
@@ -23,7 +22,10 @@ class GoogleEmbedding:
     _DEFAULT_BATCH_SIZE = 100
 
     def __init__(
-        self, model: str = "gemini-embedding-001", *, batch_size: int = 0,
+        self,
+        model: str = "gemini-embedding-001",
+        *,
+        batch_size: int = 0,
     ) -> None:
         from google import genai
 

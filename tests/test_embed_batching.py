@@ -15,7 +15,6 @@ from memsearch.core import MemSearch
 from memsearch.embeddings.utils import batched_embed
 from memsearch.store import MilvusStore
 
-
 # -- batched_embed utility tests --
 
 

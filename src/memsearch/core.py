@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .watcher import FileWatcher
 
 from .chunker import Chunk, chunk_markdown, compute_chunk_id
-from .embeddings import EmbeddingProvider, get_provider
 from .compact import compact_chunks
+from .embeddings import EmbeddingProvider, get_provider
 from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
@@ -70,8 +71,11 @@ class MemSearch:
             api_key=embedding_api_key,
         )
         self._store = MilvusStore(
-            uri=milvus_uri, token=milvus_token, collection=collection,
-            dimension=self._embedder.dimension, description=description,
+            uri=milvus_uri,
+            token=milvus_token,
+            collection=collection,
+            dimension=self._embedder.dimension,
+            description=description,
         )
 
     # ------------------------------------------------------------------
@@ -112,17 +116,15 @@ class MemSearch:
         source = str(f.path)
         text = f.path.read_text(encoding="utf-8")
         chunks = chunk_markdown(
-            text, source=source,
+            text,
+            source=source,
             max_chunk_size=self._max_chunk_size,
             overlap_lines=self._overlap_lines,
         )
         model = self._embedder.model_name
 
         # Compute composite chunk IDs (matching OpenClaw format)
-        chunk_ids = {
-            compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model)
-            for c in chunks
-        }
+        chunk_ids = {compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) for c in chunks}
         old_ids = self._store.hashes_by_source(source)
 
         # Delete stale chunks that are no longer in the file
@@ -136,9 +138,9 @@ class MemSearch:
         if not force:
             # Only embed chunks whose ID doesn't already exist
             chunks = [
-                c for c in chunks
-                if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model)
-                not in old_ids
+                c
+                for c in chunks
+                if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) not in old_ids
             ]
             if not chunks:
                 return 0
@@ -156,8 +158,11 @@ class MemSearch:
         records: list[dict[str, Any]] = []
         for i, chunk in enumerate(chunks):
             chunk_id = compute_chunk_id(
-                chunk.source, chunk.start_line, chunk.end_line,
-                chunk.content_hash, model,
+                chunk.source,
+                chunk.start_line,
+                chunk.end_line,
+                chunk.content_hash,
+                model,
             )
             records.append(
                 {
@@ -251,15 +256,19 @@ class MemSearch:
             The generated summary markdown.
         """
         from .store import _escape_filter_value
+
         filter_expr = f'source == "{_escape_filter_value(source)}"' if source else ""
         all_chunks = self._store.query(filter_expr=filter_expr)
         if not all_chunks:
             return ""
 
         summary = await compact_chunks(
-            all_chunks, llm_provider=llm_provider, model=llm_model,
+            all_chunks,
+            llm_provider=llm_provider,
+            model=llm_model,
             prompt_template=prompt_template,
-            base_url=llm_base_url, api_key=llm_api_key,
+            base_url=llm_base_url,
+            api_key=llm_api_key,
         )
 
         # Write summary to memory/YYYY-MM-DD.md (append)
@@ -267,7 +276,7 @@ class MemSearch:
         memory_dir = base / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
         compact_file = memory_dir / f"{date.today()}.md"
-        compact_heading = f"\n\n## Memory Compact\n\n"
+        compact_heading = "\n\n## Memory Compact\n\n"
         with open(compact_file, "a", encoding="utf-8") as f:
             if compact_file.stat().st_size == 0:
                 f.write(f"# {date.today()}\n")

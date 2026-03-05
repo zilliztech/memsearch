@@ -70,11 +70,7 @@ def chunk_markdown(
         sections.append((0, end, "", 0))
 
     for idx, (line_idx, level, title) in enumerate(heading_positions):
-        next_start = (
-            heading_positions[idx + 1][0]
-            if idx + 1 < len(heading_positions)
-            else len(lines)
-        )
+        next_start = heading_positions[idx + 1][0] if idx + 1 < len(heading_positions) else len(lines)
         sections.append((line_idx, next_start, title, level))
 
     chunks: list[Chunk] = []

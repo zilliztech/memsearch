@@ -14,7 +14,10 @@ class OllamaEmbedding:
     _DEFAULT_BATCH_SIZE = 512
 
     def __init__(
-        self, model: str = "nomic-embed-text", *, batch_size: int = 0,
+        self,
+        model: str = "nomic-embed-text",
+        *,
+        batch_size: int = 0,
     ) -> None:
         import ollama
 

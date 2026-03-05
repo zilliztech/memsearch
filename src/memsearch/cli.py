@@ -10,6 +10,8 @@ from pathlib import Path
 import click
 
 from .config import (
+    GLOBAL_CONFIG_PATH,
+    PROJECT_CONFIG_PATH,
     MemSearchConfig,
     config_to_dict,
     get_config_value,
@@ -17,9 +19,6 @@ from .config import (
     resolve_config,
     save_config,
     set_config_value,
-    GLOBAL_CONFIG_PATH,
-    PROJECT_CONFIG_PATH,
-    _SECTION_CLASSES,
 )
 
 
@@ -82,6 +81,7 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
 
 # -- Common CLI options --
 
+
 def _common_options(f):
     """Shared options for commands that create a MemSearch instance."""
     f = click.option("--provider", "-p", default=None, help="Embedding provider.")(f)
@@ -122,12 +122,18 @@ def index(
     """Index markdown files from PATHS."""
     from .core import MemSearch
 
-    cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, batch_size=batch_size,
-        base_url=base_url, api_key=api_key,
-        collection=collection,
-        milvus_uri=milvus_uri, milvus_token=milvus_token,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
     try:
         n = _run(ms.index(force=force))
@@ -157,12 +163,18 @@ def search(
     """Search indexed memory for QUERY."""
     from .core import MemSearch
 
-    cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, batch_size=batch_size,
-        base_url=base_url, api_key=api_key,
-        collection=collection,
-        milvus_uri=milvus_uri, milvus_token=milvus_token,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         results = _run(ms.search(query, top_k=top_k or 5))
@@ -237,12 +249,18 @@ def expand(
     """
     from .store import MilvusStore
 
-    cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, batch_size=batch_size,
-        base_url=base_url, api_key=api_key,
-        collection=collection,
-        milvus_uri=milvus_uri, milvus_token=milvus_token,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
     store = MilvusStore(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
@@ -279,11 +297,14 @@ def expand(
         else:
             # Show full section under the same heading
             expanded, expanded_start, expanded_end = _extract_section(
-                all_lines, start_line, heading_level,
+                all_lines,
+                start_line,
+                heading_level,
             )
 
         # Parse any anchor comments in the expanded text
         import re
+
         anchor_match = re.search(
             r"<!--\s*session:(\S+)\s+turn:(\S+)\s+transcript:(\S+)\s*-->",
             expanded,
@@ -321,7 +342,9 @@ def expand(
 
 
 def _extract_section(
-    all_lines: list[str], start_line: int, heading_level: int,
+    all_lines: list[str],
+    start_line: int,
+    heading_level: int,
 ) -> tuple[str, int, int]:
     """Extract the full section containing the chunk.
 
@@ -374,10 +397,10 @@ def transcript(
     Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
     from .transcript import (
-        parse_transcript,
         find_turn_context,
-        format_turns,
         format_turn_index,
+        format_turns,
+        parse_transcript,
         turns_to_dicts,
     )
 
@@ -425,13 +448,19 @@ def watch(
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
 
-    cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, batch_size=batch_size,
-        base_url=base_url, api_key=api_key,
-        collection=collection,
-        milvus_uri=milvus_uri, milvus_token=milvus_token,
-        debounce_ms=debounce_ms,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+            debounce_ms=debounce_ms,
+        )
+    )
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
 
     # Initial index: ensure existing files are indexed before watching
@@ -447,6 +476,7 @@ def watch(
     try:
         while True:
             import time
+
             time.sleep(1)
     except KeyboardInterrupt:
         click.echo("\nStopping watcher.")
@@ -457,7 +487,9 @@ def watch(
 
 @cli.command()
 @click.option("--source", "-s", default=None, help="Only compact chunks from this source.")
-@click.option("--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into.")
+@click.option(
+    "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
+)
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
 @click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM.")
@@ -486,15 +518,23 @@ def compact(
     """Compress stored memories into a summary."""
     from .core import MemSearch
 
-    cfg = resolve_config(_build_cli_overrides(
-        provider=provider, model=model, batch_size=batch_size,
-        base_url=base_url, api_key=api_key,
-        collection=collection,
-        milvus_uri=milvus_uri, milvus_token=milvus_token,
-        llm_provider=llm_provider, llm_model=llm_model,
-        prompt_file=prompt_file,
-        llm_base_url=llm_base_url, llm_api_key=llm_api_key,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            prompt_file=prompt_file,
+            llm_base_url=llm_base_url,
+            llm_api_key=llm_api_key,
+        )
+    )
 
     prompt_template = prompt
     if cfg.compact.prompt_file and not prompt_template:
@@ -502,15 +542,17 @@ def compact(
 
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
-        summary = _run(ms.compact(
-            source=source,
-            llm_provider=cfg.compact.llm_provider,
-            llm_model=cfg.compact.llm_model or None,
-            prompt_template=prompt_template,
-            output_dir=output_dir,
-            llm_base_url=cfg.compact.base_url or None,
-            llm_api_key=cfg.compact.api_key or None,
-        ))
+        summary = _run(
+            ms.compact(
+                source=source,
+                llm_provider=cfg.compact.llm_provider,
+                llm_model=cfg.compact.llm_model or None,
+                prompt_template=prompt_template,
+                output_dir=output_dir,
+                llm_base_url=cfg.compact.base_url or None,
+                llm_api_key=cfg.compact.api_key or None,
+            )
+        )
         if summary:
             click.echo("Compact complete. Summary:\n")
             click.echo(summary)
@@ -532,9 +574,13 @@ def stats(
     """Show statistics about the index."""
     from .store import MilvusStore
 
-    cfg = resolve_config(_build_cli_overrides(
-        collection=collection, milvus_uri=milvus_uri, milvus_token=milvus_token,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
     store = MilvusStore(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
@@ -561,9 +607,13 @@ def reset(
     """Drop all indexed data."""
     from .store import MilvusStore
 
-    cfg = resolve_config(_build_cli_overrides(
-        collection=collection, milvus_uri=milvus_uri, milvus_token=milvus_token,
-    ))
+    cfg = resolve_config(
+        _build_cli_overrides(
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
     store = MilvusStore(
         uri=cfg.milvus.uri,
         token=cfg.milvus.token or None,
@@ -581,6 +631,7 @@ def reset(
 # Config command group
 # ======================================================================
 
+
 @cli.group("config")
 def config_group() -> None:
     """Manage memsearch configuration."""
@@ -590,28 +641,30 @@ def config_group() -> None:
 @click.option("--project", is_flag=True, help="Write to .memsearch.toml (project-level) instead of global.")
 def config_init(project: bool) -> None:
     """Interactive configuration wizard."""
-    from dataclasses import fields as dc_fields
 
     target = PROJECT_CONFIG_PATH if project else GLOBAL_CONFIG_PATH
-    existing = load_config_file(target)
+    load_config_file(target)
     current = resolve_config()
 
     result: dict = {}
 
-    click.echo(f"memsearch configuration wizard")
+    click.echo("memsearch configuration wizard")
     click.echo(f"Writing to: {target}\n")
 
     # Milvus
     click.echo("── Milvus ──")
     result["milvus"] = {}
     result["milvus"]["uri"] = click.prompt(
-        "  Milvus URI", default=current.milvus.uri,
+        "  Milvus URI",
+        default=current.milvus.uri,
     )
     result["milvus"]["token"] = click.prompt(
-        "  Milvus token (empty for none)", default=current.milvus.token,
+        "  Milvus token (empty for none)",
+        default=current.milvus.token,
     )
     result["milvus"]["collection"] = click.prompt(
-        "  Collection name", default=current.milvus.collection,
+        "  Collection name",
+        default=current.milvus.collection,
     )
 
     # Embedding
@@ -631,7 +684,8 @@ def config_init(project: bool) -> None:
     _emb_provider = result["embedding"]["provider"]
     _emb_model_default = current.embedding.model or _embedding_defaults.get(_emb_provider, "")
     result["embedding"]["model"] = click.prompt(
-        "  Model", default=_emb_model_default,
+        "  Model",
+        default=_emb_model_default,
     )
     result["embedding"]["base_url"] = click.prompt(
         "  Base URL (empty for default, or env:VAR_NAME)",
@@ -646,17 +700,23 @@ def config_init(project: bool) -> None:
     click.echo("\n── Chunking ──")
     result["chunking"] = {}
     result["chunking"]["max_chunk_size"] = click.prompt(
-        "  Max chunk size (chars)", default=current.chunking.max_chunk_size, type=int,
+        "  Max chunk size (chars)",
+        default=current.chunking.max_chunk_size,
+        type=int,
     )
     result["chunking"]["overlap_lines"] = click.prompt(
-        "  Overlap lines", default=current.chunking.overlap_lines, type=int,
+        "  Overlap lines",
+        default=current.chunking.overlap_lines,
+        type=int,
     )
 
     # Watch
     click.echo("\n── Watch ──")
     result["watch"] = {}
     result["watch"]["debounce_ms"] = click.prompt(
-        "  Debounce (ms)", default=current.watch.debounce_ms, type=int,
+        "  Debounce (ms)",
+        default=current.watch.debounce_ms,
+        type=int,
     )
 
     # Compact
@@ -668,15 +728,18 @@ def config_init(project: bool) -> None:
     }
     result["compact"] = {}
     result["compact"]["llm_provider"] = click.prompt(
-        "  LLM provider (openai/anthropic/gemini)", default=current.compact.llm_provider,
+        "  LLM provider (openai/anthropic/gemini)",
+        default=current.compact.llm_provider,
     )
     _compact_provider = result["compact"]["llm_provider"]
     _compact_model_default = current.compact.llm_model or _compact_defaults.get(_compact_provider, "")
     result["compact"]["llm_model"] = click.prompt(
-        "  LLM model", default=_compact_model_default,
+        "  LLM model",
+        default=_compact_model_default,
     )
     result["compact"]["prompt_file"] = click.prompt(
-        "  Prompt file path (empty for built-in)", default=current.compact.prompt_file,
+        "  Prompt file path (empty for built-in)",
+        default=current.compact.prompt_file,
     )
 
     save_config(result, target)

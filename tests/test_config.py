@@ -8,9 +8,8 @@ import pytest
 import tomli_w
 
 from memsearch.config import (
-    MemSearchConfig,
-    MilvusConfig,
     EmbeddingConfig,
+    MemSearchConfig,
     deep_merge,
     get_config_value,
     load_config_file,
@@ -53,7 +52,6 @@ def test_load_missing_file(tmp_path: Path):
     """load_config_file should return {} for a missing file."""
     result = load_config_file(tmp_path / "nonexistent.toml")
     assert result == {}
-
 
 
 def test_deep_merge_basic():
@@ -152,6 +150,7 @@ def test_resolve_env_ref_env_prefix(monkeypatch: pytest.MonkeyPatch):
 def test_resolve_env_ref_missing_var():
     """env:VAR_NAME should raise KeyError if the variable is not set."""
     import os
+
     # Ensure the var doesn't exist
     os.environ.pop("NONEXISTENT_MEMSEARCH_VAR", None)
     with pytest.raises(KeyError, match="NONEXISTENT_MEMSEARCH_VAR"):
@@ -164,13 +163,16 @@ def test_resolve_env_refs_in_config(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("TEST_MILVUS_TOKEN", "token-from-env")
 
     cfg_file = tmp_path / "config.toml"
-    save_config({
-        "embedding": {
-            "api_key": "env:TEST_API_KEY",
-            "base_url": "https://my-endpoint.com",
+    save_config(
+        {
+            "embedding": {
+                "api_key": "env:TEST_API_KEY",
+                "base_url": "https://my-endpoint.com",
+            },
+            "milvus": {"token": "env:TEST_MILVUS_TOKEN"},
         },
-        "milvus": {"token": "env:TEST_MILVUS_TOKEN"},
-    }, cfg_file)
+        cfg_file,
+    )
 
     monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_file)
     monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
@@ -191,6 +193,7 @@ def test_embedding_config_new_fields():
 def test_compact_config_new_fields():
     """CompactConfig should have base_url and api_key fields with empty defaults."""
     from memsearch.config import CompactConfig
+
     cfg = CompactConfig()
     assert cfg.base_url == ""
     assert cfg.api_key == ""
@@ -201,12 +204,15 @@ def test_compact_config_env_ref_resolved(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setenv("TEST_LLM_KEY", "sk-llm-from-env")
 
     cfg_file = tmp_path / "config.toml"
-    save_config({
-        "compact": {
-            "api_key": "env:TEST_LLM_KEY",
-            "base_url": "https://my-llm-endpoint.com",
+    save_config(
+        {
+            "compact": {
+                "api_key": "env:TEST_LLM_KEY",
+                "base_url": "https://my-llm-endpoint.com",
+            },
         },
-    }, cfg_file)
+        cfg_file,
+    )
 
     monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_file)
     monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")

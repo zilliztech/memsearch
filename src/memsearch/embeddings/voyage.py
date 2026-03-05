@@ -14,7 +14,10 @@ class VoyageEmbedding:
     _DEFAULT_BATCH_SIZE = 128
 
     def __init__(
-        self, model: str = "voyage-3-lite", *, batch_size: int = 0,
+        self,
+        model: str = "voyage-3-lite",
+        *,
+        batch_size: int = 0,
     ) -> None:
         import voyageai
 

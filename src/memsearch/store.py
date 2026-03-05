@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +80,14 @@ class MilvusStore:
         schema.add_field(field_name="heading_level", datatype=DataType.INT64)
         schema.add_field(field_name="start_line", datatype=DataType.INT64)
         schema.add_field(field_name="end_line", datatype=DataType.INT64)
-        schema.add_function(Function(
-            name="bm25_fn",
-            function_type=FunctionType.BM25,
-            input_field_names=["content"],
-            output_field_names=["sparse_vector"],
-        ))
+        schema.add_function(
+            Function(
+                name="bm25_fn",
+                function_type=FunctionType.BM25,
+                input_field_names=["content"],
+                output_field_names=["sparse_vector"],
+            )
+        )
 
         index_params = self._client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="FLAT", metric_type="COSINE")
@@ -185,14 +187,16 @@ class MilvusStore:
 
         if not results or not results[0]:
             return []
-        return [
-            {**hit["entity"], "score": hit["distance"]}
-            for hit in results[0]
-        ]
+        return [{**hit["entity"], "score": hit["distance"]} for hit in results[0]]
 
-    _QUERY_FIELDS = [
-        "content", "source", "heading", "chunk_hash",
-        "heading_level", "start_line", "end_line",
+    _QUERY_FIELDS: ClassVar[list[str]] = [
+        "content",
+        "source",
+        "heading",
+        "chunk_hash",
+        "heading_level",
+        "start_line",
+        "end_line",
     ]
 
     def query(self, *, filter_expr: str = "") -> list[dict[str, Any]]:
@@ -200,7 +204,7 @@ class MilvusStore:
         kwargs: dict[str, Any] = {
             "collection_name": self._collection,
             "output_fields": self._QUERY_FIELDS,
-            "filter": filter_expr if filter_expr else 'chunk_hash != ""',
+            "filter": filter_expr or 'chunk_hash != ""',
         }
         return self._client.query(**kwargs)
 

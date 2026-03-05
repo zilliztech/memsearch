@@ -16,7 +16,10 @@ class LocalEmbedding:
     _DEFAULT_BATCH_SIZE = 512
 
     def __init__(
-        self, model: str = "all-MiniLM-L6-v2", *, batch_size: int = 0,
+        self,
+        model: str = "all-MiniLM-L6-v2",
+        *,
+        batch_size: int = 0,
     ) -> None:
         import io
         import os

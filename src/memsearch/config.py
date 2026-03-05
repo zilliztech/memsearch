@@ -96,13 +96,10 @@ def resolve_env_ref(value: str) -> str:
     """
     if not isinstance(value, str) or not value.startswith(_ENV_PREFIX):
         return value
-    var_name = value[len(_ENV_PREFIX):]
+    var_name = value[len(_ENV_PREFIX) :]
     env_val = os.environ.get(var_name)
     if env_val is None:
-        raise KeyError(
-            f"Environment variable {var_name!r} referenced in config "
-            f"(via {value!r}) is not set"
-        )
+        raise KeyError(f"Environment variable {var_name!r} referenced in config (via {value!r}) is not set")
     return env_val
 
 
@@ -131,7 +128,6 @@ def load_config_file(path: Path | str) -> dict[str, Any]:
         return {}
     with open(p, "rb") as f:
         return tomllib.load(f)
-
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

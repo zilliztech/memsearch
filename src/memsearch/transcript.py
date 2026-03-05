@@ -55,10 +55,13 @@ def parse_transcript(path: str | Path) -> list[Turn]:
             content = msg.get("content", "")
 
             # Skip tool results — they are part of the previous assistant turn
-            if isinstance(content, list):
-                # Check if it's a tool_result array
-                if content and isinstance(content[0], dict) and content[0].get("type") == "tool_result":
-                    continue
+            if (
+                isinstance(content, list)
+                and content
+                and isinstance(content[0], dict)
+                and content[0].get("type") == "tool_result"
+            ):
+                continue
 
             # Real user message
             if isinstance(content, str) and content.strip():
@@ -180,6 +183,7 @@ def turns_to_dicts(turns: list[Turn]) -> list[dict[str, Any]]:
 def _strip_hook_tags(text: str) -> str:
     """Remove hook-injected XML tags from user messages."""
     import re
+
     # Remove <system-reminder>...</system-reminder>, <local-command-*>...</local-command-*>, etc.
     text = re.sub(r"<system-reminder>.*?</system-reminder>", "", text, flags=re.DOTALL)
     text = re.sub(r"<local-command-\w+>.*?</local-command-\w+>", "", text, flags=re.DOTALL)

@@ -73,10 +73,7 @@ async def compact_chunks(
     elif llm_provider == "gemini":
         return await _compact_gemini(prompt, model or "gemini-2.0-flash")
     else:
-        raise ValueError(
-            f"Unknown LLM provider {llm_provider!r}. "
-            f"Available: openai, anthropic, gemini"
-        )
+        raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
 
 
 async def _compact_openai(prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None) -> str:

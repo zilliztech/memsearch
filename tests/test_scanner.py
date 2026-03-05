@@ -1,6 +1,5 @@
 """Tests for the file scanner."""
 
-import os
 from pathlib import Path
 
 from memsearch.scanner import scan_paths
