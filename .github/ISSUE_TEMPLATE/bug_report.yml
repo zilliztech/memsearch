@@ -1,0 +1,60 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Run `memsearch index ./docs`
+        2. Run `memsearch search "query"`
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Paste any relevant error messages or traceback.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: memsearch version
+      description: Output of `memsearch --version` or `pip show memsearch`.
+      placeholder: "0.1.15"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version`.
+      placeholder: "3.12.0"
+    validations:
+      required: true

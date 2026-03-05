@@ -1,10 +1,10 @@
-# Publish to PyPI when a version tag is pushed
+# Build, publish to PyPI, and create a GitHub Release when a version tag is pushed
 #
 # Usage:
-#   git tag v0.1.0  # Must match the version in pyproject.toml
+#   git tag v0.1.0  # must match the version in pyproject.toml
 #   git push --tags
 
-name: Publish Python Package to PyPI
+name: Release
 
 on:
   push:
@@ -19,16 +19,16 @@ jobs:
 
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install build tools
         run: python -m pip install build
@@ -38,3 +38,12 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Publish GitHub Release
+        uses: release-drafter/release-drafter@v6
+        with:
+          publish: true
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,23 @@
+# Auto-label PRs from conventional commit titles and maintain a draft release
+# Config: .github/release-drafter.yml
+
+name: Release Drafter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update release draft
+        uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

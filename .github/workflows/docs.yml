@@ -1,12 +1,14 @@
+# Build and deploy mkdocs-material site to GitHub Pages
+
 name: Deploy docs
 
 on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - '.github/workflows/docs.yml'
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,12 +18,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
-      - run: pip install mkdocs-material mkdocs-terminal pymdown-extensions
+      - name: Install dependencies
+        run: pip install mkdocs-material mkdocs-terminal pymdown-extensions
 
-      - run: mkdocs gh-deploy --force
+      - name: Deploy to GitHub Pages
+        run: mkdocs gh-deploy --force

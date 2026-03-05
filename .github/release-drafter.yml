@@ -1,0 +1,55 @@
+# Release notes template and PR autolabeler for release-drafter
+# Docs: https://github.com/release-drafter/release-drafter
+
+name-template: '$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: Breaking Changes
+    labels: ['breaking']
+  - title: Features
+    labels: ['feature']
+  - title: Bug Fixes
+    labels: ['fix']
+  - title: Documentation
+    labels: ['docs']
+  - title: Other Changes
+    labels: ['chore', 'ci', 'refactor', 'test', 'style', 'perf']
+
+change-template: '- $TITLE (#$NUMBER)'
+
+autolabeler:
+  - label: 'feature'
+    title: ['/^feat(\(.+\))?!?:/']
+  - label: 'fix'
+    title: ['/^fix(\(.+\))?!?:/']
+  - label: 'docs'
+    title: ['/^docs(\(.+\))?!?:/']
+  - label: 'ci'
+    title: ['/^ci(\(.+\))?!?:/']
+  - label: 'chore'
+    title: ['/^chore(\(.+\))?!?:/']
+  - label: 'refactor'
+    title: ['/^refactor(\(.+\))?!?:/']
+  - label: 'test'
+    title: ['/^test(\(.+\))?!?:/']
+  - label: 'style'
+    title: ['/^style(\(.+\))?!?:/']
+  - label: 'perf'
+    title: ['/^perf(\(.+\))?!?:/']
+  - label: 'breaking'
+    title: ['/^.+!:/']
+
+version-resolver:
+  major:
+    labels: ['breaking']
+  minor:
+    labels: ['feature']
+  patch:
+    labels: ['fix', 'docs', 'chore', 'ci', 'refactor', 'test', 'style', 'perf']
+  default: patch
+
+template: |
+  ## What's Changed
+
+  $CHANGES
