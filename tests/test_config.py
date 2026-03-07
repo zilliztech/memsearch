@@ -266,11 +266,11 @@ def test_get_config_status_prefers_project_over_global_over_environment(
 
     status = get_config_status()
     assert status["embedding"]["ready"] is True
-    assert status["embedding"]["api_key"]["source"] == "project"
-    assert status["embedding"]["base_url"]["source"] == "global"
+    assert status["embedding"]["api_key"] == {"source": "project", "configured": True}
+    assert status["embedding"]["base_url"] == {"source": "global", "configured": True}
     assert status["compact"]["ready"] is True
-    assert status["compact"]["api_key"]["source"] == "project"
-    assert status["compact"]["base_url"]["source"] == "global"
+    assert status["compact"]["api_key"] == {"source": "project", "configured": True}
+    assert status["compact"]["base_url"] == {"source": "global", "configured": True}
     assert status["milvus"]["uri"] == "http://project-milvus:19530"
 
 

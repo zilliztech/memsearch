@@ -240,6 +240,7 @@ memsearch config init                    # write to ~/.memsearch/config.toml
 memsearch config init --project          # write to .memsearch.toml (per-project)
 memsearch config set milvus.uri http://localhost:19530
 memsearch config list --resolved         # show merged config from all sources
+memsearch config status                  # show embedding/compact readiness for hooks
 ```
 
 ### Index Markdown — `index`
