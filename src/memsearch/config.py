@@ -214,8 +214,16 @@ def _source_value(config_dict: dict[str, Any], section: str, field_name: str) ->
 
 
 def _has_source_value(config_dict: dict[str, Any], section: str, field_name: str) -> bool:
+    """Return whether a source explicitly sets *section.field_name*."""
     section_dict = config_dict.get(section, {})
     return isinstance(section_dict, dict) and field_name in section_dict
+
+
+def _resolve_status_env_ref(value: Any) -> str:
+    """Resolve env-backed status values without raising when the env var is missing."""
+    if isinstance(value, str) and value.startswith(_ENV_PREFIX):
+        return str(os.environ.get(value[len(_ENV_PREFIX) :], value))
+    return str(value)
 
 
 def _value_origin(section: str, field_name: str, cli_overrides: dict[str, Any] | None = None) -> tuple[str, Any]:
@@ -339,12 +347,8 @@ def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, 
             "base_url": compact_base_url,
         },
         "milvus": {
-            "uri": str(os.environ.get(milvus_uri[len(_ENV_PREFIX) :], milvus_uri))
-            if isinstance(milvus_uri, str) and milvus_uri.startswith(_ENV_PREFIX)
-            else str(milvus_uri),
-            "collection": str(os.environ.get(milvus_collection[len(_ENV_PREFIX) :], milvus_collection))
-            if isinstance(milvus_collection, str) and milvus_collection.startswith(_ENV_PREFIX)
-            else str(milvus_collection),
+            "uri": _resolve_status_env_ref(milvus_uri),
+            "collection": _resolve_status_env_ref(milvus_collection),
         },
     }
 
