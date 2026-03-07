@@ -11,6 +11,7 @@ from memsearch.config import (
     EmbeddingConfig,
     MemSearchConfig,
     deep_merge,
+    get_config_status,
     get_config_value,
     load_config_file,
     resolve_config,
@@ -233,3 +234,99 @@ def test_compact_config_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.Mo
     cfg = resolve_config()
     assert get_config_value("compact.base_url", cfg) == "https://custom-llm.example.com"
     assert get_config_value("compact.api_key", cfg) == "sk-custom-123"
+
+
+def test_get_config_status_prefers_project_over_global_over_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Config status should honor project > global > environment precedence."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://env-endpoint.example.com")
+
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    save_config(
+        {
+            "embedding": {"api_key": "sk-global", "base_url": "https://global-embed.example.com"},
+            "compact": {"api_key": "sk-global-compact", "base_url": "https://global-compact.example.com"},
+        },
+        global_cfg,
+    )
+    save_config(
+        {
+            "embedding": {"api_key": "sk-project"},
+            "compact": {"api_key": "sk-project-compact"},
+            "milvus": {"uri": "http://project-milvus:19530"},
+        },
+        project_cfg,
+    )
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    status = get_config_status()
+    assert status["embedding"]["ready"] is True
+    assert status["embedding"]["api_key"]["source"] == "project"
+    assert status["embedding"]["base_url"]["source"] == "global"
+    assert status["compact"]["ready"] is True
+    assert status["compact"]["api_key"]["source"] == "project"
+    assert status["compact"]["base_url"]["source"] == "global"
+    assert status["milvus"]["uri"] == "http://project-milvus:19530"
+
+
+def test_get_config_status_uses_environment_fallbacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Config status should fall back to provider env vars when config files omit credentials."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://env-endpoint.example.com")
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "global.toml")
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "project.toml")
+
+    status = get_config_status()
+    assert status["embedding"]["ready"] is True
+    assert status["embedding"]["api_key"] == {
+        "source": "environment",
+        "configured": True,
+        "env_var": "OPENAI_API_KEY",
+    }
+    assert status["embedding"]["base_url"] == {
+        "source": "environment",
+        "configured": True,
+        "env_var": "OPENAI_BASE_URL",
+    }
+    assert status["compact"]["ready"] is True
+    assert status["compact"]["api_key"] == {
+        "source": "environment",
+        "configured": True,
+        "env_var": "OPENAI_API_KEY",
+    }
+
+
+def test_get_config_status_reports_missing_project_env_refs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A project-level env: reference should win, even when the referenced env var is missing."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    save_config({"embedding": {"api_key": "sk-global"}}, global_cfg)
+    save_config(
+        {
+            "embedding": {"api_key": "env:PROJECT_EMBED_KEY"},
+            "compact": {"api_key": "env:PROJECT_COMPACT_KEY"},
+        },
+        project_cfg,
+    )
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    status = get_config_status()
+    assert status["embedding"]["ready"] is False
+    assert status["embedding"]["api_key"] == {
+        "source": "project",
+        "configured": False,
+        "env_var": "PROJECT_EMBED_KEY",
+    }
+    assert status["compact"]["ready"] is False
+    assert status["compact"]["api_key"] == {
+        "source": "project",
+        "configured": False,
+        "env_var": "PROJECT_COMPACT_KEY",
+    }

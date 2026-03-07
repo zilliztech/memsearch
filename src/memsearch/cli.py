@@ -14,6 +14,7 @@ from .config import (
     PROJECT_CONFIG_PATH,
     MemSearchConfig,
     config_to_dict,
+    get_config_status,
     get_config_value,
     load_config_file,
     resolve_config,
@@ -797,3 +798,9 @@ def config_list(mode: str) -> None:
         click.echo(tomli_w.dumps(data))
     else:
         click.echo("(empty)")
+
+
+@config_group.command("status")
+def config_status() -> None:
+    """Show hook-friendly backend configuration status as JSON."""
+    click.echo(json.dumps(get_config_status(), indent=2, sort_keys=True))

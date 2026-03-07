@@ -11,19 +11,23 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
 
-# Skip summarization when the required API key is missing — embedding/search
-# would fail, and the session likely only contains the "key not set" warning.
-_required_env_var() {
-  case "$1" in
-    openai) echo "OPENAI_API_KEY" ;;
-    google) echo "GOOGLE_API_KEY" ;;
-    voyage) echo "VOYAGE_API_KEY" ;;
-    *) echo "" ;;  # ollama, local — no API key needed
-  esac
-}
-_PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
-_REQ_KEY=$(_required_env_var "$_PROVIDER")
-if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
+# Skip summarization when embedding/search is not configured. Prefer the
+# backend status API so project/global config and env fallbacks share one source
+# of truth, but keep a direct-env fallback for older memsearch versions.
+_EMBEDDING_READY="false"
+if [ -n "$MEMSEARCH_CMD" ]; then
+  _CONFIG_STATUS=$(_config_status_json || true)
+  if [ -n "$_CONFIG_STATUS" ]; then
+    _EMBEDDING_READY=$(_json_val "$_CONFIG_STATUS" "embedding.ready" "false")
+  else
+    _PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
+    _REQ_KEY=$(_required_env_var embedding "$_PROVIDER")
+    if [ -z "$_REQ_KEY" ] || [ -n "${!_REQ_KEY:-}" ]; then
+      _EMBEDDING_READY="true"
+    fi
+  fi
+fi
+if [ "$_EMBEDDING_READY" != "true" ]; then
   echo '{}'
   exit 0
 fi

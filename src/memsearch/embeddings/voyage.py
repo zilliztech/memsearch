@@ -18,10 +18,12 @@ class VoyageEmbedding:
         model: str = "voyage-3-lite",
         *,
         batch_size: int = 0,
+        api_key: str | None = None,
     ) -> None:
         import voyageai
 
-        self._client = voyageai.AsyncClient()  # reads VOYAGE_API_KEY
+        kwargs = {"api_key": api_key} if api_key else {}
+        self._client = voyageai.AsyncClient(**kwargs)  # reads VOYAGE_API_KEY if api_key is not provided
         self._model = model
         self._dimension = _detect_dimension(model)
         self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
