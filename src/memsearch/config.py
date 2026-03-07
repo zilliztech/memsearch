@@ -228,14 +228,19 @@ def _resolve_status_env_ref(value: Any) -> str:
     return str(value)
 
 
-def _value_origin(section: str, field_name: str, cli_overrides: dict[str, Any] | None = None) -> tuple[str, Any]:
+def _value_origin(
+    section: str,
+    field_name: str,
+    cli_overrides: dict[str, Any] | None = None,
+    sources: tuple[tuple[str, dict[str, Any]], ...] | None = None,
+) -> tuple[str, Any]:
     """Return the highest-priority origin and raw value for a config field."""
-    sources = (
+    active_sources = sources or (
         ("cli", cli_overrides or {}),
         ("project", load_config_file(PROJECT_CONFIG_PATH)),
         ("global", load_config_file(GLOBAL_CONFIG_PATH)),
     )
-    for source_name, data in sources:
+    for source_name, data in active_sources:
         if not _has_source_value(data, section, field_name):
             continue
         value = _source_value(data, section, field_name)
@@ -255,9 +260,10 @@ def _setting_status(
     *,
     fallback_env_var: str | None = None,
     cli_overrides: dict[str, Any] | None = None,
+    sources: tuple[tuple[str, dict[str, Any]], ...] | None = None,
 ) -> dict[str, Any]:
     """Describe whether a config setting is effectively available."""
-    source, raw_value = _value_origin(section, field_name, cli_overrides)
+    source, raw_value = _value_origin(section, field_name, cli_overrides, sources)
     status: dict[str, Any] = {"source": source, "configured": False}
 
     if isinstance(raw_value, str) and raw_value.startswith(_ENV_PREFIX):
@@ -289,7 +295,18 @@ def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, 
     required settings are configured, and non-secret resolved values that the
     shell hooks need for status display.
     """
-    merged = _merged_config_dict(cli_overrides)
+    global_config = load_config_file(GLOBAL_CONFIG_PATH)
+    project_config = load_config_file(PROJECT_CONFIG_PATH)
+    merged = _default_dict()
+    merged = deep_merge(merged, global_config)
+    merged = deep_merge(merged, project_config)
+    if cli_overrides:
+        merged = deep_merge(merged, cli_overrides)
+    sources = (
+        ("cli", cli_overrides or {}),
+        ("project", project_config),
+        ("global", global_config),
+    )
 
     embedding_provider = str(merged["embedding"]["provider"])
     embedding_model = str(merged["embedding"]["model"])
@@ -306,24 +323,28 @@ def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, 
         "api_key",
         fallback_env_var=_EMBEDDING_API_KEY_ENV_VARS.get(embedding_provider),
         cli_overrides=cli_overrides,
+        sources=sources,
     )
     embedding_base_url = _setting_status(
         "embedding",
         "base_url",
         fallback_env_var=_OPENAI_BASE_URL_ENV_VAR if embedding_provider == "openai" else None,
         cli_overrides=cli_overrides,
+        sources=sources,
     )
     compact_api_key = _setting_status(
         "compact",
         "api_key",
         fallback_env_var=_COMPACT_API_KEY_ENV_VARS.get(compact_provider),
         cli_overrides=cli_overrides,
+        sources=sources,
     )
     compact_base_url = _setting_status(
         "compact",
         "base_url",
         fallback_env_var=_OPENAI_BASE_URL_ENV_VAR if compact_provider == "openai" else None,
         cli_overrides=cli_overrides,
+        sources=sources,
     )
 
     embedding_requires_api_key = embedding_provider in _EMBEDDING_API_KEY_ENV_VARS
