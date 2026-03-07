@@ -213,18 +213,29 @@ def _source_value(config_dict: dict[str, Any], section: str, field_name: str) ->
     return section_dict.get(field_name)
 
 
+def _has_source_value(config_dict: dict[str, Any], section: str, field_name: str) -> bool:
+    section_dict = config_dict.get(section, {})
+    return isinstance(section_dict, dict) and field_name in section_dict
+
+
 def _value_origin(section: str, field_name: str, cli_overrides: dict[str, Any] | None = None) -> tuple[str, Any]:
     """Return the highest-priority origin and raw value for a config field."""
     sources = (
         ("cli", cli_overrides or {}),
         ("project", load_config_file(PROJECT_CONFIG_PATH)),
         ("global", load_config_file(GLOBAL_CONFIG_PATH)),
-        ("default", _default_dict()),
     )
     for source_name, data in sources:
+        if not _has_source_value(data, section, field_name):
+            continue
         value = _source_value(data, section, field_name)
-        if value not in (None, ""):
+        if value is not None:
             return source_name, value
+
+    default_value = _source_value(_default_dict(), section, field_name)
+    if default_value not in (None, ""):
+        return "default", default_value
+
     return "missing", None
 
 
@@ -247,6 +258,9 @@ def _setting_status(
 
     if raw_value not in (None, ""):
         status["configured"] = True
+        return status
+
+    if source != "missing":
         return status
 
     if fallback_env_var:
@@ -304,6 +318,8 @@ def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, 
 
     embedding_requires_api_key = embedding_provider in _EMBEDDING_API_KEY_ENV_VARS
     compact_requires_api_key = compact_provider in _COMPACT_API_KEY_ENV_VARS
+    milvus_uri = _source_value(merged, "milvus", "uri")
+    milvus_collection = _source_value(merged, "milvus", "collection")
 
     return {
         "embedding": {
@@ -323,8 +339,12 @@ def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, 
             "base_url": compact_base_url,
         },
         "milvus": {
-            "uri": str(merged["milvus"]["uri"]),
-            "collection": str(merged["milvus"]["collection"]),
+            "uri": str(os.environ.get(milvus_uri[len(_ENV_PREFIX) :], milvus_uri))
+            if isinstance(milvus_uri, str) and milvus_uri.startswith(_ENV_PREFIX)
+            else str(milvus_uri),
+            "collection": str(os.environ.get(milvus_collection[len(_ENV_PREFIX) :], milvus_collection))
+            if isinstance(milvus_collection, str) and milvus_collection.startswith(_ENV_PREFIX)
+            else str(milvus_collection),
         },
     }
 

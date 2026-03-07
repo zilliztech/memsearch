@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 import tomli_w
+from click.testing import CliRunner
 
 from memsearch.config import (
     EmbeddingConfig,
@@ -330,3 +332,66 @@ def test_get_config_status_reports_missing_project_env_refs(tmp_path: Path, monk
         "configured": False,
         "env_var": "PROJECT_COMPACT_KEY",
     }
+
+
+def test_get_config_status_allows_project_to_clear_api_key_with_empty_string(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A higher-priority empty string should clear a lower-priority configured key."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    save_config({"embedding": {"api_key": "sk-global"}}, global_cfg)
+    save_config({"embedding": {"api_key": ""}}, project_cfg)
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    status = get_config_status()
+    assert status["embedding"]["ready"] is False
+    assert status["embedding"]["api_key"] == {"source": "project", "configured": False}
+
+
+def test_get_config_status_resolves_env_refs_for_milvus_uri(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Milvus URI should be resolved in hook-facing status output."""
+    project_cfg = tmp_path / "project.toml"
+    resolved_uri = "file:///tmp/memsearch-milvus.db"
+    save_config({"milvus": {"uri": "env:MILVUS_URI"}}, project_cfg)
+
+    monkeypatch.setenv("MILVUS_URI", resolved_uri)
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "global.toml")
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    status = get_config_status()
+    assert status["milvus"]["uri"] == resolved_uri
+
+
+def test_config_status_cli_surfaces_empty_override_and_resolved_milvus_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The CLI should expose hook-safe config status for empty overrides and env-backed Milvus URIs."""
+    from memsearch.cli import cli
+
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    save_config({"embedding": {"api_key": "sk-global"}}, global_cfg)
+    save_config(
+        {
+            "embedding": {"api_key": ""},
+            "milvus": {"uri": "env:MILVUS_URI"},
+        },
+        project_cfg,
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    monkeypatch.setenv("MILVUS_URI", "file:///tmp/cli-milvus.db")
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    result = CliRunner().invoke(cli, ["config", "status"])
+
+    assert result.exit_code == 0
+    status = json.loads(result.output)
+    assert status["embedding"]["ready"] is False
+    assert status["embedding"]["api_key"] == {"source": "project", "configured": False}
+    assert status["milvus"]["uri"] == "file:///tmp/cli-milvus.db"

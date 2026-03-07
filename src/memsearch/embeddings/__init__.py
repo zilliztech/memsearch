@@ -45,6 +45,8 @@ _INSTALL_HINTS: dict[str, str] = {
     "local": 'pip install "memsearch[local]"  (or: uv add "memsearch[local]")',
 }
 
+_API_KEY_PROVIDERS = {"openai", "google", "voyage"}
+
 
 def get_provider(
     name: str = "openai",
@@ -90,7 +92,7 @@ def get_provider(
         kwargs["batch_size"] = batch_size
     if name == "openai" and base_url:
         kwargs["base_url"] = base_url
-    if api_key:
+    if api_key and name in _API_KEY_PROVIDERS:
         kwargs["api_key"] = api_key
     return cls(**kwargs)
 
