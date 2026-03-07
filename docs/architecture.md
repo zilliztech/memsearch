@@ -245,7 +245,7 @@ graph LR
 | 3 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
 | 4 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
 
-> **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are not part of the memsearch configuration system and are never written to config files.
+> **Note:** API keys and compatible base URLs can be configured in `~/.memsearch/config.toml` / `.memsearch.toml` (including `env:VAR_NAME` references). When those settings are left blank, provider SDKs still fall back to their conventional environment variables such as `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `GOOGLE_API_KEY`, and `ANTHROPIC_API_KEY`.
 
 ### Config Sections
 

@@ -86,6 +86,23 @@ _SECTION_CLASSES: dict[str, type] = {
 
 _ENV_PREFIX = "env:"
 
+_EMBEDDING_API_KEY_ENV_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "voyage": "VOYAGE_API_KEY",
+}
+_COMPACT_API_KEY_ENV_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+}
+_OPENAI_BASE_URL_ENV_VAR = "OPENAI_BASE_URL"
+_DEFAULT_COMPACT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-sonnet-4-5-20250929",
+    "gemini": "gemini-2.0-flash",
+}
+
 
 def resolve_env_ref(value: str) -> str:
     """Resolve an ``env:VAR_NAME`` reference to its environment variable value.
@@ -119,6 +136,16 @@ def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
 def _default_dict() -> dict[str, Any]:
     """Return MemSearchConfig defaults as a nested dict."""
     return asdict(MemSearchConfig())
+
+
+def _merged_config_dict(cli_overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return config sources merged without resolving ``env:`` references."""
+    result = _default_dict()
+    result = deep_merge(result, load_config_file(GLOBAL_CONFIG_PATH))
+    result = deep_merge(result, load_config_file(PROJECT_CONFIG_PATH))
+    if cli_overrides:
+        result = deep_merge(result, cli_overrides)
+    return result
 
 
 def load_config_file(path: Path | str) -> dict[str, Any]:
@@ -166,11 +193,7 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
     Priority (lowest → highest):
       defaults → global TOML → project TOML → cli_overrides
     """
-    result = _default_dict()
-    result = deep_merge(result, load_config_file(GLOBAL_CONFIG_PATH))
-    result = deep_merge(result, load_config_file(PROJECT_CONFIG_PATH))
-    if cli_overrides:
-        result = deep_merge(result, cli_overrides)
+    result = _merged_config_dict(cli_overrides)
     result = _resolve_env_refs_in_dict(result)
     cfg = _dict_to_config(result)
 
@@ -181,6 +204,176 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
         cfg.embedding.model = DEFAULT_MODELS.get(cfg.embedding.provider, "")
 
     return cfg
+
+
+def _source_value(config_dict: dict[str, Any], section: str, field_name: str) -> Any:
+    section_dict = config_dict.get(section, {})
+    if not isinstance(section_dict, dict):
+        return None
+    return section_dict.get(field_name)
+
+
+def _has_source_value(config_dict: dict[str, Any], section: str, field_name: str) -> bool:
+    """Return whether a source explicitly sets *section.field_name*."""
+    section_dict = config_dict.get(section, {})
+    return isinstance(section_dict, dict) and field_name in section_dict
+
+
+def _resolve_status_env_ref(value: Any) -> str:
+    """Resolve env-backed status values without raising when the env var is missing."""
+    if value is None:
+        return ""
+    if isinstance(value, str) and value.startswith(_ENV_PREFIX):
+        return str(os.environ.get(value[len(_ENV_PREFIX) :], value))
+    return str(value)
+
+
+def _value_origin(
+    section: str,
+    field_name: str,
+    cli_overrides: dict[str, Any] | None = None,
+    sources: tuple[tuple[str, dict[str, Any]], ...] | None = None,
+) -> tuple[str, Any]:
+    """Return the highest-priority origin and raw value for a config field."""
+    active_sources = sources or (
+        ("cli", cli_overrides or {}),
+        ("project", load_config_file(PROJECT_CONFIG_PATH)),
+        ("global", load_config_file(GLOBAL_CONFIG_PATH)),
+    )
+    for source_name, data in active_sources:
+        if not _has_source_value(data, section, field_name):
+            continue
+        value = _source_value(data, section, field_name)
+        if value is not None:
+            return source_name, value
+
+    default_value = _source_value(_default_dict(), section, field_name)
+    if default_value not in (None, ""):
+        return "default", default_value
+
+    return "missing", None
+
+
+def _setting_status(
+    section: str,
+    field_name: str,
+    *,
+    fallback_env_var: str | None = None,
+    cli_overrides: dict[str, Any] | None = None,
+    sources: tuple[tuple[str, dict[str, Any]], ...] | None = None,
+) -> dict[str, Any]:
+    """Describe whether a config setting is effectively available."""
+    source, raw_value = _value_origin(section, field_name, cli_overrides, sources)
+    status: dict[str, Any] = {"source": source, "configured": False}
+
+    if isinstance(raw_value, str) and raw_value.startswith(_ENV_PREFIX):
+        env_var = raw_value[len(_ENV_PREFIX) :]
+        status["env_var"] = env_var
+        status["configured"] = bool(os.environ.get(env_var))
+        return status
+
+    if raw_value not in (None, ""):
+        status["configured"] = True
+        return status
+
+    if source != "missing":
+        return status
+
+    if fallback_env_var:
+        status["env_var"] = fallback_env_var
+        status["configured"] = bool(os.environ.get(fallback_env_var))
+        status["source"] = "environment" if status["configured"] else "missing"
+
+    return status
+
+
+def get_config_status(cli_overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return hook-friendly status for resolved backend configuration.
+
+    The status deliberately avoids returning secret values. Instead it reports
+    which source currently wins (project/global/default/environment), whether
+    required settings are configured, and non-secret resolved values that the
+    shell hooks need for status display.
+    """
+    global_config = load_config_file(GLOBAL_CONFIG_PATH)
+    project_config = load_config_file(PROJECT_CONFIG_PATH)
+    merged = _default_dict()
+    merged = deep_merge(merged, global_config)
+    merged = deep_merge(merged, project_config)
+    if cli_overrides:
+        merged = deep_merge(merged, cli_overrides)
+    sources = (
+        ("cli", cli_overrides or {}),
+        ("project", project_config),
+        ("global", global_config),
+    )
+
+    embedding_provider = str(merged["embedding"]["provider"])
+    embedding_model = str(merged["embedding"]["model"])
+    if not embedding_model:
+        from .embeddings import DEFAULT_MODELS
+
+        embedding_model = DEFAULT_MODELS.get(embedding_provider, "")
+
+    compact_provider = str(merged["compact"]["llm_provider"])
+    compact_model = str(merged["compact"]["llm_model"]) or _DEFAULT_COMPACT_MODELS.get(compact_provider, "")
+
+    embedding_api_key = _setting_status(
+        "embedding",
+        "api_key",
+        fallback_env_var=_EMBEDDING_API_KEY_ENV_VARS.get(embedding_provider),
+        cli_overrides=cli_overrides,
+        sources=sources,
+    )
+    embedding_base_url = _setting_status(
+        "embedding",
+        "base_url",
+        fallback_env_var=_OPENAI_BASE_URL_ENV_VAR if embedding_provider == "openai" else None,
+        cli_overrides=cli_overrides,
+        sources=sources,
+    )
+    compact_api_key = _setting_status(
+        "compact",
+        "api_key",
+        fallback_env_var=_COMPACT_API_KEY_ENV_VARS.get(compact_provider),
+        cli_overrides=cli_overrides,
+        sources=sources,
+    )
+    compact_base_url = _setting_status(
+        "compact",
+        "base_url",
+        fallback_env_var=_OPENAI_BASE_URL_ENV_VAR if compact_provider == "openai" else None,
+        cli_overrides=cli_overrides,
+        sources=sources,
+    )
+
+    embedding_requires_api_key = embedding_provider in _EMBEDDING_API_KEY_ENV_VARS
+    compact_requires_api_key = compact_provider in _COMPACT_API_KEY_ENV_VARS
+    milvus_uri = _source_value(merged, "milvus", "uri")
+    milvus_collection = _source_value(merged, "milvus", "collection")
+
+    return {
+        "embedding": {
+            "provider": embedding_provider,
+            "model": embedding_model,
+            "ready": embedding_api_key["configured"] if embedding_requires_api_key else True,
+            "requires_api_key": embedding_requires_api_key,
+            "api_key": embedding_api_key,
+            "base_url": embedding_base_url,
+        },
+        "compact": {
+            "provider": compact_provider,
+            "model": compact_model,
+            "ready": compact_api_key["configured"] if compact_requires_api_key else True,
+            "requires_api_key": compact_requires_api_key,
+            "api_key": compact_api_key,
+            "base_url": compact_base_url,
+        },
+        "milvus": {
+            "uri": _resolve_status_env_ref(milvus_uri),
+            "collection": _resolve_status_env_ref(milvus_collection),
+        },
+    }
 
 
 def save_config(cfg_dict: dict[str, Any], path: Path | str) -> None:

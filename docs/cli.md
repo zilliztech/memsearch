@@ -186,6 +186,43 @@ uri = "http://localhost:19530"
 provider = "openai"
 ```
 
+#### `memsearch config status`
+
+Display hook-friendly JSON describing which configuration source currently wins
+for embedding / compact credentials and whether each backend is ready.
+
+```bash
+$ memsearch config status
+{
+  "embedding": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "ready": true,
+    "api_key": {
+      "source": "project",
+      "configured": true
+    }
+  },
+  "compact": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "ready": true,
+    "api_key": {
+      "source": "environment",
+      "configured": true,
+      "env_var": "OPENAI_API_KEY"
+    }
+  }
+}
+```
+
+This is primarily used by the Claude Code plugin hooks so they can respect the
+same precedence as the backend config system:
+
+```text
+project config -> global config -> provider environment variable
+```
+
 ### Available Config Keys
 
 | Key | Type | Default | Description |

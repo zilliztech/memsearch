@@ -1,7 +1,7 @@
 """Memory compact — compress and summarize chunks using an LLM.
 
 Supports OpenAI (default), Anthropic, and Gemini as LLM backends.
-API keys are read from environment variables:
+API keys may be passed explicitly or read from environment variables:
     OPENAI_API_KEY / OPENAI_BASE_URL
     ANTHROPIC_API_KEY
     GOOGLE_API_KEY
@@ -52,8 +52,8 @@ async def compact_chunks(
         Custom base URL for OpenAI-compatible API endpoints.  Only used
         when *llm_provider* is ``"openai"``.
     api_key:
-        API key for the LLM provider.  Only used when *llm_provider* is
-        ``"openai"``.
+        API key for the LLM provider.  When omitted, provider-specific
+        environment variables are used.
 
     Returns
     -------
@@ -69,9 +69,9 @@ async def compact_chunks(
     if llm_provider == "openai":
         return await _compact_openai(prompt, model or "gpt-4o-mini", base_url=base_url, api_key=api_key)
     elif llm_provider == "anthropic":
-        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
+        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929", api_key=api_key)
     elif llm_provider == "gemini":
-        return await _compact_gemini(prompt, model or "gemini-2.0-flash")
+        return await _compact_gemini(prompt, model or "gemini-2.0-flash", api_key=api_key)
     else:
         raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
 
@@ -95,10 +95,11 @@ async def _compact_openai(prompt: str, model: str, *, base_url: str | None = Non
     return resp.choices[0].message.content or ""
 
 
-async def _compact_anthropic(prompt: str, model: str) -> str:
+async def _compact_anthropic(prompt: str, model: str, *, api_key: str | None = None) -> str:
     import anthropic
 
-    client = anthropic.AsyncAnthropic()  # reads ANTHROPIC_API_KEY
+    kwargs = {"api_key": resolve_env_ref(api_key)} if api_key else {}
+    client = anthropic.AsyncAnthropic(**kwargs)  # reads ANTHROPIC_API_KEY if api_key is not provided
     resp = await client.messages.create(
         model=model,
         max_tokens=4096,
@@ -107,10 +108,11 @@ async def _compact_anthropic(prompt: str, model: str) -> str:
     return resp.content[0].text
 
 
-async def _compact_gemini(prompt: str, model: str) -> str:
+async def _compact_gemini(prompt: str, model: str, *, api_key: str | None = None) -> str:
     from google import genai
 
-    client = genai.Client()  # reads GOOGLE_API_KEY
+    kwargs = {"api_key": resolve_env_ref(api_key)} if api_key else {}
+    client = genai.Client(**kwargs)  # reads GOOGLE_API_KEY if api_key is not provided
     resp = await client.aio.models.generate_content(
         model=model,
         contents=prompt,
