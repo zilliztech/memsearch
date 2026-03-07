@@ -19,9 +19,33 @@ def test_parse_transcript_skips_invalid_and_tool_result(tmp_path: Path) -> None:
         "\n".join(
             [
                 "{not valid json",
-                json.dumps({"type": "user", "uuid": "u1", "timestamp": "2026-03-07T05:00:00Z", "message": {"content": [{"type": "tool_result", "content": "ok"}]}}),
-                json.dumps({"type": "user", "uuid": "u2", "timestamp": "2026-03-07T05:00:01Z", "message": {"content": "<system-reminder>ignore</system-reminder>Hello"}}),
-                json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "World"}, {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}}]}}),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u1",
+                        "timestamp": "2026-03-07T05:00:00Z",
+                        "message": {"content": [{"type": "tool_result", "content": "ok"}]},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u2",
+                        "timestamp": "2026-03-07T05:00:01Z",
+                        "message": {"content": "<system-reminder>ignore</system-reminder>Hello"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {"type": "text", "text": "World"},
+                                {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}},
+                            ]
+                        },
+                    }
+                ),
             ]
         ),
         encoding="utf-8",
