@@ -221,6 +221,8 @@ def _has_source_value(config_dict: dict[str, Any], section: str, field_name: str
 
 def _resolve_status_env_ref(value: Any) -> str:
     """Resolve env-backed status values without raising when the env var is missing."""
+    if value is None:
+        return ""
     if isinstance(value, str) and value.startswith(_ENV_PREFIX):
         return str(os.environ.get(value[len(_ENV_PREFIX) :], value))
     return str(value)
