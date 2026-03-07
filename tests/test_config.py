@@ -366,6 +366,34 @@ def test_get_config_status_resolves_env_refs_for_milvus_uri(tmp_path: Path, monk
     assert status["milvus"]["uri"] == resolved_uri
 
 
+def test_get_config_status_loads_each_config_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Config status should reuse loaded config sources instead of reparsing files per field."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / "project.toml"
+    save_config({"embedding": {"api_key": "sk-global"}}, global_cfg)
+    save_config({"compact": {"api_key": "sk-project"}}, project_cfg)
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    from memsearch import config as config_module
+
+    original_load_config_file = config_module.load_config_file
+    load_calls: list[Path] = []
+
+    def counting_load_config_file(path: Path | str) -> dict:
+        load_calls.append(Path(path))
+        return original_load_config_file(path)
+
+    monkeypatch.setattr(config_module, "load_config_file", counting_load_config_file)
+
+    status = get_config_status()
+
+    assert status["embedding"]["api_key"] == {"source": "global", "configured": True}
+    assert status["compact"]["api_key"] == {"source": "project", "configured": True}
+    assert load_calls == [global_cfg, project_cfg]
+
+
 def test_config_status_cli_surfaces_empty_override_and_resolved_milvus_uri(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
