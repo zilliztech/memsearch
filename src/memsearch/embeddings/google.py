@@ -26,10 +26,12 @@ class GoogleEmbedding:
         model: str = "gemini-embedding-001",
         *,
         batch_size: int = 0,
+        api_key: str | None = None,
     ) -> None:
         from google import genai
 
-        self._client = genai.Client()  # reads GOOGLE_API_KEY
+        kwargs = {"api_key": api_key} if api_key else {}
+        self._client = genai.Client(**kwargs)  # reads GOOGLE_API_KEY if api_key is not provided
         self._model = model
         self._dimension = _detect_dimension(self._client, model)
         self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE

@@ -68,7 +68,7 @@ def get_provider(
     base_url:
         Override the API base URL (currently only used by the openai provider).
     api_key:
-        Override the API key (currently only used by the openai provider).
+        Override the API key for providers that support explicit credentials.
     """
     if name not in _PROVIDERS:
         raise ValueError(f"Unknown embedding provider {name!r}. Available: {', '.join(sorted(_PROVIDERS))}")
@@ -88,11 +88,10 @@ def get_provider(
         kwargs["model"] = model
     if batch_size > 0:
         kwargs["batch_size"] = batch_size
-    if name == "openai":
-        if base_url:
-            kwargs["base_url"] = base_url
-        if api_key:
-            kwargs["api_key"] = api_key
+    if name == "openai" and base_url:
+        kwargs["base_url"] = base_url
+    if api_key:
+        kwargs["api_key"] = api_key
     return cls(**kwargs)
 
 

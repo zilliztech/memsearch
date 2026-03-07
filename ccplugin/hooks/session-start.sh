@@ -18,27 +18,32 @@ fi
 
 # Read resolved config and version for status display
 PROVIDER="openai"; MODEL=""; MILVUS_URI=""; VERSION=""
+CONFIG_STATUS=""
+EMBEDDING_READY="false"
+REQUIRED_KEY=""
 if [ -n "$MEMSEARCH_CMD" ]; then
-  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
-  MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
-  MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  CONFIG_STATUS=$(_config_status_json || true)
+  if [ -n "$CONFIG_STATUS" ]; then
+    PROVIDER=$(_json_val "$CONFIG_STATUS" "embedding.provider" "openai")
+    MODEL=$(_json_val "$CONFIG_STATUS" "embedding.model" "")
+    MILVUS_URI=$(_json_val "$CONFIG_STATUS" "milvus.uri" "")
+    EMBEDDING_READY=$(_json_val "$CONFIG_STATUS" "embedding.ready" "false")
+    REQUIRED_KEY=$(_json_val "$CONFIG_STATUS" "embedding.api_key.env_var" "")
+  else
+    PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
+    MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
+    MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+    REQUIRED_KEY=$(_required_env_var embedding "$PROVIDER")
+    if [ -z "$REQUIRED_KEY" ] || [ -n "${!REQUIRED_KEY:-}" ]; then
+      EMBEDDING_READY="true"
+    fi
+  fi
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
 
-# Determine required API key for the configured provider
-_required_env_var() {
-  case "$1" in
-    openai) echo "OPENAI_API_KEY" ;;
-    google) echo "GOOGLE_API_KEY" ;;
-    voyage) echo "VOYAGE_API_KEY" ;;
-    *) echo "" ;;  # ollama, local — no API key needed
-  esac
-}
-REQUIRED_KEY=$(_required_env_var "$PROVIDER")
-
 KEY_MISSING=false
-if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
+if [ "$EMBEDDING_READY" != "true" ]; then
   KEY_MISSING=true
 fi
 
@@ -60,7 +65,11 @@ if [ -n "$COLLECTION_NAME" ]; then
 fi
 status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${COLLECTION_HINT}${UPDATE_HINT}"
 if [ "$KEY_MISSING" = true ]; then
-  status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
+  if [ -n "$REQUIRED_KEY" ]; then
+    status+=" | ERROR: ${REQUIRED_KEY} not configured — memory search disabled"
+  else
+    status+=" | ERROR: embedding backend not configured — memory search disabled"
+  fi
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"

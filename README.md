@@ -240,6 +240,7 @@ memsearch config init                    # write to ~/.memsearch/config.toml
 memsearch config init --project          # write to .memsearch.toml (per-project)
 memsearch config set milvus.uri http://localhost:19530
 memsearch config list --resolved         # show merged config from all sources
+memsearch config status                  # show embedding/compact readiness for hooks
 ```
 
 ### Index Markdown — `index`
@@ -356,6 +357,28 @@ claude
 Settings are resolved in priority order (lowest → highest):
 
 1. **Built-in defaults** → 2. **Global** `~/.memsearch/config.toml` → 3. **Project** `.memsearch.toml` → 4. **CLI flags**
+
+Internally, the backend config flow is intentionally direct:
+
+```text
+MemSearchConfig dataclass defaults
+        ↓ asdict()
+nested dict defaults
+        ↓ deep_merge()
+global ~/.memsearch/config.toml
+        ↓ deep_merge()
+project .memsearch.toml
+        ↓ deep_merge()
+CLI override dict
+        ↓ resolve env:VAR_NAME references
+final merged dict
+        ↓ _dict_to_config()
+resolved MemSearchConfig
+        ↓ extracted once into MemSearch kwargs
+MemSearch backend
+```
+
+This means there is no repeated internal round-trip such as `config file → backend class → JSON → backend class → JSON`. JSON is only used for CLI output modes like `--json-output` and `memsearch config status`; the actual backend resolution path stays in Python dicts and dataclasses until the final `MemSearchConfig` is built once.
 
 API keys for embedding/LLM providers are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
 

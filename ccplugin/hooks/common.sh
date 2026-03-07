@@ -85,6 +85,33 @@ _json_encode_str() {
   return 0
 }
 
+# _required_env_var <provider_kind> <provider_name>
+# Return the conventional env var used by a provider, if any.
+_required_env_var() {
+  local provider_kind="$1" provider_name="$2"
+  case "$provider_kind:$provider_name" in
+    embedding:openai|compact:openai) echo "OPENAI_API_KEY" ;;
+    embedding:google|compact:gemini) echo "GOOGLE_API_KEY" ;;
+    embedding:voyage) echo "VOYAGE_API_KEY" ;;
+    compact:anthropic) echo "ANTHROPIC_API_KEY" ;;
+    *) echo "" ;;
+  esac
+}
+
+# _config_status_json
+# Read hook-friendly backend status JSON. Returns empty on failure.
+_config_status_json() {
+  if [ -z "$MEMSEARCH_CMD" ]; then
+    return 1
+  fi
+  local status
+  status=$($MEMSEARCH_CMD config status 2>/dev/null || true)
+  if [ -z "$status" ]; then
+    return 1
+  fi
+  printf '%s' "$status"
+}
+
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
   mkdir -p "$MEMORY_DIR"
