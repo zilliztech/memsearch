@@ -232,7 +232,9 @@ class MemSearch:
         Parameters
         ----------
         source:
-            If given, only compact chunks from this source file.
+            If given, compact chunks from this source. When *source* ends with
+            a path separator (for example ``/abs/dir/``), it is treated as a
+            directory prefix and matches all indexed files under that prefix.
         llm_provider:
             LLM backend for summarization.
         llm_model:
@@ -257,7 +259,13 @@ class MemSearch:
         """
         from .store import _escape_filter_value
 
-        filter_expr = f'source == "{_escape_filter_value(source)}"' if source else ""
+        if source:
+            normalized_source = str(source)
+            escaped_source = _escape_filter_value(normalized_source)
+            is_prefix = normalized_source.endswith(("/", "\\"))
+            filter_expr = f'source like "{escaped_source}%"' if is_prefix else f'source == "{escaped_source}"'
+        else:
+            filter_expr = ""
         all_chunks = self._store.query(filter_expr=filter_expr)
         if not all_chunks:
             return ""

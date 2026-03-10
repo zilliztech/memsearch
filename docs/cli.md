@@ -403,7 +403,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--source` | `-s` | *(all chunks)* | Only compact chunks from this specific source file |
+| `--source` | `-s` | *(all chunks)* | Only compact chunks from this source path (file or directory; relative paths are resolved) |
 | `--output-dir` | `-o` | first configured path | Directory to write the compact summary into |
 | `--llm-provider` | | `openai` | LLM backend for summarization (`openai`, `anthropic`, `gemini`) |
 | `--llm-model` | | provider default | Override the LLM model |
@@ -442,11 +442,17 @@ Compact complete. Summary:
 Compact only chunks from a specific source file:
 
 ```bash
-$ memsearch compact --source ./memory/old-notes.md
+$ memsearch compact --source /absolute/path/to/memory/old-notes.md
 Compact complete. Summary:
 
 ## Old Notes Summary
 - Initial architecture decisions from January meeting...
+```
+
+Compact all indexed files under a source directory:
+
+```bash
+$ memsearch compact --source /absolute/path/to/memory/
 ```
 
 Use Anthropic Claude for summarization:

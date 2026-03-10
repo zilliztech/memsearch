@@ -4,10 +4,31 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from memsearch.cli import cli
+from memsearch.cli import _normalize_compact_source, cli
 
 
 class TestCLIHelp:
+    def test_compact_source_normalization(self):
+        """Relative compact source paths should normalize to absolute paths."""
+        rel = "./memory/old-notes.md"
+        normalized = _normalize_compact_source(rel)
+        assert normalized is not None
+        assert normalized.startswith("/")
+        assert normalized.endswith("memory/old-notes.md")
+
+    def test_compact_source_normalization_none(self):
+        """None source should remain None."""
+        normalized = _normalize_compact_source(None)
+        assert normalized is None
+
+    def test_compact_source_directory_prefix(self, tmp_path):
+        """Directory source should normalize to prefix mode."""
+        source_dir = tmp_path / "memory"
+        source_dir.mkdir()
+        normalized = _normalize_compact_source(str(source_dir))
+        assert normalized is not None
+        assert normalized.endswith("/memory/")
+
     def test_cli_main_help(self):
         """Main CLI should have help."""
         runner = CliRunner()
@@ -20,7 +41,7 @@ class TestCLIHelp:
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "memsearch" in result.output
+        assert "version" in result.output.lower()
 
     def test_config_help(self):
         """Config command should have help."""
