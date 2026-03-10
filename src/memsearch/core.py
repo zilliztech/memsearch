@@ -215,6 +215,7 @@ class MemSearch:
         self,
         *,
         source: str | None = None,
+        source_prefix: bool = False,
         llm_provider: str = "openai",
         llm_model: str | None = None,
         prompt_template: str | None = None,
@@ -233,6 +234,9 @@ class MemSearch:
         ----------
         source:
             If given, only compact chunks from this source file.
+        source_prefix:
+            If ``True``, treat *source* as a path prefix and compact chunks
+            from all indexed files under that prefix.
         llm_provider:
             LLM backend for summarization.
         llm_model:
@@ -257,7 +261,14 @@ class MemSearch:
         """
         from .store import _escape_filter_value
 
-        filter_expr = f'source == "{_escape_filter_value(source)}"' if source else ""
+        if source:
+            escaped_source = _escape_filter_value(source)
+            if source_prefix:
+                filter_expr = f'source like "{escaped_source}%"'
+            else:
+                filter_expr = f'source == "{escaped_source}"'
+        else:
+            filter_expr = ""
         all_chunks = self._store.query(filter_expr=filter_expr)
         if not all_chunks:
             return ""

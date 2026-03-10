@@ -485,20 +485,23 @@ def watch(
         ms.close()
 
 
-def _normalize_compact_source(source: str | None) -> str | None:
+def _normalize_compact_source(source: str | None) -> tuple[str | None, bool]:
     """Normalize compact source paths to absolute form.
 
-    Indexing stores ``source`` as absolute paths. Converting CLI ``--source``
-    inputs to absolute paths keeps compact filtering behavior consistent for
-    relative inputs.
+    Returns ``(normalized_source, source_prefix)`` where ``source_prefix`` is
+    ``True`` for directory inputs.
     """
     if not source:
-        return source
-    return str(Path(source).expanduser().resolve())
+        return source, False
+
+    resolved = Path(source).expanduser().resolve()
+    if resolved.is_dir():
+        return f"{resolved}/", True
+    return str(resolved), False
 
 
 @cli.command()
-@click.option("--source", "-s", default=None, help="Only compact chunks from this source (relative paths are resolved).")
+@click.option("--source", "-s", default=None, help="Only compact chunks from this source (file or directory; relative paths are resolved).")
 @click.option(
     "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
 )
@@ -552,13 +555,14 @@ def compact(
     if cfg.compact.prompt_file and not prompt_template:
         prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
 
-    normalized_source = _normalize_compact_source(source)
+    normalized_source, source_prefix = _normalize_compact_source(source)
 
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         summary = _run(
             ms.compact(
                 source=normalized_source,
+                source_prefix=source_prefix,
                 llm_provider=cfg.compact.llm_provider,
                 llm_model=cfg.compact.llm_model or None,
                 prompt_template=prompt_template,
