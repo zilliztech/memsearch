@@ -10,9 +10,12 @@ Questions or ideas? Join the [Discord](https://discord.com/invite/FG6hMJStWu).
 git clone https://github.com/zilliztech/memsearch.git
 cd memsearch
 uv sync --all-extras
+uv run pre-commit install
 ```
 
 > **Dependency management:** Use `uv` and `pyproject.toml` — never `pip install` directly.
+>
+> **Pre-commit hooks:** The `pre-commit install` step registers Git hooks that run `ruff check --fix` and `ruff format` on staged files before each commit.
 
 ## Running Tests
 
