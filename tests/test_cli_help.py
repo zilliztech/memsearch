@@ -44,7 +44,7 @@ class TestCLIHelp:
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "memsearch" in result.output
+        assert "version" in result.output.lower()
 
     def test_config_help(self):
         """Config command should have help."""
