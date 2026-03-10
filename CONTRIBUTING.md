@@ -41,6 +41,15 @@ uv run ruff check src/ tests/      # lint
 uv run ruff format src/ tests/     # format
 ```
 
+### Optional: pre-commit hooks
+
+To catch lint/format issues before pushing, install pre-commit hooks locally:
+
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
 - Python 3.10+ with `from __future__ import annotations` for type hints.
 - Code and comments in English.
 - Line length limit: 120 characters.
