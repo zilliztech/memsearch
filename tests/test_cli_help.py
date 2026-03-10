@@ -4,10 +4,22 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 
-from memsearch.cli import cli
+from memsearch.cli import _normalize_compact_source, cli
 
 
 class TestCLIHelp:
+    def test_compact_source_normalization(self):
+        """Relative compact source paths should normalize to absolute paths."""
+        rel = "./memory/old-notes.md"
+        normalized = _normalize_compact_source(rel)
+        assert normalized is not None
+        assert normalized.startswith("/")
+        assert normalized.endswith("memory/old-notes.md")
+
+    def test_compact_source_normalization_none(self):
+        """None source should remain None."""
+        assert _normalize_compact_source(None) is None
+
     def test_cli_main_help(self):
         """Main CLI should have help."""
         runner = CliRunner()

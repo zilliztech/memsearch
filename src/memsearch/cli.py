@@ -485,8 +485,20 @@ def watch(
         ms.close()
 
 
+def _normalize_compact_source(source: str | None) -> str | None:
+    """Normalize compact source paths to absolute form.
+
+    Indexing stores ``source`` as absolute paths. Converting CLI ``--source``
+    inputs to absolute paths keeps compact filtering behavior consistent for
+    relative inputs.
+    """
+    if not source:
+        return source
+    return str(Path(source).expanduser().resolve())
+
+
 @cli.command()
-@click.option("--source", "-s", default=None, help="Only compact chunks from this source.")
+@click.option("--source", "-s", default=None, help="Only compact chunks from this source (relative paths are resolved).")
 @click.option(
     "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
 )
@@ -540,11 +552,13 @@ def compact(
     if cfg.compact.prompt_file and not prompt_template:
         prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
 
+    normalized_source = _normalize_compact_source(source)
+
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         summary = _run(
             ms.compact(
-                source=source,
+                source=normalized_source,
                 llm_provider=cfg.compact.llm_provider,
                 llm_model=cfg.compact.llm_model or None,
                 prompt_template=prompt_template,
@@ -557,7 +571,10 @@ def compact(
             click.echo("Compact complete. Summary:\n")
             click.echo(summary)
         else:
-            click.echo("No chunks to compact.")
+            if normalized_source:
+                click.echo(f"No chunks to compact for source: {normalized_source}")
+            else:
+                click.echo("No chunks to compact.")
     finally:
         ms.close()
 
