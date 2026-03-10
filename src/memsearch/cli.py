@@ -501,7 +501,12 @@ def _normalize_compact_source(source: str | None) -> tuple[str | None, bool]:
 
 
 @cli.command()
-@click.option("--source", "-s", default=None, help="Only compact chunks from this source (file or directory; relative paths are resolved).")
+@click.option(
+    "--source",
+    "-s",
+    default=None,
+    help="Only compact chunks from this source (file or directory; relative paths are resolved).",
+)
 @click.option(
     "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
 )
