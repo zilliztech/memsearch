@@ -485,19 +485,19 @@ def watch(
         ms.close()
 
 
-def _normalize_compact_source(source: str | None) -> tuple[str | None, bool]:
+def _normalize_compact_source(source: str | None) -> str | None:
     """Normalize compact source paths to absolute form.
 
-    Returns ``(normalized_source, source_prefix)`` where ``source_prefix`` is
-    ``True`` for directory inputs.
+    Directory inputs are normalized with a trailing slash so core logic can
+    treat them as prefix filters.
     """
     if not source:
-        return source, False
+        return source
 
     resolved = Path(source).expanduser().resolve()
     if resolved.is_dir():
-        return f"{resolved}/", True
-    return str(resolved), False
+        return f"{resolved}/"
+    return str(resolved)
 
 
 @cli.command()
@@ -560,14 +560,13 @@ def compact(
     if cfg.compact.prompt_file and not prompt_template:
         prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
 
-    normalized_source, source_prefix = _normalize_compact_source(source)
+    normalized_source = _normalize_compact_source(source)
 
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         summary = _run(
             ms.compact(
                 source=normalized_source,
-                source_prefix=source_prefix,
                 llm_provider=cfg.compact.llm_provider,
                 llm_model=cfg.compact.llm_model or None,
                 prompt_template=prompt_template,
