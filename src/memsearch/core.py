@@ -263,10 +263,11 @@ class MemSearch:
 
         if source:
             escaped_source = _escape_filter_value(source)
-            if source_prefix:
-                filter_expr = f'source like "{escaped_source}%"'
-            else:
-                filter_expr = f'source == "{escaped_source}"'
+            filter_expr = (
+                f'source like "{escaped_source}%"'
+                if source_prefix
+                else f'source == "{escaped_source}"'
+            )
         else:
             filter_expr = ""
         all_chunks = self._store.query(filter_expr=filter_expr)
