@@ -43,6 +43,13 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "Usage:" in result.output
 
+    def test_search_help_includes_source_prefix(self):
+        """Search help should include source-prefix option."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["search", "--help"])
+        assert result.exit_code == 0
+        assert "--source-prefix" in result.output
+
     def test_stats_help(self):
         """Stats command should have help."""
         runner = CliRunner()
