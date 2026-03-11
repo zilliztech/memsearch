@@ -16,7 +16,7 @@ from .chunker import Chunk, chunk_markdown, compute_chunk_id
 from .compact import compact_chunks
 from .embeddings import EmbeddingProvider, get_provider
 from .scanner import ScannedFile, scan_paths
-from .store import MilvusStore
+from .store import MilvusStore, _escape_filter_value
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,7 @@ class MemSearch:
         query: str,
         *,
         top_k: int = 10,
+        source_prefix: str | Path | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -197,6 +198,9 @@ class MemSearch:
             Natural-language query.
         top_k:
             Maximum results to return.
+        source_prefix:
+            Optional source path prefix. When set, only chunks whose
+            ``source`` starts with this prefix are searched.
 
         Returns
         -------
@@ -204,8 +208,19 @@ class MemSearch:
             Each dict contains ``content``, ``source``, ``heading``,
             ``score``, and other metadata.
         """
+        filter_expr = ""
+        if source_prefix is not None:
+            prefix = str(Path(source_prefix).expanduser().resolve())
+            escaped_prefix = _escape_filter_value(prefix)
+            filter_expr = f'source like "{escaped_prefix}%"'
+
         embeddings = await self._embedder.embed([query])
-        return self._store.search(embeddings[0], query_text=query, top_k=top_k)
+        return self._store.search(
+            embeddings[0],
+            query_text=query,
+            top_k=top_k,
+            filter_expr=filter_expr,
+        )
 
     # ------------------------------------------------------------------
     # Compact (compress memories)
