@@ -39,7 +39,15 @@ REQUIRED_KEY=$(_required_env_var "$PROVIDER")
 
 KEY_MISSING=false
 if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
-  KEY_MISSING=true
+  # Before declaring key missing, check if the config file provides an API key
+  # (supports both literal keys and "env:VAR_NAME" references).
+  CONFIG_API_KEY=""
+  if [ -n "$MEMSEARCH_CMD" ]; then
+    CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || true)
+  fi
+  if [ -z "$CONFIG_API_KEY" ]; then
+    KEY_MISSING=true
+  fi
 fi
 
 # Check PyPI for newer version (2s timeout, non-blocking on failure)
