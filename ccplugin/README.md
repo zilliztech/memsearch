@@ -1,5 +1,7 @@
 # memsearch — Claude Code Plugin
 
+[![GitHub stars](https://img.shields.io/github/stars/zilliztech/memsearch?style=social)](https://github.com/zilliztech/memsearch)
+
 https://github.com/user-attachments/assets/190a9973-8e23-4ca1-b2a4-a5cf09dad10a
 
 **Automatic persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).** No commands to learn, no manual saving — just install the plugin and Claude remembers what you worked on across sessions.
