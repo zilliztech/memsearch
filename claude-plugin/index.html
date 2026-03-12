@@ -1,0 +1,1733 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenClaw's memory, everywhere — markdown-first semantic memory backed by Milvus">
+      
+      
+      
+        <link rel="canonical" href="https://zilliztech.github.io/memsearch/claude-plugin/">
+      
+      
+        <link rel="prev" href="../integrations/">
+      
+      
+        <link rel="next" href="hooks/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo-icon.jpg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Overview - memsearch</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Fira+Code:300,300i,400,400i,700,700i%7CFira+Code:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Fira Code";--md-code-font:"Fira Code"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/terminal.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#claude-code-plugin" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="memsearch" class="md-header__button md-logo" aria-label="memsearch" data-md-component="logo">
+      
+  <img src="../assets/logo-icon.jpg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            memsearch
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Overview
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/zilliztech/memsearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zilliztech/memsearch
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../python-api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Python API
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../integrations/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Integrations
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Claude Code Plugin
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="memsearch" class="md-nav__button md-logo" aria-label="memsearch" data-md-component="logo">
+      
+  <img src="../assets/logo-icon.jpg" alt="logo">
+
+    </a>
+    memsearch
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/zilliztech/memsearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zilliztech/memsearch
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code Plugin
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Claude Code Plugin
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-pieces-fit-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the pieces fit together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#without-vs-with-the-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Without vs. With the Plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-is-this-useful" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When Is This Useful?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-from-marketplace-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install from Marketplace (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Memory Storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-memory-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Memory File
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#markdown-is-the-source-of-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Markdown Is the Source of Truth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-claude-mem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with claude-mem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparison with claude-mem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-key-difference-forked-subagent-vs-mcp-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Key Difference: Forked Subagent vs. MCP Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-claudes-native-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with Claude's Native Memory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparison with Claude&#39;s Native Memory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin Files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Descriptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-memsearch-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The memsearch CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="hooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="progressive-disclosure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Progressive Disclosure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-pieces-fit-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the pieces fit together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#without-vs-with-the-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Without vs. With the Plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-is-this-useful" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When Is This Useful?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-from-marketplace-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install from Marketplace (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Memory Storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-memory-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Memory File
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#markdown-is-the-source-of-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Markdown Is the Source of Truth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-claude-mem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with claude-mem
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparison with claude-mem">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-key-difference-forked-subagent-vs-mcp-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Key Difference: Forked Subagent vs. MCP Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-claudes-native-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with Claude's Native Memory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparison with Claude&#39;s Native Memory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin Files
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Plugin Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-descriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Descriptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-memsearch-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The memsearch CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="claude-code-plugin">Claude Code Plugin<a class="headerlink" href="#claude-code-plugin" title="Permanent link">&para;</a></h1>
+<p><strong>Automatic persistent memory for <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a>.</strong> No commands to learn, no manual saving -- just install the plugin and Claude remembers what you worked on across sessions.</p>
+<p>The plugin is built entirely on Claude Code's own primitives: <strong><a href="https://docs.anthropic.com/en/docs/claude-code/hooks">Hooks</a></strong> for lifecycle events, <strong><a href="https://docs.anthropic.com/en/docs/claude-code/skills">Skills</a></strong> for intelligent retrieval, and <strong><a href="../cli/">CLI</a></strong> for tool access. No <a href="https://modelcontextprotocol.io/">MCP</a> servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts, a skill definition, and a Python CLI.</p>
+<h3 id="how-the-pieces-fit-together">How the pieces fit together<a class="headerlink" href="#how-the-pieces-fit-together" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>graph LR
+    subgraph "memsearch (Python library)"
+        LIB[Core: chunker, embeddings,&lt;br/&gt;vector store, scanner]
+    end
+
+    subgraph "memsearch CLI"
+        CLI["CLI commands:&lt;br/&gt;search · index · watch&lt;br/&gt;expand · transcript · config"]
+    end
+
+    subgraph "ccplugin (Claude Code Plugin)"
+        HOOKS["Shell hooks:&lt;br/&gt;SessionStart · UserPromptSubmit&lt;br/&gt;Stop · SessionEnd"]
+        SKILL["Skill:&lt;br/&gt;memory-recall (context: fork)"]
+    end
+
+    LIB --&gt; CLI
+    CLI --&gt; HOOKS
+    CLI --&gt; SKILL
+    HOOKS --&gt;|"runs inside"| CC[Claude Code]
+    SKILL --&gt;|"subagent"| CC
+
+    style LIB fill:#1a2744,stroke:#6ba3d6,color:#a8b2c1
+    style CLI fill:#1a2744,stroke:#e0976b,color:#a8b2c1
+    style HOOKS fill:#1a2744,stroke:#7bc67e,color:#a8b2c1
+    style CC fill:#2a1a44,stroke:#c97bdb,color:#a8b2c1</code></pre>
+<p>The <strong>memsearch Python library</strong> provides the core engine (chunking, embedding, vector storage, search). The <strong>memsearch CLI</strong> wraps the library into shell-friendly commands. The <strong>Claude Code Plugin</strong> ties those CLI commands to Claude Code's hook lifecycle and skill system — hooks handle session management and memory capture, while the <strong>memory-recall skill</strong> handles intelligent retrieval in a forked subagent context.</p>
+<hr />
+<h2 id="without-vs-with-the-plugin">Without vs. With the Plugin<a class="headerlink" href="#without-vs-with-the-plugin" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    participant You
+    participant Claude as Claude Code
+
+    rect rgb(60, 30, 30)
+    note right of You: Without plugin
+    You-&gt;&gt;Claude: Monday: "Add Redis caching with 5min TTL"
+    Claude-&gt;&gt;You: ✅ Done — implements caching
+    note over Claude: Session ends. Context is gone.
+    You-&gt;&gt;Claude: Wednesday: "The /orders endpoint is slow"
+    Claude-&gt;&gt;You: ❌ Suggests solutions from scratch&lt;br/&gt;(forgot about the Redis cache from Monday)
+    end
+
+    rect rgb(20, 50, 30)
+    note right of You: With plugin
+    You-&gt;&gt;Claude: Monday: "Add Redis caching with 5min TTL"
+    Claude-&gt;&gt;You: ✅ Done — implements caching
+    note over Claude: Plugin auto-summarizes → memory/2026-02-10.md
+    You-&gt;&gt;Claude: Wednesday: "The /orders endpoint is slow"
+    note over Claude: Plugin injects: "Added Redis caching&lt;br/&gt;middleware with 5min TTL..."
+    Claude-&gt;&gt;You: ✅ "We already have Redis caching —&lt;br/&gt;let me add the /orders endpoint to it"
+    end</code></pre>
+<hr />
+<h2 id="when-is-this-useful">When Is This Useful?<a class="headerlink" href="#when-is-this-useful" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Picking up where you left off.</strong> You debugged an auth issue yesterday but didn't finish. Today Claude remembers the root cause, which files you touched, and what you tried — no re-explaining needed.</li>
+<li><strong>Recalling past decisions.</strong> "Why did we switch from JWT to session cookies?" Claude can trace back to the original conversation where the trade-offs were discussed, thanks to the <a href="progressive-disclosure/">3-layer progressive disclosure</a> that drills from summary → full section → original transcript.</li>
+<li><strong>Long-running projects.</strong> Over days or weeks of development, architectural context accumulates automatically. Claude stays aware of your codebase conventions, past refactors, and resolved issues without you having to maintain a manual changelog.</li>
+</ul>
+<hr />
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<h3 id="install-from-marketplace-recommended">Install from Marketplace (recommended)<a class="headerlink" href="#install-from-marketplace-recommended" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. In Claude Code, add the marketplace and install the plugin</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>/plugin<span class="w"> </span>marketplace<span class="w"> </span>add<span class="w"> </span>zilliztech/memsearch
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>/plugin<span class="w"> </span>install<span class="w"> </span>memsearch
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 2. Have a conversation, then exit. Check your memories:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>cat<span class="w"> </span>.memsearch/memory/<span class="k">$(</span>date<span class="w"> </span>+%Y-%m-%d<span class="k">)</span>.md
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># 3. Start a new session -- Claude automatically remembers!</span>
+</code></pre></div>
+<blockquote>
+<p><strong>Note:</strong> The plugin defaults to the <strong>ONNX bge-m3</strong> embedding model -- no API key required, runs locally on CPU. This model was selected through a <a href="../../ccplugin/evaluation/README.md">comprehensive benchmark</a> of 12+ models on bilingual memory retrieval. If memsearch is not already installed, the plugin will install <code>memsearch[onnx]</code> automatically via <code>uvx</code> on first run. To use a different embedding provider (e.g. OpenAI), set it with <code>memsearch config set embedding.provider openai</code> and export the required API key.</p>
+<p><strong>First-time download:</strong> On the first session, the ONNX model (~558 MB) is downloaded from HuggingFace Hub in the background. If your first session appears to hang or memory search is unavailable, the model is still downloading. You can pre-download it manually:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uvx<span class="w"> </span>--from<span class="w"> </span><span class="s1">&#39;memsearch[onnx]&#39;</span><span class="w"> </span>memsearch<span class="w"> </span>search<span class="w"> </span>--provider<span class="w"> </span>onnx<span class="w"> </span><span class="s2">&quot;warmup&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+</code></pre></div>
+<p>If the download is slow or stuck, set the HuggingFace mirror first:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">HF_ENDPOINT</span><span class="o">=</span>https://hf-mirror.com
+</code></pre></div>
+</blockquote>
+<hr />
+<h2 id="memory-storage">Memory Storage<a class="headerlink" href="#memory-storage" title="Permanent link">&para;</a></h2>
+<p>All memories live in <strong><code>.memsearch/memory/</code></strong> inside your project directory.</p>
+<h3 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>your-project/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>├── .memsearch/
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>│   ├── .watch.pid            &lt;-- singleton watcher PID file
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>│   └── memory/
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>│       ├── 2026-02-07.md     &lt;-- daily memory log
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>│       ├── 2026-02-08.md
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>│       └── 2026-02-09.md     &lt;-- today&#39;s session summaries
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>└── ... (your project files)
+</code></pre></div>
+<h3 id="example-memory-file">Example Memory File<a class="headerlink" href="#example-memory-file" title="Permanent link">&para;</a></h3>
+<p>A typical daily memory file (<code>2026-02-09.md</code>) looks like this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gu">## Session 14:30</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="gu">### 14:30</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>&lt;!-- session:abc123def turn:ghi789jkl transcript:/home/user/.claude/projects/.../abc123def.jsonl --&gt;
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">-</span><span class="w"> </span>Implemented caching system with Redis L1 and in-process LRU L2
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="k">-</span><span class="w"> </span>Fixed N+1 query issue in order-service using selectinload
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">-</span><span class="w"> </span>Decided to use Prometheus counters for cache hit/miss metrics
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="gu">## Session 17:45</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="gu">### 17:45</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>&lt;!-- session:mno456pqr turn:stu012vwx transcript:/home/user/.claude/projects/.../mno456pqr.jsonl --&gt;
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="k">-</span><span class="w"> </span>Debugged React hydration mismatch caused by Date.now() during SSR
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="k">-</span><span class="w"> </span>Added comprehensive test suite for the caching middleware
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="k">-</span><span class="w"> </span>Reviewed PR <span class="ni">#42:</span> approved with minor naming suggestions
+</code></pre></div>
+<p>Each file accumulates all sessions from that day. The format is plain markdown -- human-readable, <code>grep</code>-able, and git-friendly.</p>
+<h3 id="markdown-is-the-source-of-truth">Markdown Is the Source of Truth<a class="headerlink" href="#markdown-is-the-source-of-truth" title="Permanent link">&para;</a></h3>
+<p>The Milvus vector index is a <strong>derived cache</strong> that can be rebuilt at any time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>memsearch<span class="w"> </span>index<span class="w"> </span>.memsearch/memory/
+</code></pre></div>
+<p>This means:</p>
+<ul>
+<li><strong>No data loss.</strong> Even if Milvus is corrupted or deleted, your memories are safe in <code>.md</code> files.</li>
+<li><strong>Portable.</strong> Copy <code>.memsearch/memory/</code> to another machine and rebuild the index.</li>
+<li><strong>Auditable.</strong> You can read, edit, or delete any memory entry with a text editor.</li>
+<li><strong>Git-friendly.</strong> Commit your memory files to version control for a complete project history.</li>
+</ul>
+<hr />
+<h2 id="comparison-with-claude-mem">Comparison with claude-mem<a class="headerlink" href="#comparison-with-claude-mem" title="Permanent link">&para;</a></h2>
+<p><a href="https://github.com/thedotmack/claude-mem">claude-mem</a> is another memory solution for Claude Code. Here is a detailed comparison:</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>memsearch</th>
+<th>claude-mem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Architecture</strong></td>
+<td>4 shell hooks + 1 skill + 1 watch process</td>
+<td>5 JS hooks + 1 skill + MCP tools + Express worker service (port 37777) + React viewer</td>
+</tr>
+<tr>
+<td><strong>Integration</strong></td>
+<td>Native hooks + skill + CLI -- no MCP, no sidecar service</td>
+<td>Hooks + skill + MCP tools + HTTP worker service</td>
+</tr>
+<tr>
+<td><strong>Memory recall</strong></td>
+<td><strong>Skill in forked subagent</strong> -- <code>memory-recall</code> runs in <code>context: fork</code>, intermediate results stay isolated from main context</td>
+<td><strong>Skill + MCP hybrid</strong> -- <code>mem-search</code> skill for auto-recall, plus 5 MCP tools (<code>search</code>, <code>timeline</code>, <code>get_observations</code>, <code>save_memory</code>, ...) for explicit access</td>
+</tr>
+<tr>
+<td><strong>Progressive disclosure</strong></td>
+<td><strong>3-layer in subagent</strong>: search → expand → transcript, all in forked context -- only curated summary reaches main conversation</td>
+<td><strong>3-layer</strong>: <code>mem-search</code> skill for auto-recall; MCP tools for explicit drill-down</td>
+</tr>
+<tr>
+<td><strong>Session capture</strong></td>
+<td>1 async <code>claude -p --model haiku</code> call at session end</td>
+<td>AI observation compression on every tool use (<code>PostToolUse</code> hook) + session summary</td>
+</tr>
+<tr>
+<td><strong>Vector backend</strong></td>
+<td><a href="https://milvus.io/">Milvus</a> -- <a href="../architecture/#hybrid-search">hybrid search</a> (dense + BM25 + RRF), scales from embedded to distributed cluster</td>
+<td><a href="https://www.trychroma.com/">ChromaDB</a> -- dense only; SQLite FTS5 for keyword search (separate, not fused)</td>
+</tr>
+<tr>
+<td><strong>Embedding model</strong></td>
+<td>Pluggable: OpenAI, Google, Voyage, Ollama, local, ONNX (default: bge-m3 int8)</td>
+<td>Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend)</td>
+</tr>
+<tr>
+<td><strong>Storage format</strong></td>
+<td>Transparent <code>.md</code> files -- human-readable, git-friendly</td>
+<td>SQLite database + ChromaDB binary</td>
+</tr>
+<tr>
+<td><strong>Data portability</strong></td>
+<td>Copy <code>.memsearch/memory/*.md</code> and rebuild index</td>
+<td>Export from SQLite + ChromaDB</td>
+</tr>
+<tr>
+<td><strong>Runtime dependency</strong></td>
+<td>Python (<code>memsearch</code> CLI) + <code>claude</code> CLI</td>
+<td>Node.js / Bun + Express worker service</td>
+</tr>
+<tr>
+<td><strong>Context window cost</strong></td>
+<td>No MCP tool definitions; skill runs in forked context -- only curated summary enters main context</td>
+<td>MCP tool definitions permanently loaded + each MCP tool call/result consumes main context</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-key-difference-forked-subagent-vs-mcp-tools">The Key Difference: Forked Subagent vs. MCP Tools<a class="headerlink" href="#the-key-difference-forked-subagent-vs-mcp-tools" title="Permanent link">&para;</a></h3>
+<p>Both projects use hooks for session lifecycle and skills for memory recall. The architectural divergence is in <strong>how retrieval interacts with the main context window</strong>.</p>
+<p><strong>memsearch</strong> runs memory recall in a <strong>forked subagent</strong> (<code>context: fork</code>). The <code>memory-recall</code> skill gets its own isolated context window -- all search, expand, and transcript operations happen there. Only the curated summary is returned to the main conversation. This means: (1) intermediate search results never pollute the main context, (2) multi-step retrieval is autonomous, and (3) no MCP tool definitions consume context tokens.</p>
+<p><strong>claude-mem</strong> combines a <code>mem-search</code> skill with <strong>MCP tools</strong> (<code>search</code>, <code>timeline</code>, <code>get_observations</code>, <code>save_memory</code>). The MCP tools give Claude explicit control over memory access in the main conversation, at the cost of tool definitions permanently consuming context tokens. The <code>PostToolUse</code> hook also records every tool call as an observation, providing richer per-action granularity but incurring more API calls.</p>
+<p>The other key difference is <strong>storage philosophy</strong>: memsearch treats markdown files as the source of truth (human-readable, git-friendly, rebuildable), while claude-mem uses SQLite + ChromaDB (opaque but structured, with richer queryable metadata).</p>
+<hr />
+<h2 id="comparison-with-claudes-native-memory">Comparison with Claude's Native Memory<a class="headerlink" href="#comparison-with-claudes-native-memory" title="Permanent link">&para;</a></h2>
+<p>Claude Code has built-in memory features: <code>CLAUDE.md</code> files and auto-memory (the <code>/memory</code> command). Here is why memsearch provides a stronger solution:</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Claude Native Memory</th>
+<th>memsearch</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Storage</strong></td>
+<td>Single <code>CLAUDE.md</code> file (or per-project)</td>
+<td>Unlimited daily <code>.md</code> files with full history</td>
+</tr>
+<tr>
+<td><strong>Recall mechanism</strong></td>
+<td>File is loaded at session start (no search)</td>
+<td>Skill-based semantic search -- Claude auto-invokes when context is needed</td>
+</tr>
+<tr>
+<td><strong>Granularity</strong></td>
+<td>One monolithic file, manually edited</td>
+<td>Per-session bullet points, automatically generated</td>
+</tr>
+<tr>
+<td><strong>Search</strong></td>
+<td>None -- Claude reads the whole file or nothing</td>
+<td>Hybrid semantic search (dense + BM25) returning top-k relevant chunks</td>
+</tr>
+<tr>
+<td><strong>History depth</strong></td>
+<td>Limited to what fits in one file</td>
+<td>Unlimited -- every session is logged, every entry is searchable</td>
+</tr>
+<tr>
+<td><strong>Automatic capture</strong></td>
+<td><code>/memory</code> command requires manual intervention</td>
+<td>Fully automatic -- hooks capture every session</td>
+</tr>
+<tr>
+<td><strong>Progressive disclosure</strong></td>
+<td>None -- entire file is loaded into context</td>
+<td>3-layer model (L1 auto-inject, L2 expand, L3 transcript) minimizes context usage</td>
+</tr>
+<tr>
+<td><strong>Deduplication</strong></td>
+<td>Manual -- user must avoid adding duplicates</td>
+<td>SHA-256 content hashing prevents duplicate embeddings</td>
+</tr>
+<tr>
+<td><strong>Portability</strong></td>
+<td>Tied to Claude Code's internal format</td>
+<td>Standard markdown files, usable with any tool</td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-this-matters">Why This Matters<a class="headerlink" href="#why-this-matters" title="Permanent link">&para;</a></h3>
+<p><code>CLAUDE.md</code> is a blunt instrument: it loads the entire file into context at session start, regardless of relevance. As the file grows, it wastes context window on irrelevant information and eventually hits size limits. There is no search -- Claude cannot selectively recall a specific decision from three weeks ago.</p>
+<p>memsearch solves this with <strong>skill-based semantic search and progressive disclosure</strong>. When Claude judges that historical context would help, it auto-invokes the memory-recall skill, which runs in a forked subagent and autonomously searches, expands, and curates relevant memories. History can grow indefinitely without degrading performance, because the vector index handles the filtering. And the three-layer model (search → expand → transcript) runs entirely in the subagent, keeping the main context window clean.</p>
+<hr />
+<h2 id="plugin-files">Plugin Files<a class="headerlink" href="#plugin-files" title="Permanent link">&para;</a></h2>
+<p>The plugin lives in the <code>ccplugin/</code> directory at the root of the memsearch repository:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>ccplugin/
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>├── .claude-plugin/
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>│   └── plugin.json              # Plugin manifest (name, version, description)
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>├── hooks/
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>│   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>│   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>│   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>│   ├── user-prompt-submit.sh    # Lightweight systemMessage hint (&quot;[memsearch] Memory available&quot;)
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>│   ├── stop.sh                  # Parse transcript -&gt; haiku summary -&gt; append to daily .md
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>│   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser with truncation
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>│   └── session-end.sh           # Stop watch process (cleanup)
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>├── scripts/
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>│   └── derive-collection.sh     # Derive per-project collection name from project path
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>└── skills/
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    └── memory-recall/
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        └── SKILL.md             # Memory retrieval skill (context: fork subagent)
+</code></pre></div>
+<h3 id="file-descriptions">File Descriptions<a class="headerlink" href="#file-descriptions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plugin.json</code></td>
+<td>Claude Code plugin manifest. Declares the plugin name (<code>memsearch</code>), version, and description.</td>
+</tr>
+<tr>
+<td><code>hooks.json</code></td>
+<td>Defines the 4 lifecycle hooks (SessionStart, UserPromptSubmit, Stop, SessionEnd) with their types, timeouts, and async flags.</td>
+</tr>
+<tr>
+<td><code>common.sh</code></td>
+<td>Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to <code>uv run</code>), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup).</td>
+</tr>
+<tr>
+<td><code>session-start.sh</code></td>
+<td>SessionStart hook implementation. Starts the watcher, writes the session heading, and reads recent memory files for cold-start context injection.</td>
+</tr>
+<tr>
+<td><code>user-prompt-submit.sh</code></td>
+<td>UserPromptSubmit hook implementation. Returns a lightweight <code>systemMessage</code> hint to keep Claude aware of the memory system. No search -- retrieval is handled by the memory-recall skill.</td>
+</tr>
+<tr>
+<td><code>stop.sh</code></td>
+<td>Stop hook implementation. Extracts the transcript path, validates it, delegates parsing to <code>parse-transcript.sh</code>, calls Haiku for summarization (with <code>CLAUDECODE=</code> to bypass nested session detection), and appends the result with session anchors to the daily memory file.</td>
+</tr>
+<tr>
+<td><code>parse-transcript.sh</code></td>
+<td>Standalone transcript parser. Extracts the last turn (last user question + all responses to EOF) from a JSONL transcript using Python 3. Outputs with role labels (<code>[Human]</code>, <code>[Claude Code]</code>, <code>[Claude Code calls tool]</code>, <code>[Tool output]</code>/<code>[Tool error]</code>) so the summarizer treats it as a third-party transcript. Skips progress, thinking, and file-history-snapshot entries. No <code>jq</code> dependency. Used by <code>stop.sh</code>.</td>
+</tr>
+<tr>
+<td><code>session-end.sh</code></td>
+<td>SessionEnd hook implementation. Calls <code>stop_watch</code> to terminate the background watcher and clean up.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="the-memsearch-cli">The <code>memsearch</code> CLI<a class="headerlink" href="#the-memsearch-cli" title="Permanent link">&para;</a></h2>
+<p>The plugin is built entirely on the <code>memsearch</code> CLI -- every hook is a shell script calling <code>memsearch</code> subcommands. Here are the commands most relevant to the plugin:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Used By</th>
+<th>What It Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search &lt;query&gt;</code></td>
+<td>memory-recall skill</td>
+<td>Semantic search over indexed memories (<code>--top-k</code> for result count, <code>--json-output</code> for JSON)</td>
+</tr>
+<tr>
+<td><code>watch &lt;paths&gt;</code></td>
+<td>SessionStart hook</td>
+<td>Background watcher that auto-indexes on file changes (1500ms debounce)</td>
+</tr>
+<tr>
+<td><code>index &lt;paths&gt;</code></td>
+<td>Manual / rebuild</td>
+<td>One-shot index of markdown files (<code>--force</code> to re-index all)</td>
+</tr>
+<tr>
+<td><code>expand &lt;chunk_hash&gt;</code></td>
+<td>memory-recall skill (L2)</td>
+<td>Show full markdown section around a chunk, with anchor metadata</td>
+</tr>
+<tr>
+<td><code>transcript &lt;jsonl&gt;</code></td>
+<td>memory-recall skill (L3)</td>
+<td>Parse Claude Code JSONL transcript into readable conversation turns</td>
+</tr>
+<tr>
+<td><code>config init</code></td>
+<td>Quick Start</td>
+<td>Interactive config wizard for first-time setup</td>
+</tr>
+<tr>
+<td><code>stats</code></td>
+<td>Manual</td>
+<td>Show index statistics (collection size, chunk count)</td>
+</tr>
+<tr>
+<td><code>reset</code></td>
+<td>Manual</td>
+<td>Drop all indexed data (requires <code>--yes</code> to confirm)</td>
+</tr>
+</tbody>
+</table>
+<p>For the full CLI reference, see the <a href="../cli/">CLI Reference</a> page.</p>
+<hr />
+<h2 id="development-mode">Development Mode<a class="headerlink" href="#development-mode" title="Permanent link">&para;</a></h2>
+<p>For contributors or if you want to modify the plugin locally:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/zilliztech/memsearch.git
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">cd</span><span class="w"> </span>memsearch<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>sync
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>claude<span class="w"> </span>--plugin-dir<span class="w"> </span>./ccplugin
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
