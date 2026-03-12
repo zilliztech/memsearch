@@ -31,7 +31,7 @@ class OnnxEmbedding:
             import onnxruntime as ort
         except ImportError as exc:
             raise ImportError(
-                "ONNX embedding provider requires onnxruntime and optimum. "
+                "ONNX embedding provider requires onnxruntime, transformers, and huggingface-hub. "
                 "Install with: pip install 'memsearch[onnx]' "
                 "or: uv add 'memsearch[onnx]'"
             ) from exc
