@@ -31,15 +31,19 @@ class OnnxEmbedding:
             import onnxruntime as ort
         except ImportError as exc:
             raise ImportError(
-                "ONNX embedding provider requires onnxruntime, transformers, and huggingface-hub. "
+                "ONNX embedding provider requires onnxruntime. "
                 "Install with: pip install 'memsearch[onnx]' "
                 "or: uv add 'memsearch[onnx]'"
             ) from exc
 
         from huggingface_hub import hf_hub_download, list_repo_files
-        from transformers import AutoTokenizer
+        from tokenizers import Tokenizer
 
-        self._tokenizer = AutoTokenizer.from_pretrained(model)
+        # Load tokenizer directly from tokenizer.json (no transformers needed)
+        tok_path = hf_hub_download(model, "tokenizer.json")
+        self._tokenizer = Tokenizer.from_file(tok_path)
+        self._tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
+        self._tokenizer.enable_truncation(max_length=8192)
 
         # Download ONNX model file from HuggingFace Hub
         repo_files = list_repo_files(model)
@@ -65,8 +69,6 @@ class OnnxEmbedding:
         self._model = model
 
         # Detect dimension from a probe embedding
-        import numpy as np
-
         probe = self._encode(["hello"])
         self._dimension = len(probe[0])
         self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
@@ -91,16 +93,12 @@ class OnnxEmbedding:
     def _encode(self, texts: list[str]) -> list[list[float]]:
         import numpy as np
 
-        inputs = self._tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            return_tensors="np",
-            max_length=8192,
-        )
+        encoded = self._tokenizer.encode_batch(texts)
+        input_ids = np.array([e.ids for e in encoded])
+        attention_mask = np.array([e.attention_mask for e in encoded])
         feed = {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
         }
         outputs = self._session.run(None, feed)
 

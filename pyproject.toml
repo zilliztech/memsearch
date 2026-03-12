@@ -39,7 +39,7 @@ local = [
 anthropic = ["anthropic>=0.40"]
 onnx = [
     "onnxruntime>=1.17",
-    "transformers>=4.29",
+    "tokenizers>=0.15",
     "huggingface-hub>=0.20",
 ]
 all = ["memsearch[google,voyage,ollama,local,anthropic,onnx]"]
