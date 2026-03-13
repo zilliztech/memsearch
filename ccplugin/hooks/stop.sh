@@ -77,6 +77,9 @@ print(uuid)
 # --model haiku: cheap and fast model for summarization
 # --no-session-persistence: don't save this throwaway session to disk
 # --no-chrome: skip browser integration
+# --settings '{"hooks":{}}': suppress all configured hooks for this subprocess — prevents
+#   hook systems (e.g. notification relays, loggers) from treating the summarization
+#   call as a real user session and double-processing the transcript content
 # --system-prompt: separate role instructions from data (transcript via stdin)
 SUMMARY=""
 if command -v claude &>/dev/null; then
@@ -84,6 +87,7 @@ if command -v claude &>/dev/null; then
     --model haiku \
     --no-session-persistence \
     --no-chrome \
+    --settings '{"hooks":{}}' \
     --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human (labeled [Human]) and Claude Code (labeled [Claude Code]). Tool calls are labeled [Tool Call] and their results [Tool RESULT] or [Tool ERROR].
 
 Your job is to record what happened as factual third-person notes. You are an EXTERNAL OBSERVER — you are NOT Claude Code, NOT an assistant. Do NOT answer the human's question, do NOT give suggestions, do NOT offer help. ONLY record what occurred.
