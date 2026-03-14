@@ -73,22 +73,44 @@ with open(sys.argv[1]) as f:
 print(uuid)
 " "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
-# Use claude -p to summarize the last turn into structured bullet points.
-# --model haiku: cheap and fast model for summarization
-# --no-session-persistence: don't save this throwaway session to disk
-# --no-chrome: skip browser integration
-# --settings '{"hooks":{}}': suppress all configured hooks for this subprocess — prevents
-#   hook systems (e.g. notification relays, loggers) from treating the summarization
-#   call as a real user session and double-processing the transcript content
-# --system-prompt: separate role instructions from data (transcript via stdin)
-SUMMARY=""
-if command -v claude &>/dev/null; then
-  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
-    --model haiku \
-    --no-session-persistence \
-    --no-chrome \
-    --settings '{"hooks":{"Stop":[],"UserPromptSubmit":[],"PreToolUse":[],"PostToolUse":[],"Notification":[],"SessionStart":[],"SessionEnd":[]}}' \
-    --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human (labeled [Human]) and Claude Code (labeled [Claude Code]). Tool calls are labeled [Tool Call] and their results [Tool RESULT] or [Tool ERROR].
+# Summarize the last turn using a local Ollama model via direct HTTP call.
+# This avoids spawning a `claude -p` subprocess, which would inherit Claude Code's
+# hook configuration and trigger registered hooks (e.g. notification relays) on the
+# transcript content — causing duplicate deliveries to external systems.
+#
+# Requires Ollama running at MEMSEARCH_OLLAMA_URL (default: http://localhost:11434).
+# Model is read from memsearch config (embedding.model used as fallback) or overridden
+# via MEMSEARCH_OLLAMA_SUMMARIZE_MODEL. Falls back to any available Ollama model.
+OLLAMA_URL="${MEMSEARCH_OLLAMA_URL:-http://localhost:11434}"
+OLLAMA_MODEL="${MEMSEARCH_OLLAMA_SUMMARIZE_MODEL:-}"
+
+# Auto-detect model from config if not set
+if [ -z "$OLLAMA_MODEL" ] && command -v "$MEMSEARCH_CMD" &>/dev/null; then
+  _cfg_model=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || true)
+  # Only use if it looks like a chat model (not an embed-only model)
+  case "$_cfg_model" in
+    *embed*|*nomic-embed*) OLLAMA_MODEL="" ;;
+    *) OLLAMA_MODEL="$_cfg_model" ;;
+  esac
+fi
+
+# Final fallback: pick first available Ollama model that isn't embed-only
+if [ -z "$OLLAMA_MODEL" ]; then
+  OLLAMA_MODEL=$(curl -s "${OLLAMA_URL}/api/tags" 2>/dev/null \
+    | python3 -c "
+import sys, json
+try:
+    models = json.load(sys.stdin).get('models', [])
+    for m in models:
+        name = m.get('name', '')
+        if 'embed' not in name:
+            print(name)
+            break
+except: pass
+" 2>/dev/null || true)
+fi
+
+SYSTEM_PROMPT="You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human (labeled [Human]) and Claude Code (labeled [Claude Code]). Tool calls are labeled [Claude Code calls tool] and their results [Tool output] or [Tool error].
 
 Your job is to record what happened as factual third-person notes. You are an EXTERNAL OBSERVER — you are NOT Claude Code, NOT an assistant. Do NOT answer the human's question, do NOT give suggestions, do NOT offer help. ONLY record what occurred.
 
@@ -101,15 +123,39 @@ Rules:
 - Be specific: mention file names, function names, tool names, and concrete outcomes
 - Do NOT answer the human's question yourself — just note what was discussed
 - Do NOT add any text before or after the bullet points
-- Write in the same language as the human's message (the [Human] line) in the transcript
+- Write in the same language as the human's message (the [Human] line) in the transcript"
 
-The transcript uses these labels:
-- [Human]: what the user said
-- [Claude Code]: what Claude Code said
-- [Claude Code calls tool]: a tool Claude Code invoked
-- [Tool output]: the result returned by a tool
-- [Tool error]: an error returned by a tool" \
-    2>/dev/null || true)
+SUMMARY=""
+if [ -n "$OLLAMA_MODEL" ]; then
+  SUMMARY=$(python3 -c "
+import sys, json, urllib.request, urllib.error
+
+url = sys.argv[1]
+model = sys.argv[2]
+system_prompt = sys.argv[3]
+transcript = sys.stdin.read()
+
+payload = json.dumps({
+    'model': model,
+    'messages': [
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': transcript}
+    ],
+    'stream': False
+}).encode()
+
+try:
+    req = urllib.request.Request(
+        url + '/api/chat',
+        data=payload,
+        headers={'Content-Type': 'application/json'}
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        result = json.loads(resp.read())
+        print(result['message']['content'].strip())
+except Exception as e:
+    sys.exit(1)
+" "$OLLAMA_URL" "$OLLAMA_MODEL" "$SYSTEM_PROMPT" <<< "$PARSED" 2>/dev/null || true)
 fi
 
 # If claude is not available or returned empty, fall back to raw parsed output
