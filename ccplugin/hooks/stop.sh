@@ -24,8 +24,15 @@ _required_env_var() {
 _PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
 _REQ_KEY=$(_required_env_var "$_PROVIDER")
 if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
-  echo '{}'
-  exit 0
+  # Env var not set — check if API key is configured in memsearch config file
+  _CONFIG_API_KEY=""
+  if [ -n "$MEMSEARCH_CMD" ]; then
+    _CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
+  fi
+  if [ -z "$_CONFIG_API_KEY" ]; then
+    echo '{}'
+    exit 0
+  fi
 fi
 
 # Extract transcript path from hook input
