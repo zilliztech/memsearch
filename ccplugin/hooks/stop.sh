@@ -112,13 +112,9 @@ The transcript uses these labels:
     2>/dev/null || true)
 fi
 
-# If claude is not available or returned empty (e.g. rate limit, network error),
-# skip writing to memory rather than falling back to the raw parsed transcript.
-# Raw fallback pollutes memory files with "=== Transcript ===" headers which
-# get re-injected as context on the next session start.
+# If claude is not available or returned empty, fall back to raw parsed output
 if [ -z "$SUMMARY" ]; then
-  echo '{}'
-  exit 0
+  SUMMARY="$PARSED"
 fi
 
 # Append as a sub-heading under the session heading written by SessionStart
