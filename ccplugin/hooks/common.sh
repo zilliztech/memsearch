@@ -102,6 +102,52 @@ run_memsearch() {
   fi
 }
 
+# --- Index process cleanup ---
+
+INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
+
+# Kill any previously spawned background index processes for this project.
+# Also sweeps orphaned milvus_lite processes, which outlive `memsearch index`
+# in Lite mode because milvus_lite does not exit when its parent process ends.
+#
+# Without this cleanup, rapid session open/close cycles (e.g. when Claude Code
+# freezes on startup and the user force-quits) accumulate dozens of orphaned
+# python/milvus processes that can consume tens of GB of virtual memory and
+# cause subsequent sessions to freeze due to resource exhaustion.
+kill_orphaned_index() {
+  # Skip in child claude -p processes to avoid killing the current parent's work
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
+    return 0
+  fi
+
+  # 1. Kill PID recorded from previous background index launch
+  if [ -f "$INDEX_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$INDEX_PIDFILE" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+    rm -f "$INDEX_PIDFILE"
+  fi
+
+  # 2. Sweep any orphaned memsearch index processes for this MEMORY_DIR
+  local orphans
+  orphans=$(pgrep -f "memsearch index $MEMORY_DIR" 2>/dev/null || true)
+  if [ -n "$orphans" ]; then
+    echo "$orphans" | while read -r opid; do
+      kill "$opid" 2>/dev/null || true
+    done
+  fi
+
+  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index exits)
+  orphans=$(pgrep -f "milvus_lite/lib/milvus" 2>/dev/null || true)
+  if [ -n "$orphans" ]; then
+    echo "$orphans" | while read -r opid; do
+      kill "$opid" 2>/dev/null || true
+    done
+  fi
+}
+
 # --- Watch singleton management ---
 
 WATCH_PIDFILE="$MEMSEARCH_DIR/.watch.pid"

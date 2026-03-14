@@ -2,6 +2,12 @@
 # SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Redirect stdin to /dev/null before sourcing common.sh.
+# common.sh does INPUT="$(cat)" which blocks indefinitely if stdin never
+# receives EOF (e.g. during `claude --resume` or any new session start on
+# macOS where Claude Code keeps the pipe open). session-start.sh never uses
+# INPUT, so it is safe to discard stdin entirely here.
+exec < /dev/null
 source "$SCRIPT_DIR/common.sh"
 
 # Bootstrap: if memsearch not available, install uv and warm up uvx cache
@@ -117,8 +123,10 @@ start_watch
 
 # Lite mode: one-time index since watch is not running.
 # Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
+# Kill any previous background index first to prevent process accumulation across sessions.
 # If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
 if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
+  kill_orphaned_index
   (
     _index_args=("$MEMORY_DIR")
     [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
@@ -130,7 +138,8 @@ if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
       $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
       $MEMSEARCH_CMD index "${_index_args[@]}" 2>/dev/null || true
     fi
-  ) &
+  ) >/dev/null 2>&1 &
+  echo $! > "$INDEX_PIDFILE"
 fi
 
 # Always include status in systemMessage
