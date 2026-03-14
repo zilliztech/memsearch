@@ -87,7 +87,7 @@ if command -v claude &>/dev/null; then
     --model haiku \
     --no-session-persistence \
     --no-chrome \
-    --settings '{"hooks":{}}' \
+    --settings '{"hooks":{"Stop":[],"UserPromptSubmit":[],"PreToolUse":[],"PostToolUse":[],"Notification":[],"SessionStart":[],"SessionEnd":[]}}' \
     --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human (labeled [Human]) and Claude Code (labeled [Claude Code]). Tool calls are labeled [Tool Call] and their results [Tool RESULT] or [Tool ERROR].
 
 Your job is to record what happened as factual third-person notes. You are an EXTERNAL OBSERVER — you are NOT Claude Code, NOT an assistant. Do NOT answer the human's question, do NOT give suggestions, do NOT offer help. ONLY record what occurred.
