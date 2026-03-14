@@ -277,7 +277,7 @@ Compress indexed chunks into a condensed markdown summary using an LLM:
 
 ```bash
 memsearch compact
-memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
+memsearch compact --llm-provider anthropic --source /absolute/path/to/memory/old-notes.md
 ```
 
 ### Utilities — `stats` / `reset`

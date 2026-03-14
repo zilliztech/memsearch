@@ -442,12 +442,15 @@ Compact complete. Summary:
 Compact only chunks from a specific source file:
 
 ```bash
-$ memsearch compact --source ./memory/old-notes.md
+$ memsearch compact --source /absolute/path/to/memory/old-notes.md
 Compact complete. Summary:
 
 ## Old Notes Summary
 - Initial architecture decisions from January meeting...
 ```
+
+`--source` is matched against the absolute path stored during indexing. Relative paths are
+resolved to absolute form by the CLI before querying the store.
 
 Use Anthropic Claude for summarization:
 

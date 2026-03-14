@@ -540,11 +540,13 @@ def compact(
     if cfg.compact.prompt_file and not prompt_template:
         prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
 
+    resolved_source = str(Path(source).expanduser().resolve()) if source else None
+
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         summary = _run(
             ms.compact(
-                source=source,
+                source=resolved_source,
                 llm_provider=cfg.compact.llm_provider,
                 llm_model=cfg.compact.llm_model or None,
                 prompt_template=prompt_template,
