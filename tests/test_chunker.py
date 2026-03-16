@@ -1,6 +1,6 @@
 """Tests for the markdown chunker."""
 
-from memsearch.chunker import chunk_markdown
+from memsearch.chunker import chunk_markdown, compute_chunk_id
 
 
 def test_simple_heading_split():
@@ -61,3 +61,18 @@ def test_source_and_lines():
     chunks = chunk_markdown(md, source="doc.md")
     assert all(c.source == "doc.md" for c in chunks)
     assert chunks[0].start_line >= 1
+
+
+def test_compute_chunk_id_is_deterministic_and_model_sensitive():
+    common = {
+        "source": "doc.md",
+        "start_line": 1,
+        "end_line": 10,
+        "content_hash": "abcdef1234567890",
+    }
+    id_a = compute_chunk_id(**common, model="text-embedding-3-small")
+    id_b = compute_chunk_id(**common, model="text-embedding-3-small")
+    id_c = compute_chunk_id(**common, model="text-embedding-3-large")
+
+    assert id_a == id_b
+    assert id_a != id_c
