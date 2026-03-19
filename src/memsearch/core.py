@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .watcher import FileWatcher
 
-from .chunker import Chunk, chunk_markdown, compute_chunk_id
+from .chunker import Chunk, chunk_markdown, clean_content_for_embedding, compute_chunk_id
 from .compact import compact_chunks
 from .embeddings import EmbeddingProvider, get_provider
 from .scanner import ScannedFile, scan_paths
@@ -152,7 +152,10 @@ class MemSearch:
             return 0
 
         model = self._embedder.model_name
-        contents = [c.content for c in chunks]
+        # Clean content for embedding: strip HTML comments and metadata noise
+        # so the embedding vector captures semantics, not UUIDs/paths.
+        # The original content is preserved in the Milvus record below.
+        contents = [clean_content_for_embedding(c.content) for c in chunks]
         embeddings = await self._embedder.embed(contents)
 
         records: list[dict[str, Any]] = []

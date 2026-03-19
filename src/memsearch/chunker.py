@@ -7,6 +7,41 @@ import re
 from dataclasses import dataclass, field
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+# Minimum meaningful text length after stripping metadata noise.
+# Chunks with less useful text than this are dropped during chunking.
+_MIN_MEANINGFUL_LEN = 2
+
+
+def clean_content_for_embedding(text: str) -> str:
+    """Strip metadata noise from chunk content before embedding.
+
+    Removes HTML comments (<!-- ... -->), which often contain session/turn
+    UUIDs and transcript paths that dilute embedding quality.  The original
+    content stored in Milvus is unchanged — this only affects the text
+    sent to the embedding model.
+    """
+    cleaned = _HTML_COMMENT_RE.sub("", text)
+    # Collapse runs of blank lines left behind by removed comments
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _has_meaningful_content(text: str) -> bool:
+    """Return True if *text* has enough substance to be worth indexing.
+
+    Strips HTML comments, heading lines, and whitespace, then checks
+    whether the remaining body text meets the minimum length threshold.
+    A section like ``## Session 03:16`` with no body is rejected, while
+    ``## Title\\nSome real content`` is kept.
+    """
+    # Remove HTML comments first
+    stripped = _HTML_COMMENT_RE.sub("", text)
+    # Remove heading lines — we only care about body text
+    lines = [ln for ln in stripped.splitlines() if not _HEADING_RE.match(ln)]
+    body = "\n".join(lines).strip()
+    return len(body) >= _MIN_MEANINGFUL_LEN
 
 
 @dataclass(frozen=True)
@@ -76,7 +111,7 @@ def chunk_markdown(
     chunks: list[Chunk] = []
     for start, end, heading, level in sections:
         section_text = "\n".join(lines[start:end]).strip()
-        if not section_text:
+        if not section_text or not _has_meaningful_content(section_text):
             continue
 
         if len(section_text) <= max_chunk_size:
