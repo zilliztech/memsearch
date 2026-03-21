@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stop hook: parse transcript, summarize with claude -p, and save to memory.
+# Stop/SubagentStop hook: parse transcript, summarize with claude -p, and save to memory.
+# Works for both main session (Stop) and subagents (SubagentStop).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
@@ -9,6 +10,13 @@ STOP_HOOK_ACTIVE=$(_json_val "$INPUT" "stop_hook_active" "false")
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   echo '{}'
   exit 0
+fi
+
+# Detect if this is a SubagentStop event
+AGENT_ID=$(_json_val "$INPUT" "agent_id" "")
+IS_SUBAGENT=false
+if [ -n "$AGENT_ID" ]; then
+  IS_SUBAGENT=true
 fi
 
 # Skip summarization when the required API key is missing — embedding/search
@@ -36,7 +44,12 @@ if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
 fi
 
 # Extract transcript path from hook input
-TRANSCRIPT_PATH=$(_json_val "$INPUT" "transcript_path" "")
+# SubagentStop provides agent_transcript_path; Stop provides transcript_path
+if [ "$IS_SUBAGENT" = true ]; then
+  TRANSCRIPT_PATH=$(_json_val "$INPUT" "agent_transcript_path" "")
+else
+  TRANSCRIPT_PATH=$(_json_val "$INPUT" "transcript_path" "")
+fi
 
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   echo '{}'
@@ -66,7 +79,12 @@ NOW=$(date +%H:%M)
 MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
 
 # Extract session ID and last user turn UUID for progressive disclosure anchors
-SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
+if [ "$IS_SUBAGENT" = true ]; then
+  # Subagent transcript: agent-{agentId}.jsonl → use agent ID as session ref
+  SESSION_ID=$(_json_val "$INPUT" "session_id" "$(basename "$TRANSCRIPT_PATH" .jsonl)")
+else
+  SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
+fi
 LAST_USER_TURN_UUID=$(python3 -c "
 import json, sys
 uuid = ''
@@ -123,9 +141,13 @@ fi
 # Append as a sub-heading under the session heading written by SessionStart
 # Include HTML comment anchor for progressive disclosure (L3 transcript lookup)
 {
-  echo "### $NOW"
+  if [ "$IS_SUBAGENT" = true ]; then
+    echo "### $NOW (subagent: $AGENT_ID)"
+  else
+    echo "### $NOW"
+  fi
   if [ -n "$SESSION_ID" ]; then
-    echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
+    echo "<!-- session:${SESSION_ID}${AGENT_ID:+ agent:${AGENT_ID}} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
   fi
   echo "$SUMMARY"
   echo ""
