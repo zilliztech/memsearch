@@ -5,7 +5,8 @@
 set -euo pipefail
 
 # Read stdin JSON into $INPUT
-INPUT="$(cat)"
+# Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly
+INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
 
 # Ensure common user bin paths are in PATH (hooks may run in a minimal env)
 for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
