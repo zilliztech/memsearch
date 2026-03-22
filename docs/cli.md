@@ -449,6 +449,13 @@ Compact complete. Summary:
 - Initial architecture decisions from January meeting...
 ```
 
+Relative paths are normalized to the absolute source path stored at index time, so both of these work:
+
+```bash
+$ memsearch compact --source ./memory/old-notes.md
+$ memsearch compact --source /home/user/project/memory/old-notes.md
+```
+
 Use Anthropic Claude for summarization:
 
 ```bash
@@ -470,6 +477,7 @@ $ memsearch compact --prompt-file ./prompts/compress.txt
 ### Notes
 
 - **Output location.** The summary is appended to `<first-path>/memory/YYYY-MM-DD.md`. This file is then automatically eligible for future indexing.
+- **`--source` path matching is path-aware.** Existing relative or `~` paths are normalized to the absolute source path stored during indexing. If no chunks match, memsearch prints the resolved source path to help debug the filter.
 - **The `{chunks}` placeholder is required.** Whether using `--prompt` or `--prompt-file`, the template must contain `{chunks}` which will be replaced with the concatenated chunk contents.
 - **API key required.** The chosen LLM provider requires its corresponding API key in the environment (see [Environment Variables](#environment-variables)).
 

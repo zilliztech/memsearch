@@ -278,6 +278,8 @@ Compress indexed chunks into a condensed markdown summary using an LLM:
 ```bash
 memsearch compact
 memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
+# relative and absolute source paths both work
+memsearch compact --source /home/user/project/memory/old-notes.md
 ```
 
 ### Utilities — `stats` / `reset`
