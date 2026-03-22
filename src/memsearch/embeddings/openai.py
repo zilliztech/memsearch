@@ -14,7 +14,9 @@ import os
 class OpenAIEmbedding:
     """OpenAI text-embedding provider."""
 
-    _DEFAULT_BATCH_SIZE = 2048
+    # OpenAI limits total tokens per embedding request to 300K.
+    # A lower batch size avoids hitting that limit with large chunks.
+    _DEFAULT_BATCH_SIZE = 256
 
     def __init__(
         self,

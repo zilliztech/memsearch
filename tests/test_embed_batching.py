@@ -152,3 +152,41 @@ async def test_embed_and_store_empty(mem_with_fake):
     n = await ms._embed_and_store([])
     assert n == 0
     assert fake.call_sizes == []
+
+
+# -- Error isolation tests --
+
+
+@pytest.mark.asyncio
+async def test_index_continues_after_file_failure(tmp_path: Path):
+    """A file that fails to index should not prevent other files from indexing."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "aaa_good.md").write_text("# Good\n\nThis file is fine.\n")
+    (docs / "bbb_bad.md").write_text("# Bad\n\nThis file will fail.\n")
+    (docs / "ccc_good.md").write_text("# Also Good\n\nThis file is fine too.\n")
+
+    fake = FakeEmbedder(batch_size=100, dim=4)
+    ms = MemSearch.__new__(MemSearch)
+    ms._paths = [str(docs)]
+    ms._max_chunk_size = 1500
+    ms._overlap_lines = 2
+    ms._embedder = fake
+    ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
+
+    # Patch _index_file to fail on the bad file
+    original_index_file = ms._index_file
+
+    async def _patched_index_file(f, *, force=False):
+        if "bbb_bad" in str(f.path):
+            raise RuntimeError("Simulated embedding API failure")
+        return await original_index_file(f, force=force)
+
+    ms._index_file = _patched_index_file
+
+    n = await ms.index()
+    ms.close()
+
+    # Both good files should have been indexed despite the middle file failing
+    assert n > 0
+    assert len(fake.call_sizes) >= 2

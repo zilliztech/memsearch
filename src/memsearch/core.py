@@ -90,11 +90,16 @@ class MemSearch:
         """
         files = scan_paths(self._paths)
         total = 0
+        failed = 0
         active_sources: set[str] = set()
         for f in files:
             active_sources.add(str(f.path))
-            n = await self._index_file(f, force=force)
-            total += n
+            try:
+                n = await self._index_file(f, force=force)
+                total += n
+            except Exception:
+                failed += 1
+                logger.exception("Failed to index %s, skipping", f.path)
 
         # Clean up chunks for files that no longer exist
         indexed_sources = self._store.indexed_sources()
@@ -103,7 +108,10 @@ class MemSearch:
                 self._store.delete_by_source(source)
                 logger.info("Removed stale chunks for deleted file: %s", source)
 
-        logger.info("Indexed %d chunks from %d files", total, len(files))
+        if failed:
+            logger.warning("Indexed %d chunks from %d files (%d files failed)", total, len(files) - failed, failed)
+        else:
+            logger.info("Indexed %d chunks from %d files", total, len(files))
         return total
 
     async def index_file(self, path: str | Path) -> int:
