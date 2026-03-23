@@ -685,7 +685,16 @@ pgrep -f "memsearch watch" && echo "found orphans" || echo "clean"
 
 The watch process is started by `SessionStart` and stopped by `SessionEnd`. If Claude Code crashes or is killed with SIGKILL, the `SessionEnd` hook won't fire and the process may become orphaned. The next `SessionStart` always stops any existing watch before starting a new one.
 
-> **Note:** Milvus Lite does not support concurrent access, so the plugin falls back to one-time indexing at session start instead of a persistent watcher. For real-time indexing, use [Milvus Server or Zilliz Cloud](https://zilliztech.github.io/memsearch/getting-started/#milvus-backend).
+> **Note:** Milvus Lite does not support concurrent access, so the plugin falls back to one-time indexing at session start instead of a persistent watcher.
+>
+> **Want real-time indexing?** Switch to [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-ccplugin) — no Docker, no ops, free tier available. Just set your URI and token:
+>
+> ```bash
+> memsearch config set milvus.uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com"
+> memsearch config set milvus.token "your-api-key"
+> ```
+>
+> The next Claude Code session will automatically use real-time `watch` indexing. See the [backend comparison](https://zilliztech.github.io/memsearch/getting-started/#which-backend-should-i-choose) for details.
 
 ---
 

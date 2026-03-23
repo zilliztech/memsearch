@@ -379,11 +379,22 @@ Deploy Milvus via Docker or Kubernetes. Multiple agents and users can share the 
         milvusdb/milvus:latest milvus run standalone
     ```
 
-### Zilliz Cloud (fully managed)
+### Zilliz Cloud (fully managed) :star: Recommended
 
-Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](https://cloud.zilliz.com).
+Zero-ops, auto-scaling managed Milvus. **[Get a free cluster →](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs)**
 
-**Best for:** production deployments, teams that do not want to manage infrastructure.
+**Best for:** production deployments, teams that do not want to manage infrastructure, anyone who wants real-time indexing without running Docker.
+
+<details>
+<summary>Sign up for a free Zilliz Cloud cluster 👈</summary>
+
+You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) on Zilliz Cloud to get a free cluster and API key.
+
+![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
+
+Copy your Personal Key to use as `milvus_token` in the examples below.
+
+</details>
 
 === "Python"
 
@@ -402,6 +413,37 @@ Zero-ops, auto-scaling managed Milvus. Get a free cluster at [cloud.zilliz.com](
         --milvus-uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com" \
         --milvus-token "your-api-key"
     ```
+
+!!! tip "Why Zilliz Cloud?"
+    Zilliz Cloud removes all the operational overhead of running Milvus yourself — no Docker, no port management, no upgrades, no backup scripts. You get a production-ready endpoint in under 2 minutes, with a generous [free tier](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) that covers most personal and small-team use cases.
+
+### Which backend should I choose?
+
+| | Milvus Lite | Milvus Server | Zilliz Cloud |
+|---|:---:|:---:|:---:|
+| Setup complexity | Zero config | Docker required | Zero config |
+| Concurrent access | :material-close: | :material-check: | :material-check: |
+| Real-time `watch` indexing | :material-close: | :material-check: | :material-check: |
+| Multi-machine / team sharing | :material-close: | Manual networking | Built-in |
+| Ops burden | None | Self-managed | Fully managed |
+| Auto-scaling | :material-close: | Manual | Automatic |
+| Free tier | Unlimited (local) | Self-hosted cost | :material-check: [Free cluster](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) |
+
+```mermaid
+graph TD
+    Q1{"Just trying memsearch<br>or single-user dev?"}
+    Q1 -->|Yes| LITE["✅ Milvus Lite<br>(default, zero config)"]
+    Q1 -->|No| Q2{"Want to manage<br>your own server?"}
+    Q2 -->|Yes| SERVER["✅ Milvus Server<br>(Docker / K8s)"]
+    Q2 -->|No| CLOUD["⭐ Zilliz Cloud<br>(recommended)"]
+
+    style CLOUD fill:#1a5276,stroke:#e0976b,color:#f0f0f0
+    style LITE fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
+    style SERVER fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
+```
+
+!!! note "Upgrade anytime"
+    Starting with Milvus Lite? You can switch to Zilliz Cloud later by changing a single config value — your data will be re-indexed automatically from the source markdown files.
 
 ---
 

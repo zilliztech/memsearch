@@ -392,9 +392,22 @@ memsearch supports three deployment modes — just change `milvus_uri`:
 |------|-------------|----------|
 | **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config ⚠️ *not available on Windows* |
 | **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
-| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed |
+| ⭐ **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed — [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) |
 
-> 📖 Code examples and setup details → [Getting Started — Milvus Backends](https://zilliztech.github.io/memsearch/getting-started/#milvus-backends)
+> **Recommended:** [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) gives you zero-config, zero-ops Milvus with concurrent access and real-time indexing — no Docker needed. Perfect for the Claude Code plugin's `watch` mode.
+
+<details>
+<summary>Sign up for a free Zilliz Cloud cluster 👈</summary>
+
+You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) on Zilliz Cloud to get a free cluster and API key.
+
+![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
+
+Copy your Personal Key to use as `--milvus-token` in the CLI or `milvus_token` in the Python API.
+
+</details>
+
+> 📖 Comparison table and setup details → [Getting Started — Which backend should I choose?](https://zilliztech.github.io/memsearch/getting-started/#which-backend-should-i-choose)
 
 ## 🔗 Integrations
 
