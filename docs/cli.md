@@ -737,7 +737,7 @@ $ memsearch compact --llm-provider anthropic
 | `google` | `pip install "memsearch[google]"` | `gemini-embedding-001` | 768 | `GOOGLE_API_KEY` |
 | `voyage` | `pip install "memsearch[voyage]"` | `voyage-3-lite` | 512 | `VOYAGE_API_KEY` |
 | `ollama` | `pip install "memsearch[ollama]"` | `nomic-embed-text` | 768 | *(none, local)* |
-| `local` | `pip install "memsearch[local]"` | `all-MiniLM-L6-v2` | 384 | *(none, local)* |
+| `local` | `pip install "memsearch[local]"` | `gte-modernbert-base` | 768 | *(none, local, MPS/CUDA auto-detected)* |
 
 Install all optional providers at once:
 

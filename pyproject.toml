@@ -54,6 +54,11 @@ packages = ["src/memsearch"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning:pymilvus",
+    "ignore::DeprecationWarning:milvus_lite",
+    "ignore:pkg_resources is deprecated:DeprecationWarning",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.9", "pytest-cov>=6.0", "pre-commit>=4.0"]

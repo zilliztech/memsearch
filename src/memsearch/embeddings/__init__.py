@@ -32,10 +32,10 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
 # Kept here so callers can resolve the effective model without importing heavy deps.
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "text-embedding-3-small",
-    "google": "gemini-embedding-001",
-    "voyage": "voyage-3-lite",
+    "google": "gemini-embedding-2-preview",
+    "voyage": "voyage-4-lite",
     "ollama": "nomic-embed-text",
-    "local": "all-MiniLM-L6-v2",
+    "local": "Alibaba-NLP/gte-modernbert-base",
     "onnx": "gpahal/bge-m3-onnx-int8",
 }
 

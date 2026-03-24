@@ -59,6 +59,7 @@ class MemSearch:
         description: str = "",
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
+        reranker_model: str = "Alibaba-NLP/gte-reranker-modernbert-base",
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -77,6 +78,7 @@ class MemSearch:
             dimension=self._embedder.dimension,
             description=description,
         )
+        self._reranker_model = reranker_model
 
     # ------------------------------------------------------------------
     # Indexing
@@ -216,7 +218,13 @@ class MemSearch:
             ``score``, and other metadata.
         """
         embeddings = await self._embedder.embed([query])
-        return self._store.search(embeddings[0], query_text=query, top_k=top_k)
+        fetch_k = top_k * 3 if self._reranker_model else top_k
+        results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k)
+        if self._reranker_model and results:
+            from .reranker import rerank
+
+            results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+        return results
 
     # ------------------------------------------------------------------
     # Compact (compress memories)

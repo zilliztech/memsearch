@@ -15,7 +15,7 @@ class VoyageEmbedding:
 
     def __init__(
         self,
-        model: str = "voyage-3-lite",
+        model: str = "voyage-4-lite",
         *,
         batch_size: int = 0,
     ) -> None:
@@ -45,6 +45,9 @@ class VoyageEmbedding:
 
 
 _KNOWN_DIMENSIONS: dict[str, int] = {
+    "voyage-4-lite": 1024,
+    "voyage-4": 1024,
+    "voyage-4-large": 1024,
     "voyage-3-lite": 512,
     "voyage-3": 1024,
     "voyage-code-3": 1024,

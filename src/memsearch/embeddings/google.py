@@ -12,6 +12,7 @@ from __future__ import annotations
 # default for most use cases (Matryoshka truncation, saves storage).
 _KNOWN_DIMENSIONS: dict[str, int] = {
     "gemini-embedding-001": 768,
+    "gemini-embedding-2-preview": 768,
     "text-embedding-004": 768,
 }
 
@@ -23,7 +24,7 @@ class GoogleEmbedding:
 
     def __init__(
         self,
-        model: str = "gemini-embedding-001",
+        model: str = "gemini-embedding-2-preview",
         *,
         batch_size: int = 0,
     ) -> None:

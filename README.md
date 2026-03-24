@@ -380,7 +380,7 @@ API keys for embedding/LLM providers are read from standard environment variable
 | Google | `memsearch[google]` | `gemini-embedding-001` |
 | Voyage | `memsearch[voyage]` | `voyage-3-lite` |
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
-| Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
+| Local | `memsearch[local]` | `gte-modernbert-base` (768d, MPS/CUDA/CPU) |
 
 > 📖 Provider setup and env vars → [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
 
