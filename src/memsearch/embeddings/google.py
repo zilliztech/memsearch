@@ -2,10 +2,13 @@
 
 Requires: ``pip install 'memsearch[google]'`` or ``uv add 'memsearch[google]'``
 Environment variables:
-    GOOGLE_API_KEY — required
+    GOOGLE_API_KEY — required unless using Vertex AI credentials
+    GOOGLE_GENAI_USE_VERTEXAI — optional, set to "true" to use Vertex AI auth
 """
 
 from __future__ import annotations
+
+import os
 
 # Known dimensions for common Google embedding models.
 # gemini-embedding-001 natively outputs 3072, but 768 is the recommended
@@ -29,7 +32,8 @@ class GoogleEmbedding:
     ) -> None:
         from google import genai
 
-        self._client = genai.Client()  # reads GOOGLE_API_KEY
+        use_vertex_ai = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower() == "true"
+        self._client = genai.Client(vertexai=use_vertex_ai)  # reads GOOGLE_API_KEY or Vertex AI env vars
         self._model = model
         self._dimension = _detect_dimension(self._client, model)
         self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
