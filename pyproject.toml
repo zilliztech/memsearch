@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "memsearch"
 version = "0.1.19"
 description = "Semantic memory search for markdown knowledge bases"
+keywords = ["memory", "search", "embeddings", "semantic", "markdown", "knowledge-base", "ai-agents"]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
