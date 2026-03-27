@@ -9,6 +9,7 @@ from memsearch.transcript import (
     _summarize_tool_input,
     find_turn_context,
     format_turn_index,
+    format_turns,
     parse_transcript,
 )
 
@@ -78,6 +79,66 @@ def test_helpers_format_and_summarize() -> None:
     assert _extract_time("2026-03-07T05:10:11.123Z") == "05:10:11"
     assert _summarize_tool_input("Read", {"file_path": "a.md"}) == "Read(a.md)"
     assert _summarize_tool_input("Unknown", {"k": "v"}) == "Unknown(k=v)"
+
+
+def test_parse_transcript_handles_missing_file_and_blank_messages(tmp_path: Path) -> None:
+    assert parse_transcript(tmp_path / "missing.jsonl") == []
+
+    transcript = tmp_path / "blank.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u1",
+                        "timestamp": "2026-03-07T05:00:00Z",
+                        "message": {"content": "<system-reminder>ignore</system-reminder>   "},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "should be ignored"}]},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert parse_transcript(transcript) == []
+
+
+def test_format_turns_highlights_target_and_lists_tools() -> None:
+    turns = [
+        type(
+            "T",
+            (),
+            {
+                "uuid": "12345678-abcd",
+                "timestamp": "2026-03-07T05:10:11Z",
+                "content": "User asked a question\n\n**Assistant**: Here is an answer",
+                "tool_calls": ["Read(a.md)", "Edit(a.md)"],
+            },
+        )(),
+        type(
+            "T",
+            (),
+            {
+                "uuid": "abcdef12-efgh",
+                "timestamp": "2026-03-07T05:10:12Z",
+                "content": "Another turn",
+                "tool_calls": [],
+            },
+        )(),
+    ]
+
+    output = format_turns(turns, highlight_idx=0)
+
+    assert ">>> [05:10:11] 12345678" in output
+    assert "Tools: Read(a.md), Edit(a.md)" in output
+    assert "[05:10:12] abcdef12" in output
 
 
 def test_format_turn_index_includes_tool_count() -> None:
