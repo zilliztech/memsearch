@@ -10,6 +10,7 @@ import tomli_w
 from memsearch.config import (
     EmbeddingConfig,
     MemSearchConfig,
+    config_to_dict,
     deep_merge,
     get_config_value,
     load_config_file,
@@ -233,3 +234,42 @@ def test_compact_config_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.Mo
     cfg = resolve_config()
     assert get_config_value("compact.base_url", cfg) == "https://custom-llm.example.com"
     assert get_config_value("compact.api_key", cfg) == "sk-custom-123"
+
+
+def test_config_to_dict_roundtrip() -> None:
+    cfg = MemSearchConfig()
+    cfg.embedding.provider = "google"
+    cfg.compact.llm_model = "gemini-2.0-flash"
+
+    assert config_to_dict(cfg)["embedding"]["provider"] == "google"
+    assert config_to_dict(cfg)["compact"]["llm_model"] == "gemini-2.0-flash"
+
+
+def test_set_config_value_project_writes_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    set_config_value("watch.debounce_ms", "2500", project=True)
+
+    assert load_config_file(global_cfg) == {}
+    assert load_config_file(project_cfg)["watch"]["debounce_ms"] == 2500
+
+
+def test_resolve_config_ignores_unknown_keys_in_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg_file = tmp_path / "config.toml"
+    save_config(
+        {
+            "embedding": {"provider": "google", "unknown_field": "ignored"},
+            "unknown_section": {"value": 1},
+        },
+        cfg_file,
+    )
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_file)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    cfg = resolve_config()
+    assert cfg.embedding.provider == "google"
+    assert not hasattr(cfg, "unknown_section")
