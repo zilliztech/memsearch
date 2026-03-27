@@ -64,6 +64,8 @@ async def compact_chunks(
         return ""
     combined = "\n\n---\n\n".join(c["content"] for c in chunks)
     template = prompt_template or COMPACT_PROMPT
+    if "{chunks}" not in template:
+        raise ValueError("prompt_template must include the {chunks} placeholder")
     prompt = template.format(chunks=combined)
 
     if llm_provider == "openai":
