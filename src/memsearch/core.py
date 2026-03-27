@@ -221,9 +221,12 @@ class MemSearch:
         fetch_k = top_k * 3 if self._reranker_model else top_k
         results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k)
         if self._reranker_model and results:
-            from .reranker import rerank
+            try:
+                from .reranker import rerank
 
-            results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+                results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+            except ImportError:
+                logger.debug("onnxruntime/tokenizers not installed, skipping reranking")
         return results
 
     # ------------------------------------------------------------------
