@@ -63,3 +63,52 @@ class TestCLIHelp:
         result = runner.invoke(cli, ["compact", "--help"])
         assert result.exit_code == 0
         assert "Usage:" in result.output
+
+    def test_expand_help(self):
+        """Expand command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["expand", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_transcript_help(self):
+        """Transcript command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["transcript", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_reset_help(self):
+        """Reset command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["reset", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_config_init_help(self):
+        """Config init command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["config", "init", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_config_set_help(self):
+        """Config set command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["config", "set", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_config_get_help(self):
+        """Config get command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["config", "get", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+
+    def test_config_list_help(self):
+        """Config list command should have help."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["config", "list", "--help"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
