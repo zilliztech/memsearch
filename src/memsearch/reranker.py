@@ -215,7 +215,7 @@ def rerank(
     logits = model.session.run(None, feed)[0]
     scores = _extract_scores(logits)
 
-    scored = [{**r, "score": float(s)} for r, s in zip(results, scores)]
+    scored = [{**r, "score": float(s)} for r, s in zip(results, scores, strict=True)]
     scored.sort(key=lambda x: x["score"], reverse=True)
 
     if top_k > 0:

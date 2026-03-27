@@ -1,6 +1,7 @@
 """Tests for ONNX cross-encoder reranker."""
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -335,6 +336,3 @@ def test_core_search_graceful_import_error():
 
     # Verify the original results come through when reranker import fails
     assert mock_store.search.return_value[0]["score"] == 0.9
-
-
-import threading
