@@ -291,6 +291,8 @@ memsearch stats                          # show total indexed chunk count
 memsearch reset                          # drop all indexed data (with confirmation)
 ```
 
+> 💡 **Tip:** Run `memsearch stats` after indexing to verify your content was processed successfully.
+
 > 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
 ## 🔍 How It Works
