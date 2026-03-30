@@ -73,6 +73,20 @@ OpenCode Session
         └── memory_transcript ──→ parse-transcript.py (SQLite reader)
 ```
 
+## Recall Memories
+
+**Manual invocation** — explicitly invoke the skill with a query:
+
+```
+/memory-recall what was the auth approach we discussed?
+```
+
+**Auto invocation** — just ask naturally, the LLM auto-invokes memory tools when it senses the question needs history:
+
+```
+We discussed the authentication flow before, what was the approach?
+```
+
 ## Tools
 
 | Tool | Description |

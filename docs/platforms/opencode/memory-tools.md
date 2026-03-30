@@ -14,6 +14,22 @@ The plugin registers three tools via OpenCode's `tool()` API. All tools are avai
 
 ---
 
+## How to Trigger
+
+**Manual invocation** — explicitly invoke the skill with a query:
+
+```
+/memory-recall what was the database migration fix we did?
+```
+
+**Auto invocation** — just ask naturally, the LLM auto-invokes memory tools when it senses the question needs history:
+
+```
+We fixed a database migration issue last week, what was the solution?
+```
+
+---
+
 ## Three-Layer Progressive Recall
 
 ```mermaid

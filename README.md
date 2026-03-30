@@ -115,10 +115,14 @@ After installing, chat in TUI as usual. A background daemon captures conversatio
 ls .memsearch/memory/    # daily .md files appear after a few conversations
 ```
 
-**Recall memories** — the LLM calls `memory_search` automatically, or ask:
+**Recall memories** — two ways to trigger:
 
 ```
-Use memory_search to find discussions about authentication
+/memory-recall what did we discuss about authentication?
+```
+Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
+```
+We discussed the authentication flow before, what was the approach?
 ```
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
