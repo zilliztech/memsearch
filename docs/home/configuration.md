@@ -39,18 +39,31 @@ memsearch index --force   # re-index with new provider
 
 | Backend | Config | Notes |
 |---------|--------|-------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Single-file, zero setup |
-| Milvus Server | `http://localhost:19530` | Docker, production-grade |
-| [Zilliz Cloud](https://cloud.zilliz.com) | `https://xxx.zillizcloud.com` | Managed, no ops |
+**Milvus Lite** (default) — zero config, single file. Great for getting started:
 
 ```bash
-# Switch to remote Milvus
-memsearch config set milvus.uri http://localhost:19530
-
-# Use Zilliz Cloud
-memsearch config set milvus.uri "https://xxx.api.gcp-us-west1.zillizcloud.com"
-memsearch config set milvus.token "your-token"
+# Works out of the box, no setup needed
+memsearch config get milvus.uri   # → ~/.memsearch/milvus.db
 ```
+
+⭐ **Zilliz Cloud** (recommended) — fully managed, [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs). No Docker, no ops. Concurrent access and real-time indexing:
+
+```bash
+memsearch config set milvus.uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com"
+memsearch config set milvus.token "your-api-key"
+```
+
+??? note "Sign up for a free Zilliz Cloud cluster"
+    You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) on Zilliz Cloud to get a free cluster and API key.
+
+    ![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
+
+??? note "Self-hosted Milvus Server (Docker) — for advanced users"
+    For multi-user or team environments. Requires Docker. See the [official installation guide](https://milvus.io/docs/install_standalone-docker-compose.md).
+
+    ```bash
+    memsearch config set milvus.uri http://localhost:19530
+    ```
 
 ## View Current Config
 
