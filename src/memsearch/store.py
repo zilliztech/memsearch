@@ -52,6 +52,8 @@ class MilvusStore:
         if token:
             connect_kwargs["token"] = token
         self._client = MilvusClient(**connect_kwargs)
+        self._is_lite = is_local
+        self._resolved_uri = resolved
         self._collection = collection
         self._dimension = dimension
         self._description = description
@@ -244,6 +246,16 @@ class MilvusStore:
 
     def close(self) -> None:
         self._client.close()
+        # Milvus Lite: release the server process to free the db file lock.
+        # Without this, the milvus_lite subprocess outlives the parent and
+        # blocks subsequent CLI invocations from opening the same .db file.
+        if self._is_lite:
+            try:
+                from milvus_lite.server_manager import server_manager_instance
+
+                server_manager_instance.release_server(self._resolved_uri)
+            except Exception:
+                pass
 
     def __enter__(self) -> MilvusStore:
         return self

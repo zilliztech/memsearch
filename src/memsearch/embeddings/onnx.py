@@ -1,7 +1,7 @@
 """ONNX embedding via onnxruntime (runs on CPU, no GPU required).
 
 Requires: ``pip install 'memsearch[onnx]'`` or ``uv add 'memsearch[onnx]'``
-No API key needed. Used as the default provider by ccplugin for zero-config
+No API key needed. Used as the default provider by the Claude Code plugin for zero-config
 memory search. Default model is a pre-quantized int8 bge-m3 ONNX export.
 """
 
@@ -39,13 +39,67 @@ class OnnxEmbedding:
         from huggingface_hub import hf_hub_download, list_repo_files
         from tokenizers import Tokenizer
 
-        # Load tokenizer directly from tokenizer.json (no transformers needed)
-        tok_path = hf_hub_download(model, "tokenizer.json")
+        # Try offline first (local cache only, no network requests).
+        # When files are already cached, hf_hub_download normally still sends
+        # HTTP HEAD requests to check for updates.  local_files_only=True skips
+        # all network I/O, which is critical for sandboxed environments (e.g.
+        # Codex read-only sandbox) where DNS/network is blocked.
+        tok_path, model_path = self._download_model_files(
+            model, hf_hub_download, list_repo_files
+        )
+
         self._tokenizer = Tokenizer.from_file(tok_path)
         self._tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
         self._tokenizer.enable_truncation(max_length=8192)
 
-        # Download ONNX model file from HuggingFace Hub
+        self._session = ort.InferenceSession(model_path)
+        self._output_names = [o.name for o in self._session.get_outputs()]
+        self._has_dense_vecs = "dense_vecs" in self._output_names
+        self._model = model
+
+        # Detect dimension from a probe embedding
+        probe = self._encode(["hello"])
+        self._dimension = len(probe[0])
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
+
+    @staticmethod
+    def _download_model_files(model, hf_hub_download, list_repo_files):
+        """Download tokenizer + ONNX model, preferring local cache (offline).
+
+        Returns (tok_path, model_path).
+        """
+        # --- Attempt 1: offline from cache (no network at all) ---
+        try:
+            tok_path = hf_hub_download(
+                model, "tokenizer.json", local_files_only=True
+            )
+            # Try well-known ONNX filenames to avoid list_repo_files() network call
+            model_path = None
+            onnx_file = None
+            for candidate in ("model_quantized.onnx", "model.onnx"):
+                try:
+                    model_path = hf_hub_download(
+                        model, candidate, local_files_only=True
+                    )
+                    onnx_file = candidate
+                    break
+                except Exception:
+                    continue
+            if model_path is None:
+                raise FileNotFoundError("No cached ONNX model found")
+            # Best-effort: cache the external data file too
+            try:
+                hf_hub_download(
+                    model, onnx_file + "_data", local_files_only=True
+                )
+            except Exception:
+                pass
+            return tok_path, model_path
+        except Exception:
+            pass
+
+        # --- Attempt 2: online download (first run or cache evicted) ---
+        tok_path = hf_hub_download(model, "tokenizer.json")
         repo_files = list_repo_files(model)
         onnx_files = [f for f in repo_files if f.endswith(".onnx")]
         if not onnx_files:
@@ -62,16 +116,7 @@ class OnnxEmbedding:
         if data_file in repo_files:
             hf_hub_download(model, data_file)
         model_path = hf_hub_download(model, onnx_file)
-
-        self._session = ort.InferenceSession(model_path)
-        self._output_names = [o.name for o in self._session.get_outputs()]
-        self._has_dense_vecs = "dense_vecs" in self._output_names
-        self._model = model
-
-        # Detect dimension from a probe embedding
-        probe = self._encode(["hello"])
-        self._dimension = len(probe[0])
-        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
+        return tok_path, model_path
 
     @property
     def model_name(self) -> str:

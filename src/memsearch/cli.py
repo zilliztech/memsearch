@@ -220,19 +220,15 @@ def search(
 
 
 # ======================================================================
-# Claude Code plugin commands (progressive disclosure L2/L3)
+# Expand command (progressive disclosure L2)
 #
-# The following commands (`expand` and `transcript`) are designed for
-# the Claude Code plugin's three-level progressive disclosure workflow:
-#   L1: `search` returns chunk snippets (injected into the prompt)
+# Shows the full heading section around a chunk, used by the Claude Code
+# plugin's progressive disclosure workflow:
+#   L1: `search` returns chunk snippets
 #   L2: `expand` shows the full heading section around a chunk
-#   L3: `transcript` drills into the original JSONL conversation
 #
-# They work with memsearch's anchor comments embedded in memory files:
+# Works with memsearch's anchor comments embedded in memory files:
 #   <!-- session:UUID turn:UUID transcript:PATH -->
-#
-# These commands are fully functional standalone, but their primary
-# consumer is the ccplugin/ hooks that auto-inject memory context.
 # ======================================================================
 
 
@@ -391,56 +387,6 @@ def _extract_section(
 
     content = "\n".join(all_lines[section_start:section_end])
     return content, section_start + 1, section_end
-
-
-@cli.command()
-@click.argument("jsonl_path", type=click.Path(exists=True))
-@click.option("--turn", "-t", default=None, help="Target turn UUID (prefix match).")
-@click.option("--context", "-c", "ctx", default=3, type=int, help="Number of turns before/after target.")
-@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
-def transcript(
-    jsonl_path: str,
-    turn: str | None,
-    ctx: int,
-    json_output: bool,
-) -> None:
-    """View original conversation turns from a JSONL transcript. [Claude Code plugin: L3]
-
-    Parse JSONL_PATH and display conversation turns. If --turn is given,
-    show context around that specific turn; otherwise show an index of
-    all user turns.
-
-    Part of the progressive disclosure workflow (search -> expand -> transcript).
-    """
-    from .transcript import (
-        find_turn_context,
-        format_turn_index,
-        format_turns,
-        parse_transcript,
-        turns_to_dicts,
-    )
-
-    turns = parse_transcript(jsonl_path)
-    if not turns:
-        click.echo("No conversation turns found.")
-        return
-
-    if turn:
-        context_turns, highlight = find_turn_context(turns, turn, context=ctx)
-        if not context_turns:
-            click.echo(f"Turn not found: {turn}", err=True)
-            sys.exit(1)
-        if json_output:
-            click.echo(json.dumps(turns_to_dicts(context_turns), indent=2, ensure_ascii=False))
-        else:
-            click.echo(f"Showing {len(context_turns)} turns around {turn[:12]}:\n")
-            click.echo(format_turns(context_turns, highlight_idx=highlight))
-    else:
-        if json_output:
-            click.echo(json.dumps(turns_to_dicts(turns), indent=2, ensure_ascii=False))
-        else:
-            click.echo(f"All turns ({len(turns)}):\n")
-            click.echo(format_turn_index(turns))
 
 
 @cli.command()

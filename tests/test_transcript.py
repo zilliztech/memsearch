@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
-from memsearch.transcript import (
+# transcript.py was moved from memsearch core to the Claude Code plugin directory
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugins" / "claude-code"))
+
+from transcript import (
     _extract_time,
     _strip_hook_tags,
     _summarize_tool_input,
