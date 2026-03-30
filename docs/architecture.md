@@ -1,54 +1,37 @@
 # Architecture
 
-This page explains the architecture, design philosophy, and key implementation decisions behind memsearch.
+This page explains the technical architecture and key implementation decisions behind memsearch. For design principles, competitor comparison, and the "why" behind these decisions, see [Design Philosophy](design-philosophy.md).
 
 ---
 
-## Design Philosophy
+## Cross-Platform Memory Sharing
 
-### Markdown as the Source of Truth
-
-The foundational principle of memsearch is simple: **markdown files are the canonical data store**. The vector database is a derived index -- it can be dropped and rebuilt at any time from the markdown files on disk. This is the same philosophy used by [OpenClaw](https://github.com/openclaw/openclaw)'s memory system, and memsearch is designed as a standalone library inspired by that architecture.
-
-**Why markdown?**
-
-- **Human-readable.** Any developer can open a memory file in any text editor and understand what the agent knows. There is no binary format to decode, no special viewer required.
-- **Git-friendly.** Markdown diffs are clean and meaningful. You get full version history, blame, branching, and merge conflict resolution for free -- the same tools you already use for code.
-- **Zero vendor lock-in.** Markdown is a plain-text format that has been stable for decades. If you stop using memsearch tomorrow, your knowledge base is still right there on disk, fully intact.
-- **Trivially portable.** Copy the files to another machine, another tool, another agent framework. No export step, no migration script, no schema translation.
-
-**Why NOT a database as the source of truth?**
-
-- **Opaque.** Database files are binary blobs that require specific software to read. If the tool disappears, so does easy access to your data.
-- **Vendor lock-in.** Each database engine has its own storage format, query language, and migration tooling. Switching costs are high.
-- **Fragile.** Database corruption, version incompatibilities, and backup complexity are real operational concerns for what should be a simple knowledge store.
-
-In memsearch, the vector store is an acceleration layer -- nothing more. If the [Milvus](https://milvus.io/) database is lost, corrupted, or simply out of date, a single `memsearch index` command rebuilds the entire index from the markdown files.
+memsearch supports 4 AI coding agent platforms: [Claude Code](platforms/claude-code.md), [OpenClaw](platforms/openclaw.md), [OpenCode](platforms/opencode.md), and [Codex CLI](platforms/codex.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
 
 ```mermaid
-graph LR
-    MD["Markdown Files<br>(source of truth)"] -->|index| MIL[(Milvus<br>derived index)]
-    MIL -->|lost or corrupted?| REBUILD["memsearch index<br>(full rebuild)"]
-    REBUILD --> MIL
+graph TB
+    subgraph "Capture (per-platform)"
+        CC["Claude Code<br/>(Stop hook + Haiku)"]
+        OC["OpenClaw<br/>(llm_output + agent)"]
+        OO["OpenCode<br/>(SQLite daemon)"]
+        CX["Codex CLI<br/>(Stop hook + Codex)"]
+    end
+
+    subgraph "Shared Memory"
+        MD[".memsearch/memory/*.md"]
+        MIL[("Milvus<br/>(shared index)")]
+    end
+
+    CC & OC & OO & CX --> MD
+    MD --> MIL
 
     style MD fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
     style MIL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
 ```
 
-### Inspired by OpenClaw
+Each platform has its own capture mechanism, but the output is always the same: daily markdown files with session anchors. Point multiple plugins at the same `milvus_uri` and `collection` for shared access, or use per-project collections for isolation (the default).
 
-memsearch follows [OpenClaw](https://github.com/openclaw/openclaw)'s memory architecture precisely:
-
-| Concept | OpenClaw | memsearch |
-|---------|----------|-----------|
-| Memory layout | `MEMORY.md` + `memory/YYYY-MM-DD.md` | Same |
-| Chunk ID format | `hash(source:startLine:endLine:contentHash:model)` | Same |
-| Dedup strategy | Content-hash primary key | Same |
-| Compact target | Append to daily markdown log | Same |
-| Source of truth | Markdown files (vector DB is derived) | Same |
-| File watch debounce | 1500ms | Same default |
-
-If you are already using OpenClaw's memory directory layout, memsearch works with it directly -- no migration needed.
+For a detailed comparison, see the [Platform Overview](platforms/index.md).
 
 ---
 
@@ -223,7 +206,50 @@ graph TD
 
 ### Physical Isolation
 
-All agents and projects share the same collection name (`memsearch_chunks`) by default. Physical isolation between agents is achieved by pointing each one to a **different `milvus_uri`** -- each agent gets its own Milvus Lite database file, its own Milvus server, or its own Zilliz Cloud cluster. This avoids the complexity of multi-tenant collection management while keeping the schema simple.
+Isolation between agents and projects is achieved at two levels:
+
+1. **Per-project collection names.** Each platform plugin derives a collection name from the project path (e.g., `ms_claude_code_myproject`). This keeps memories from different projects separate within the same Milvus instance.
+2. **Per-instance `milvus_uri`.** Each agent gets its own Milvus Lite database file, its own Milvus server, or its own Zilliz Cloud cluster.
+
+This avoids the complexity of multi-tenant collection management while keeping the schema simple.
+
+---
+
+## Three-Layer Progressive Disclosure
+
+All platform plugins support a three-layer recall model that minimizes context window usage while allowing deep drill-down when needed:
+
+```mermaid
+graph LR
+    L1["L1: Search<br/>memsearch search<br/>(chunk snippets)"]
+    L2["L2: Expand<br/>memsearch expand<br/>(full section)"]
+    L3["L3: Transcript<br/>platform-specific parser<br/>(original conversation)"]
+
+    L1 -->|"need more context?"| L2
+    L2 -->|"need exact dialogue?"| L3
+
+    style L1 fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
+    style L2 fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
+    style L3 fill:#2a3a5c,stroke:#d66b6b,color:#a8b2c1
+```
+
+| Layer | What it returns | Cost |
+|-------|----------------|------|
+| **L1: Search** | Top-K chunk snippets (summary-level) | Low -- only snippets enter context |
+| **L2: Expand** | Full markdown section around a chunk, including anchor metadata | Medium -- one file section |
+| **L3: Transcript** | Original conversation turns verbatim (user messages, assistant responses, tool calls) | High -- raw dialogue |
+
+The L3 transcript format varies by platform (Claude Code JSONL, OpenClaw JSONL, OpenCode SQLite, Codex rollout JSONL), but the L1/L2 layers are shared across all platforms via the `memsearch` CLI.
+
+**Session anchors** in memory files enable the L2-to-L3 bridge:
+
+```markdown
+### 14:30
+<!-- session:abc123 turn:def456 transcript:/path/to/session.jsonl -->
+- Implemented Redis caching with 5-minute TTL
+```
+
+`memsearch expand` parses these anchors and surfaces the transcript path, which the agent can then pass to the L3 command.
 
 ---
 

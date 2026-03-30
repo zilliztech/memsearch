@@ -291,7 +291,7 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 | Provider | Env Var | Notes |
 |----------|---------|-------|
 | **OpenAI** (default) | `OPENAI_API_KEY` | Included with base install |
-| **ONNX** (ccplugin default) | -- | No API key needed. CPU-only, bge-m3 int8. Requires `memsearch[onnx]` |
+| **ONNX** (plugin default) | -- | No API key needed. CPU-only, bge-m3 int8. Requires `memsearch[onnx]` |
 | OpenAI-compatible proxy | `OPENAI_BASE_URL` | For Azure OpenAI, vLLM, LiteLLM, etc. |
 | Google Gemini | `GOOGLE_API_KEY` | Requires `memsearch[google]` |
 | Voyage AI | `VOYAGE_API_KEY` | Requires `memsearch[voyage]` |
@@ -601,8 +601,39 @@ $ memsearch search "Redis config" --top-k 10 --milvus-uri http://10.0.0.5:19530
 
 ---
 
+## Multi-Developer Workflows
+
+In a typical multi-developer workflow, each person clones the repo locally and runs their own agent sessions. The plugin stores memory in `.memsearch/memory/YYYY-MM-DD.md` files -- these are **personal session logs** generated from each developer's own conversations. They are local by nature and do not need to be pushed to the shared remote.
+
+| What | Scope | Version-controlled? | Example |
+|------|-------|---------------------|---------|
+| **Project conventions** | Shared across team | Yes -- commit to git | `CLAUDE.md` (coding standards, architecture decisions, team agreements) |
+| **Session memories** | Personal to each developer | No -- add to `.gitignore` | `.memsearch/memory/2026-02-10.md` (what *you* worked on today) |
+
+```gitignore
+# .gitignore
+.memsearch/
+```
+
+**Why this works:**
+
+- **No merge conflicts.** Each developer's memory files only exist on their own machine. There is nothing to merge.
+- **No noise.** Your colleagues don't need to know that you spent 45 minutes debugging a typo. Your session logs are yours.
+- **Shared knowledge goes in `CLAUDE.md`.** Decisions that the whole team should know about (e.g., "we use Redis for caching", "never use `SELECT *`") belong in `CLAUDE.md` or a shared docs directory -- version-controlled, reviewed via PR, the normal git workflow.
+
+If your team *does* want to share certain memories (e.g., onboarding notes, architecture decisions), you can put those in a shared directory that is tracked by git, and keep personal session logs in `.memsearch/` which is gitignored. memsearch can index multiple paths:
+
+```python
+mem = MemSearch(paths=["./docs/shared-knowledge", "./.memsearch/memory"])
+```
+
+---
+
 ## What's Next
 
 - **[Architecture](architecture.md)** -- deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
+- **[Design Philosophy](design-philosophy.md)** -- why markdown, why Milvus, comparison with competitors
 - **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
-- **[Claude Code Plugin](claude-plugin/index.md)** -- give Claude automatic persistent memory across sessions with zero configuration
+- **[Claude Code Plugin](platforms/claude-code.md)** -- install memsearch for Claude Code
+- **[Platform Comparison](platforms/index.md)** -- compare all 4 supported platforms
+- **[Python API](python-api.md)** -- build custom agent integrations

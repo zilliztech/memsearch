@@ -5,12 +5,15 @@
 </h1>
 
 <p align="center">
-  <strong><a href="https://github.com/openclaw/openclaw">OpenClaw</a>'s memory, everywhere.</strong>
+  <strong>Cross-platform semantic memory for AI coding agents.</strong>
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/pypi/v/memsearch?style=flat-square&color=blue" alt="PyPI"></a>
-  <a href="https://zilliztech.github.io/memsearch/claude-plugin/"><img src="https://img.shields.io/badge/Claude_Code-plugin-c97539?style=flat-square&logo=claude&logoColor=white" alt="Claude Code Plugin"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/claude-code/"><img src="https://img.shields.io/badge/Claude_Code-plugin-c97539?style=flat-square&logo=claude&logoColor=white" alt="Claude Code"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/openclaw/"><img src="https://img.shields.io/badge/OpenClaw-plugin-4a9eff?style=flat-square" alt="OpenClaw"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/opencode/"><img src="https://img.shields.io/badge/OpenCode-plugin-22c55e?style=flat-square" alt="OpenCode"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/codex/"><img src="https://img.shields.io/badge/Codex_CLI-plugin-ff6b35?style=flat-square" alt="Codex CLI"></a>
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/badge/python-%3E%3D3.10-blue?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://github.com/zilliztech/memsearch/blob/main/LICENSE"><img src="https://img.shields.io/github/license/zilliztech/memsearch?style=flat-square" alt="License"></a>
   <a href="https://github.com/zilliztech/memsearch/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/zilliztech/memsearch/test.yml?branch=main&style=flat-square" alt="Tests"></a>
@@ -22,36 +25,187 @@
 
 https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 
-> 💡 Give your AI agents persistent memory in a few lines of code. Write memories as markdown, search them semantically. Inspired by [OpenClaw](https://github.com/openclaw/openclaw)'s markdown-first memory architecture. Pluggable into any agent framework.
+> Install the plugin, get persistent memory. Memories written in Claude Code are searchable from Codex, OpenCode, and OpenClaw. One memory, every agent.
 
-### ✨ Why memsearch?
+### Why memsearch?
 
-- 📝 **Markdown is the source of truth** — human-readable, `git`-friendly, zero vendor lock-in. Your memories are just `.md` files
-- ⚡ **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
-- 🔄 **Live sync** — File watcher auto-indexes changes to the vector DB, deletes stale chunks when files are removed
-- 🧩 **[Ready-made Claude Code plugin](ccplugin/README.md)** — a drop-in example of agent memory built on memsearch
+- **4 Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [Codex CLI](plugins/codex/README.md). A conversation in Claude Code becomes searchable context in OpenClaw, Codex, and OpenCode — no extra setup
+- **Both for Agent Users and Agent Developers** — ready-to-use plugins for end users who just want persistent memory, plus a complete CLI and Python API for agent developers building memory and harness engineering for their own agents
+- **Markdown is the source of truth** — inspired by [OpenClaw](https://github.com/openclaw/openclaw). Your memories are just `.md` files — human-readable, editable, version-controllable. Milvus is a "shadow index": a derived, rebuildable cache over the real data
+- **Hybrid search, smart dedup, live sync** — dense vector + BM25 sparse + RRF reranking for the best recall; SHA-256 content hashing skips unchanged content; file watcher auto-indexes changes in real time
 
-## 📦 Installation
+## For Agent Users
+
+Pick your platform, install the plugin, and you're done. Each plugin captures conversations automatically and provides semantic recall with zero configuration.
+
+### For Claude Code Users
 
 ```bash
+/plugin marketplace add zilliztech/memsearch
+/plugin install memsearch
+```
+
+Shell hooks + SKILL.md with `context: fork` subagent. Most mature plugin.
+
+> [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/platforms/claude-code/) · [Troubleshooting](https://zilliztech.github.io/memsearch/platforms/claude-code-troubleshooting/)
+
+### For OpenClaw Users
+
+```bash
+git clone https://github.com/zilliztech/memsearch.git
+openclaw plugins install ./memsearch/plugins/openclaw
+openclaw gateway restart
+```
+
+Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-agent isolation.
+
+> [OpenClaw Plugin docs](https://zilliztech.github.io/memsearch/platforms/openclaw/)
+
+<details>
+<summary><b>For OpenCode Users</b></summary>
+
+```bash
+bash memsearch/plugins/opencode/install.sh
+```
+
+SQLite daemon captures conversations; three tools for semantic recall.
+
+> [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
+
+</details>
+
+<details>
+<summary><b>For Codex CLI Users</b></summary>
+
+```bash
+bash memsearch/plugins/codex/scripts/install.sh
+codex --yolo  # needed for ONNX model download
+```
+
+Shell hooks + SKILL.md. Requires `--yolo` mode.
+
+> [Codex CLI Plugin docs](https://zilliztech.github.io/memsearch/platforms/codex/)
+
+</details>
+
+> **Note:** All plugins default to **ONNX bge-m3** embedding — no API key required, runs locally on CPU. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. Pre-download manually:
+>
+> ```bash
+> uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+> ```
+
+> [Platform comparison and architecture](https://zilliztech.github.io/memsearch/platforms/)
+
+## For Agent Developers
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│              For Agent Users (Plugins)               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
+│  │ Claude   │ │ OpenClaw │ │ OpenCode │ │ Codex  │ │
+│  │ Code     │ │ Plugin   │ │ Plugin   │ │ Plugin │ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘ │
+│       └─────────────┴────────────┴───────────┘      │
+├─────────────────────────┬───────────────────────────┤
+│    For Agent Developers │                           │
+│  ┌──────────────────────┴────────────────────────┐  │
+│  │        memsearch CLI / Python API             │  │
+│  │   index · search · expand · watch · compact   │  │
+│  └──────────────────────┬────────────────────────┘  │
+│  ┌──────────────────────┴────────────────────────┐  │
+│  │        Core: Chunker → Embedder → Milvus      │  │
+│  │     Hybrid Search (BM25 + Dense + RRF)        │  │
+│  └───────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────┤
+│  Markdown Files (Source of Truth)                   │
+│  memory/2026-03-27.md · memory/2026-03-26.md · ...  │
+└─────────────────────────────────────────────────────┘
+```
+
+### How Plugins Work (Claude Code as example)
+
+**Capture — after each conversation turn:**
+
+```
+User asks question → Agent responds → Stop hook fires
+                                          │
+                     ┌────────────────────┘
+                     ▼
+              Parse last turn
+                     │
+                     ▼
+         LLM summarizes (haiku)
+         "- User asked about X."
+         "- Claude did Y."
+                     │
+                     ▼
+         Append to memory/2026-03-27.md
+         with <!-- session:UUID --> anchor
+                     │
+                     ▼
+         memsearch index → Milvus
+```
+
+**Recall — 3-layer progressive search:**
+
+```
+User: "What did we discuss about batch size?"
+                     │
+                     ▼
+  L1  memsearch search "batch size"    → ranked chunks
+                     │ (need more?)
+                     ▼
+  L2  memsearch expand <chunk_hash>    → full .md section
+                     │ (need original?)
+                     ▼
+  L3  parse-transcript <session.jsonl> → raw dialogue
+```
+
+### Markdown as Source of Truth
+
+```
+  Plugins write ──→  .md files  ←── human editable
+                        │
+          ┌─────────────┼──────────────┐
+          ▼             ▼              ▼
+   memsearch index   memsearch watch   memsearch reset
+   (one-time scan)   (live watcher)    + index (rebuild)
+          │             │              │
+          └─────────────┼──────────────┘
+                        ▼
+              ┌──────────────────┐
+              │  Milvus (shadow) │
+              │  rebuildable     │
+              └──────────────────┘
+```
+
+### Installation
+
+```bash
+# pip
 pip install memsearch
+
+# or uv
+uv add memsearch
 ```
 
 <details>
 <summary><b>Optional embedding providers</b></summary>
 
 ```bash
-pip install "memsearch[onnx]"        # ONNX Runtime — bge-m3 int8, CPU, no API key (recommended for ccplugin)
-pip install "memsearch[google]"      # Google Gemini
-pip install "memsearch[voyage]"      # Voyage AI
-pip install "memsearch[ollama]"      # Ollama (local)
-pip install "memsearch[local]"       # sentence-transformers (local, no API key)
-pip install "memsearch[all]"         # Everything
+pip install "memsearch[onnx]"    # Local ONNX (recommended, no API key)
+# or uv add "memsearch[onnx]"
+
+# Other options: [openai], [google], [voyage], [ollama], [local], [all]
 ```
 
 </details>
 
-## 🐍 Python API — Give Your Agent Memory
+Each platform plugin adapts this pattern to its own hook/event system — see the [platform comparison](https://zilliztech.github.io/memsearch/platforms/) for details.
+
+### Python API — Give Your Agent Memory
 
 ```python
 from memsearch import MemSearch
@@ -65,7 +219,7 @@ print(results[0]["content"], results[0]["score"])       # content + similarity
 ```
 
 <details>
-<summary>🚀 <b>Full example — agent with memory (OpenAI)</b> — click to expand</summary>
+<summary><b>Full example — agent with memory (OpenAI)</b> — click to expand</summary>
 
 ```python
 import asyncio
@@ -122,7 +276,7 @@ asyncio.run(main())
 </details>
 
 <details>
-<summary>💜 <b>Anthropic Claude example</b> — click to expand</summary>
+<summary><b>Anthropic Claude example</b> — click to expand</summary>
 
 ```bash
 pip install memsearch anthropic
@@ -175,7 +329,7 @@ asyncio.run(main())
 </details>
 
 <details>
-<summary>🦙 <b>Ollama (fully local, no API key)</b> — click to expand</summary>
+<summary><b>Ollama (fully local, no API key)</b> — click to expand</summary>
 
 ```bash
 pip install "memsearch[ollama]"
@@ -229,11 +383,11 @@ asyncio.run(main())
 
 </details>
 
-> 📖 Full Python API reference with all parameters → [Python API docs](https://zilliztech.github.io/memsearch/python-api/)
+> Full Python API reference with all parameters: [Python API docs](https://zilliztech.github.io/memsearch/python-api/)
 
-## 🖥️ CLI Usage
+### CLI Usage
 
-### Set Up — `config init`
+#### Set Up — `config init`
 
 Interactive wizard to configure embedding provider, Milvus backend, and chunking parameters:
 
@@ -244,7 +398,7 @@ memsearch config set milvus.uri http://localhost:19530
 memsearch config list --resolved         # show merged config from all sources
 ```
 
-### Index Markdown — `index`
+#### Index Markdown — `index`
 
 Scan directories and embed all markdown into the vector store. Unchanged chunks are auto-skipped via content-hash dedup:
 
@@ -254,7 +408,7 @@ memsearch index ./memory/ ./notes/ --provider google
 memsearch index ./memory/ --force        # re-embed everything
 ```
 
-### Semantic Search — `search`
+#### Semantic Search — `search`
 
 Hybrid search (dense vector + BM25 full-text) with RRF reranking:
 
@@ -264,7 +418,7 @@ memsearch search "auth flow" --top-k 10 --json-output
 memsearch search "pricing" --source-prefix ./memory/product
 ```
 
-### Live Sync — `watch`
+#### Live Sync — `watch`
 
 File watcher that auto-indexes on markdown changes (creates, edits, deletes):
 
@@ -273,7 +427,7 @@ memsearch watch ./memory/
 memsearch watch ./memory/ ./notes/ --debounce-ms 3000
 ```
 
-### LLM Summarization — `compact`
+#### LLM Summarization — `compact`
 
 Compress indexed chunks into a condensed markdown summary using an LLM:
 
@@ -284,94 +438,26 @@ memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
 
 Relative and `~` paths are automatically resolved to the absolute form used at index time.
 
-### Utilities — `stats` / `reset`
+#### Utilities — `stats` / `reset`
 
 ```bash
 memsearch stats                          # show total indexed chunk count
 memsearch reset                          # drop all indexed data (with confirmation)
 ```
 
-> 📖 Full command reference with all flags and examples → [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
+> Full command reference with all flags and examples: [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
-## 🔍 How It Works
+## Configuration
 
-**Markdown is the source of truth** — the vector store is just a derived index, rebuildable anytime.
+Settings are resolved in priority order (lowest to highest):
 
-```
-  ┌─── Search ─────────────────────────────────────────────────────────┐
-  │                                                                    │
-  │  "how to configure Redis?"                                         │
-  │        │                                                           │
-  │        ▼                                                           │
-  │   ┌──────────┐     ┌─────────────────┐     ┌──────────────────┐   │
-  │   │  Embed   │────▶│ Hybrid search   │────▶│ Top-K results    │   │
-  │   │  query   │     │ (dense+BM25+RRF)│     │ with source info │   │
-  │   └──────────┘     └─────────────────┘     └──────────────────┘   │
-  │                                                                    │
-  └────────────────────────────────────────────────────────────────────┘
-
-  ┌─── Ingest ─────────────────────────────────────────────────────────┐
-  │                                                                    │
-  │  MEMORY.md                                                         │
-  │  memory/2026-02-09.md     ┌──────────┐     ┌────────────────┐     │
-  │  memory/2026-02-08.md ───▶│ Chunker  │────▶│ Dedup          │     │
-  │                           │(heading, │     │(chunk_hash PK) │     │
-  │                           │paragraph)│     └───────┬────────┘     │
-  │                           └──────────┘             │              │
-  │                                             new chunks only       │
-  │                                                    ▼              │
-  │                                            ┌──────────────┐       │
-  │                                            │  Embed &     │       │
-  │                                            │  Milvus upsert│      │
-  │                                            └──────────────┘       │
-  │                                                                    │
-  └────────────────────────────────────────────────────────────────────┘
-
-  ┌─── Watch ──────────────────────────────────────────────────────────┐
-  │  File watcher (1500ms debounce) ──▶ auto re-index / delete stale  │
-  └────────────────────────────────────────────────────────────────────┘
-
-  ┌─── Compact ─────────────────────────────────────────────────────────┐
-  │  Retrieve chunks ──▶ LLM summarize ──▶ write memory/YYYY-MM-DD.md │
-  └────────────────────────────────────────────────────────────────────┘
-```
-
-🔒 The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote backend or a cloud embedding provider.
-
-## 🧩 Claude Code Plugin
-
-memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
-
-```bash
-# 1. In Claude Code, add the marketplace and install the plugin
-/plugin marketplace add zilliztech/memsearch
-/plugin install memsearch
-
-# 2. Restart Claude Code for the plugin to take effect, then start chatting!
-claude
-```
-
-> **Note:** The plugin defaults to **ONNX bge-m3** embedding — no API key required, runs locally on CPU. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. If the first session appears to hang, the model is still downloading in the background. You can pre-download it manually:
->
-> ```bash
-> uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
-> ```
->
-> If the download is slow or stuck, set `export HF_ENDPOINT=https://hf-mirror.com` to use a mirror.
-
-> 📖 Architecture, hook details, and development mode → [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/claude-plugin/)
-
-## ⚙️ Configuration
-
-Settings are resolved in priority order (lowest → highest):
-
-1. **Built-in defaults** → 2. **Global** `~/.memsearch/config.toml` → 3. **Project** `.memsearch.toml` → 4. **CLI flags**
+1. **Built-in defaults** > 2. **Global** `~/.memsearch/config.toml` > 3. **Project** `.memsearch.toml` > 4. **CLI flags**
 
 API keys for embedding/LLM providers are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
 
-> 📖 Config wizard, TOML examples, and all settings → [Getting Started — Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
+> Config wizard, TOML examples, and all settings: [Getting Started — Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
 
-## 🔌 Embedding Providers
+## Embedding Providers
 
 | Provider | Install | Default Model |
 |----------|---------|---------------|
@@ -382,22 +468,22 @@ API keys for embedding/LLM providers are read from standard environment variable
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
 | Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
 
-> 📖 Provider setup and env vars → [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
+> Provider setup and env vars: [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
 
-## 🗄️ Milvus Backend
+## Milvus Backend
 
 memsearch supports three deployment modes — just change `milvus_uri`:
 
 | Mode | `milvus_uri` | Best for |
 |------|-------------|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config ⚠️ *not available on Windows* |
+| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
 | **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
-| ⭐ **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed — [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) |
+| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed — [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) |
 
 > **Recommended:** [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) gives you zero-config, zero-ops Milvus with concurrent access and real-time indexing — no Docker needed. Perfect for the Claude Code plugin's `watch` mode.
 
 <details>
-<summary>Sign up for a free Zilliz Cloud cluster 👈</summary>
+<summary>Sign up for a free Zilliz Cloud cluster</summary>
 
 You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) on Zilliz Cloud to get a free cluster and API key.
 
@@ -407,31 +493,20 @@ Copy your Personal Key to use as `--milvus-token` in the CLI or `milvus_token` i
 
 </details>
 
-> 📖 Comparison table and setup details → [Getting Started — Which backend should I choose?](https://zilliztech.github.io/memsearch/getting-started/#which-backend-should-i-choose)
+> Comparison table and setup details: [Getting Started — Which backend should I choose?](https://zilliztech.github.io/memsearch/getting-started/#which-backend-should-i-choose)
 
-## 🔗 Integrations
-
-memsearch works with any Python agent framework. Ready-made examples for:
-
-- **[LangChain](https://www.langchain.com/)** — use as a `BaseRetriever` in any LCEL chain
-- **[LangGraph](https://langchain-ai.github.io/langgraph/)** — wrap as a tool in a ReAct agent
-- **[LlamaIndex](https://www.llamaindex.ai/)** — plug in as a custom retriever
-- **[CrewAI](https://www.crewai.com/)** — add as a tool for crew agents
-
-> 📖 Copy-paste code for each framework → [Integrations docs](https://zilliztech.github.io/memsearch/integrations/)
-
-## 📚 Links
+## Links
 
 - [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
-- [Claude Code Plugin](ccplugin/README.md) — hook details, progressive disclosure, comparison with claude-mem
+- [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, OpenClaw, OpenCode, Codex CLI
+- [Design Philosophy](https://zilliztech.github.io/memsearch/design-philosophy/) — why markdown, why Milvus, competitor comparison
 - [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
 - [Milvus](https://milvus.io/) — the vector database powering memsearch
-- [FAQ](https://zilliztech.github.io/memsearch/faq/) — common questions and troubleshooting
 
 ## Contributing
 
 Bug reports, feature requests, and pull requests are welcome! See the [Contributing Guide](CONTRIBUTING.md) for development setup, testing, and plugin development instructions. For questions and discussions, join us on [Discord](https://discord.com/invite/FG6hMJStWu).
 
-## 📄 License
+## License
 
 [MIT](LICENSE)

@@ -375,3 +375,41 @@ A complete agent loop: seed knowledge, index it, then recall it during conversat
 
     asyncio.run(main())
     ```
+
+---
+
+## Per-User Memory Isolation
+
+memsearch is not locked to a "per-project" or "per-agent" model. The `paths`, `collection`, and `milvus_uri` parameters can all be set dynamically per user, giving you full per-user isolation.
+
+**Option 1 -- Directory + collection isolation (recommended):**
+
+```python
+from memsearch import MemSearch
+
+def get_user_memory(user_id: str) -> MemSearch:
+    return MemSearch(
+        paths=[f"./memory/{user_id}"],
+        collection=f"mem_{user_id}",
+    )
+
+# Fully isolated -- different markdown directories, different Milvus collections
+mem_alice = get_user_memory("alice")
+mem_bob = get_user_memory("bob")
+```
+
+Each user's memories live in their own directory and their own collection. They never see each other's data.
+
+**Option 2 -- Separate Milvus Lite databases (strongest isolation):**
+
+```python
+def get_user_memory(user_id: str) -> MemSearch:
+    return MemSearch(
+        paths=[f"./memory/{user_id}"],
+        milvus_uri=f"./data/{user_id}.db",
+    )
+```
+
+Each user gets a physically separate database file. This is the simplest model when you don't need cross-user search.
+
+The [Claude Code plugin](platforms/claude-code.md) uses per-project isolation -- each project automatically gets its own Milvus collection (e.g. `ms_my_app_a1b2c3d4`) derived from the project path, so searches never leak across projects. But the underlying memsearch library has no such constraint -- a consumer chat app can instantiate one `MemSearch` per user and get clean isolation.

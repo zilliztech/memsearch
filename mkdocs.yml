@@ -1,5 +1,5 @@
 site_name: memsearch
-site_description: "OpenClaw's memory, everywhere — markdown-first semantic memory backed by Milvus"
+site_description: "Cross-platform semantic memory for AI coding agents — markdown-first, backed by Milvus"
 site_url: https://zilliztech.github.io/memsearch/
 
 theme:
@@ -30,18 +30,29 @@ repo_url: https://github.com/zilliztech/memsearch
 repo_name: zilliztech/memsearch
 
 nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Architecture: architecture.md
-  - Python API: python-api.md
-  - CLI Reference: cli.md
-  - Integrations: integrations.md
+  - Home:
+    - Overview: index.md
+    - Why memsearch: home/why.md
+    - For Agent Users: home/for-users.md
+    - For Agent Developers: home/for-developers.md
+    - Configuration: home/configuration.md
+    - Architecture: architecture.md
+    - Design Philosophy: design-philosophy.md
+    - Quickstart: getting-started.md
   - Claude Code Plugin:
-    - Overview: claude-plugin/index.md
-    - Hooks: claude-plugin/hooks.md
-    - Progressive Disclosure: claude-plugin/progressive-disclosure.md
-    - Troubleshooting: claude-plugin/troubleshooting.md
-  - FAQ: faq.md
+    - Overview: platforms/claude-code.md
+    - Troubleshooting: platforms/claude-code-troubleshooting.md
+  - OpenClaw Plugin:
+    - Overview: platforms/openclaw.md
+  - OpenCode Plugin:
+    - Overview: platforms/opencode.md
+  - Codex CLI Plugin:
+    - Overview: platforms/codex.md
+  - For Agent Developers:
+    - CLI Reference: cli.md
+    - Python API: python-api.md
+    - Integrations: integrations.md
+  - Platform Comparison: platforms/index.md
 
 markdown_extensions:
   - admonition
