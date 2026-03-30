@@ -1,0 +1,12 @@
+{
+  "name": "memsearch",
+  "version": "0.1.0",
+  "description": "Semantic memory search plugin for OpenClaw — remembers what you worked on across sessions",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.11"
+  }
+}

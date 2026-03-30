@@ -1,0 +1,31 @@
+{
+  "name": "memsearch-opencode",
+  "version": "0.1.0",
+  "description": "memsearch plugin for OpenCode — semantic memory search across sessions",
+  "type": "module",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "memsearch",
+    "memory",
+    "semantic-search",
+    "milvus"
+  ],
+  "author": "memsearch contributors",
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zc277584121/memsearch",
+    "directory": "plugins/opencode"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.3.2"
+  }
+}

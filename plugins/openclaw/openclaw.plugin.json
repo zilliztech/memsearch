@@ -1,0 +1,35 @@
+{
+  "id": "memsearch",
+  "kind": "memory",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "type": "string",
+        "default": "onnx",
+        "description": "Embedding provider (onnx, openai, google, voyage, ollama)"
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically capture conversation summaries after each turn"
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": true,
+        "description": "Automatically inject recent memories at agent start"
+      }
+    },
+    "additionalProperties": false
+  },
+  "uiHints": {
+    "configFormTitle": "memsearch — Semantic Memory",
+    "configFormDescription": "Automatic semantic memory search for OpenClaw. Remembers what you worked on across sessions using Milvus vector search.",
+    "configFormGroups": [
+      {
+        "label": "General",
+        "keys": ["provider", "autoCapture", "autoRecall"]
+      }
+    ]
+  }
+}
