@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
 - 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [Codex CLI](plugins/codex/README.md). A conversation in one agent becomes searchable context in all others — no extra setup
 - 👥 **For Agent Users**, install a plugin and get persistent memory with zero effort; **for Agent Developers**, use the full [CLI](https://zilliztech.github.io/memsearch/cli/) and [Python API](https://zilliztech.github.io/memsearch/python-api/) to build memory and harness engineering into your own agents
 - 📄 **Markdown is the source of truth** — inspired by [OpenClaw](https://github.com/openclaw/openclaw). Your memories are just `.md` files — human-readable, editable, version-controllable. Milvus is a "shadow index": a derived, rebuildable cache
-- 🔍 **Agentic search, hybrid retrieval, smart dedup, live sync** — dense vector + BM25 sparse + RRF reranking for the best recall; SHA-256 content hashing skips unchanged content; file watcher auto-indexes in real time
+- 🔍 **Progressive retrieval, hybrid search, smart dedup, live sync** — 3-layer recall (search → expand → transcript); dense vector + BM25 sparse + RRF reranking; SHA-256 content hashing skips unchanged content; file watcher auto-indexes in real time
 
 ---
 
@@ -154,7 +154,7 @@ Defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On fir
 
 ```bash
 memsearch config set embedding.provider onnx     # default — local, free
-memsearch config set embedding.provider openai   # best quality (needs OPENAI_API_KEY)
+memsearch config set embedding.provider openai   # needs OPENAI_API_KEY
 memsearch config set embedding.provider ollama   # local, any model
 ```
 
@@ -209,27 +209,27 @@ Beyond ready-to-use plugins, memsearch provides a complete **CLI and Python API*
 ### 🏗️ Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────┐
-│           🧑‍💻 For Agent Users (Plugins)              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
-│  │ Claude   │ │ OpenClaw │ │ OpenCode │ │ Codex  │ │
-│  │ Code     │ │ Plugin   │ │ Plugin   │ │ Plugin │ │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘ │
-│       └─────────────┴────────────┴───────────┘      │
-├─────────────────────────┬───────────────────────────┤
-│  🛠️ For Agent Developers │                          │
-│  ┌──────────────────────┴────────────────────────┐  │
-│  │        memsearch CLI / Python API             │  │
-│  │   index · search · expand · watch · compact   │  │
-│  └──────────────────────┬────────────────────────┘  │
-│  ┌──────────────────────┴────────────────────────┐  │
-│  │        Core: Chunker → Embedder → Milvus      │  │
-│  │     Hybrid Search (BM25 + Dense + RRF)        │  │
-│  └───────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────┤
-│  📄 Markdown Files (Source of Truth)                │
-│  memory/2026-03-27.md · memory/2026-03-26.md · ...  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                  🧑‍💻 For Agent Users (Plugins)                │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────┐ │
+│  │ Claude   │ │ OpenClaw │ │ OpenCode │ │ Codex  │ │ Your │ │
+│  │ Code     │ │ Plugin   │ │ Plugin   │ │ Plugin │ │ App  │ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘ └──┬───┘ │
+│       └─────────────┴────────────┴───────────┴────────┘     │
+├────────────────────────────┬─────────────────────────────────┤
+│  🛠️ For Agent Developers   │  Build your own with ↓          │
+│  ┌─────────────────────────┴──────────────────────────────┐  │
+│  │           memsearch CLI / Python API                   │  │
+│  │      index · search · expand · watch · compact         │  │
+│  └─────────────────────────┬──────────────────────────────┘  │
+│  ┌─────────────────────────┴──────────────────────────────┐  │
+│  │           Core: Chunker → Embedder → Milvus            │  │
+│  │        Hybrid Search (BM25 + Dense + RRF)              │  │
+│  └────────────────────────────────────────────────────────┘  │
+├──────────────────────────────────────────────────────────────┤
+│  📄 Markdown Files (Source of Truth)                         │
+│  memory/2026-03-27.md · memory/2026-03-26.md · ...           │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 Plugins sit on top of the CLI/API layer. The API handles indexing, searching, and Milvus sync. Markdown files are always the source of truth — Milvus is a rebuildable shadow index. Everything below the plugin layer is what you use as an agent developer.
@@ -549,7 +549,7 @@ Settings priority: Built-in defaults → `~/.memsearch/config.toml` → `.memsea
 - 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, OpenClaw, OpenCode, Codex CLI
 - 💡 [Design Philosophy](https://zilliztech.github.io/memsearch/design-philosophy/) — why markdown, why Milvus, competitor comparison
 - 🦞 [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
-- 🗄️ [Milvus](https://milvus.io/) — the vector database powering memsearch
+- 🗄️ [Milvus](https://milvus.io/) | [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — the vector database powering memsearch
 
 ## 🤝 Contributing
 
