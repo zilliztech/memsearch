@@ -88,13 +88,53 @@ Shell hooks + SKILL.md. Requires `--yolo` mode.
 
 </details>
 
-> **Note:** All plugins default to **ONNX bge-m3** embedding — no API key required, runs locally on CPU. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. Pre-download manually:
->
-> ```bash
-> uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
-> ```
+### Configuration (all platforms)
 
-> [Platform comparison and architecture](https://zilliztech.github.io/memsearch/platforms/)
+All plugins share the same memsearch backend. Configure once, works everywhere.
+
+**Embedding** — defaults to ONNX bge-m3 (local, no API key). Switch with:
+
+```bash
+memsearch config set embedding.provider openai   # or: onnx, google, voyage, ollama
+```
+
+**Milvus Backend** — just change `milvus_uri`:
+
+**Milvus Lite** (default) — zero config, single file. Great for getting started:
+
+```bash
+# Works out of the box, no setup needed
+memsearch config get milvus.uri   # → ~/.memsearch/milvus.db
+```
+
+⭐ **Zilliz Cloud** — fully managed, [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) 👇:
+
+```bash
+memsearch config set milvus.uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com"
+memsearch config set milvus.token "your-api-key"
+```
+
+<details>
+<summary>⭐ Sign up for a free Zilliz Cloud cluster</summary>
+
+You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) on Zilliz Cloud to get a free cluster and API key.
+
+![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
+
+</details>
+
+<details>
+<summary>Self-hosted Milvus Server (Docker) — for advanced users</summary>
+
+For multi-user or team environments with a dedicated Milvus instance. Requires Docker. See the [official installation guide](https://milvus.io/docs/install_standalone-docker-compose.md).
+
+```bash
+memsearch config set milvus.uri http://localhost:19530
+```
+
+</details>
+
+> Full configuration guide: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/) · [Platform comparison](https://zilliztech.github.io/memsearch/platforms/)
 
 ## For Agent Developers
 
@@ -449,51 +489,11 @@ memsearch reset                          # drop all indexed data (with confirmat
 
 ## Configuration
 
-Settings are resolved in priority order (lowest to highest):
+Embedding and Milvus backend settings are described above in [Configuration (all platforms)](#configuration-all-platforms).
 
-1. **Built-in defaults** > 2. **Global** `~/.memsearch/config.toml` > 3. **Project** `.memsearch.toml` > 4. **CLI flags**
+Settings are resolved in priority order: Built-in defaults → Global `~/.memsearch/config.toml` → Project `.memsearch.toml` → CLI flags.
 
-API keys for embedding/LLM providers are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, etc.).
-
-> Config wizard, TOML examples, and all settings: [Getting Started — Configuration](https://zilliztech.github.io/memsearch/getting-started/#configuration)
-
-## Embedding Providers
-
-| Provider | Install | Default Model |
-|----------|---------|---------------|
-| OpenAI | `memsearch` (included) | `text-embedding-3-small` |
-| ONNX | `memsearch[onnx]` | `bge-m3-onnx-int8` (CPU, no API key) |
-| Google | `memsearch[google]` | `gemini-embedding-001` |
-| Voyage | `memsearch[voyage]` | `voyage-3-lite` |
-| Ollama | `memsearch[ollama]` | `nomic-embed-text` |
-| Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
-
-> Provider setup and env vars: [CLI Reference — Embedding Provider Reference](https://zilliztech.github.io/memsearch/cli/#embedding-provider-reference)
-
-## Milvus Backend
-
-memsearch supports three deployment modes — just change `milvus_uri`:
-
-| Mode | `milvus_uri` | Best for |
-|------|-------------|----------|
-| **Milvus Lite** (default) | `~/.memsearch/milvus.db` | Personal use, dev — zero config |
-| **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
-| **Zilliz Cloud** | `https://in03-xxx.api.gcp-us-west1.zillizcloud.com` | Production, fully managed — [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) |
-
-> **Recommended:** [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) gives you zero-config, zero-ops Milvus with concurrent access and real-time indexing — no Docker needed. Perfect for the Claude Code plugin's `watch` mode.
-
-<details>
-<summary>Sign up for a free Zilliz Cloud cluster</summary>
-
-You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) on Zilliz Cloud to get a free cluster and API key.
-
-![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
-
-Copy your Personal Key to use as `--milvus-token` in the CLI or `milvus_token` in the Python API.
-
-</details>
-
-> Comparison table and setup details: [Getting Started — Which backend should I choose?](https://zilliztech.github.io/memsearch/getting-started/#which-backend-should-i-choose)
+> Full config guide with TOML examples: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/) · [CLI Reference](https://zilliztech.github.io/memsearch/cli/)
 
 ## Links
 
