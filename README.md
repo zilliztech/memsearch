@@ -276,19 +276,30 @@ User: "What did we discuss about batch size?"
 ### 📄 Markdown as Source of Truth
 
 ```
-  Plugins write ──→  .md files  ←── human editable
-                        │
-          ┌─────────────┼──────────────┐
-          ▼             ▼              ▼
-   memsearch index   memsearch watch   memsearch reset
-   (one-time scan)   (live watcher)    + index (rebuild)
-          │             │              │
-          └─────────────┼──────────────┘
-                        ▼
-              ┌──────────────────┐
-              │  Milvus (shadow) │
-              │  rebuildable     │
-              └──────────────────┘
+  Plugins append ──→  .md files  ←── human editable
+                          │
+                          ▼
+                  memsearch watch (live watcher)
+                          │
+                  detects file change
+                          │
+                          ▼
+                  re-chunk changed .md
+                          │
+                  hash each chunk (SHA-256)
+                          │
+              ┌───────────┴───────────┐
+              ▼                       ▼
+       hash unchanged?          hash is new/changed?
+       → skip (no API call)     → embed → upsert to Milvus
+              │                       │
+              └───────────┬───────────┘
+                          ▼
+                ┌──────────────────┐
+                │  Milvus (shadow) │
+                │  always in sync  │
+                │  rebuildable     │
+                └──────────────────┘
 ```
 
 ### 📦 Installation
@@ -495,18 +506,34 @@ asyncio.run(main())
 
 ### ⌨️ CLI Usage
 
+**Setup:**
+
 ```bash
-memsearch config init                    # interactive setup wizard
-memsearch index ./memory/                # index markdown files
-memsearch search "Redis caching"         # semantic search
-memsearch search "auth" --top-k 10       # more results
-memsearch watch ./memory/                # live file watcher
-memsearch compact                        # LLM-powered summarization
-memsearch stats                          # index statistics
-memsearch reset                          # drop all indexed data
+memsearch config init                              # interactive setup wizard
+memsearch config set embedding.provider onnx       # switch embedding provider
+memsearch config set milvus.uri http://localhost:19530  # switch Milvus backend
 ```
 
-> 📖 Full CLI reference: [CLI docs](https://zilliztech.github.io/memsearch/cli/)
+**Index & Search:**
+
+```bash
+memsearch index ./memory/                          # index markdown files
+memsearch index ./memory/ ./notes/ --force         # re-embed everything
+memsearch search "Redis caching"                   # hybrid search (BM25 + vector)
+memsearch search "auth flow" --top-k 10 --json-output  # JSON for scripting
+memsearch expand <chunk_hash>                      # show full section around a chunk
+```
+
+**Live Sync & Maintenance:**
+
+```bash
+memsearch watch ./memory/                          # live file watcher (auto-index on change)
+memsearch compact                                  # LLM-powered chunk summarization
+memsearch stats                                    # show indexed chunk count
+memsearch reset --yes                              # drop all indexed data and rebuild
+```
+
+> 📖 Full CLI reference with all flags: [CLI docs](https://zilliztech.github.io/memsearch/cli/)
 
 ## ⚙️ Configuration
 

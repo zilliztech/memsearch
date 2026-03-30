@@ -61,12 +61,6 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) prefixes for **
 | `chore:`     | `chore: bump dependencies`                    |
 | `refactor:`  | `refactor: simplify config merging logic`     |
 | `test:`      | `test: add transcript parser edge cases`      |
-| `style:`     | `style: apply ruff formatting`                |
-| `perf:`      | `perf: cache embedding results`               |
-
-Labels are assigned automatically from the title prefix via [release-drafter](https://github.com/release-drafter/release-drafter). These labels categorize the auto-generated release notes.
-
-PRs without a conventional prefix still work — they just won't be auto-labeled.
 
 ### Workflow
 
@@ -79,61 +73,74 @@ PRs without a conventional prefix still work — they just won't be auto-labeled
 ## Project Structure
 
 ```
-src/memsearch/          # Core Python library
-├── core.py             # MemSearch public API
-├── cli.py              # Click CLI
-├── store.py            # Milvus vector store
-├── chunker.py          # Markdown chunking
-├── embeddings/         # Pluggable embedding providers
-├── scanner.py          # File discovery
-├── config.py           # TOML config system
-├── watcher.py          # File watcher
-├── compact.py          # LLM summarization
-plugins/claude-code/    # Claude Code plugin (shell hooks)
-├── .claude-plugin/     # Plugin manifest
-├── hooks/              # 4 lifecycle hooks + shared utilities
-├── scripts/            # Helper scripts (derive-collection.sh)
-├── transcript.py       # JSONL transcript parser
-└── skills/             # Memory recall skill
+src/memsearch/              # Core Python library
+├── core.py                 # MemSearch public API (index, search, watch, compact)
+├── cli.py                  # Click CLI
+├── store.py                # Milvus vector store (hybrid search, upsert, dedup)
+├── chunker.py              # Markdown heading-based chunking + SHA-256 hash
+├── embeddings/             # Pluggable embedding providers (onnx, openai, google, etc.)
+├── scanner.py              # File discovery (.md/.markdown)
+├── config.py               # Layered TOML config system
+├── watcher.py              # File watcher (watchdog-based, auto-index on change)
+└── compact.py              # LLM-powered chunk summarization
 
-tests/                  # pytest test suite
-docs/                   # mkdocs-material documentation
+plugins/
+├── claude-code/            # Claude Code plugin (shell hooks + SKILL.md)
+│   ├── hooks/              # SessionStart, Stop, UserPromptSubmit, SessionEnd
+│   ├── skills/             # memory-recall skill (context:fork subagent)
+│   ├── transcript.py       # Claude Code JSONL parser (L3)
+│   └── scripts/            # derive-collection.sh, parse-transcript.sh
+├── openclaw/               # OpenClaw plugin (TypeScript, registerTool)
+│   ├── index.ts            # memory_search/get/transcript tools + lifecycle hooks
+│   ├── skills/             # memory-recall SKILL.md (decision guide)
+│   └── scripts/            # derive-collection.sh, parse-transcript.sh
+├── opencode/               # OpenCode plugin (TypeScript npm plugin)
+│   ├── index.ts            # Tools + experimental hooks
+│   ├── scripts/            # capture-daemon.py (SQLite polling), parse-transcript.py
+│   └── skills/             # memory-recall SKILL.md
+└── codex/                  # Codex CLI plugin (shell hooks + SKILL.md)
+    ├── hooks/              # SessionStart, Stop, UserPromptSubmit
+    ├── skills/             # memory-recall skill
+    └── scripts/            # install.sh, parse-rollout.sh, derive-collection.sh
+
+evaluation/                 # Embedding provider benchmark (platform-agnostic)
+tests/                      # pytest test suite
+docs/                       # mkdocs-material documentation
 ```
 
-## Claude Code Plugin Development
+## Plugin Development
 
-To test the plugin locally without installing from the marketplace:
+### Claude Code
 
 ```bash
-# 1. Install memsearch CLI
-pip install memsearch
-
-# 2. Set your embedding API key
-export OPENAI_API_KEY="sk-..."
-
-# 3. Launch Claude Code with the local plugin
-claude --plugin-dir ./plugins/claude-code
+claude --plugin-dir ./plugins/claude-code   # test locally
 ```
 
-Edits to hook scripts take effect on the next hook trigger — no restart needed (except `SessionStart`, which fires once per session).
+Edits to hook scripts take effect on the next hook trigger — no restart needed.
 
-**Testing hooks manually:**
+### OpenClaw
 
 ```bash
-# Simulate a user prompt
-echo '{"prompts":[{"content":"what caching solution did we pick?"}]}' | bash plugins/claude-code/hooks/user-prompt-submit.sh
-
-# Test session start
-echo '{}' | bash plugins/claude-code/hooks/session-start.sh
+openclaw plugins install ./plugins/openclaw   # install from local
+openclaw gateway restart                       # reload plugin
 ```
 
-Hooks read JSON from stdin and write JSON to stdout. Check that the output contains valid `additionalContext` fields.
+TypeScript is loaded via jiti — no compilation step needed.
 
-**Debugging tips:**
+### OpenCode
 
-- Hooks log to stderr — add `echo "debug: ..." >&2` to trace without breaking the JSON contract.
-- Watch PID file: `.memsearch/.watch.pid` — delete it if the watcher gets stuck.
-- `stop.sh` calls `claude -p --model haiku` internally. Set `stop_hook_active=1` to skip it during manual testing.
+```bash
+mkdir -p ~/.config/opencode/plugins
+ln -sf $(pwd)/plugins/opencode/index.ts ~/.config/opencode/plugins/memsearch.ts
+# Restart opencode to load
+```
+
+### Codex CLI
+
+```bash
+bash plugins/codex/scripts/install.sh   # copies skill + generates hooks.json
+codex --yolo                             # test with sandbox disabled
+```
 
 ## Documentation
 
@@ -141,6 +148,7 @@ Docs live in `docs/` and are built with [mkdocs-material](https://squidfun.githu
 
 ```bash
 uv run mkdocs serve    # local preview at http://127.0.0.1:8000
+uv run mkdocs build    # build to site/
 ```
 
 ## Reporting Issues
