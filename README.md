@@ -92,13 +92,21 @@ Shell hooks + SKILL.md. Requires `--yolo` mode.
 
 All plugins share the same memsearch backend. Configure once, works everywhere.
 
-**Embedding** — defaults to ONNX bge-m3 (local, no API key). Switch with:
+#### Embedding
+
+Defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On first launch the model (~558 MB) is downloaded from HuggingFace Hub.
 
 ```bash
-memsearch config set embedding.provider openai   # or: onnx, google, voyage, ollama
+memsearch config set embedding.provider onnx     # default — local, free
+memsearch config set embedding.provider openai   # best quality (needs OPENAI_API_KEY)
+memsearch config set embedding.provider ollama   # local, any model
 ```
 
-**Milvus Backend** — just change `milvus_uri`:
+> All providers and models: [Configuration — Embedding Provider](https://zilliztech.github.io/memsearch/home/configuration/#embedding-provider)
+
+#### Milvus Backend
+
+Just change `milvus_uri` (and optionally `milvus_token`) to switch between deployment modes:
 
 **Milvus Lite** (default) — zero config, single file. Great for getting started:
 
@@ -107,7 +115,7 @@ memsearch config set embedding.provider openai   # or: onnx, google, voyage, oll
 memsearch config get milvus.uri   # → ~/.memsearch/milvus.db
 ```
 
-⭐ **Zilliz Cloud** — fully managed, [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) 👇:
+⭐ **Zilliz Cloud** (recommended) — fully managed, [free tier available](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) 👇:
 
 ```bash
 memsearch config set milvus.uri "https://in03-xxx.api.gcp-us-west1.zillizcloud.com"
