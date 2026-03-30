@@ -110,7 +110,7 @@ When modifying hooks/skills, keep in mind:
 | Component | Version file | Current | Publish channel |
 |-----------|-------------|---------|-----------------|
 | **memsearch** (PyPI) | `pyproject.toml` | 0.1.x | PyPI (automated via GitHub Actions) |
-| **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | 0.2.x | Clone/symlink (no marketplace) |
+| **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | 0.2.x | Marketplace (`.claude-plugin/marketplace.json`) |
 | **OpenClaw plugin** | `plugins/openclaw/package.json` | 0.1.x | ClawHub (`clawhub package publish`) |
 | **OpenCode plugin** | `plugins/opencode/package.json` | 0.1.x | npm (`npm publish`, not yet published) |
 | **Codex CLI plugin** | *(none)* | — | `install.sh` (no version management) |
@@ -122,9 +122,11 @@ When modifying hooks/skills, keep in mind:
 4. Push the tag: `git push --tags`
 5. GitHub Actions (`release.yml`) automatically builds and publishes to PyPI
 
-**Claude Code plugin:**
+**Claude Code plugin (Marketplace):**
 - Bump `version` in `plugins/claude-code/.claude-plugin/plugin.json` when hooks, skills, or plugin config change
-- No automated publish — users install by cloning or symlinking (`claude --plugin-dir`)
+- Update `version` in `.claude-plugin/marketplace.json` to match
+- Users install: `/plugin marketplace add zilliztech/memsearch` then `/plugin install memsearch`
+- Dev/test: `claude --plugin-dir ./plugins/claude-code`
 
 **OpenClaw plugin (ClawHub):**
 - Bump `version` in `plugins/openclaw/package.json`

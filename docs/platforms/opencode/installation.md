@@ -6,7 +6,17 @@
 - Python 3.10+
 - memsearch installed: `uv tool install "memsearch[onnx]"`
 
-## Automated Install
+## Install from npm (recommended)
+
+Add to your `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["@zilliz/memsearch-opencode"]
+}
+```
+
+## Install from Source (development)
 
 ```bash
 bash memsearch/plugins/opencode/install.sh
@@ -18,22 +28,6 @@ The installer:
 2. Symlinks the memory-recall skill to `~/.agents/skills/memory-recall`
 3. Installs npm dependencies
 4. Shows next steps
-
-## Manual Installation
-
-1. Add to your `opencode.json`:
-
-    ```json
-    {
-      "plugin": ["memsearch-opencode"]
-    }
-    ```
-
-2. Install the npm package:
-
-    ```bash
-    npm install --save-dev @opencode-ai/plugin
-    ```
 
 ## Configuration
 

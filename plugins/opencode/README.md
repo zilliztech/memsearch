@@ -21,11 +21,20 @@ uv tool install 'memsearch[onnx]'
 # or: pip install 'memsearch[onnx]'
 ```
 
-### Install
+### Install from npm (recommended)
+
+```json
+// In ~/.config/opencode/opencode.json
+{
+  "plugin": ["@zilliz/memsearch-opencode"]
+}
+```
+
+### Install from Source (development)
 
 ```bash
-# Clone the repo (if you haven't already)
-git clone https://github.com/zc277584121/memsearch.git
+# Clone the repo
+git clone https://github.com/zilliztech/memsearch.git
 cd memsearch
 
 # Run the installer
@@ -42,15 +51,6 @@ ln -sf /path/to/memsearch/plugins/opencode/index.ts ~/.config/opencode/plugins/m
 # 2. Symlink the skill (optional, for !memory-recall)
 mkdir -p ~/.agents/skills
 ln -sf /path/to/memsearch/plugins/opencode/skills/memory-recall ~/.agents/skills/memory-recall
-```
-
-### npm Install (coming soon)
-
-```json
-// In ~/.config/opencode/opencode.json
-{
-  "plugin": ["memsearch-opencode"]
-}
 ```
 
 ## Architecture

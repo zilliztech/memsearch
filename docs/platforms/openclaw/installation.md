@@ -6,7 +6,17 @@
 - Python 3.10+
 - memsearch installed: `uv tool install "memsearch[onnx]"`
 
-## Install
+## Install from ClawHub (recommended)
+
+```bash
+# 1. Install the plugin
+openclaw plugins install clawhub:memsearch
+
+# 2. Restart the gateway
+openclaw gateway restart
+```
+
+## Install from Source (development)
 
 ```bash
 # 1. Clone the memsearch repo (if not already)

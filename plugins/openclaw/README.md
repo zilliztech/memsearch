@@ -9,6 +9,21 @@ Automatic persistent memory for [OpenClaw](https://github.com/openclaw/openclaw)
 
 ## Install
 
+### From ClawHub (recommended)
+
+```bash
+# 1. Install memsearch
+uv tool install "memsearch[onnx]"
+
+# 2. Install the plugin from ClawHub
+openclaw plugins install clawhub:memsearch
+
+# 3. Restart the gateway
+openclaw gateway restart
+```
+
+### From Source (development)
+
 ```bash
 # 1. Install memsearch
 uv tool install "memsearch[onnx]"

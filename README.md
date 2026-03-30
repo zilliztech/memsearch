@@ -66,9 +66,8 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 ### For OpenClaw Users
 
 ```bash
-# Install
-git clone https://github.com/zilliztech/memsearch.git
-openclaw plugins install ./memsearch/plugins/openclaw
+# Install from ClawHub
+openclaw plugins install clawhub:memsearch
 openclaw gateway restart
 ```
 
@@ -94,9 +93,9 @@ Search your memory for what we discussed about batch size
 <details>
 <summary><b>🔧 For OpenCode Users</b></summary>
 
-```bash
-# Install
-bash memsearch/plugins/opencode/install.sh
+```json
+// In ~/.config/opencode/opencode.json
+{ "plugin": ["@zilliz/memsearch-opencode"] }
 ```
 
 After installing, chat in TUI as usual. A background daemon captures conversations.
