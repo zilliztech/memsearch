@@ -6,7 +6,7 @@ memsearch provides plugins for 4 AI coding agent platforms. All plugins share th
 
 ## Comparison Table
 
-| Feature | [Claude Code](claude-code.md) | [OpenClaw](openclaw.md) | [OpenCode](opencode.md) | [Codex CLI](codex.md) |
+| Feature | [Claude Code](claude-code/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) | [Codex CLI](codex/index.md) |
 |---------|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | TS registerTool | TS npm plugin | Shell hooks |
 | **Capture method** | Stop hook (async) | llm_output debounce | SQLite daemon | Stop hook (async) |
@@ -88,10 +88,10 @@ Since all plugins write standard markdown and use the same Milvus index, memorie
 
 | Scenario | Recommended Platform |
 |----------|---------------------|
-| Primary Claude Code user | [Claude Code plugin](claude-code.md) -- most mature, marketplace install |
-| OpenClaw agent development | [OpenClaw plugin](openclaw.md) -- native TS integration, multi-agent isolation |
-| OpenCode user | [OpenCode plugin](opencode.md) -- npm package, SQLite-native capture |
-| Codex CLI user | [Codex plugin](codex.md) -- shell hooks, similar to Claude Code |
+| Primary Claude Code user | [Claude Code plugin](claude-code/index.md) -- most mature, marketplace install |
+| OpenClaw agent development | [OpenClaw plugin](openclaw/index.md) -- native TS integration, multi-agent isolation |
+| OpenCode user | [OpenCode plugin](opencode/index.md) -- npm package, SQLite-native capture |
+| Codex CLI user | [Codex plugin](codex/index.md) -- shell hooks, similar to Claude Code |
 | Using multiple platforms | Install plugins on each -- they share the same memory backend |
 
 ---

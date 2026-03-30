@@ -6,7 +6,7 @@ This page explains the technical architecture and key implementation decisions b
 
 ## Cross-Platform Memory Sharing
 
-memsearch supports 4 AI coding agent platforms: [Claude Code](platforms/claude-code.md), [OpenClaw](platforms/openclaw.md), [OpenCode](platforms/opencode.md), and [Codex CLI](platforms/codex.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
+memsearch supports 4 AI coding agent platforms: [Claude Code](platforms/claude-code/index.md), [OpenClaw](platforms/openclaw/index.md), [OpenCode](platforms/opencode/index.md), and [Codex CLI](platforms/codex/index.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
 
 ```mermaid
 graph TB

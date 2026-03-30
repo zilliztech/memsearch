@@ -1,6 +1,6 @@
-# Claude Code Plugin Troubleshooting
+# Troubleshooting
 
-This page covers common issues when using the memsearch Claude Code plugin. For general memsearch issues (CLI, embedding, Milvus), see the relevant sections in [Getting Started](../getting-started.md) and [CLI Reference](../cli.md).
+This page covers common issues when using the memsearch Claude Code plugin. For general memsearch issues (CLI, embedding, Milvus), see the relevant sections in [Getting Started](../../getting-started.md) and [CLI Reference](../../cli.md).
 
 ---
 
@@ -130,7 +130,7 @@ pgrep -f "memsearch watch" && echo "found orphans" || echo "clean"
 ```
 
 !!! note
-    Milvus Lite does not support concurrent access, so plugins fall back to one-time indexing at session start. For real-time indexing, use [Milvus Server or Zilliz Cloud](../getting-started.md#milvus-backends).
+    Milvus Lite does not support concurrent access, so plugins fall back to one-time indexing at session start. For real-time indexing, use [Milvus Server or Zilliz Cloud](../../getting-started.md#milvus-backends).
 
 ---
 

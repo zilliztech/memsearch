@@ -6,10 +6,10 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 
 | Platform | Install | Maturity |
 |----------|---------|----------|
-| [**Claude Code**](../platforms/claude-code.md) | Marketplace or `--plugin-dir` | Most mature |
-| [**OpenClaw**](../platforms/openclaw.md) | `openclaw plugins install` | Stable |
-| [**OpenCode**](../platforms/opencode.md) | Add to `opencode.json` plugin array | Stable |
-| [**Codex CLI**](../platforms/codex.md) | `bash install.sh` | Stable |
+| [**Claude Code**](../platforms/claude-code/index.md) | Marketplace or `--plugin-dir` | Most mature |
+| [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install` | Stable |
+| [**OpenCode**](../platforms/opencode/index.md) | Add to `opencode.json` plugin array | Stable |
+| [**Codex CLI**](../platforms/codex/index.md) | `bash install.sh` | Stable |
 
 ## What Happens Automatically
 
@@ -35,9 +35,9 @@ Simple questions stop at L1. Complex questions go deeper.
 
 Each platform adapts the same architecture to its own plugin system:
 
-- **Claude Code**: [Full guide →](../platforms/claude-code.md)
-- **OpenClaw**: [Full guide →](../platforms/openclaw.md)
-- **OpenCode**: [Full guide →](../platforms/opencode.md)
-- **Codex CLI**: [Full guide →](../platforms/codex.md)
+- **Claude Code**: [Full guide →](../platforms/claude-code/index.md)
+- **OpenClaw**: [Full guide →](../platforms/openclaw/index.md)
+- **OpenCode**: [Full guide →](../platforms/opencode/index.md)
+- **Codex CLI**: [Full guide →](../platforms/codex/index.md)
 
 See the [Platform Comparison](../platforms/index.md) for a detailed feature matrix.

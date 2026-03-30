@@ -22,8 +22,8 @@ The most mature plugin. Marketplace install, zero config.
 
 Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-summarized via Haiku and recalled via semantic search -- all without polluting your main context window.
 
-[:octicons-arrow-right-24: Claude Code Plugin docs](platforms/claude-code.md){ .md-button .md-button--primary }
-[:octicons-arrow-right-24: Troubleshooting](platforms/claude-code-troubleshooting.md){ .md-button }
+[:octicons-arrow-right-24: Claude Code Plugin docs](platforms/claude-code/index.md){ .md-button .md-button--primary }
+[:octicons-arrow-right-24: Troubleshooting](platforms/claude-code/troubleshooting.md){ .md-button }
 
 ### OpenClaw Plugin
 
@@ -37,7 +37,7 @@ openclaw gateway restart
 
 Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-agent isolation -- each agent gets its own memory directory and Milvus collection.
 
-[:octicons-arrow-right-24: OpenClaw Plugin docs](platforms/openclaw.md){ .md-button .md-button--primary }
+[:octicons-arrow-right-24: OpenClaw Plugin docs](platforms/openclaw/index.md){ .md-button .md-button--primary }
 
 ### OpenCode Plugin
 
@@ -47,7 +47,7 @@ TypeScript plugin with daemon-based capture from OpenCode's SQLite database.
 bash memsearch/plugins/opencode/install.sh
 ```
 
-[:octicons-arrow-right-24: OpenCode Plugin docs](platforms/opencode.md){ .md-button }
+[:octicons-arrow-right-24: OpenCode Plugin docs](platforms/opencode/index.md){ .md-button }
 
 ### Codex CLI Plugin
 
@@ -58,13 +58,13 @@ bash memsearch/plugins/codex/scripts/install.sh
 codex --yolo
 ```
 
-[:octicons-arrow-right-24: Codex CLI Plugin docs](platforms/codex.md){ .md-button }
+[:octicons-arrow-right-24: Codex CLI Plugin docs](platforms/codex/index.md){ .md-button }
 
 ### Cross-Platform Memory Sharing
 
 All platforms share the same markdown memory format and Milvus backend -- memories written by one agent are searchable from any other.
 
-| | [Claude Code](platforms/claude-code.md) | [OpenClaw](platforms/openclaw.md) | [OpenCode](platforms/opencode.md) | [Codex CLI](platforms/codex.md) |
+| | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) |
 |---|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks |
 | **Capture** | Stop hook + Haiku | llm_output debounce | SQLite daemon | Stop hook + Codex |

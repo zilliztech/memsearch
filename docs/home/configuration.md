@@ -76,7 +76,7 @@ memsearch config get milvus.uri  # show specific value
 
 Each plugin may have additional configuration. See:
 
-- [Claude Code Plugin](../platforms/claude-code.md)
-- [OpenClaw Plugin](../platforms/openclaw.md)
-- [OpenCode Plugin](../platforms/opencode.md)
-- [Codex CLI Plugin](../platforms/codex.md)
+- [Claude Code Plugin](../platforms/claude-code/index.md)
+- [OpenClaw Plugin](../platforms/openclaw/index.md)
+- [OpenCode Plugin](../platforms/opencode/index.md)
+- [Codex CLI Plugin](../platforms/codex/index.md)

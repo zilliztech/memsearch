@@ -2,7 +2,7 @@
 
 ## One Memory, Every Agent
 
-memsearch provides persistent memory plugins for **4 major AI coding agent platforms**: [Claude Code](../platforms/claude-code.md), [OpenClaw](../platforms/openclaw.md), [OpenCode](../platforms/opencode.md), and [Codex CLI](../platforms/codex.md).
+memsearch provides persistent memory plugins for **4 major AI coding agent platforms**: [Claude Code](../platforms/claude-code/index.md), [OpenClaw](../platforms/openclaw/index.md), [OpenCode](../platforms/opencode/index.md), and [Codex CLI](../platforms/codex/index.md).
 
 Memories written in one platform are searchable from any other. A conversation in Claude Code becomes available context in OpenClaw, Codex, and OpenCode — no extra setup, no manual export.
 
