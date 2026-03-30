@@ -23,7 +23,7 @@ if [ -z "$MEMSEARCH_CMD" ]; then
 fi
 
 # First-time setup: if no config file exists, default to onnx provider.
-# This avoids requiring an OPENAI_API_KEY for new ccplugin users.
+# This avoids requiring an OPENAI_API_KEY for new plugin users.
 # Existing users (who already have a config file) are not affected.
 if [ -n "$MEMSEARCH_CMD" ]; then
   if [ ! -f "$HOME/.memsearch/config.toml" ] && [ ! -f "${CLAUDE_PROJECT_DIR:-.}/.memsearch.toml" ]; then

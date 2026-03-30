@@ -52,16 +52,14 @@ Markdown files → Scanner → Chunker → Embedder → MilvusStore
 - **`cli.py`** — Click CLI wrapping the Python API. All commands resolve config via `resolve_config()` then instantiate `MemSearch`.
 - **`watcher.py`** — `watchdog`-based file watcher with debounce, used by `memsearch watch` and the Claude Code plugin.
 - **`compact.py`** — LLM-powered chunk summarization (OpenAI/Anthropic/Gemini).
-- **`transcript.py`** — JSONL transcript parser for Claude Code conversation files.
-
-### Claude Code Plugin (`ccplugin/`)
+### Claude Code Plugin (`plugins/claude-code/`)
 
 The plugin is a first-class component of memsearch — it's the primary real-world application that demonstrates the library in action. It gives Claude Code automatic persistent memory across sessions with zero user intervention.
 
 **Architecture: 4 shell hooks + 1 skill + 1 background watcher**
 
 ```
-ccplugin/
+plugins/claude-code/
 ├── hooks/
 │   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
 │   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
@@ -71,6 +69,7 @@ ccplugin/
 │   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats with role labels for LLM (Python 3, no jq)
 ├── scripts/
 │   └── derive-collection.sh     # Derive per-project collection name from project path
+├── transcript.py                # JSONL transcript parser for Claude Code conversation files (L3 deep drill)
 └── skills/
     └── memory-recall/
         └── SKILL.md             # Skill (context: fork): search → expand → transcript in subagent
@@ -81,7 +80,7 @@ ccplugin/
 **Three-layer progressive disclosure (all in subagent):**
 1. **L1 (search):** Subagent runs `memsearch search` to find relevant chunks
 2. **L2 (expand):** Subagent runs `memsearch expand <chunk_hash>` to get full markdown sections
-3. **L3 (transcript):** Subagent runs `memsearch transcript <jsonl>` to drill into original conversations
+3. **L3 (transcript):** Subagent runs `python3 ${CLAUDE_PLUGIN_ROOT}/transcript.py <jsonl>` to drill into original conversations
 
 **Supporting hooks:**
 - `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists
@@ -94,12 +93,13 @@ When modifying hooks/skills, keep in mind:
 - The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior. Milvus Lite falls back to one-time `index()` at session start
 - `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally, and sets `MEMSEARCH_NO_WATCH=1` to prevent the child process from interfering with the main session's watch
 - The `memory-recall` skill uses `context: fork` — the subagent has its own context window and does not see main conversation history
+- `transcript.py` lives in the plugin directory (not in core library) since it is entirely Claude Code JSONL-specific
 
 ## Key Design Decisions
 
 - **Markdown is the source of truth.** Milvus is a derived index, rebuildable anytime from `.md` files.
 - **Composite chunk ID as PK.** `hash(source:startLine:endLine:contentHash:model)` — enables natural dedup without a separate cache.
-- **ONNX bge-m3 as ccplugin default.** The ccplugin hooks default to `onnx` provider (bge-m3, CPU, no API key). The Python API still defaults to `openai`.
+- **ONNX bge-m3 as plugin default.** The Claude Code plugin hooks default to `onnx` provider (bge-m3, CPU, no API key). The Python API still defaults to `openai`.
 - **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them.
 - **Remote Milvus `query()` requires a filter.** Use `chunk_hash != ""` as a "match all" filter when no filter is provided (Milvus Lite doesn't enforce this, but Milvus Server does).
 
@@ -107,7 +107,7 @@ When modifying hooks/skills, keep in mind:
 
 **Two independent version numbers:**
 - **memsearch** (PyPI library): version in `pyproject.toml` (e.g. `0.1.13`)
-- **ccplugin** (Claude Code plugin): version in `ccplugin/.claude-plugin/plugin.json` (e.g. `0.2.0`)
+- **Claude Code plugin**: version in `plugins/claude-code/.claude-plugin/plugin.json` (e.g. `0.2.0`)
 
 They evolve independently — bump only the one that changed. If both changed, bump both.
 
@@ -118,13 +118,13 @@ They evolve independently — bump only the one that changed. If both changed, b
 4. Push the tag: `git push --tags`
 5. GitHub Actions (`release.yml`) automatically builds and publishes to PyPI
 
-**ccplugin versioning:**
-- Bump `version` in `ccplugin/.claude-plugin/plugin.json` when hooks, skills, or plugin config change
-- No automated publish — users install ccplugin by cloning or symlinking
+**Claude Code plugin versioning:**
+- Bump `version` in `plugins/claude-code/.claude-plugin/plugin.json` when hooks, skills, or plugin config change
+- No automated publish — users install the plugin by cloning or symlinking
 
 ## Project Conventions
 
 - Uses `uv` + `pyproject.toml` for dependency management (not pip).
-- Optional deps via extras: `[google]`, `[voyage]`, `[ollama]`, `[local]`, `[onnx]`, `[all]`. ccplugin uses `memsearch[onnx]` for zero-config ONNX embedding.
+- Optional deps via extras: `[google]`, `[voyage]`, `[ollama]`, `[local]`, `[onnx]`, `[all]`. The Claude Code plugin uses `memsearch[onnx]` for zero-config ONNX embedding.
 - Docs at `docs/` use mkdocs-material. The `site/` directory is build output — do not commit.
 - Always use `uv run python -m pytest` instead of `uv run pytest` to avoid system Python pytest conflicts.

@@ -89,12 +89,11 @@ src/memsearch/          # Core Python library
 ├── config.py           # TOML config system
 ├── watcher.py          # File watcher
 ├── compact.py          # LLM summarization
-└── transcript.py       # JSONL transcript parser
-
-ccplugin/               # Claude Code plugin (shell hooks)
+plugins/claude-code/    # Claude Code plugin (shell hooks)
 ├── .claude-plugin/     # Plugin manifest
 ├── hooks/              # 4 lifecycle hooks + shared utilities
 ├── scripts/            # Helper scripts (derive-collection.sh)
+├── transcript.py       # JSONL transcript parser
 └── skills/             # Memory recall skill
 
 tests/                  # pytest test suite
@@ -113,7 +112,7 @@ pip install memsearch
 export OPENAI_API_KEY="sk-..."
 
 # 3. Launch Claude Code with the local plugin
-claude --plugin-dir ./ccplugin
+claude --plugin-dir ./plugins/claude-code
 ```
 
 Edits to hook scripts take effect on the next hook trigger — no restart needed (except `SessionStart`, which fires once per session).
@@ -122,10 +121,10 @@ Edits to hook scripts take effect on the next hook trigger — no restart needed
 
 ```bash
 # Simulate a user prompt
-echo '{"prompts":[{"content":"what caching solution did we pick?"}]}' | bash ccplugin/hooks/user-prompt-submit.sh
+echo '{"prompts":[{"content":"what caching solution did we pick?"}]}' | bash plugins/claude-code/hooks/user-prompt-submit.sh
 
 # Test session start
-echo '{}' | bash ccplugin/hooks/session-start.sh
+echo '{}' | bash plugins/claude-code/hooks/session-start.sh
 ```
 
 Hooks read JSON from stdin and write JSON to stdout. Check that the output contains valid `additionalContext` fields.

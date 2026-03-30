@@ -10,7 +10,7 @@ Built on Claude Code's native [Hooks](https://docs.anthropic.com/en/docs/claude-
 
 ### What's New
 
-**Default embedding changed to ONNX bge-m3 int8** — the plugin now runs entirely locally with no API key and no GPU required. Quality is comparable to OpenAI `text-embedding-3-small` (only ~1% lower on our benchmark). Existing users who want to switch: run `memsearch config set embedding.provider onnx && memsearch index --force` to re-index. See the [evaluation README](evaluation/README.md) for detailed benchmark results and rationale.
+**Default embedding changed to ONNX bge-m3 int8** — the plugin now runs entirely locally with no API key and no GPU required. Quality is comparable to OpenAI `text-embedding-3-small` (only ~1% lower on our benchmark). Existing users who want to switch: run `memsearch config set embedding.provider onnx && memsearch index --force` to re-index. See the [evaluation README](../../evaluation/README.md) for detailed benchmark results and rationale.
 
 ### How the Pieces Fit Together
 
@@ -24,7 +24,7 @@ graph LR
         CLI["CLI commands:<br/>search · index · watch<br/>expand · transcript · config"]
     end
 
-    subgraph "ccplugin (Claude Code Plugin)"
+    subgraph "plugins/claude-code (Claude Code Plugin)"
         HOOKS["Shell hooks:<br/>SessionStart · UserPromptSubmit<br/>Stop · SessionEnd"]
         SKILL["Skill:<br/>memory-recall (context: fork)"]
     end
@@ -97,7 +97,7 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 # 3. Start a new session — Claude automatically remembers!
 ```
 
-> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model — no API key required, runs locally on CPU. This model was selected through a [comprehensive benchmark](evaluation/README.md) of 12+ models on bilingual memory retrieval. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
+> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model — no API key required, runs locally on CPU. This model was selected through a [comprehensive benchmark](../../evaluation/README.md) of 12+ models on bilingual memory retrieval. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
 
 ---
 
@@ -421,7 +421,7 @@ memsearch solves this with **skill-based semantic search and progressive disclos
 ## Plugin Files
 
 ```
-ccplugin/
+plugins/claude-code/
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin manifest (name, version, description)
 ├── hooks/
@@ -465,7 +465,7 @@ For contributors or if you want to modify the plugin locally:
 ```bash
 git clone https://github.com/zilliztech/memsearch.git
 cd memsearch && uv sync
-claude --plugin-dir ./ccplugin
+claude --plugin-dir ./plugins/claude-code
 ```
 
 ---
@@ -540,7 +540,7 @@ The plugin checks for the required API key at session start. If missing, memory 
 
 | Provider | Required environment variable |
 |----------|------------------------------|
-| `onnx` (ccplugin default) | None (local, CPU) |
+| `onnx` (plugin default) | None (local, CPU) |
 | `openai` (Python API default) | `OPENAI_API_KEY` |
 | `google` | `GOOGLE_API_KEY` |
 | `voyage` | `VOYAGE_API_KEY` |
@@ -550,7 +550,7 @@ The plugin checks for the required API key at session start. If missing, memory 
 **Fix:** export the key for your configured provider:
 
 ```bash
-# The ccplugin defaults to onnx (no key needed). If you use OpenAI:
+# The plugin defaults to onnx (no key needed). If you use OpenAI:
 export OPENAI_API_KEY="sk-..."
 memsearch config set embedding.provider openai
 ```

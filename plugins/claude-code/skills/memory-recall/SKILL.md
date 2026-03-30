@@ -27,7 +27,7 @@ Search for memories relevant to: $ARGUMENTS
 
 4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (JSONL path + turn UUID), and the original conversation seems critical, run:
    ```
-   memsearch transcript <jsonl_path> --turn <uuid> --context 3
+   python3 ${CLAUDE_PLUGIN_ROOT}/transcript.py <jsonl_path> --turn <uuid> --context 3
    ```
    to retrieve the original conversation turns.
 

@@ -1,10 +1,10 @@
 # Embedding Provider Evaluation
 
-This document describes the evaluation methodology and results used to select the default embedding provider for the memsearch ccplugin.
+This document describes the evaluation methodology and results used to select the default embedding provider for the memsearch Claude Code plugin.
 
 ## Goal
 
-Benchmark a wide range of embedding models — from cloud APIs to local open-source options — to find a lightweight, practical default for the memsearch ccplugin. The ideal model should perform well on both Chinese and English memory retrieval, run locally without an API key or GPU, and have a small dependency footprint.
+Benchmark a wide range of embedding models — from cloud APIs to local open-source options — to find a lightweight, practical default for the memsearch Claude Code plugin. The ideal model should perform well on both Chinese and English memory retrieval, run locally without an API key or GPU, and have a small dependency footprint.
 
 ## Dataset
 
@@ -50,7 +50,7 @@ For each model, retrieval was evaluated on:
 - **MRR** (Mean Reciprocal Rank): average position of first correct result
 - **NDCG@10**: normalized discounted cumulative gain
 
-For the ccplugin use case (user typically sees top 3-5 results), **Recall@5** is the primary metric, with **MRR** as secondary.
+For the Claude Code plugin use case (user typically sees top 3-5 results), **Recall@5** is the primary metric, with **MRR** as secondary.
 
 ## Results
 
@@ -91,7 +91,7 @@ Ranked by Chinese Recall@5 (primary metric):
 
 ## Why We Switched to ONNX bge-m3
 
-The previous ccplugin default was OpenAI `text-embedding-3-small`, which required users to obtain and configure an API key before the plugin would work. This created friction for new users and incurred per-token API costs. The switch to ONNX bge-m3 int8 was motivated by:
+The previous Claude Code plugin default was OpenAI `text-embedding-3-small`, which required users to obtain and configure an API key before the plugin would work. This created friction for new users and incurred per-token API costs. The switch to ONNX bge-m3 int8 was motivated by:
 
 - **No API key required** — zero-config experience, the plugin works immediately after installation
 - **Runs entirely on CPU** — no GPU needed, accessible to all development machines
@@ -102,7 +102,7 @@ The previous ccplugin default was OpenAI `text-embedding-3-small`, which require
 
 ## Conclusion
 
-Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the best practical choice and is adopted as the ccplugin default embedding model:
+Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the best practical choice and is adopted as the Claude Code plugin default embedding model:
 
 - **Top bilingual quality** among all local models (zh R@5=0.776, en R@5=0.814) — even outperforms OpenAI `text-embedding-3-small`
 - **Minimal quality trade-off** — only 1.1% loss vs full PyTorch fp32, while model size drops from 2.2GB to 558MB
@@ -113,12 +113,12 @@ Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the 
 ### Backward Compatibility
 
 - **Python API users**: not affected. The Python API default remains `openai` / `text-embedding-3-small`
-- **ccplugin users**: the plugin hooks now default to `onnx` provider. Users with existing memory indexed by OpenAI embeddings will need to re-index (`memsearch index --force`) after switching, since the embedding dimensions differ (1024 vs 1536)
+- **Claude Code plugin users**: the plugin hooks now default to `onnx` provider. Users with existing memory indexed by OpenAI embeddings will need to re-index (`memsearch index --force`) after switching, since the embedding dimensions differ (1024 vs 1536)
 - **Explicit config**: users who have set `embedding.provider` in `.memsearch.toml` or `~/.memsearch/config.toml` are unaffected
 
 ## Upgrade Guide
 
-For existing ccplugin users who want to switch from OpenAI to the new ONNX default:
+For existing Claude Code plugin users who want to switch from OpenAI to the new ONNX default:
 
 ```bash
 # Switch provider to ONNX

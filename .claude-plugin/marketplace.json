@@ -13,7 +13,7 @@
       "name": "memsearch",
       "description": "Automatic semantic memory for Claude Code — remembers what you worked on across sessions",
       "version": "0.1.2",
-      "source": "./ccplugin",
+      "source": "./plugins/claude-code",
       "category": "productivity",
       "author": {
         "name": "Zilliz"
