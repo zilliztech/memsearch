@@ -31,13 +31,13 @@ Switch when you need: hybrid search (keyword + semantic), cross-platform memory 
 
 ## Per-Agent Isolation
 
-OpenClaw supports multiple agents (e.g., `main`, `work`, custom agents). memsearch provides **automatic per-agent memory isolation** -- no configuration needed:
+OpenClaw supports multiple agents (e.g., `main`, `work`, custom agents). memsearch provides **automatic per-agent memory isolation** based on workspace directories:
 
-- **Separate memory directories**: `~/.openclaw/workspace/.memsearch/memory/` for main, `~/.openclaw/workspace-work/.memsearch/memory/` for work agent
-- **Separate Milvus collections**: `ms_openclaw_main`, `ms_openclaw_work`
-- **Context-driven**: The `agentId` from OpenClaw's tool factory context drives isolation automatically
+- **Separate memory directories**: each agent's workspace has its own `.memsearch/memory/`
+- **Directory-based collections**: collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, and OpenCode (`ms_<basename>_<hash>`)
+- **Cross-platform sharing**: when an agent's workspace points to the same project directory used by other platforms, memories are automatically shared
 
-This means the main agent's debugging notes don't pollute the work agent's project context, and vice versa. Each agent builds its own independent memory timeline.
+This means agents with different workspaces have isolated memories, while agents pointing to the same project directory share memories -- even across platforms.
 
 ---
 

@@ -141,15 +141,15 @@ If no memory files exist yet, a hint is injected instead: `"You have N past memo
 
 ## Multi-Agent Isolation
 
-OpenClaw supports multiple agents (e.g., `main`, `work`). The plugin provides automatic per-agent isolation:
+OpenClaw supports multiple agents (e.g., `main`, `work`). The plugin provides automatic isolation based on workspace directories:
 
 | Agent | Memory Directory | Collection |
 |-------|-----------------|------------|
-| `main` | `~/.openclaw/workspace/.memsearch/memory/` | `ms_openclaw_main` |
-| `work` | `~/.openclaw/workspace-work/.memsearch/memory/` | `ms_openclaw_work` |
-| custom | `~/.openclaw/workspace-<id>/.memsearch/memory/` | `ms_openclaw_<id>` |
+| `main` | `~/.openclaw/workspace/.memsearch/memory/` | `ms_workspace_<hash>` |
+| `work` | `~/.openclaw/workspace-work/.memsearch/memory/` | `ms_workspace_work_<hash>` |
+| custom | `<workspace-dir>/.memsearch/memory/` | `ms_<basename>_<hash>` |
 
-The isolation is driven by `ctx.agentId` and `ctx.workspaceDir` from OpenClaw's tool factory context. No configuration is needed -- the plugin detects the active agent and routes all operations (capture, search, indexing) to the correct directory and collection.
+Collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, and OpenCode. This means when an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
 
 ---
 

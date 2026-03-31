@@ -84,7 +84,7 @@ Each OpenClaw agent stores memory independently under its own workspace:
 ~/.openclaw/workspace-work/.memsearch/memory/      ← work agent
 ```
 
-Different agents have separate Milvus collections (`ms_openclaw_main`, `ms_openclaw_work`), so memories never mix. The plugin reads `agentId` from the tool factory context and routes accordingly.
+Collection names are derived from the workspace path (same algorithm as Claude Code, Codex, and OpenCode), so agents with different workspaces have isolated memories. When an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
 
 ## Configuration
 

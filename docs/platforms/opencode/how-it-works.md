@@ -85,7 +85,7 @@ Step by step:
 2. **Group into turns** -- pairs consecutive `user` + `assistant` messages into turns
 3. **Extract text** -- reads message `parts` (text content, tool calls with names/paths) into a readable format
 4. **Summarize** -- calls `opencode run` with the turn text and a third-person summarization prompt
-5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID source:opencode-sqlite -->` anchors
+5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID db:PATH -->` anchors
 6. **Persist state** -- writes `last_msg_time` to `.memsearch/.last_msg_time` so restarts don't re-capture
 7. **Re-index** -- triggers `memsearch index` in the background
 
@@ -157,14 +157,14 @@ your-project/.memsearch/memory/
 ## Session 14:30
 
 ### 14:30
-<!-- session:ses_abc123 source:opencode-sqlite -->
+<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
 - User asked about authentication flow in the Express API
 - OpenCode explained the OAuth2 implementation in auth.ts
 - OpenCode modified token refresh logic in refresh.ts to handle expired tokens
 - Added error handling for revoked refresh tokens
 
 ### 15:15
-<!-- session:ses_abc123 source:opencode-sqlite -->
+<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
 - User reported 500 error on /api/users endpoint
 - OpenCode traced the issue to a missing null check in userController.ts
 - OpenCode added optional chaining and a 404 response for missing users
@@ -173,14 +173,14 @@ your-project/.memsearch/memory/
 ## Session 17:00
 
 ### 17:00
-<!-- session:ses_def456 source:opencode-sqlite -->
+<!-- session:ses_def456 db:~/.local/share/opencode/opencode.db -->
 - User asked to refactor the middleware chain for better error handling
 - OpenCode created a centralized error handler in middleware/errorHandler.ts
 - Removed try/catch blocks from individual route handlers
 - Added structured error logging with request ID correlation
 ```
 
-The `<!-- session:... source:opencode-sqlite -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database.
+The `<!-- session:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database.
 
 ---
 

@@ -74,7 +74,7 @@ graph TD
 **L2 -- memory_get:** LLM calls `memory_get("a1b2c3...")`:
 ```markdown
 ### 15:45
-<!-- session:ses_xyz789 source:opencode-sqlite -->
+<!-- session:ses_xyz789 db:~/.local/share/opencode/opencode.db -->
 - User reported Alembic migration failing on user_preferences table
 - OpenCode found a missing nullable=True on the email column
 - Fixed by adding server_default="" to the column definition

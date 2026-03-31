@@ -76,11 +76,11 @@ All plugins write to the same markdown format:
 
 ### Cross-Platform Memory Sharing
 
-Since all plugins write standard markdown and use the same Milvus index, memories are portable:
+All plugins write standard markdown and derive collection names from the project directory using the same algorithm. Memories are automatically shared across platforms -- no manual configuration needed:
 
 - Memories written in **Claude Code** are searchable from **Codex**, **OpenCode**, or **OpenClaw**
-- Point multiple plugins at the same `milvus_uri` and `collection` for shared access
-- Or use per-project collections for isolation (the default)
+- Same project directory = same collection name = shared memories
+- Different project directories are naturally isolated
 
 ---
 
