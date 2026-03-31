@@ -66,12 +66,18 @@ class WatchConfig:
 
 
 @dataclass
+class RerankerConfig:
+    model: str = ""  # empty = disabled; set to model ID to enable
+
+
+@dataclass
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     compact: CompactConfig = field(default_factory=CompactConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
+    reranker: RerankerConfig = field(default_factory=RerankerConfig)
 
 
 # -- Section name → dataclass mapping for typed reconstruction --
@@ -81,6 +87,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "compact": CompactConfig,
     "chunking": ChunkingConfig,
     "watch": WatchConfig,
+    "reranker": RerankerConfig,
 }
 
 
