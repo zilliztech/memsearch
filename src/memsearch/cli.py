@@ -163,12 +163,14 @@ def index(
 @cli.command()
 @click.argument("query")
 @click.option("--top-k", "-k", default=None, type=int, help="Number of results.")
+@click.option("--source-prefix", default=None, type=click.Path(), help="Only search chunks whose source path starts with this prefix.")
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 def search(
     query: str,
     top_k: int | None,
+    source_prefix: str | None,
     provider: str | None,
     model: str | None,
     batch_size: int | None,
@@ -198,7 +200,7 @@ def search(
     )
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
-        results = _run(ms.search(query, top_k=top_k or 5))
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:
