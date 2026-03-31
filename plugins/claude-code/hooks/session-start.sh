@@ -80,9 +80,9 @@ if [ -n "$VERSION" ]; then
         || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$_MS_PATH" 2>/dev/null \
         || echo "$_MS_PATH")
       if [[ "$_MS_REAL" == *"uv/tools"* ]]; then
-        UPGRADE_CMD="uv tool upgrade memsearch"
+        UPGRADE_CMD="uv tool upgrade 'memsearch[onnx]'"
       else
-        UPGRADE_CMD="pip install --upgrade memsearch"
+        UPGRADE_CMD="pip install --upgrade 'memsearch[onnx]'"
       fi
     fi
     UPDATE_HINT=" | UPDATE: v${LATEST} available — run: ${UPGRADE_CMD}"

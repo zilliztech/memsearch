@@ -39,6 +39,16 @@ OpenClaw supports multiple agents (e.g., `main`, `work`, custom agents). memsear
 
 This means agents with different workspaces have isolated memories, while agents pointing to the same project directory share memories -- even across platforms.
 
+!!! tip "Cross-platform sharing with Claude Code / Codex / OpenCode"
+
+    To share memories with other platforms on the same project, set your agent's workspace to the project directory:
+
+    ```bash
+    openclaw agents add coder --workspace /path/to/your/project
+    ```
+
+    The collection name will automatically match other platforms working on the same directory.
+
 ---
 
 ## When Is This Useful?

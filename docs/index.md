@@ -27,15 +27,14 @@ Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-sum
 
 ### OpenClaw Plugin
 
-Native TypeScript plugin with `kind: memory`. Multi-agent isolation out of the box.
+Native TypeScript plugin with `kind: memory`. Per-workspace memory isolation out of the box.
 
 ```bash
-git clone https://github.com/zilliztech/memsearch.git
-openclaw plugins install ./memsearch/plugins/openclaw
+openclaw plugins install clawhub:memsearch
 openclaw gateway restart
 ```
 
-Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-agent isolation -- each agent gets its own memory directory and Milvus collection.
+Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-workspace isolation. Point an agent's workspace at a project directory to share memories with other platforms automatically.
 
 [:octicons-arrow-right-24: OpenClaw Plugin docs](platforms/openclaw/index.md){ .md-button .md-button--primary }
 
@@ -60,9 +59,9 @@ codex --yolo
 
 [:octicons-arrow-right-24: Codex CLI Plugin docs](platforms/codex/index.md){ .md-button }
 
-### Cross-Platform Memory Sharing
+### One Memory, All Platforms
 
-All platforms share the same markdown memory format and Milvus backend -- memories written by one agent are searchable from any other.
+All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.
 
 | | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) |
 |---|:---:|:---:|:---:|:---:|
