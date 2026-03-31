@@ -281,7 +281,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
         description:
           "Retrieve the original conversation from a past OpenCode session. " +
           "Use after memory_get when the expanded result contains a session anchor " +
-          "(<!-- session:ID source:opencode-sqlite -->). Returns the formatted " +
+          "(<!-- session:ID db:PATH -->). Returns the formatted " +
           "dialogue with [Human] and [Assistant] labels.",
         args: {
           session_id: tool.schema.string().describe("The session ID from the anchor comment"),

@@ -208,7 +208,7 @@ def _extract_msg_text(conn, msg_id, msg_json):
     return "\n".join(text_parts)
 
 
-def write_capture(memory_dir, turn_text, session_id):
+def write_capture(memory_dir, turn_text, session_id, db_path=""):
     """Write a captured turn to the daily memory file."""
     os.makedirs(memory_dir, exist_ok=True)
 
@@ -220,7 +220,7 @@ def write_capture(memory_dir, turn_text, session_id):
         with open(memory_file, "w") as f:
             f.write(f"# {today}\n\n## Session {now}\n\n")
 
-    anchor = f"<!-- session:{session_id} source:opencode-sqlite -->\n" if session_id else ""
+    anchor = f"<!-- session:{session_id} db:{db_path} -->\n" if session_id else ""
     entry = f"### {now}\n{anchor}{turn_text}\n\n"
 
     with open(memory_file, "a") as f:
@@ -280,7 +280,7 @@ def main():
                 if turn_text and len(turn_text) > 10:
                     # Summarize with LLM, fallback to raw text
                     summary = summarize_with_llm(turn_text, small_model)
-                    write_capture(memory_dir, summary if summary else turn_text, session_id)
+                    write_capture(memory_dir, summary if summary else turn_text, session_id, db_path)
                     if msg_time > last_msg_time:
                         last_msg_time = msg_time
                         try:

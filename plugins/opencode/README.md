@@ -114,7 +114,7 @@ Each file contains timestamped entries with bullet-point summaries:
 ## Session 14:30
 
 ### 14:30
-<!-- session:ses_abc123 source:opencode-sqlite -->
+<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
 - User asked about the authentication flow.
 - Assistant explained the OAuth2 implementation in auth.ts.
 - Assistant modified the token refresh logic in refresh.ts.

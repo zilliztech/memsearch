@@ -26,6 +26,7 @@ Parses the original session transcript to retrieve the raw dialogue.
 - Input: transcript_path from the anchor comment in memory_get results
 - Returns: formatted conversation with [Human]/[Assistant] labels and tool calls
 - Use for: "What exactly did I say?", "Show me the original conversation"
+- If the anchor format is unfamiliar (e.g. `rollout:`, `turn:`, `db:` instead of `transcript:`), try reading the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
 
 ## Decision guide
 
