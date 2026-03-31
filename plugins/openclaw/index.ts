@@ -307,13 +307,15 @@ export default {
 
     // Per-agent state — defaults updated on first tool call via factory ctx.
     // Memory lives under <workspace>/.memsearch/memory/ — co-located with
-    // AGENTS.md, IDENTITY.md, etc. Each agent has its own workspace so
-    // memory is naturally isolated without needing agentId in the path.
+    // AGENTS.md, IDENTITY.md, etc. Collection name is derived from the
+    // workspace path (same algorithm as Claude Code/Codex/OpenCode) so that
+    // memories are automatically shared when multiple platforms work on the
+    // same project directory.
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");  // default main workspace
     let memsearchDir = join(projectDir, ".memsearch");
     let memoryDir = join(memsearchDir, "memory");
-    let collectionName = "ms_openclaw_main";
+    let collectionName = deriveCollectionName(projectDir);
 
     /** Update agent context from tool factory ctx. Called on each tool invocation. */
     function updateAgentContext(ctx: any): void {
@@ -324,7 +326,7 @@ export default {
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
         memsearchDir = join(projectDir, ".memsearch");
         memoryDir = join(memsearchDir, "memory");
-        collectionName = `ms_openclaw_${agentId}`;
+        collectionName = deriveCollectionName(projectDir);
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, collection: ${collectionName}, dir: ${projectDir}`
         );
