@@ -18,8 +18,16 @@ for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
   [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
 done
 
-# Memory directory and memsearch state directory are project-scoped
-MEMSEARCH_DIR="${CLAUDE_PROJECT_DIR:-.}/.memsearch"
+# Memory directory and memsearch state directory are project-scoped.
+# Prefer git root to avoid .memsearch scattered in subdirectories when
+# CLAUDE_PROJECT_DIR is unset (child claude -p) or points to a subdir.
+_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+if [ -n "$_GIT_ROOT" ]; then
+  _PROJECT_DIR="$_GIT_ROOT"
+else
+  _PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+fi
+MEMSEARCH_DIR="$_PROJECT_DIR/.memsearch"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
 # Find memsearch binary: prefer PATH, fallback to uvx
@@ -37,7 +45,7 @@ _detect_memsearch
 MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
 
 # Derive per-project collection name from project directory
-COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || true)
+COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
 
 # --- JSON helpers (jq preferred, python3 fallback) ---
 

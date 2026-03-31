@@ -1,0 +1,3 @@
+# Force LF line endings for shell scripts — prevents CRLF issues
+# when Windows users clone and volume-mount into Linux containers.
+*.sh text eol=lf
