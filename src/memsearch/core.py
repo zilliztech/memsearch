@@ -201,6 +201,7 @@ class MemSearch:
         query: str,
         *,
         top_k: int = 10,
+        source_prefix: str | Path | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -210,6 +211,9 @@ class MemSearch:
             Natural-language query.
         top_k:
             Maximum results to return.
+        source_prefix:
+            Optional path prefix to scope results. Only chunks whose
+            ``source`` starts with this prefix are returned.
 
         Returns
         -------
@@ -217,9 +221,17 @@ class MemSearch:
             Each dict contains ``content``, ``source``, ``heading``,
             ``score``, and other metadata.
         """
+        filter_expr = ""
+        if source_prefix is not None:
+            prefix = str(Path(source_prefix).expanduser().resolve())
+            escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
+            filter_expr = f'source like "{escaped}%"'
+
         embeddings = await self._embedder.embed([query])
         fetch_k = top_k * 3 if self._reranker_model else top_k
-        results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k)
+        results = self._store.search(
+            embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr
+        )
         if self._reranker_model and results:
             from .reranker import rerank
 
