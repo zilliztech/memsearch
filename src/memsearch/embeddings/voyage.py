@@ -45,6 +45,9 @@ class VoyageEmbedding:
 
 
 _KNOWN_DIMENSIONS: dict[str, int] = {
+    "voyage-4-lite": 1024,
+    "voyage-4": 1024,
+    "voyage-4-large": 1024,
     "voyage-3-lite": 512,
     "voyage-3": 1024,
     "voyage-code-3": 1024,

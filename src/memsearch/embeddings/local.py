@@ -10,6 +10,17 @@ import asyncio
 from functools import partial
 
 
+def _detect_device() -> str:
+    """Detect best available device: CUDA > MPS > CPU."""
+    import torch
+
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 class LocalEmbedding:
     """sentence-transformers embedding provider."""
 
@@ -33,8 +44,9 @@ class LocalEmbedding:
             sys.stderr = io.StringIO()
             from sentence_transformers import SentenceTransformer
 
-            # trust_remote_code needed for models with custom code (e.g. jina-embeddings-v3)
-            self._st_model = SentenceTransformer(model, trust_remote_code=True)
+            self._st_model = SentenceTransformer(
+                model, device=_detect_device(), trust_remote_code=True
+            )
         finally:
             sys.stderr = old_stderr
             if prev_tqdm is None:

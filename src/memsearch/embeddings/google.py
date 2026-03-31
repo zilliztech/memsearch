@@ -15,6 +15,8 @@ import os
 # default for most use cases (Matryoshka truncation, saves storage).
 _KNOWN_DIMENSIONS: dict[str, int] = {
     "gemini-embedding-001": 768,
+    "gemini-embedding-2-preview": 768,
+    "text-embedding-005": 768,
     "text-embedding-004": 768,
 }
 
