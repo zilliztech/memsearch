@@ -35,6 +35,19 @@ def test_scan_ignores_hidden(tmp_path: Path):
     assert ".dotfile.md" not in paths
 
 
+def test_scan_includes_hidden_when_not_ignored(tmp_path: Path):
+    hidden_dir = tmp_path / ".hidden"
+    hidden_dir.mkdir()
+    (hidden_dir / "secret.md").write_text("# secret")
+    (tmp_path / ".dotfile.md").write_text("# dot")
+
+    results = scan_paths([tmp_path], ignore_hidden=False)
+    paths = {r.path.name for r in results}
+
+    assert "secret.md" in paths
+    assert ".dotfile.md" in paths
+
+
 def test_scan_single_file(tmp_path: Path):
     f = tmp_path / "single.md"
     f.write_text("# Single")
