@@ -204,7 +204,7 @@ def _split_large_section(
         # Single line exceeds max_size — split within the line
         if len(text) >= max_size and len(current_lines) == 1:
             sub_chunks = _split_long_text(text, max_size)
-            for j, part in enumerate(sub_chunks):
+            for part in sub_chunks:
                 _emit(
                     part.strip(),
                     base_line + current_start + 1,
@@ -235,7 +235,7 @@ def _split_large_section(
 
 
 # Sentence-ending punctuation for splitting long text without line breaks.
-_SENTENCE_END_RE = re.compile(r"[。！？.!?]\s*")
+_SENTENCE_END_RE = re.compile(r"[。\uFF01\uFF1F.!?]\s*")
 
 
 def _split_long_text(text: str, max_size: int) -> list[str]:
