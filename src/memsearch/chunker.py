@@ -152,35 +152,110 @@ def _split_large_section(
     max_size: int,
     overlap: int,
 ) -> list[Chunk]:
-    """Split a large section into smaller chunks at paragraph boundaries."""
+    """Split a large section into smaller chunks.
+
+    Split priority: paragraph boundary > line boundary > sentence/char boundary.
+    """
     chunks: list[Chunk] = []
     current_lines: list[str] = []
     current_start = 0
+
+    def _emit(content: str, start_line: int, end_line: int) -> None:
+        if content:
+            chunks.append(
+                Chunk(
+                    content=content,
+                    source=source,
+                    heading=heading,
+                    heading_level=heading_level,
+                    start_line=start_line,
+                    end_line=end_line,
+                )
+            )
 
     for i, line in enumerate(lines):
         current_lines.append(line)
         text = "\n".join(current_lines)
 
-        # Check if we hit the size limit at a paragraph boundary
         is_paragraph_break = line.strip() == "" and i + 1 < len(lines)
         is_last_line = i == len(lines) - 1
 
-        if (len(text) >= max_size and is_paragraph_break) or is_last_line:
-            content = text.strip()
-            if content:
-                chunks.append(
-                    Chunk(
-                        content=content,
-                        source=source,
-                        heading=heading,
-                        heading_level=heading_level,
-                        start_line=base_line + current_start + 1,
-                        end_line=base_line + i + 1,
-                    )
-                )
-            # Carry overlap lines forward
+        # Preferred: split at paragraph boundary
+        if len(text) >= max_size and is_paragraph_break:
+            _emit(text.strip(), base_line + current_start + 1, base_line + i + 1)
             overlap_start = max(0, len(current_lines) - overlap)
-            current_lines = current_lines[overlap_start:] if not is_last_line else []
+            current_lines = current_lines[overlap_start:]
             current_start = i + 1 - len(current_lines)
+            continue
+
+        # Forced line-boundary split: no paragraph break found but text is
+        # too large.  Roll back the current line so the previous lines form
+        # a chunk and the current line starts the next one.
+        if len(text) >= max_size and not is_paragraph_break and len(current_lines) > 1:
+            current_lines.pop()
+            content = "\n".join(current_lines).strip()
+            _emit(content, base_line + current_start + 1, base_line + i)
+            overlap_start = max(0, len(current_lines) - overlap)
+            current_lines = current_lines[overlap_start:]
+            current_lines.append(line)  # re-add the rolled-back line
+            current_start = i - len(current_lines) + 1
+            continue
+
+        # Single line exceeds max_size — split within the line
+        if len(text) >= max_size and len(current_lines) == 1:
+            sub_chunks = _split_long_text(text, max_size)
+            for j, part in enumerate(sub_chunks):
+                _emit(
+                    part.strip(),
+                    base_line + current_start + 1,
+                    base_line + i + 1,
+                )
+            current_lines = []
+            current_start = i + 1
+            continue
+
+        if is_last_line:
+            _emit(text.strip(), base_line + current_start + 1, base_line + i + 1)
+            current_lines = []
+
+    # Flush any remaining content (e.g. a rolled-back line from the last
+    # iteration that never got a chance to be emitted).
+    if current_lines:
+        remaining = "\n".join(current_lines).strip()
+        if remaining:
+            end_line = base_line + len(lines)
+            start_line = base_line + current_start + 1
+            if len(remaining) > max_size:
+                for part in _split_long_text(remaining, max_size):
+                    _emit(part.strip(), start_line, end_line)
+            else:
+                _emit(remaining, start_line, end_line)
 
     return chunks
+
+
+# Sentence-ending punctuation for splitting long text without line breaks.
+_SENTENCE_END_RE = re.compile(r"[。！？.!?]\s*")
+
+
+def _split_long_text(text: str, max_size: int) -> list[str]:
+    """Split a long string that has no line breaks into pieces ≤ *max_size*.
+
+    Prefers splitting at sentence boundaries; falls back to character position.
+    """
+    parts: list[str] = []
+    while len(text) > max_size:
+        # Look for the last sentence boundary within max_size
+        best = -1
+        for m in _SENTENCE_END_RE.finditer(text, 0, max_size):
+            best = m.end()
+        if best > 0:
+            parts.append(text[:best])
+            text = text[best:]
+        else:
+            # No sentence boundary found — hard split at max_size
+            parts.append(text[:max_size])
+            text = text[max_size:]
+    if text:
+        parts.append(text)
+    return parts
