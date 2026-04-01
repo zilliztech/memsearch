@@ -233,3 +233,32 @@ def test_compact_config_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.Mo
     cfg = resolve_config()
     assert get_config_value("compact.base_url", cfg) == "https://custom-llm.example.com"
     assert get_config_value("compact.api_key", cfg) == "sk-custom-123"
+
+
+def test_project_config_overrides_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """resolve_config should let project TOML override global TOML."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+
+    save_config({"milvus": {"collection": "global_collection"}}, global_cfg)
+    save_config({"milvus": {"collection": "project_collection"}}, project_cfg)
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    cfg = resolve_config()
+    assert cfg.milvus.collection == "project_collection"
+
+
+def test_set_config_value_project_writes_project_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """set_config_value(..., project=True) should persist into PROJECT_CONFIG_PATH."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    set_config_value("milvus.collection", "project_collection", project=True)
+
+    assert load_config_file(global_cfg) == {}
+    assert load_config_file(project_cfg)["milvus"]["collection"] == "project_collection"
