@@ -23,7 +23,9 @@
   <a href="https://x.com/zilliz_universe"><img src="https://img.shields.io/badge/follow-%40zilliz__universe-000000?style=flat-square&logo=x&logoColor=white" alt="X (Twitter)"></a>
 </p>
 
-https://github.com/user-attachments/assets/31de76cc-81a8-4462-a47d-bd9c394d33e3
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/427b7152-bc16-408c-a8b0-59a2b05fd1e0" alt="memsearch demo" width="800">
+</p>
 
 ### Why memsearch?
 
