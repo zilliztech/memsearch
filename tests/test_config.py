@@ -122,6 +122,24 @@ def test_get_config_value_invalid_key():
         get_config_value("nonexistent.key", cfg)
 
 
+def test_set_config_value_invalid_section(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """set_config_value should reject unknown config sections."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+
+    with pytest.raises(KeyError, match="Unknown config section"):
+        set_config_value("unknown.uri", "value")
+
+
+def test_set_config_value_invalid_field(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """set_config_value should reject unknown fields inside valid sections."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+
+    with pytest.raises(KeyError, match="Unknown config field"):
+        set_config_value("milvus.unknown", "value")
+
+
 def test_save_and_load_roundtrip(tmp_path: Path):
     """save_config + load_config_file should round-trip a dict."""
     data = {"milvus": {"uri": "http://test:19530"}, "embedding": {"provider": "local"}}
