@@ -56,6 +56,23 @@ def test_large_section_splitting():
         assert c.heading == "Big Section"
 
 
+def test_large_section_flushes_rolled_back_tail_line() -> None:
+    """The final rolled-back line should still be emitted after the loop."""
+    md = "# Big Section\n\n" + "\n".join(
+        [
+            "alpha " * 18,
+            "beta " * 18,
+            "tail " * 18,
+        ]
+    )
+
+    chunks = chunk_markdown(md, source="test.md", max_chunk_size=120, overlap_lines=0)
+
+    assert len(chunks) >= 2
+    assert any("tail" in c.content for c in chunks)
+    assert chunks[-1].end_line >= chunks[-1].start_line
+
+
 def test_source_and_lines():
     md = "# A\n\nline1\n\n# B\n\nline2"
     chunks = chunk_markdown(md, source="doc.md")
