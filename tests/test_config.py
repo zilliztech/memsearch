@@ -10,6 +10,7 @@ import tomli_w
 from memsearch.config import (
     EmbeddingConfig,
     MemSearchConfig,
+    _resolve_env_refs_in_dict,
     deep_merge,
     get_config_value,
     load_config_file,
@@ -155,6 +156,36 @@ def test_resolve_env_ref_missing_var():
     os.environ.pop("NONEXISTENT_MEMSEARCH_VAR", None)
     with pytest.raises(KeyError, match="NONEXISTENT_MEMSEARCH_VAR"):
         resolve_env_ref("env:NONEXISTENT_MEMSEARCH_VAR")
+
+
+def test_resolve_env_refs_in_dict_resolves_nested_strings_only(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Nested env refs should resolve while non-string values pass through."""
+    monkeypatch.setenv("INNER_KEY", "resolved-inner")
+    monkeypatch.setenv("TOP_KEY", "resolved-top")
+
+    resolved = _resolve_env_refs_in_dict(
+        {
+            "embedding": {
+                "api_key": "env:INNER_KEY",
+                "batch_size": 64,
+            },
+            "compact": {"api_key": "env:TOP_KEY"},
+            "enabled": True,
+            "retries": 3,
+        }
+    )
+
+    assert resolved == {
+        "embedding": {
+            "api_key": "resolved-inner",
+            "batch_size": 64,
+        },
+        "compact": {"api_key": "resolved-top"},
+        "enabled": True,
+        "retries": 3,
+    }
 
 
 def test_resolve_env_refs_in_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
