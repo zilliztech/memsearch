@@ -131,6 +131,37 @@ def test_save_and_load_roundtrip(tmp_path: Path):
     assert loaded == data
 
 
+def test_save_config_expands_user_in_string_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """save_config should expand '~' when given a string path."""
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    path = "~/.memsearch/test-config.toml"
+    data = {"embedding": {"provider": "google"}}
+    save_config(data, path)
+
+    saved_path = fake_home / ".memsearch" / "test-config.toml"
+    assert saved_path.is_file()
+    assert load_config_file(saved_path) == data
+
+
+def test_load_config_file_expands_user_in_string_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """load_config_file should expand '~' when given a string path."""
+    fake_home = tmp_path / "home"
+    config_dir = fake_home / ".memsearch"
+    config_dir.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    data = {"milvus": {"collection": "from-home"}}
+    config_path = config_dir / "test-config.toml"
+    with open(config_path, "wb") as f:
+        tomli_w.dump(data, f)
+
+    loaded = load_config_file("~/.memsearch/test-config.toml")
+    assert loaded == data
+
+
 # -- env: resolver tests --
 
 
