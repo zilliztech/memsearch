@@ -113,3 +113,14 @@ def test_clean_content_collapses_blank_lines():
     assert "\n\n\n" not in cleaned
     assert "Line one." in cleaned
     assert "Line two." in cleaned
+
+
+def test_clean_content_handles_adjacent_html_comments() -> None:
+    """Back-to-back HTML comments should not leave comment holes behind."""
+    text = "Header\n<!-- first comment -->\n<!-- second comment -->\n\nBody text"
+
+    cleaned = clean_content_for_embedding(text)
+
+    assert "first comment" not in cleaned
+    assert "second comment" not in cleaned
+    assert cleaned == "Header\n\nBody text"
