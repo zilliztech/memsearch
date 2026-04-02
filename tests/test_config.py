@@ -70,6 +70,28 @@ def test_deep_merge_none_skipped():
     assert merged["a"]["x"] == 1
 
 
+def test_deep_merge_keeps_empty_string_overrides():
+    """deep_merge should preserve explicit empty-string overrides."""
+    base = {
+        "embedding": {
+            "provider": "openai",
+            "model": "text-embedding-3-small",
+            "api_key": "secret",
+        }
+    }
+    override = {
+        "embedding": {
+            "model": "",
+            "api_key": "",
+        }
+    }
+    merged = deep_merge(base, override)
+
+    assert merged["embedding"]["provider"] == "openai"
+    assert merged["embedding"]["model"] == ""
+    assert merged["embedding"]["api_key"] == ""
+
+
 def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """resolve_config should layer: defaults < toml < cli."""
     # Write a "global" config
