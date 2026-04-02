@@ -115,6 +115,48 @@ def test_set_config_value_int_conversion(tmp_path: Path, monkeypatch: pytest.Mon
     assert isinstance(data["chunking"]["max_chunk_size"], int)
 
 
+def test_set_config_value_writes_to_project_config_when_requested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """project=True should write into the project-scoped config path."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    set_config_value("milvus.collection", "project-col", project=True)
+
+    assert load_config_file(global_cfg) == {}
+    assert load_config_file(project_cfg)["milvus"]["collection"] == "project-col"
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected_error", "match"),
+    [
+        ("milvus", "x", ValueError, "Key must be section\\.field"),
+        ("bad.uri", "x", KeyError, "Unknown config section: bad"),
+        (
+            "milvus.not_a_field",
+            "x",
+            KeyError,
+            "Unknown config field: not_a_field in section milvus",
+        ),
+    ],
+)
+def test_set_config_value_rejects_invalid_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    key: str,
+    value: str,
+    expected_error: type[Exception],
+    match: str,
+):
+    """set_config_value should reject malformed/unknown dotted keys."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+
+    with pytest.raises(expected_error, match=match):
+        set_config_value(key, value)
+
+
 def test_get_config_value_invalid_key():
     """get_config_value should raise KeyError for unknown keys."""
     cfg = MemSearchConfig()
