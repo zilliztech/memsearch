@@ -10,6 +10,7 @@ import tomli_w
 from memsearch.config import (
     EmbeddingConfig,
     MemSearchConfig,
+    _dict_to_config,
     deep_merge,
     get_config_value,
     load_config_file,
@@ -233,3 +234,38 @@ def test_compact_config_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.Mo
     cfg = resolve_config()
     assert get_config_value("compact.base_url", cfg) == "https://custom-llm.example.com"
     assert get_config_value("compact.api_key", cfg) == "sk-custom-123"
+
+
+def test_dict_to_config_ignores_unknown_fields_and_non_dict_sections() -> None:
+    """_dict_to_config should ignore garbage sections/fields instead of crashing."""
+    cfg = _dict_to_config(
+        {
+            "embedding": {
+                "provider": "google",
+                "batch_size": 64,
+                "unknown_field": "ignored",
+            },
+            "milvus": "not-a-dict",
+            "compact": {
+                "llm_provider": "anthropic",
+                "llm_model": "claude-3-7-sonnet",
+                "extra": True,
+            },
+            "unknown_section": {"foo": "bar"},
+        }
+    )
+
+    assert cfg.embedding.provider == "google"
+    assert cfg.embedding.batch_size == 64
+    assert cfg.milvus.uri == "~/.memsearch/milvus.db"
+    assert cfg.compact.llm_provider == "anthropic"
+    assert cfg.compact.llm_model == "claude-3-7-sonnet"
+
+
+def test_dict_to_config_accepts_empty_section_dicts() -> None:
+    """Explicit empty section dicts should fall back to dataclass defaults."""
+    cfg = _dict_to_config({"embedding": {}, "milvus": {}, "watch": {}})
+
+    assert cfg.embedding.provider == "openai"
+    assert cfg.milvus.collection == "memsearch_chunks"
+    assert cfg.watch.debounce_ms == 1500
