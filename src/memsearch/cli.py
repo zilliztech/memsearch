@@ -163,7 +163,12 @@ def index(
 @cli.command()
 @click.argument("query")
 @click.option("--top-k", "-k", default=None, type=int, help="Number of results.")
-@click.option("--source-prefix", default=None, type=click.Path(), help="Only search chunks whose source path starts with this prefix.")
+@click.option(
+    "--source-prefix",
+    default=None,
+    type=click.Path(),
+    help="Only search chunks whose source path starts with this prefix.",
+)
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")

@@ -19,9 +19,7 @@ def _install_fake_google_genai(monkeypatch, *, record: dict):
         def embed_content(self, *, model: str, contents: list[str]):
             record["model"] = model
             record["contents"] = contents
-            return types.SimpleNamespace(
-                embeddings=[types.SimpleNamespace(values=[0.1, 0.2, 0.3])]
-            )
+            return types.SimpleNamespace(embeddings=[types.SimpleNamespace(values=[0.1, 0.2, 0.3])])
 
     genai_module.Client = FakeClient
     google_module.genai = genai_module

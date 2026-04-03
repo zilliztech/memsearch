@@ -229,9 +229,7 @@ class MemSearch:
 
         embeddings = await self._embedder.embed([query])
         fetch_k = top_k * 3 if self._reranker_model else top_k
-        results = self._store.search(
-            embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr
-        )
+        results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
         if self._reranker_model and results:
             from .reranker import rerank
 

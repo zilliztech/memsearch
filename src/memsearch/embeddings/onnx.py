@@ -44,9 +44,7 @@ class OnnxEmbedding:
         # HTTP HEAD requests to check for updates.  local_files_only=True skips
         # all network I/O, which is critical for sandboxed environments (e.g.
         # Codex read-only sandbox) where DNS/network is blocked.
-        tok_path, model_path = self._download_model_files(
-            model, hf_hub_download, list_repo_files
-        )
+        tok_path, model_path = self._download_model_files(model, hf_hub_download, list_repo_files)
 
         self._tokenizer = Tokenizer.from_file(tok_path)
         self._tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
@@ -70,17 +68,13 @@ class OnnxEmbedding:
         """
         # --- Attempt 1: offline from cache (no network at all) ---
         try:
-            tok_path = hf_hub_download(
-                model, "tokenizer.json", local_files_only=True
-            )
+            tok_path = hf_hub_download(model, "tokenizer.json", local_files_only=True)
             # Try well-known ONNX filenames to avoid list_repo_files() network call
             model_path = None
             onnx_file = None
             for candidate in ("model_quantized.onnx", "model.onnx"):
                 try:
-                    model_path = hf_hub_download(
-                        model, candidate, local_files_only=True
-                    )
+                    model_path = hf_hub_download(model, candidate, local_files_only=True)
                     onnx_file = candidate
                     break
                 except Exception:
@@ -91,9 +85,7 @@ class OnnxEmbedding:
             import contextlib
 
             with contextlib.suppress(Exception):
-                hf_hub_download(
-                    model, onnx_file + "_data", local_files_only=True
-                )
+                hf_hub_download(model, onnx_file + "_data", local_files_only=True)
             return tok_path, model_path
         except Exception:
             pass

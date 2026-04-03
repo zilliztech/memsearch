@@ -44,9 +44,7 @@ class LocalEmbedding:
             sys.stderr = io.StringIO()
             from sentence_transformers import SentenceTransformer
 
-            self._st_model = SentenceTransformer(
-                model, device=_detect_device(), trust_remote_code=True
-            )
+            self._st_model = SentenceTransformer(model, device=_detect_device(), trust_remote_code=True)
         finally:
             sys.stderr = old_stderr
             if prev_tqdm is None:

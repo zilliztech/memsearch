@@ -33,16 +33,19 @@ _MAX_RERANK_TOKENS = 512
 # Backend detection
 # ======================================================================
 
+
 def _detect_backend() -> str:
     """Return 'onnx', 'torch', or 'none'."""
     try:
         import onnxruntime  # noqa: F401
         import tokenizers  # noqa: F401
+
         return "onnx"
     except ImportError:
         pass
     try:
         from sentence_transformers import CrossEncoder  # noqa: F401
+
         return "torch"
     except ImportError:
         pass
@@ -84,8 +87,7 @@ def _find_onnx_file(repo_id: str, repo_files: list[str]) -> str:
     onnx_files = [f for f in repo_files if f.endswith(".onnx")]
     if not onnx_files:
         raise ValueError(
-            f"No .onnx files found in {repo_id}. "
-            f"Export one with: optimum-cli export onnx --model {repo_id} output/"
+            f"No .onnx files found in {repo_id}. Export one with: optimum-cli export onnx --model {repo_id} output/"
         )
     for preferred in [
         "onnx/model_quantized.onnx",
@@ -153,9 +155,7 @@ def _extract_scores(logits: np.ndarray) -> list[float]:
     return [1.0 / (1.0 + math.exp(-float(x))) for x in logits.flatten()]
 
 
-def _rerank_onnx(
-    query: str, results: list[dict[str, Any]], model_name: str, top_k: int
-) -> list[dict[str, Any]]:
+def _rerank_onnx(query: str, results: list[dict[str, Any]], model_name: str, top_k: int) -> list[dict[str, Any]]:
     """Rerank using ONNX Runtime backend."""
     model = _load_onnx_model(model_name)
 
@@ -215,9 +215,7 @@ def _load_torch_model(model_name: str) -> Any:
         return _torch_cache[model_name]
 
 
-def _rerank_torch(
-    query: str, results: list[dict[str, Any]], model_name: str, top_k: int
-) -> list[dict[str, Any]]:
+def _rerank_torch(query: str, results: list[dict[str, Any]], model_name: str, top_k: int) -> list[dict[str, Any]]:
     """Rerank using sentence-transformers CrossEncoder backend."""
     model = _load_torch_model(model_name)
 
@@ -233,6 +231,7 @@ def _rerank_torch(
 # ======================================================================
 # Public API
 # ======================================================================
+
 
 def rerank(
     query: str,
