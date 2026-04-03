@@ -159,22 +159,26 @@ If you are already using OpenClaw's memory directory layout, memsearch works wit
 
 ## Comparison with Competitors
 
-| Feature | **memsearch** | claude-mem | opencode-mem | true-mem |
-|---------|:---:|:---:|:---:|:---:|
-| **Cross-platform** | 4 platforms | Claude Code only | OpenCode only | Claude Code only |
-| **Source of truth** | Markdown files | SQLite + ChromaDB | SQLite | SQLite |
-| **Search** | Hybrid (dense + BM25 + RRF) | Dense only + FTS5 | Dense only | Dense only |
-| **Embedding** | Pluggable (6 providers) | Fixed (MiniLM WASM) | Fixed | Fixed |
-| **Progressive disclosure** | L1 → L2 → L3 | Single layer | Single layer | Single layer |
-| **Context isolation** | Skill in forked subagent | MCP tools in main context | Tools in main context | Tools in main context |
-| **Storage format** | `.md` (human-readable, git-friendly) | Binary DB | Binary DB | Binary DB |
-| **Vector backend** | Milvus (Lite → Server → Cloud) | ChromaDB | Built-in | Built-in |
-| **API key required** | No (ONNX default) | No (WASM) | Varies | Varies |
+| Feature | **memsearch** | claude-mem | qmd |
+|---------|:---:|:---:|:---:|
+| **Cross-platform** | 4 platforms | Claude Code only | Claude Code + MCP |
+| **Source of truth** | Markdown files | SQLite + ChromaDB | Markdown files |
+| **Search** | Hybrid (dense + BM25 + RRF) | Dense only + FTS5 | Hybrid (dense + BM25 + RRF) + query expansion |
+| **Embedding** | Pluggable (6 providers) | Fixed (MiniLM WASM) | Local GGUF (embeddinggemma / Qwen3) |
+| **Reranking** | Optional cross-encoder (ONNX) | None | Local LLM (qwen3-reranker) |
+| **Progressive disclosure** | L1 → L2 → L3 | Single layer | Single layer |
+| **Context isolation** | Skill in forked subagent | MCP tools in main context | MCP tools in main context |
+| **Storage format** | `.md` (human-readable, git-friendly) | Binary DB | `.md` (human-readable, git-friendly) |
+| **Vector backend** | Milvus (Lite → Server → Cloud) | ChromaDB | SQLite + sqlite-vec |
+| **Memory capture** | Automatic (hooks write daily `.md`) | Automatic | External (read-only search engine) |
+| **API key required** | No (ONNX default) | No (WASM) | No (all local models) |
+| **Language** | Python | TypeScript | TypeScript |
 
 **Key advantages:**
 
-1. **Cross-platform portability.** memsearch is the only solution that works across Claude Code, OpenClaw, OpenCode, and Codex CLI with shared memory.
+1. **Cross-platform portability.** memsearch works across Claude Code, OpenClaw, OpenCode, and Codex CLI with shared memory.
 2. **Transparent storage.** Markdown files are human-readable and git-friendly. You can inspect, edit, and version-control your agent's memories directly.
-3. **Search quality.** Hybrid search (dense + BM25 + RRF) catches both semantic matches and exact keyword matches that pure-dense solutions miss.
-4. **Scale path.** Milvus Lite for dev, Milvus Server for teams, Zilliz Cloud for production -- same API throughout.
-5. **Context efficiency.** Progressive disclosure and forked subagent recall minimize context window usage.
+3. **End-to-end memory.** memsearch captures session summaries automatically and writes them to markdown -- it is both a search engine and a memory writer. qmd is read-only and requires external tools to capture memories.
+4. **Search quality.** Hybrid search (dense + BM25 + RRF) catches both semantic matches and exact keyword matches that pure-dense solutions miss.
+5. **Scale path.** Milvus Lite for dev, Milvus Server for teams, Zilliz Cloud for production -- same API throughout.
+6. **Context efficiency.** Progressive disclosure and forked subagent recall minimize context window usage.

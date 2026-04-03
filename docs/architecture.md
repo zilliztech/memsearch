@@ -206,12 +206,7 @@ graph TD
 
 ### Physical Isolation
 
-Isolation between agents and projects is achieved at two levels:
-
-1. **Per-project collection names.** Each platform plugin derives a collection name from the project path (e.g., `ms_claude_code_myproject`). This keeps memories from different projects separate within the same Milvus instance.
-2. **Per-instance `milvus_uri`.** Each agent gets its own Milvus Lite database file, its own Milvus server, or its own Zilliz Cloud cluster.
-
-This avoids the complexity of multi-tenant collection management while keeping the schema simple.
+Each platform plugin derives a collection name from the project path (e.g., `ms_claude_code_myproject`). This keeps memories from different projects separate within the same Milvus instance, avoiding the complexity of multi-tenant collection management while keeping the schema simple.
 
 ---
 
