@@ -178,7 +178,7 @@ Search combines two retrieval strategies and merges their results:
 
 1. **Dense vector search** -- cosine similarity on the `embedding` field (semantic meaning).
 2. **[BM25](https://en.wikipedia.org/wiki/Okapi_BM25) sparse search** -- keyword matching on the `sparse_vector` field (exact term overlap).
-3. **[RRF](https://en.wikipedia.org/wiki/Reciprocal_rank_fusion) reranking** -- Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
+3. **[RRF](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) reranking** -- Reciprocal Rank Fusion with k=60 merges the two ranked lists into a single result set.
 
 This hybrid approach catches results that pure semantic search might miss (exact names, error codes, configuration values) while still benefiting from the semantic understanding that dense embeddings provide.
 

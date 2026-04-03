@@ -104,7 +104,7 @@ pip install langgraph langchain-openai
 
 ### As a Tool (ReAct Agent)
 
-Wrap memsearch as a [tool](https://python.langchain.com/docs/concepts/tools/) and let a [LangGraph ReAct agent](https://langchain-ai.github.io/langgraph/agents/) decide when to search:
+Wrap memsearch as a [tool](https://python.langchain.com/docs/concepts/tools/) and let a [LangGraph ReAct agent](https://docs.langchain.com/oss/python/langchain/agents) decide when to search:
 
 ```python
 import asyncio
