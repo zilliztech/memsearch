@@ -1,6 +1,6 @@
 # OpenCode Plugin
 
-**Semantic memory for [OpenCode](https://github.com/nicepkg/opencode).** A TypeScript plugin that captures conversations via a background SQLite daemon and provides three-layer memory recall.
+**Semantic memory for [OpenCode](https://github.com/anomalyco/opencode).** A TypeScript plugin that captures conversations via a background SQLite daemon and provides three-layer memory recall.
 
 ---
 

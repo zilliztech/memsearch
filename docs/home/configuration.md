@@ -56,7 +56,7 @@ memsearch config set milvus.token "your-api-key"
 ??? note "Sign up for a free Zilliz Cloud cluster"
     You can [sign up](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) on Zilliz Cloud to get a free cluster and API key.
 
-    ![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/CodeIndexer/master/assets/signup_and_get_apikey.png)
+    ![Sign up and get API key](https://raw.githubusercontent.com/zilliztech/claude-context/master/assets/signup_and_get_apikey.png)
 
 ??? note "Self-hosted Milvus Server (Docker) — for advanced users"
     For multi-user or team environments. Requires Docker. See the [official installation guide](https://milvus.io/docs/install_standalone-docker-compose.md).
