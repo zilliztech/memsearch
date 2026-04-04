@@ -17,24 +17,33 @@ Search for memories relevant to: $ARGUMENTS
 
 ## Steps
 
-1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name above>` to find relevant chunks.
+1. **Classify query intent**: Before searching, classify the query:
+   - If the query contains procedural signals (words like "how to", "steps to", "deploy", "install", "configure", "set up", "fix", "run", "build"), this is a **PROCEDURAL** query. Run two searches:
+     1. The original query as-is
+     2. A modified query appending procedural action words: `ran executed installed committed deployed configured built`
+   - Merge results from both searches, deduplicate by chunk hash, and prefer results containing code blocks or shell commands.
+   - Otherwise, run a single search with the original query.
+
+2. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name above>` to find relevant chunks.
    - If `memsearch` is not found, try `uvx memsearch` instead.
    - Choose a search query that captures the core intent of the user's question.
 
-2. **Evaluate**: Look at the search results. Skip chunks that are clearly irrelevant or too generic.
+3. **Evaluate**: Look at the search results. Skip chunks that are clearly irrelevant or too generic.
 
-3. **Expand**: For each relevant result, run `memsearch expand <chunk_hash> --collection <collection name above>` to get the full markdown section with surrounding context.
+4. **Expand**: For each relevant result, run `memsearch expand <chunk_hash> --collection <collection name above>` to get the full markdown section with surrounding context.
 
-4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session/transcript info), and the original conversation seems critical:
+5. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session/transcript info), and the original conversation seems critical:
    - Run `python3 ${CLAUDE_PLUGIN_ROOT}/transcript.py <jsonl_path> --turn <uuid> --context 3` to retrieve the original conversation turns.
    - If the anchor format is unfamiliar (e.g. `rollout:`, `db:` instead of `transcript:` + `turn:`), try reading the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
 
-5. **Return results**: Output a curated summary of the most relevant memories. Be concise — only include information that is genuinely useful for the user's current question.
+6. **Return results**: Output a curated summary of the most relevant memories. Be concise -- only include information that is genuinely useful for the user's current question.
 
 ## Output Format
 
 Organize by relevance. For each memory include:
 - The key information (decisions, patterns, solutions, context)
 - Source reference (file name, date) for traceability
+
+When presenting results, if multiple results share the same session ID (visible in `<!-- memsearch:session=... -->` HTML comment anchors), group them together under a session heading to provide conversation context.
 
 If nothing relevant is found, simply say "No relevant memories found."

@@ -2,13 +2,23 @@
 # SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Redirect stdin to /dev/null before sourcing common.sh.
+# Capture hook input with a short timeout before discarding stdin.
 # common.sh does INPUT="$(cat)" which blocks indefinitely if stdin never
 # receives EOF (e.g. during `claude --resume` or any new session start on
-# macOS where Claude Code keeps the pipe open). session-start.sh never uses
-# INPUT, so it is safe to discard stdin entirely here.
+# macOS where Claude Code keeps the pipe open). We read with a timeout to
+# extract session_id for metadata, then redirect stdin to /dev/null.
+HOOK_INPUT=""
+if read -t 2 -r HOOK_INPUT 2>/dev/null; then
+  true
+fi
 exec < /dev/null
 source "$SCRIPT_DIR/common.sh"
+
+# Extract session_id from hook input for session metadata comments
+SESSION_ID=""
+if [ -n "$HOOK_INPUT" ]; then
+  SESSION_ID=$(_json_val "$HOOK_INPUT" "session_id" "")
+fi
 
 # Bootstrap: if memsearch not available, install uv and warm up uvx cache
 if [ -z "$MEMSEARCH_CMD" ]; then
@@ -110,8 +120,21 @@ ensure_memory_dir
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date +%H:%M)
 MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
-  echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-${_PROJECT_DIR:-.}}"
+if [ ! -f "$MEMORY_FILE" ]; then
+  # New daily file: prepend date metadata comment
+  echo "<!-- memsearch:date=$TODAY -->" > "$MEMORY_FILE"
+fi
+if ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
+  # Prepend session metadata comment before the session heading
+  {
+    echo ""
+    if [ -n "$SESSION_ID" ]; then
+      echo "<!-- memsearch:session=$SESSION_ID project=$PROJECT_DIR start=$NOW -->"
+    fi
+    echo "## Session $NOW"
+    echo ""
+  } >> "$MEMORY_FILE"
 fi
 
 # If API key is missing, show status and exit early (watch/search would fail)
