@@ -21,6 +21,38 @@ from .store import MilvusStore
 logger = logging.getLogger(__name__)
 
 
+def _token_overlap(text1: str, text2: str) -> float:
+    """Jaccard similarity on whitespace-split tokens."""
+    tokens1 = set(text1.lower().split())
+    tokens2 = set(text2.lower().split())
+    if not tokens1 or not tokens2:
+        return 0.0
+    return len(tokens1 & tokens2) / len(tokens1 | tokens2)
+
+
+def _deduplicate_results(
+    results: list[dict[str, Any]],
+    threshold: float = 0.85,
+) -> list[dict[str, Any]]:
+    """Remove near-duplicate results by token overlap."""
+    if not results or threshold <= 0:
+        return results
+    keep = set(range(len(results)))
+    for i in range(len(results)):
+        if i not in keep:
+            continue
+        for j in range(i + 1, len(results)):
+            if j not in keep:
+                continue
+            if _token_overlap(results[i]["content"], results[j]["content"]) >= threshold:
+                if results[i].get("score", 0) >= results[j].get("score", 0):
+                    keep.discard(j)
+                else:
+                    keep.discard(i)
+                    break
+    return [results[i] for i in sorted(keep)]
+
+
 class MemSearch:
     """High-level API for semantic memory search.
 
@@ -202,6 +234,7 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        dedup_threshold: float = 0.0,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -214,6 +247,10 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+        dedup_threshold:
+            Jaccard token-overlap threshold for removing near-duplicate
+            results (0 = disabled, 0.85 = recommended).  When two results
+            exceed this threshold the lower-scored one is dropped.
 
         Returns
         -------
@@ -236,6 +273,8 @@ class MemSearch:
             from .reranker import rerank
 
             results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+        if dedup_threshold > 0:
+            results = _deduplicate_results(results, threshold=dedup_threshold)
         return results
 
     # ------------------------------------------------------------------
