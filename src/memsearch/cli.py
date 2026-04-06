@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import click
-from pymilvus.exceptions import MilvusException
 
 from .config import (
     GLOBAL_CONFIG_PATH,
@@ -21,6 +20,11 @@ from .config import (
     save_config,
     set_config_value,
 )
+
+try:
+    from pymilvus.exceptions import MilvusException
+except ImportError:
+    MilvusException = Exception
 
 
 def _run(coro):
