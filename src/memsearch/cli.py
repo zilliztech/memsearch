@@ -27,6 +27,15 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def _safe_resolve_config(overrides: dict | None = None):
+    """Resolve config with user-friendly error for missing env vars."""
+    try:
+        return resolve_config(overrides)
+    except KeyError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        raise SystemExit(1) from None
+
+
 # -- CLI param name → dotted config key mapping --
 _PARAM_MAP = {
     "provider": "embedding.provider",
@@ -140,7 +149,7 @@ def index(
     """Index markdown files from PATHS."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -190,7 +199,7 @@ def search(
     """Search indexed memory for QUERY."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -273,7 +282,7 @@ def expand(
     """
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -422,7 +431,7 @@ def watch(
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -492,7 +501,7 @@ def compact(
     """Compress stored memories into a summary."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -552,7 +561,7 @@ def stats(
     """Show statistics about the index."""
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             collection=collection,
             milvus_uri=milvus_uri,
@@ -585,7 +594,7 @@ def reset(
     """Drop all indexed data."""
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             collection=collection,
             milvus_uri=milvus_uri,
@@ -622,7 +631,7 @@ def config_init(project: bool) -> None:
 
     target = PROJECT_CONFIG_PATH if project else GLOBAL_CONFIG_PATH
     load_config_file(target)
-    current = resolve_config()
+    current = _safe_resolve_config()
 
     result: dict = {}
 
@@ -766,7 +775,7 @@ def config_list(mode: str) -> None:
         data = load_config_file(PROJECT_CONFIG_PATH)
         label = f"Project ({PROJECT_CONFIG_PATH})"
     else:
-        cfg = resolve_config()
+        cfg = _safe_resolve_config()
         data = config_to_dict(cfg)
         label = "Resolved (all sources merged)"
 
