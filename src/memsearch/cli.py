@@ -173,13 +173,13 @@ def index(
     "--date-after",
     default=None,
     type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Only include results from this date onward (YYYY-MM-DD).",
+    help="Only include results from this date onward. Matches files named YYYY-MM-DD.md (ISO format).",
 )
 @click.option(
     "--date-before",
     default=None,
     type=click.DateTime(formats=["%Y-%m-%d"]),
-    help="Only include results up to this date (YYYY-MM-DD).",
+    help="Only include results up to this date. Matches files named YYYY-MM-DD.md (ISO format).",
 )
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
