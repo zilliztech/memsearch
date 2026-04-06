@@ -6,11 +6,11 @@ set -euo pipefail
 
 # Read stdin JSON into $INPUT
 # Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly.
-# macOS lacks `timeout` — use a read-based fallback with a 2-second deadline.
+# macOS lacks `timeout` — use perl alarm(2) as a portable fallback with a 2-second deadline.
 if command -v timeout &>/dev/null; then
   INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
 else
-  INPUT="$(cat 2>/dev/null || echo '{}')"
+  INPUT="$(perl -e 'alarm 2; local $/; $_ = <STDIN>; print if defined' 2>/dev/null || echo '{}')"
 fi
 
 # Ensure common user bin paths are in PATH (hooks may run in a minimal env)
