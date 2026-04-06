@@ -32,6 +32,7 @@ class MilvusStore:
         collection: str = DEFAULT_COLLECTION,
         dimension: int | None = 1536,
         description: str = "",
+        rrf_k: int = 60,
     ) -> None:
         from pymilvus import MilvusClient
 
@@ -57,6 +58,7 @@ class MilvusStore:
         self._collection = collection
         self._dimension = dimension
         self._description = description
+        self._rrf_k = rrf_k
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
@@ -170,7 +172,7 @@ class MilvusStore:
         results = self._client.hybrid_search(
             collection_name=self._collection,
             reqs=[dense_req, bm25_req],
-            ranker=RRFRanker(k=60),
+            ranker=RRFRanker(k=self._rrf_k),
             limit=top_k,
             output_fields=self._QUERY_FIELDS,
         )

@@ -60,6 +60,7 @@ class MemSearch:
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
         reranker_model: str = "",
+        rrf_k: int = 60,
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -77,6 +78,7 @@ class MemSearch:
             collection=collection,
             dimension=self._embedder.dimension,
             description=description,
+            rrf_k=rrf_k,
         )
         self._reranker_model = reranker_model
 

@@ -46,6 +46,7 @@ _PARAM_MAP = {
     "overlap_lines": "chunking.overlap_lines",
     "debounce_ms": "watch.debounce_ms",
     "reranker_model": "reranker.model",
+    "rrf_k": "search.rrf_k",
 }
 
 
@@ -78,6 +79,7 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
         "reranker_model": cfg.reranker.model,
+        "rrf_k": cfg.search.rrf_k,
     }
 
 
@@ -171,6 +173,7 @@ def index(
 )
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
+@click.option("--rrf-k", default=None, type=int, help="RRF fusion constant (default 60). Lower favors top-ranked results.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 def search(
     query: str,
@@ -185,6 +188,7 @@ def search(
     milvus_uri: str | None,
     milvus_token: str | None,
     reranker_model: str | None,
+    rrf_k: int | None,
     json_output: bool,
 ) -> None:
     """Search indexed memory for QUERY."""
@@ -201,6 +205,7 @@ def search(
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
             reranker_model=reranker_model,
+            rrf_k=rrf_k,
         )
     )
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
