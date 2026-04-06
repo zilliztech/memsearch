@@ -171,6 +171,12 @@ def index(
 )
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
+@click.option(
+    "--dedup-threshold",
+    default=0.0,
+    type=float,
+    help="Jaccard token-overlap threshold (0-1) for removing near-duplicate results. 0 disables.",
+)
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 def search(
     query: str,
@@ -185,6 +191,7 @@ def search(
     milvus_uri: str | None,
     milvus_token: str | None,
     reranker_model: str | None,
+    dedup_threshold: float,
     json_output: bool,
 ) -> None:
     """Search indexed memory for QUERY."""
@@ -205,7 +212,7 @@ def search(
     )
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
-        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, dedup_threshold=dedup_threshold))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:
