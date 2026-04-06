@@ -631,7 +631,7 @@ def config_init(project: bool) -> None:
 
     target = PROJECT_CONFIG_PATH if project else GLOBAL_CONFIG_PATH
     load_config_file(target)
-    current = _safe_resolve_config()
+    current = resolve_config()
 
     result: dict = {}
 
@@ -775,7 +775,7 @@ def config_list(mode: str) -> None:
         data = load_config_file(PROJECT_CONFIG_PATH)
         label = f"Project ({PROJECT_CONFIG_PATH})"
     else:
-        cfg = _safe_resolve_config()
+        cfg = resolve_config()
         data = config_to_dict(cfg)
         label = "Resolved (all sources merged)"
 
