@@ -119,7 +119,8 @@ class MemSearch:
     async def index_file(self, path: str | Path) -> int:
         """Index a single file.  Returns number of chunks."""
         p = Path(path).expanduser().resolve()
-        sf = ScannedFile(path=p, mtime=p.stat().st_mtime, size=p.stat().st_size)
+        _st = p.stat()
+        sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
         return await self._index_file(sf)
 
     async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
