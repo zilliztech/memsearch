@@ -535,6 +535,7 @@ memsearch index ./memory/                          # index markdown files
 memsearch index ./memory/ ./notes/ --force         # re-embed everything
 memsearch search "Redis caching"                   # hybrid search (BM25 + vector)
 memsearch search "auth flow" --top-k 10 --json-output  # JSON for scripting
+memsearch list --limit 20                          # inspect indexed memories without guessing a query
 memsearch expand <chunk_hash>                      # show full section around a chunk
 ```
 

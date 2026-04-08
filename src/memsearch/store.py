@@ -198,6 +198,31 @@ class MilvusStore:
         }
         return self._client.query(**kwargs)
 
+    def list_memories(
+        self,
+        *,
+        source_prefix: str | Path | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return indexed memories ordered by source path and line number."""
+        filter_expr = ""
+        if source_prefix is not None:
+            prefix = str(Path(source_prefix).expanduser().resolve())
+            filter_expr = f'source like "{_escape_filter_value(prefix)}%"'
+
+        results = self.query(filter_expr=filter_expr)
+        results.sort(
+            key=lambda row: (
+                row.get("source", ""),
+                row.get("start_line", 0),
+                row.get("end_line", 0),
+                row.get("chunk_hash", ""),
+            )
+        )
+        if limit is not None:
+            return results[:limit]
+        return results
+
     def hashes_by_source(self, source: str) -> set[str]:
         """Return all chunk_hash values for a given source file."""
         escaped = _escape_filter_value(source)

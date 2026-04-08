@@ -149,6 +149,29 @@ for r in results:
 
 ---
 
+### `list_memories`
+
+```python
+await mem.list_memories(*, source_prefix=None, limit=None) -> list[dict]
+```
+
+List indexed memories in deterministic source/line order.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source_prefix` | `str \| Path \| None` | `None` | Only return chunks whose source path starts with this prefix |
+| `limit` | `int \| None` | `None` | Maximum number of memories to return |
+
+**Return value:** Each dict has the same shape as `search()` results, except no relevance `score` is included.
+
+```python
+memories = await mem.list_memories(limit=5)
+for memory in memories:
+    print(memory["source"], memory["heading"], memory["chunk_hash"])
+```
+
+---
+
 ### `compact`
 
 ```python

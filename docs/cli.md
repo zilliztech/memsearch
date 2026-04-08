@@ -346,6 +346,39 @@ $ memsearch search "database migrations" --provider google
 
 ---
 
+## `memsearch list`
+
+List indexed memories without needing a search query first. Results are ordered by source path and line number so you can quickly inspect what is already in the memory index.
+
+### Options
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--source-prefix` | | *(all sources)* | Only list chunks whose source path starts with this prefix |
+| `--limit` | `-n` | *(all matches)* | Maximum number of memories to show |
+| `--json-output` | `-j` | `false` | Emit raw JSON rows instead of formatted text |
+| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
+| `--milvus-token` | | *(none)* | Milvus auth token |
+
+### Examples
+
+Show the first 10 indexed memories:
+
+```bash
+$ memsearch list --limit 10
+```
+
+Scope the listing to a directory and consume it as JSON:
+
+```bash
+$ memsearch list --source-prefix ./memory --json-output
+```
+
+Text output includes the source file, heading, line range, chunk hash, and a short preview so you can decide whether to run `memsearch expand <chunk_hash>` next.
+
+---
+
 ## `memsearch watch`
 
 Start a long-running file watcher that monitors directories for markdown file changes. On startup, all existing markdown files are indexed first (dedup ensures no wasted API calls for unchanged content). Then the watcher monitors for changes: when a `.md` or `.markdown` file is created or modified, it is automatically re-indexed. When a file is deleted, its chunks are removed from the store.
