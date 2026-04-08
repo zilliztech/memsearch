@@ -323,7 +323,7 @@ User: "What did we discuss about batch size?"
 pip install memsearch
 
 # or uv (recommended)
-uv add memsearch
+uv tool install memsearch
 ```
 
 <details>
@@ -331,7 +331,7 @@ uv add memsearch
 
 ```bash
 pip install "memsearch[onnx]"    # Local ONNX (recommended, no API key)
-# or: uv add "memsearch[onnx]"
+# or: uv tool install "memsearch[onnx]"
 
 # Other options: [openai], [google], [voyage], [ollama], [local], [all]
 ```
