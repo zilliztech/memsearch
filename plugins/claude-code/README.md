@@ -41,7 +41,7 @@ graph LR
     style CC fill:#e8d5f5,stroke:#9b59b6,color:#1a2744
 ```
 
-The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle and skill system — hooks handle session management and memory capture, while the **memory-recall skill** handles intelligent retrieval in a forked subagent context.
+The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle and skill system — hooks handle session management and memory capture, while the Claude-facing skills now include **memory-recall** for progressive retrieval plus **memory-search** and **memory-expand** for more direct operator control in forked subagent contexts.
 
 ---
 
@@ -105,7 +105,12 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 
 ## How It Works
 
-The plugin hooks into **4 Claude Code lifecycle events** and provides a **memory-recall skill**. A singleton `memsearch watch` process runs in the background, keeping the vector index in sync with markdown files as they change. (Milvus Lite falls back to one-time indexing at session start.)
+The plugin hooks into **4 Claude Code lifecycle events** and provides Claude-facing memory skills: **memory-recall** for progressive retrieval plus **memory-search** and **memory-expand** for direct shortlist/expansion workflows. A singleton `memsearch watch` process runs in the background, keeping the vector index in sync with markdown files as they change. (Milvus Lite falls back to one-time indexing at session start.)
+
+This gives Claude three access styles:
+- **progressive recall** via `memory-recall`
+- **direct retrieval control** via `memory-search` and `memory-expand`
+- **session-specific and diagnostic access** via `session-recall`, `memory-stats`, and `config-check`
 
 ### Lifecycle Diagram
 

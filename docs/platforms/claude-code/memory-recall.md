@@ -89,6 +89,15 @@ The user sees a concise, contextual answer. The intermediate search results, chu
 /memory-recall what did we discuss about the auth refactor?
 ```
 
+For narrower workflows, the plugin also exposes:
+
+```
+/memory-search auth refactor
+/memory-expand <chunk_hash>
+```
+
+Use `memory-search` when you want shortlist results first, and `memory-expand` when you already have a `chunk_hash` and want the full markdown section.
+
 **Auto invocation** — just ask naturally, Claude auto-invokes the skill when it senses the question needs history:
 
 ```
