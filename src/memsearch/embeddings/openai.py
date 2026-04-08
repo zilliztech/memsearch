@@ -57,9 +57,7 @@ class OpenAIEmbedding:
         return await batched_embed(texts, self._embed_batch, self._batch_size)
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        resp = await self._client.embeddings.create(
-            input=texts, model=self._model, encoding_format="float"
-        )
+        resp = await self._client.embeddings.create(input=texts, model=self._model, encoding_format="float")
         return [item.embedding for item in resp.data]
 
 
@@ -81,7 +79,5 @@ def _detect_dimension(model: str, client_kwargs: dict) -> int:
     import openai
 
     sync_client = openai.OpenAI(**client_kwargs)
-    trial = sync_client.embeddings.create(
-        input=["dim"], model=model, encoding_format="float"
-    )
+    trial = sync_client.embeddings.create(input=["dim"], model=model, encoding_format="float")
     return len(trial.data[0].embedding)
