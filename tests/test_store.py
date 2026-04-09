@@ -101,6 +101,24 @@ def test_bm25_query_text_skips_numeric_only_queries():
     assert _bm25_query_text("Redis 111123") == "Redis 111123"
 
 
+def test_search_numeric_only_query_does_not_raise(store: MilvusStore):
+    chunk = {
+        "embedding": [1.0, 0.0, 0.0, 0.0],
+        "content": "Version 111123 release checklist",
+        "source": "test.md",
+        "heading": "Release",
+        "chunk_hash": "h_numeric",
+        "heading_level": 1,
+        "start_line": 1,
+        "end_line": 3,
+    }
+    store.upsert([chunk])
+
+    results = store.search([1.0, 0.0, 0.0, 0.0], query_text="111123", top_k=5)
+
+    assert isinstance(results, list)
+
+
 def test_hybrid_search(store: MilvusStore):
     chunks = [
         {
