@@ -74,7 +74,8 @@ with open(sys.argv[1]) as f:
     for line in f:
         try:
             obj = json.loads(line)
-            if obj.get('type') == 'user' and isinstance(obj.get('message', {}).get('content'), str):
+            content = obj.get('message', {}).get('content') or obj.get('content')
+            if obj.get('type') == 'user' and isinstance(content, str):
                 uuid = obj.get('uuid', '')
         except: pass
 print(uuid)

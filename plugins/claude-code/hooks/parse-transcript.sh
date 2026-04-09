@@ -44,7 +44,7 @@ def find_last_turn_start(lines):
         try:
             obj = json.loads(lines[i])
             if obj.get("type") == "user" and not obj.get("isMeta"):
-                content = obj.get("message", {}).get("content")
+                content = obj.get("message", {}).get("content") or obj.get("content")
                 if isinstance(content, str) and content.strip():
                     return i
                 if isinstance(content, list):
@@ -71,7 +71,7 @@ def format_turn(lines):
             continue
 
         if msg_type == "user":
-            content = obj.get("message", {}).get("content")
+            content = obj.get("message", {}).get("content") or obj.get("content")
             if isinstance(content, str) and content.strip():
                 output.append(f"[Human]: {content.strip()}")
             elif isinstance(content, list):
@@ -97,7 +97,7 @@ def format_turn(lines):
                         output.append(f"{label}: {result}")
 
         elif msg_type == "assistant":
-            content = obj.get("message", {}).get("content", [])
+            content = obj.get("message", {}).get("content") or obj.get("content", [])
             for block in content:
                 if not isinstance(block, dict):
                     continue
