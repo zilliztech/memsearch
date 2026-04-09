@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from memsearch.store import MilvusStore
+from memsearch.store import MilvusStore, _bm25_query_text
 
 
 @pytest.fixture
@@ -93,6 +93,12 @@ def test_upsert_is_idempotent(store: MilvusStore):
     results = store.search([1.0, 0.0, 0.0, 0.0], top_k=10)
     hashes = [r["chunk_hash"] for r in results]
     assert hashes.count("same_hash") == 1
+
+
+def test_bm25_query_text_skips_numeric_only_queries():
+    assert _bm25_query_text("111123") == ""
+    assert _bm25_query_text("   42-7 ") == ""
+    assert _bm25_query_text("Redis 111123") == "Redis 111123"
 
 
 def test_hybrid_search(store: MilvusStore):
