@@ -147,6 +147,11 @@ class MilvusStore:
         """Hybrid search: dense vector + BM25 full-text with RRF reranking."""
         from pymilvus import AnnSearchRequest, RRFRanker
 
+        # BM25 crashes on empty collections (avgdl=0 → NaN). See #306.
+        stats = self._client.get_collection_stats(self._collection)
+        if int(stats.get("row_count", 0)) == 0:
+            return []
+
         req_kwargs: dict[str, Any] = {}
         if filter_expr:
             req_kwargs["expr"] = filter_expr
