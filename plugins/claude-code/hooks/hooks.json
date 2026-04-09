@@ -41,6 +41,7 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh",
+            "async": true,
             "timeout": 10
           }
         ]
