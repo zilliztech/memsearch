@@ -99,6 +99,9 @@ def test_bm25_query_text_skips_numeric_only_queries():
     assert _bm25_query_text("111123") == ""
     assert _bm25_query_text("   42-7 ") == ""
     assert _bm25_query_text("Redis 111123") == "Redis 111123"
+    assert _bm25_query_text("gpt-4o") == "gpt-4o"
+    assert _bm25_query_text("RFC-9110") == "RFC-9110"
+    assert _bm25_query_text("v2.1.0") == "v2.1.0"
 
 
 def test_search_numeric_only_query_does_not_raise(store: MilvusStore):

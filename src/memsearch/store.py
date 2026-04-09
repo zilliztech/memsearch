@@ -23,6 +23,11 @@ def _bm25_query_text(query_text: str) -> str:
         return ""
     if not re.search(r"[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]", normalized):
         return ""
+    if not re.search(
+        r"[A-Za-z\u00C0-\u024F\u4E00-\u9FFF].*\d|\d.*[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]|[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]{2,}",
+        normalized,
+    ):
+        return ""
     return normalized
 
 
