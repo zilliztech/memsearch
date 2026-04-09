@@ -2,12 +2,9 @@
 # SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Redirect stdin to /dev/null before sourcing common.sh.
-# common.sh does INPUT="$(cat)" which blocks indefinitely if stdin never
-# receives EOF (e.g. during `claude --resume` or any new session start on
-# macOS where Claude Code keeps the pipe open). session-start.sh never uses
-# INPUT, so it is safe to discard stdin entirely here.
-exec < /dev/null
+# session-start.sh never uses hook INPUT, so skip common stdin initialization
+# entirely instead of relying on stdin redirection as a side effect.
+export MEMSEARCH_SKIP_INPUT=1
 source "$SCRIPT_DIR/common.sh"
 
 # Bootstrap: if memsearch not available, install uv and warm up uvx cache
