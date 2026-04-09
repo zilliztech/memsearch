@@ -4,12 +4,14 @@
 
 set -euo pipefail
 
-# Read stdin JSON into $INPUT.
+# Read stdin JSON into $INPUT unless the caller explicitly skips input setup.
 # First do a non-blocking readiness check so sync hooks can fail open immediately
 # when the caller does not provide stdin (a common compatibility path for other
 # agent runtimes like VSCode Copilot). If stdin is readable, still keep the
 # timeout/alarm guard to avoid hanging on half-open pipes.
-if [ -t 0 ]; then
+if [ "${MEMSEARCH_SKIP_INPUT:-0}" = "1" ]; then
+  INPUT='{}'
+elif [ -t 0 ]; then
   INPUT='{}'
 elif python3 - <<'PY_STDIN' 2>/dev/null
 import select, sys
