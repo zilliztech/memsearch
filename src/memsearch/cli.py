@@ -97,6 +97,18 @@ def _normalize_compact_source(source: str | None) -> str | None:
     return source
 
 
+def _normalize_search_source_prefix(source_prefix: str | None) -> str | None:
+    """Normalize search --source-prefix paths to the absolute form used at index time."""
+    if not source_prefix:
+        return None
+
+    candidate = Path(source_prefix).expanduser()
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate.resolve())
+
+    return source_prefix
+
+
 # -- Common CLI options --
 
 
@@ -205,7 +217,8 @@ def search(
     )
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
-        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
+        normalized_source_prefix = _normalize_search_source_prefix(source_prefix)
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=normalized_source_prefix))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:

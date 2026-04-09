@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,6 +14,21 @@ logger = logging.getLogger(__name__)
 def _escape_filter_value(value: str) -> str:
     """Escape backslashes and double quotes for Milvus filter expressions."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _bm25_query_text(query_text: str) -> str:
+    """Return a BM25-safe query string or empty string when no lexical tokens remain."""
+    normalized = query_text.strip()
+    if not normalized:
+        return ""
+    if not re.search(r"[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]", normalized):
+        return ""
+    if not re.search(
+        r"[A-Za-z\u00C0-\u024F\u4E00-\u9FFF].*\d|\d.*[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]|[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]{2,}",
+        normalized,
+    ):
+        return ""
+    return normalized
 
 
 class MilvusStore:
@@ -159,17 +175,22 @@ class MilvusStore:
             **req_kwargs,
         )
 
-        bm25_req = AnnSearchRequest(
-            data=[query_text] if query_text else [""],
-            anns_field="sparse_vector",
-            param={"metric_type": "BM25"},
-            limit=top_k,
-            **req_kwargs,
-        )
+        reqs = [dense_req]
+        bm25_query = _bm25_query_text(query_text)
+        if bm25_query:
+            reqs.append(
+                AnnSearchRequest(
+                    data=[bm25_query],
+                    anns_field="sparse_vector",
+                    param={"metric_type": "BM25"},
+                    limit=top_k,
+                    **req_kwargs,
+                )
+            )
 
         results = self._client.hybrid_search(
             collection_name=self._collection,
-            reqs=[dense_req, bm25_req],
+            reqs=reqs,
             ranker=RRFRanker(k=60),
             limit=top_k,
             output_fields=self._QUERY_FIELDS,
