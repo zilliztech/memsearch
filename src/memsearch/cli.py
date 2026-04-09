@@ -553,6 +553,41 @@ def compact(
         ms.close()
 
 
+@cli.command("list")
+@click.option("--json-output", is_flag=True, help="Emit JSON instead of text.")
+@click.option("--collection", "-c", default=None, help="Milvus collection name.")
+@click.option("--milvus-uri", default=None, help="Milvus connection URI.")
+@click.option("--milvus-token", default=None, help="Milvus auth token.")
+def list_memories(
+    json_output: bool,
+    collection: str | None,
+    milvus_uri: str | None,
+    milvus_token: str | None,
+) -> None:
+    """List indexed memory sources."""
+    from .core import MemSearch
+
+    cfg = resolve_config(
+        _build_cli_overrides(
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
+    ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
+    try:
+        sources = ms.list_sources()
+        if json_output:
+            click.echo(json.dumps(sources, ensure_ascii=False, indent=2))
+        elif not sources:
+            click.echo("No memories indexed.")
+        else:
+            for source in sources:
+                click.echo(source)
+    finally:
+        ms.close()
+
+
 @cli.command()
 @click.option("--collection", "-c", default=None, help="Milvus collection name.")
 @click.option("--milvus-uri", default=None, help="Milvus connection URI.")
