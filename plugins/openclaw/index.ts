@@ -6,8 +6,7 @@
  * - memory_get tool: expand a chunk to full context
  * - memory_transcript tool: parse original conversation from JSONL transcript
  * - before_agent_start hook: inject recent memories as cold-start context
- * - llm_output hook: auto-capture per-turn summary (works in TUI + agent modes)
- * - agent_end hook: fallback capture for non-interactive mode
+ * - agent_end hook: auto-capture per-turn summary (extract → summarize → write)
  * - CLI: `memsearch` subcommand (search, index, status)
  */
 
@@ -499,21 +498,18 @@ export default {
       });
     }
 
-    // ----- Auto-capture: per-turn summary via llm_output + agent_end fallback -----
+    // ----- Auto-capture: per-turn summary via agent_end -----
     //
-    // In TUI mode, agent_end only fires when the session exits, not per turn.
-    // We use llm_output (fires on every LLM response) with debouncing to detect
-    // turn completion: after 5s of no new LLM output, we treat the turn as done.
-    // agent_end is kept as a fallback for non-interactive (one-shot agent) mode.
+    // agent_end fires after every turn in TUI mode (after each
+    // runEmbeddedAttempt() completes) and in non-interactive mode.
+    // It provides event.messages (full messagesSnapshot), which gives us
+    // clean structured data to extract the last user+assistant turn.
+    //
+    // Known limitations (upstream OpenClaw issues):
+    // - #50025: agent_end doesn't fire for non-default agents
+    // - #51189: agent_end doesn't fire on Feishu channel
+    // - #57636: Can't distinguish main agent vs subagent
     if (autoCapture) {
-      // Per-turn state
-      let pendingPrompt: string = "";
-      let pendingResponse: string = "";
-      let currentSessionId: string = "";
-      let captureTimer: ReturnType<typeof setTimeout> | null = null;
-      let capturedSinceLastAgentStart = false;
-      const CAPTURE_DEBOUNCE_MS = 5000;
-
       /**
        * Summarize a conversation turn using an LLM CLI.
        * Tries: openclaw agent → raw text fallback.
@@ -620,125 +616,16 @@ export default {
         }
       }
 
-      // Capture user prompt from llm_input events.
-      // A new llm_input means a new conversation turn started. If there is a
-      // pending response from the previous turn (debounce still ticking),
-      // flush it now with the OLD prompt before overwriting.
-      api.on("llm_input", async (event: any) => {
-        // Flush previous turn if pending
-        if (pendingResponse && captureTimer) {
-          clearTimeout(captureTimer);
-          captureTimer = null;
-          const oldPrompt = pendingPrompt;
-          const oldResponse = pendingResponse;
-          pendingPrompt = "";
-          pendingResponse = "";
-          if (oldResponse) {
-            const turnText = oldPrompt
-              ? `[Human]: ${oldPrompt}\n[Assistant]: ${oldResponse.slice(0, 2500)}`
-              : oldResponse.slice(0, 3000);
-            capturedSinceLastAgentStart = true;
-            writeTurnCapture(turnText, currentSessionId);
-          }
-        }
-
-        const prompt =
-          event.prompt || event.userMessage || event.userText || "";
-        if (typeof prompt === "string" && prompt.length > 0) {
-          // Take the last non-empty line — prompt may contain full system context
-          const lines = prompt.split("\n").filter((l: string) => l.trim());
-          const lastLine = lines[lines.length - 1] || "";
-          // Skip if too long (likely system prompt, not user message)
-          if (lastLine.length > 0 && lastLine.length < 500) {
-            pendingPrompt = lastLine;
-          }
-        }
-      });
-
-      // Debounced capture on llm_output (fires per LLM call, including tool calls).
-      // IMPORTANT: event.assistantTexts may contain injected prependContext
-      // (from before_agent_start) echoed back. We must filter those out to
-      // avoid a capture → inject → re-capture feedback loop.
-      const INJECTED_MARKERS = [
-        "Recent Memory (memsearch)",
-        "[plugins] [memsearch]",
-        "Plugin loaded. Collection:",
-      ];
-
-      api.on("llm_output", async (event: any) => {
-        // Track session ID for anchor
-        currentSessionId = event.sessionId || currentSessionId;
-
-        const texts = event.assistantTexts;
-        let text =
-          Array.isArray(texts) ? texts.join("\n") : String(texts || "");
-
-        // Strip OpenClaw reply directives (e.g. [[reply_to_current]])
-        text = text.replace(/\[\[reply_to_\w+\]\]\s*/g, "").trim();
-
-        // Skip if this looks like our own injected context echoed back
-        if (INJECTED_MARKERS.some((m) => text.includes(m))) return;
-
-        // Skip if the text is mostly [Human]: lines (prependContext leak)
-        const lines = text.split("\n").filter((l) => l.trim());
-        const humanLines = lines.filter((l) => l.startsWith("[Human]:"));
-        if (lines.length > 0 && humanLines.length / lines.length > 0.5) return;
-
-        // Accept any non-empty response (even short ones like "4" or "Paris")
-        if (text.length > 0) {
-          pendingResponse = text;
-        }
-
-        // Reset debounce timer — when no more LLM output arrives within
-        // CAPTURE_DEBOUNCE_MS, the turn is considered complete.
-        if (captureTimer) clearTimeout(captureTimer);
-        captureTimer = setTimeout(() => {
-          captureTimer = null;
-          const prompt = pendingPrompt;
-          const response = pendingResponse;
-          pendingPrompt = "";
-          pendingResponse = "";
-
-          if (!response) return;
-
-          // Combine user question + assistant response
-          let turnText: string;
-          if (prompt) {
-            turnText = `[Human]: ${prompt}\n[Assistant]: ${response.slice(0, 2500)}`;
-          } else {
-            turnText = response.slice(0, 3000);
-          }
-
-          capturedSinceLastAgentStart = true;
-          writeTurnCapture(turnText, currentSessionId);
-        }, CAPTURE_DEBOUNCE_MS);
-      });
-
-      // Fallback: agent_end fires in non-interactive mode (one-shot agent runs)
+      // Primary capture: agent_end fires every turn with full message history
       api.on("agent_end", async (event: any) => {
-        // Cancel any pending debounce timer
-        if (captureTimer) {
-          clearTimeout(captureTimer);
-          captureTimer = null;
-        }
-
-        // If llm_output already captured this turn, skip to avoid duplicates
-        if (capturedSinceLastAgentStart) {
-          capturedSinceLastAgentStart = false;
-          pendingResponse = "";
-          return;
-        }
-
-        // Use message history (available in agent_end) for non-TUI capture
         const messages = event.messages || [];
         if (messages.length < 2) return;
 
         const lastTurn = extractLastTurn(messages);
         if (!lastTurn || lastTurn.length < 50) return;
 
-        writeTurnCapture(lastTurn, currentSessionId);
-        pendingPrompt = "";
-        pendingResponse = "";
+        const sessionId = event.sessionId || "";
+        writeTurnCapture(lastTurn, sessionId);
       });
     }
 
