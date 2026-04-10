@@ -4,7 +4,7 @@ Automatic persistent memory for [OpenClaw](https://github.com/openclaw/openclaw)
 
 ## Prerequisites
 
-- [OpenClaw](https://github.com/openclaw/openclaw) >= 2026.3.22
+- [OpenClaw](https://github.com/openclaw/openclaw) >= 2026.3.22 (2026.4+ recommended for full CLI support)
 - Python 3.10+
 
 ## Install

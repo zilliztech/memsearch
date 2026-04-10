@@ -9,7 +9,7 @@ memsearch provides plugins for 4 AI coding agent platforms. All plugins share th
 | Feature | [Claude Code](claude-code/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) | [Codex CLI](codex/index.md) |
 |---------|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | TS registerTool | TS npm plugin | Shell hooks |
-| **Capture method** | Stop hook (async) | llm_output debounce | SQLite daemon | Stop hook (async) |
+| **Capture method** | Stop hook (async) | agent_end hook | SQLite daemon | Stop hook (async) |
 | **Summarization** | `claude -p --model haiku` | OpenClaw agent | `opencode run` | `codex exec` |
 | **Recall mechanism** | SKILL.md (context: fork) | memory_search tool | memory_search tool | SKILL.md |
 | **L3 transcript format** | Claude Code JSONL | OpenClaw JSONL | OpenCode SQLite | Codex rollout JSONL |

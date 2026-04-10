@@ -66,7 +66,7 @@ All platforms share the same markdown memory format and derive collection names 
 | | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) |
 |---|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks |
-| **Capture** | Stop hook + Haiku | llm_output debounce | SQLite daemon | Stop hook + Codex |
+| **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex |
 | **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md |
 | **Install** | Plugin marketplace | `openclaw plugins install` | npm + opencode.json | `install.sh` |
 

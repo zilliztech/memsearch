@@ -12,7 +12,7 @@ memsearch supports 4 AI coding agent platforms: [Claude Code](platforms/claude-c
 graph TB
     subgraph "Capture (per-platform)"
         CC["Claude Code<br/>(Stop hook + Haiku)"]
-        OC["OpenClaw<br/>(llm_output + agent)"]
+        OC["OpenClaw<br/>(agent_end)"]
         OO["OpenCode<br/>(SQLite daemon)"]
         CX["Codex CLI<br/>(Stop hook + Codex)"]
     end

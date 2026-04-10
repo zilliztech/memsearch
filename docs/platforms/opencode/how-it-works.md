@@ -188,7 +188,7 @@ The `<!-- session:... db:~/.local/share/opencode/opencode.db -->` anchors are us
 
 | Aspect | OpenCode | Claude Code | OpenClaw | Codex |
 |--------|----------|-------------|----------|-------|
-| **Capture** | SQLite daemon (polling) | Stop hook (event-driven) | llm_output hook (event-driven) | Stop hook (event-driven) |
+| **Capture** | SQLite daemon (polling) | Stop hook (event-driven) | agent_end hook (event-driven) | Stop hook (event-driven) |
 | **Summarizer** | `opencode run` (isolated) | `claude -p --model haiku` | `openclaw agent --local` | `codex exec` (isolated) |
 | **L3 source** | OpenCode SQLite DB | Claude Code JSONL | OpenClaw JSONL | Codex rollout JSONL |
 | **Recall trigger** | Tool-based (LLM decides) | Skill in forked subagent (`context: fork`) | Tool-based (LLM decides) | Skill-based (main context) |

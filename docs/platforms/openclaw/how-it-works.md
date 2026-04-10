@@ -5,8 +5,7 @@
 | Event | What memsearch does |
 |-------|-------------------|
 | **Agent starts** | Recent memories from the 2 most recent daily logs are injected as context (`before_agent_start`) |
-| **Each turn ends** | Conversation is summarized by the OpenClaw agent and appended to daily `.md` (`llm_output` debounce) |
-| **Agent ends** | Fallback capture for non-interactive mode (`agent_end` hook) |
+| **Each turn ends** | Conversation is summarized by the OpenClaw agent and appended to daily `.md` (`agent_end` hook) |
 | **LLM needs history** | Calls `memory_search`, `memory_get`, or `memory_transcript` tools progressively |
 
 ---
@@ -19,13 +18,12 @@ The plugin is a single `index.ts` file that registers tools, hooks, and a CLI su
 graph TB
     subgraph "Plugin Registration (index.ts)"
         TOOLS["registerTool (factory pattern)<br/>memory_search · memory_get · memory_transcript"]
-        HOOKS["Event hooks<br/>before_agent_start · llm_output · agent_end · session_start"]
+        HOOKS["Event hooks<br/>before_agent_start · agent_end · session_start"]
         CLI["registerCli<br/>openclaw memsearch search/index/status"]
     end
 
     subgraph "Capture Pipeline"
-        LLM_OUT["llm_output event"] --> DEBOUNCE["5s debounce timer"]
-        DEBOUNCE --> EXTRACT["Extract last turn<br/>(user question + assistant response)"]
+        AGENT_END["agent_end event"] --> EXTRACT["Extract last user+assistant turn<br/>from event.messages"]
         EXTRACT --> SUMMARIZE["summarizeWithLLM()<br/>openclaw agent --local"]
         SUMMARIZE --> WRITE["Append to YYYY-MM-DD.md<br/>with session anchors"]
         WRITE --> INDEX["memsearch index<br/>(background, non-blocking)"]
@@ -65,42 +63,31 @@ When the tool is called, `ctx.agentId` tells the plugin which agent is running. 
 
 ## Capture
 
-The capture pipeline hooks into OpenClaw's `llm_output` event, which fires on every LLM response (including intermediate tool-call responses).
-
-### Why llm_output + Debounce?
-
-In OpenClaw's TUI mode, `agent_end` only fires when the entire session exits -- not after each conversational turn. To capture per-turn summaries in interactive sessions, the plugin uses `llm_output` with a **5-second debounce**:
+The capture pipeline hooks into OpenClaw's `agent_end` event, which fires after every conversational turn in TUI mode. The event provides `event.messages` — a complete snapshot of the message history up to that point.
 
 ```mermaid
 sequenceDiagram
-    participant LLM as LLM Output
+    participant User
+    participant Agent as OpenClaw Agent
     participant Plugin as memsearch plugin
-    participant Timer as Debounce Timer
     participant File as Daily .md
 
-    LLM->>Plugin: llm_output (tool call response)
-    Plugin->>Timer: Reset timer (5s)
-    LLM->>Plugin: llm_output (final response)
-    Plugin->>Timer: Reset timer (5s)
-    Note over Timer: 5 seconds pass, no more output...
-    Timer->>Plugin: Timer fires → turn complete
-    Plugin->>Plugin: Extract user question + assistant response
-    Plugin->>Plugin: Filter noise (system logs, injected context)
+    User->>Agent: Ask question
+    Agent->>Agent: LLM calls, tool use, etc.
+    Agent->>Plugin: agent_end (event.messages)
+    Plugin->>Plugin: Extract last user+assistant turn
     Plugin->>Plugin: summarizeWithLLM()
     Plugin->>File: Append summary with anchors
     Plugin->>Plugin: memsearch index (background)
 ```
 
-After 5 seconds of silence from the LLM, the plugin treats the turn as complete and captures it. If a new `llm_input` event arrives (new user prompt) while a timer is still pending, the previous turn is flushed immediately before starting a new one.
+The plugin extracts the last user question and assistant response from `event.messages`, summarizes them via LLM, and appends the summary to the daily markdown file. No debounce or noise filtering is needed — `agent_end` provides a clean, complete message history for each turn.
 
-### Noise Filtering
+!!! note "Known limitations"
 
-The plugin aggressively filters noise to avoid capturing system messages, plugin logs, or injected context as "memories":
-
-- System/log lines (`[plugins]`, `WARNING:`, `Error:`, etc.)
-- Injected cold-start context (prevents capture → inject → re-capture loops)
-- OpenClaw reply directives (`[[reply_to_current]]`)
-- Lines that are mostly `[Human]:` prefixed (prependContext leak)
+    - Non-default agents may not fire `agent_end` reliably ([#50025](https://github.com/openclaw/openclaw/issues/50025))
+    - Feishu channel mode does not trigger `agent_end` ([#51189](https://github.com/openclaw/openclaw/issues/51189))
+    - Main agent vs subagent distinction not yet available in event metadata ([#57636](https://github.com/openclaw/openclaw/issues/57636))
 
 ### Summarization
 
@@ -113,10 +100,6 @@ Write in third person: 'User asked...', 'OpenClaw replied...'
 ```
 
 If `openclaw agent` fails (e.g., no model configured), the plugin falls back to raw truncated text.
-
-### Fallback: agent_end Hook
-
-For non-interactive mode (one-shot agent runs via `openclaw agent -m "do something"`), the `agent_end` hook acts as a fallback. It checks whether `llm_output` already captured the turn (via a `capturedSinceLastAgentStart` flag) to avoid duplicates.
 
 ---
 
@@ -217,7 +200,7 @@ plugins/openclaw/
 |------|---------|
 | `package.json` | npm package with `openclaw >=2026.3.11` as peer dependency |
 | `openclaw.plugin.json` | Plugin configuration schema: `provider`, `autoCapture`, `autoRecall` settings |
-| `index.ts` | Main plugin entry. Registers 3 tools (factory pattern), 4 event hooks, and CLI subcommand |
+| `index.ts` | Main plugin entry. Registers 3 tools (factory pattern), 3 event hooks, and CLI subcommand |
 | `install.sh` | Installation script: checks memsearch availability, registers plugin |
 | `SKILL.md` | Memory recall skill guide -- helps the LLM decide when and how to use the memory tools |
 | `derive-collection.sh` | Generates deterministic per-agent Milvus collection names |

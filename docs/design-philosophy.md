@@ -43,7 +43,7 @@ This is memsearch's key differentiator: **memories written by one agent are sear
 graph TB
     subgraph "Capture (per-platform)"
         CC["Claude Code<br/>(Stop hook + Haiku)"]
-        OC["OpenClaw<br/>(llm_output + agent)"]
+        OC["OpenClaw<br/>(agent_end)"]
         OO["OpenCode<br/>(SQLite daemon)"]
         CX["Codex CLI<br/>(Stop hook + Codex)"]
     end
