@@ -1,6 +1,6 @@
 {
   "name": "memsearch",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Semantic memory search plugin for OpenClaw — persistent cross-session memory powered by Milvus vector search. Automatically captures conversation summaries and recalls relevant context.",
   "type": "module",
   "openclaw": {
