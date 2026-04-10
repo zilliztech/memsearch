@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from memsearch.store import MilvusStore
+from memsearch.store import MilvusStore, _bm25_query_text
 
 
 @pytest.fixture
@@ -93,6 +93,33 @@ def test_upsert_is_idempotent(store: MilvusStore):
     results = store.search([1.0, 0.0, 0.0, 0.0], top_k=10)
     hashes = [r["chunk_hash"] for r in results]
     assert hashes.count("same_hash") == 1
+
+
+def test_bm25_query_text_skips_numeric_only_queries():
+    assert _bm25_query_text("111123") == ""
+    assert _bm25_query_text("   42-7 ") == ""
+    assert _bm25_query_text("Redis 111123") == "Redis 111123"
+    assert _bm25_query_text("gpt-4o") == "gpt-4o"
+    assert _bm25_query_text("RFC-9110") == "RFC-9110"
+    assert _bm25_query_text("v2.1.0") == "v2.1.0"
+
+
+def test_search_numeric_only_query_does_not_raise(store: MilvusStore):
+    chunk = {
+        "embedding": [1.0, 0.0, 0.0, 0.0],
+        "content": "Version 111123 release checklist",
+        "source": "test.md",
+        "heading": "Release",
+        "chunk_hash": "h_numeric",
+        "heading_level": 1,
+        "start_line": 1,
+        "end_line": 3,
+    }
+    store.upsert([chunk])
+
+    results = store.search([1.0, 0.0, 0.0, 0.0], query_text="111123", top_k=5)
+
+    assert isinstance(results, list)
 
 
 def test_hybrid_search(store: MilvusStore):

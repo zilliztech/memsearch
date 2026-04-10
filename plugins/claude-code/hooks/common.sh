@@ -4,13 +4,25 @@
 
 set -euo pipefail
 
-# Read stdin JSON into $INPUT
-# Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly.
-# macOS lacks `timeout` — use perl alarm(2) as a portable fallback with a 2-second deadline.
-if command -v timeout &>/dev/null; then
-  INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
+# Read stdin JSON into $INPUT.
+# First do a non-blocking readiness check so sync hooks can fail open immediately
+# when the caller does not provide stdin (a common compatibility path for other
+# agent runtimes like VSCode Copilot). If stdin is readable, still keep the
+# timeout/alarm guard to avoid hanging on half-open pipes.
+if [ -t 0 ]; then
+  INPUT='{}'
+elif python3 - <<'PY_STDIN' 2>/dev/null
+import select, sys
+sys.exit(0 if select.select([sys.stdin], [], [], 0)[0] else 1)
+PY_STDIN
+then
+  if command -v timeout &>/dev/null; then
+    INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
+  else
+    INPUT="$(perl -e 'alarm 2; local $/; $_ = <STDIN>; print if defined' 2>/dev/null || echo '{}')"
+  fi
 else
-  INPUT="$(perl -e 'alarm 2; local $/; $_ = <STDIN>; print if defined' 2>/dev/null || echo '{}')"
+  INPUT='{}'
 fi
 
 # Ensure common user bin paths are in PATH (hooks may run in a minimal env)

@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import Any
 
 
+def _entry_content(entry: dict[str, Any]) -> Any:
+    """Return transcript content from either nested or flat event formats."""
+    msg = entry.get("message")
+    if isinstance(msg, dict) and "content" in msg:
+        return msg.get("content")
+    return entry.get("content", "")
+
+
 @dataclass
 class Turn:
     """A single conversation turn extracted from a JSONL transcript."""
@@ -49,8 +57,7 @@ def parse_transcript(path: str | Path) -> list[Turn]:
         entry_type = entry.get("type", "")
 
         if entry_type == "user":
-            msg = entry.get("message", {})
-            content = msg.get("content", "")
+            content = _entry_content(entry)
 
             # Skip tool results — they are part of the previous assistant turn
             if (
@@ -78,8 +85,7 @@ def parse_transcript(path: str | Path) -> list[Turn]:
                 )
 
         elif entry_type == "assistant" and current_turn is not None:
-            msg = entry.get("message", {})
-            content_blocks = msg.get("content", [])
+            content_blocks = _entry_content(entry)
             if not isinstance(content_blocks, list):
                 continue
 
@@ -117,149 +123,56 @@ def find_turn_context(
     target_uuid: str,
     context: int = 3,
 ) -> tuple[list[Turn], int]:
-    """Find a turn by UUID and return surrounding context turns.
-
-    Returns (context_turns, target_index_in_result).
-    """
-    target_idx = -1
+    """Find a turn by UUID and return surrounding context turns."""
+    idx = -1
     for i, turn in enumerate(turns):
-        if turn.uuid.startswith(target_uuid) or target_uuid.startswith(turn.uuid[:8]):
-            target_idx = i
+        if turn.uuid == target_uuid or turn.uuid.startswith(target_uuid):
+            idx = i
             break
 
-    if target_idx == -1:
+    if idx == -1:
         return [], -1
 
-    start = max(0, target_idx - context)
-    end = min(len(turns), target_idx + context + 1)
-    return turns[start:end], target_idx - start
-
-
-def format_turns(turns: list[Turn], highlight_idx: int = -1) -> str:
-    """Format turns into readable text output."""
-    lines: list[str] = []
-    for i, turn in enumerate(turns):
-        marker = ">>> " if i == highlight_idx else ""
-        ts = _extract_time(turn.timestamp)
-        lines.append(f"{marker}[{ts}] {turn.uuid[:8]}")
-        lines.append(turn.content)
-        if turn.tool_calls:
-            lines.append(f"  Tools: {', '.join(turn.tool_calls)}")
-        lines.append("")
-    return "\n".join(lines)
-
-
-def format_turn_index(turns: list[Turn]) -> str:
-    """Format a compact index of all turns (for --no-turn overview)."""
-    lines: list[str] = []
-    for turn in turns:
-        ts = _extract_time(turn.timestamp)
-        preview = turn.content[:80].replace("\n", " ")
-        n_tools = len(turn.tool_calls)
-        tool_info = f" [{n_tools} tools]" if n_tools else ""
-        lines.append(f"  {turn.uuid[:12]}  {ts}  {preview}{tool_info}")
-    return "\n".join(lines)
-
-
-def turns_to_dicts(turns: list[Turn]) -> list[dict[str, Any]]:
-    """Convert turns to JSON-serializable dicts."""
-    return [
-        {
-            "uuid": t.uuid,
-            "timestamp": t.timestamp,
-            "content": t.content,
-            "tool_calls": t.tool_calls,
-        }
-        for t in turns
-    ]
-
-
-# -- Helpers --
+    start = max(0, idx - context)
+    end = min(len(turns), idx + context + 1)
+    return turns[start:end], idx - start
 
 
 def _strip_hook_tags(text: str) -> str:
-    """Remove hook-injected XML tags from user messages."""
+    """Strip hook wrapper tags and their contents from transcript content."""
     import re
 
-    # Remove <system-reminder>...</system-reminder>, <local-command-*>...</local-command-*>, etc.
-    text = re.sub(r"<system-reminder>.*?</system-reminder>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<local-command-\w+>.*?</local-command-\w+>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<command-\w+>.*?</command-\w+>", "", text, flags=re.DOTALL)
-    return text.strip()
+    text = re.sub(r"<command-[^>]+>.*?</command-[^>]+>", "", text, flags=re.DOTALL)
+    return re.sub(r"<[^>]+>", "", text).strip()
 
 
-def _extract_time(ts: str) -> str:
+def _extract_time(timestamp: str) -> str:
     """Extract HH:MM:SS from ISO timestamp."""
-    if "T" in ts:
-        time_part = ts.split("T")[1]
-        return time_part[:8]  # HH:MM:SS
-    return ts[:8] if len(ts) >= 8 else ts
+    if not timestamp:
+        return ""
+    try:
+        return timestamp.split("T", 1)[1].split(".", 1)[0].rstrip("Z")
+    except Exception:
+        return timestamp
 
 
-def _summarize_tool_input(name: str, tool_input: dict) -> str:
-    """Create a short summary of a tool call."""
-    if name == "Bash":
-        cmd = str(tool_input.get("command", ""))[:80]
-        return f"Bash({cmd})"
-    elif name == "Read":
-        return f"Read({tool_input.get('file_path', '')})"
-    elif name == "Edit":
-        return f"Edit({tool_input.get('file_path', '')})"
-    elif name == "Write":
-        return f"Write({tool_input.get('file_path', '')})"
-    elif name in ("Grep", "Glob"):
-        pattern = tool_input.get("pattern", "")[:60]
-        return f"{name}({pattern})"
-    elif name == "Task":
-        desc = tool_input.get("description", "")[:60]
-        return f"Task({desc})"
-    elif name == "WebSearch":
-        query = tool_input.get("query", "")[:60]
-        return f"WebSearch({query})"
-    else:
-        # Generic: show first key=value pair
-        if tool_input:
-            first_key = next(iter(tool_input))
-            first_val = str(tool_input[first_key])[:60]
-            return f"{name}({first_key}={first_val})"
+def _summarize_tool_input(name: str, tool_input: dict[str, Any]) -> str:
+    """Summarize tool input for compact display."""
+    if name == "Read" and "file_path" in tool_input:
+        return f"Read({tool_input['file_path']})"
+    if name == "Bash" and "command" in tool_input:
+        return f"Bash({tool_input['command']})"
+    if not tool_input:
         return name
+    parts = ", ".join(f"{k}={v}" for k, v in tool_input.items())
+    return f"{name}({parts})"
 
 
-# -- CLI entry point --
-
-
-if __name__ == "__main__":
-    import sys
-
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="View conversation turns from a Claude Code JSONL transcript."
-    )
-    parser.add_argument("jsonl_path", help="Path to the JSONL transcript file.")
-    parser.add_argument("--turn", "-t", default=None, help="Target turn UUID (prefix match).")
-    parser.add_argument("--context", "-c", default=3, type=int, help="Number of turns before/after target.")
-    parser.add_argument("--json-output", "-j", action="store_true", help="Output as JSON.")
-    args = parser.parse_args()
-
-    turns = parse_transcript(args.jsonl_path)
-    if not turns:
-        print("No conversation turns found.")
-        sys.exit(0)
-
-    if args.turn:
-        context_turns, highlight = find_turn_context(turns, args.turn, context=args.context)
-        if not context_turns:
-            print(f"Turn not found: {args.turn}", file=sys.stderr)
-            sys.exit(1)
-        if args.json_output:
-            print(json.dumps(turns_to_dicts(context_turns), indent=2, ensure_ascii=False))
-        else:
-            print(f"Showing {len(context_turns)} turns around {args.turn[:12]}:\n")
-            print(format_turns(context_turns, highlight_idx=highlight))
-    else:
-        if args.json_output:
-            print(json.dumps(turns_to_dicts(turns), indent=2, ensure_ascii=False))
-        else:
-            print(f"All turns ({len(turns)}):\n")
-            print(format_turn_index(turns))
+def format_turn_index(turns: list[Turn]) -> str:
+    """Format a compact index of transcript turns."""
+    lines = []
+    for turn in turns:
+        preview = turn.content.replace("\n", " ")[:80]
+        tool_part = f" [{len(turn.tool_calls)} tools]" if turn.tool_calls else ""
+        lines.append(f"{turn.uuid[:12]} {_extract_time(turn.timestamp)} {preview}{tool_part}")
+    return "\n".join(lines)
