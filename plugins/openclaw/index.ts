@@ -742,6 +742,12 @@ export default {
             console.log("Stats: (unavailable — collection may not exist yet)");
           }
         });
+    }, {
+      descriptors: [{
+        name: "memsearch",
+        description: "Semantic memory search and management",
+        hasSubcommands: true,
+      }],
     });
 
     // Eager init (non-blocking) — log when ready
