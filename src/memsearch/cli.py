@@ -231,6 +231,67 @@ def search(
         ms.close()
 
 
+@cli.command("list")
+@click.option(
+    "--source-prefix",
+    default=None,
+    type=click.Path(),
+    help="Only list chunks whose source path starts with this prefix.",
+)
+@click.option("--limit", "-n", default=None, type=click.IntRange(1), help="Maximum number of memories to show.")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+@click.option("--collection", "-c", default=None, help="Milvus collection name.")
+@click.option("--milvus-uri", default=None, help="Milvus connection URI.")
+@click.option("--milvus-token", default=None, help="Milvus auth token.")
+def list_memories(
+    source_prefix: str | None,
+    limit: int | None,
+    json_output: bool,
+    collection: str | None,
+    milvus_uri: str | None,
+    milvus_token: str | None,
+) -> None:
+    """List indexed memories."""
+    from .store import MilvusStore
+
+    cfg = resolve_config(
+        _build_cli_overrides(
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
+    store = MilvusStore(
+        uri=cfg.milvus.uri,
+        token=cfg.milvus.token or None,
+        collection=cfg.milvus.collection,
+        dimension=None,
+    )
+    try:
+        memories = store.list_memories(source_prefix=source_prefix, limit=limit)
+        if json_output:
+            click.echo(json.dumps(memories, indent=2, ensure_ascii=False))
+            return
+
+        if not memories:
+            click.echo("No memories found.")
+            return
+
+        for i, memory in enumerate(memories, 1):
+            content = " ".join(memory.get("content", "").split())
+            preview = content if len(content) <= 160 else f"{content[:157]}..."
+            click.echo(f"\n--- Memory {i} ---")
+            click.echo(f"Source: {memory.get('source', '?')}")
+            heading = memory.get("heading", "")
+            if heading:
+                click.echo(f"Heading: {heading}")
+            click.echo(f"Lines: {memory.get('start_line', '?')}-{memory.get('end_line', '?')}")
+            click.echo(f"Chunk: {memory.get('chunk_hash', '')}")
+            click.echo(f"Preview: {preview}")
+    finally:
+        store.close()
+
+
 # ======================================================================
 # Expand command (progressive disclosure L2)
 #

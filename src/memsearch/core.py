@@ -237,6 +237,15 @@ class MemSearch:
             results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
         return results
 
+    async def list_memories(
+        self,
+        *,
+        source_prefix: str | Path | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """List indexed memories ordered by source path and line number."""
+        return self._store.list_memories(source_prefix=source_prefix, limit=limit)
+
     # ------------------------------------------------------------------
     # Compact (compress memories)
     # ------------------------------------------------------------------
