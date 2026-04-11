@@ -322,7 +322,10 @@ User: "What did we discuss about batch size?"
 # pip
 pip install memsearch
 
-# or uv (recommended)
+# Install as a CLI tool (recommended for most users)
+uv tool install memsearch
+
+# Or add as a project dependency
 uv add memsearch
 ```
 
@@ -330,8 +333,9 @@ uv add memsearch
 <summary><b>Optional embedding providers</b></summary>
 
 ```bash
-pip install "memsearch[onnx]"    # Local ONNX (recommended, no API key)
-# or: uv add "memsearch[onnx]"
+pip install "memsearch[onnx]"          # Local ONNX (recommended, no API key)
+# uv tool install "memsearch[onnx]"    # CLI with ONNX embedding
+# or: uv add "memsearch[onnx]"         # as project dependency
 
 # Other options: [openai], [google], [voyage], [ollama], [local], [all]
 ```
