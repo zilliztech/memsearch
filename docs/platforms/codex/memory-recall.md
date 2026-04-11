@@ -110,9 +110,10 @@ In practice, this works well for targeted queries but is less efficient for broa
 
 **Check the skill install.** The `$memory-recall` skill must be installed at `~/.agents/skills/memory-recall/SKILL.md`. The installer substitutes `__INSTALL_DIR__` with the actual plugin path. If recall doesn't work, verify the skill file exists and paths are correct.
 
-**Derive collection manually.** If you need to debug collection issues:
+**Derive collection manually.** If you need to debug collection issues, resolve to the git repo root first so the skill matches the hook collection:
 ```bash
-bash /path/to/plugins/codex/scripts/derive-collection.sh
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+bash /path/to/plugins/codex/scripts/derive-collection.sh "$root"
 ```
 
 **Rebuild the index.** If search quality degrades after changing embedding providers:

@@ -113,6 +113,12 @@ Manual invocation is useful when:
 
 **Edit memory files directly.** If a summary is inaccurate or contains sensitive information, open `.memsearch/memory/YYYY-MM-DD.md` in your editor and fix it. The watcher will re-index automatically. Memory files are plain markdown -- you're in full control.
 
+**Debug collection mismatches from subdirectories.** If Claude Code is launched from a git subdirectory, derive the collection from the repo root so manual debugging matches the hook and skill behavior:
+```bash
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+bash /path/to/plugins/claude-code/scripts/derive-collection.sh "$root"
+```
+
 **Rebuild the index if search quality degrades.** If you change embedding providers or suspect index corruption:
 ```bash
 memsearch index .memsearch/memory/ --force
