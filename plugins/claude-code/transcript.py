@@ -123,7 +123,7 @@ def find_turn_context(
     """
     target_idx = -1
     for i, turn in enumerate(turns):
-        if turn.uuid.startswith(target_uuid) or target_uuid.startswith(turn.uuid[:8]):
+        if turn.uuid.startswith(target_uuid):
             target_idx = i
             break
 
