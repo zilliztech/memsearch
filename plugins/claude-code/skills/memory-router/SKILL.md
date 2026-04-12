@@ -58,6 +58,8 @@ If readiness checks show a likely blocker, report the blocker first instead of p
 Use:
 - `session-recall`
 
+`session-recall` should still attempt memsearch search first, including for a bare session id, and only fall back to direct markdown/session-anchor reading when the memsearch path is genuinely insufficient.
+
 Only broaden to `memory-search` if:
 - the session id alone is insufficient, or
 - a topic plus session id would help narrow retrieval.

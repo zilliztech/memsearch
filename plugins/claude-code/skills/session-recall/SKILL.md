@@ -21,22 +21,27 @@ Session selector and optional query: $ARGUMENTS
    - It should look like a UUID.
    - If no clear session id is present, say so instead of guessing.
 
-2. **Use memsearch first whenever possible.**
+2. **Always attempt memsearch search first.**
+   - If the user supplied only a session id, start with:
+     ```bash
+     memsearch search "<session_id>" --top-k 8 --json-output --collection <collection name above>
+     ```
    - If the user also supplied a topic/query, start with:
      ```bash
      memsearch search "<topic query> <session_id>" --top-k 8 --json-output --collection <collection name above>
      ```
-   - If this returns plausible matches, expand only the most relevant hashes with:
+   - If memsearch returns plausible matches, expand only the most relevant hashes with:
      ```bash
      memsearch expand <chunk_hash> --collection <collection name above>
      ```
    - Keep only results whose expanded section or anchor metadata clearly matches the target `session_id`.
+   - Do not conclude `No relevant memories found for that session.` until this memsearch-first path has been attempted.
 
-3. **Fallback to direct markdown/session anchor reading only if the memsearch path is insufficient.**
+3. **Fallback to direct markdown/session anchor reading only if the memsearch path is genuinely insufficient.**
    - Use this fallback when:
-     - the user gave only a session id with no meaningful semantic query
-     - memsearch returns nothing useful
-     - expanded results do not expose the target session clearly enough
+     - memsearch is unavailable or clearly nonfunctional
+     - memsearch returns no plausible session-scoped matches
+     - expanded results still do not expose the target session clearly enough
    - In that case, search the markdown memory files under `.memsearch/memory/` for the session id and read only the relevant local section.
 
 4. **Optional transcript drill-down**

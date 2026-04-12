@@ -148,6 +148,17 @@ If manual invocation works but auto-invocation doesn't:
 - Check that the prompt is >= 10 characters (short prompts skip the memory hint)
 - Verify `memsearch` is in PATH
 
+### Duplicate `/session-recall` entries in completion
+
+If completion shows both plain `/session-recall` and `(memsearch) /session-recall`, the most likely cause is a legacy standalone memsearch skill under `~/.claude/skills/` plus the current plugin-installed memsearch skill.
+
+What to do:
+- During migration, prefer the namespaced memsearch command so you are definitely invoking the plugin-provided skill.
+- After confirming the plugin install works, remove or archive only the old memsearch standalone skill entries under `~/.claude/skills/`.
+- Restart Claude Code and check completion again.
+
+This is usually a local migration/install-state issue, not a sign that the source repo defines the skill twice.
+
 ---
 
 ## Memory Files Missing or Empty

@@ -74,7 +74,10 @@ For diagnostics:
 
 For session-specific recall:
 - prefer `session-recall` when you already know the session id
-- the intended behavior is memsearch-first, with direct markdown/session-anchor reading only as a bounded fallback when engine results are insufficient
+- even a bare session-id lookup should start with `memsearch search` before any direct markdown/session-anchor reading is attempted
+- direct markdown/session-anchor reading is only a bounded fallback when the memsearch path is genuinely insufficient
+
+If Claude completion shows both plain `/session-recall` and `(memsearch) /session-recall`, the likely cause is a legacy standalone memsearch skill still installed under `~/.claude/skills/` alongside the plugin install. During migration, prefer the plugin/namespaced command so you are definitely invoking the plugin-provided skill.
 
 For front-door routing:
 - use `memory-router` when the question is about history/session/recall and the assistant first needs to choose the correct memsearch path
