@@ -45,14 +45,3 @@ export OPENAI_API_KEY="sk-..."
 
 For Milvus backend configuration, see [Getting Started -- Milvus Backends](../../getting-started.md#milvus-backends).
 
-## Migration note: duplicate command entries
-
-If Claude Code completion shows both plain commands like `/session-recall` and namespaced plugin entries like `(memsearch) /session-recall`, you likely still have an older standalone memsearch skill install under `~/.claude/skills/` in addition to the plugin install.
-
-Recommended migration path:
-
-1. Prefer the plugin/namespaced command form during migration so you are definitely invoking the plugin-provided skill.
-2. After verifying the plugin install works, remove or archive only the legacy memsearch standalone skill paths under `~/.claude/skills/`.
-3. Restart Claude Code so completion refreshes.
-
-Do not treat this as two plugin copies in the source repo. It is typically a local install-state duplication between legacy standalone skills and the current plugin install.

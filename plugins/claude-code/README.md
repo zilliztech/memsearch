@@ -115,8 +115,6 @@ This gives Claude four access styles:
 
 For session-specific recall, the intended contract is memsearch-first even for a bare session id. Direct markdown/session-anchor reading is a bounded fallback only when the memsearch path is genuinely insufficient.
 
-If Claude completion shows both plain commands like `/session-recall` and namespaced plugin entries like `(memsearch) /session-recall`, the likely cause is a legacy standalone memsearch skill still present under `~/.claude/skills/` alongside the plugin install. During migration, prefer the namespaced/plugin command form and remove or archive only the old standalone memsearch skill entries after verifying the plugin install works.
-
 ### Lifecycle Diagram
 
 ```mermaid
