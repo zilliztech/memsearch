@@ -26,7 +26,7 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size"}
+_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "rrf_k"}
 
 
 @dataclass
@@ -55,6 +55,11 @@ class CompactConfig:
 
 
 @dataclass
+class SearchConfig:
+    rrf_k: int = 60  # RRF fusion constant; lower = top-ranked results weighted more
+
+
+@dataclass
 class ChunkingConfig:
     max_chunk_size: int = 1500
     overlap_lines: int = 2
@@ -75,6 +80,7 @@ class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     compact: CompactConfig = field(default_factory=CompactConfig)
+    search: SearchConfig = field(default_factory=SearchConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
@@ -85,6 +91,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "milvus": MilvusConfig,
     "embedding": EmbeddingConfig,
     "compact": CompactConfig,
+    "search": SearchConfig,
     "chunking": ChunkingConfig,
     "watch": WatchConfig,
     "reranker": RerankerConfig,

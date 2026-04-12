@@ -84,4 +84,5 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "max_chunk_size": 1800,
         "overlap_lines": 4,
         "reranker_model": "",
+        "rrf_k": 60,
     }
