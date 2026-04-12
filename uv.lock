@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
@@ -1433,7 +1433,7 @@ wheels = [
 
 [[package]]
 name = "memsearch"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
