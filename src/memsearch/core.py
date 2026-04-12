@@ -371,15 +371,20 @@ class MemSearch:
         loop = asyncio.new_event_loop()
 
         def _on_change(event_type: str, file_path: Path) -> None:
-            if event_type == "deleted":
-                self._store.delete_by_source(str(file_path))
-                summary = f"Removed chunks for {file_path}"
-            else:
-                n = loop.run_until_complete(self.index_file(file_path))
-                summary = f"Indexed {n} chunks from {file_path}"
-            logger.info(summary)
-            if on_event is not None:
-                on_event(event_type, summary, file_path)
+            from pymilvus.exceptions import MilvusException
+
+            try:
+                if event_type == "deleted":
+                    self._store.delete_by_source(str(file_path))
+                    summary = f"Removed chunks for {file_path}"
+                else:
+                    n = loop.run_until_complete(self.index_file(file_path))
+                    summary = f"Indexed {n} chunks from {file_path}"
+                logger.info(summary)
+                if on_event is not None:
+                    on_event(event_type, summary, file_path)
+            except MilvusException as e:
+                logger.warning("Milvus error during watch callback: %s", e)
 
         fw_kwargs: dict[str, Any] = {}
         if debounce_ms is not None:
