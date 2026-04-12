@@ -152,6 +152,7 @@ def index(
             milvus_token=milvus_token,
         )
     )
+    click.echo(f"Collection: {cfg.milvus.collection}", err=True)
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
     try:
         n = _run(ms.index(force=force))
@@ -203,6 +204,7 @@ def search(
             reranker_model=reranker_model,
         )
     )
+    click.echo(f"Collection: {cfg.milvus.collection}", err=True)
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
         results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
@@ -435,6 +437,7 @@ def watch(
             debounce_ms=debounce_ms,
         )
     )
+    click.echo(f"Collection: {cfg.milvus.collection}", err=True)
     ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
 
     # Initial index: ensure existing files are indexed before watching
