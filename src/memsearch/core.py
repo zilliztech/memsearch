@@ -21,6 +21,47 @@ from .store import MilvusStore
 logger = logging.getLogger(__name__)
 
 
+# ------------------------------------------------------------------
+# Near-duplicate removal helpers
+# ------------------------------------------------------------------
+
+
+def _token_overlap(text1: str, text2: str) -> float:
+    """Jaccard similarity on whitespace-split lowercased tokens."""
+    tokens1 = set(text1.lower().split())
+    tokens2 = set(text2.lower().split())
+    if not tokens1 or not tokens2:
+        return 0.0
+    return len(tokens1 & tokens2) / len(tokens1 | tokens2)
+
+
+def _deduplicate_results(
+    results: list[dict[str, Any]],
+    threshold: float = 0.85,
+) -> list[dict[str, Any]]:
+    """Remove near-duplicate results based on token overlap.
+
+    For each pair exceeding *threshold*, the lower-scored result is dropped.
+    Runs in O(N^2) on the result list, which is fine for typical top_k (5-20).
+    """
+    if not results or threshold <= 0:
+        return results
+    keep = set(range(len(results)))
+    for i in range(len(results)):
+        if i not in keep:
+            continue
+        for j in range(i + 1, len(results)):
+            if j not in keep:
+                continue
+            if _token_overlap(results[i]["content"], results[j]["content"]) >= threshold:
+                if results[i].get("score", 0) >= results[j].get("score", 0):
+                    keep.discard(j)
+                else:
+                    keep.discard(i)
+                    break
+    return [results[i] for i in sorted(keep)]
+
+
 class MemSearch:
     """High-level API for semantic memory search.
 
@@ -203,6 +244,7 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        dedup_threshold: float = 0.0,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -215,6 +257,9 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+        dedup_threshold:
+            Jaccard token-overlap threshold (0-1) for removing
+            near-duplicate results.  ``0`` (default) disables dedup.
 
         Returns
         -------
@@ -235,6 +280,8 @@ class MemSearch:
             from .reranker import rerank
 
             results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+        if dedup_threshold > 0 and results:
+            results = _deduplicate_results(results, threshold=dedup_threshold)
         return results
 
     # ------------------------------------------------------------------
