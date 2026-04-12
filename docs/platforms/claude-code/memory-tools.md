@@ -1,12 +1,13 @@
 # Memory Tools
 
-The Claude Code plugin now exposes six Claude-facing skill surfaces for memory retrieval and diagnostics workflows:
+The Claude Code plugin now exposes seven Claude-facing skill surfaces for memory retrieval, diagnostics, and orchestration workflows:
 - `memory-recall`
 - `memory-search`
 - `memory-expand`
 - `session-recall`
 - `memory-stats`
 - `config-check`
+- `memory-router`
 
 These skills sit on top of the same memsearch CLI engine, but they serve different retrieval depths.
 
@@ -19,9 +20,10 @@ These skills sit on top of the same memsearch CLI engine, but they serve differe
 | `memory-recall` | Progressive recall workflow: search → expand → optional transcript drill-down | When the user asks a natural historical question and Claude should autonomously gather the right amount of context |
 | `memory-search` | Direct shortlist search over indexed memories | When you want relevant chunk hashes and concise discovery results without full expansion |
 | `memory-expand` | Expand one or more known `chunk_hash` values into full markdown sections | When you already know which chunk(s) you want to inspect in detail |
-| `session-recall` | Recall bounded memory context for one explicit session id | When you know the session id and want session-local results without broad recall |
+| `session-recall` | Recall bounded memory context for one explicit session id, using memsearch search/expand first whenever possible | When you know the session id and want session-local results without broad recall |
 | `memory-stats` | Show collection and index health | When you need chunk counts, embedding dimensions, or quick collection status |
 | `config-check` | Summarize effective memsearch config | When provider/config/credential issues need diagnosis |
+| `memory-router` | Front-door orchestration wrapper that chooses the correct memsearch path first | When the user is asking a memory/history/session question and the assistant needs to route to the right retrieval or diagnostic tool before broader fallback behavior |
 
 ---
 
@@ -69,6 +71,14 @@ This keeps memory access progressive and bounded instead of dumping large memory
 For diagnostics:
 - use `memory-stats` when you need collection/index health
 - use `config-check` when retrieval behavior looks wrong or provider config is unclear
+
+For session-specific recall:
+- prefer `session-recall` when you already know the session id
+- the intended behavior is memsearch-first, with direct markdown/session-anchor reading only as a bounded fallback when engine results are insufficient
+
+For front-door routing:
+- use `memory-router` when the question is about history/session/recall and the assistant first needs to choose the correct memsearch path
+- `memory-router` can also check readiness first when config/index health may be the real blocker instead of genuine memory absence
 
 ---
 

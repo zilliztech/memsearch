@@ -94,9 +94,11 @@ For narrower workflows, the plugin also exposes:
 ```
 /memory-search auth refactor
 /memory-expand <chunk_hash>
+/memory-router previous decision about auth flow
 ```
 
 Use `memory-search` when you want shortlist results first, and `memory-expand` when you already have a `chunk_hash` and want the full markdown section.
+Use `memory-router` when the main question is not only recall itself, but choosing the correct memsearch path first and avoiding premature `not found` conclusions.
 
 **Auto invocation** — just ask naturally, Claude auto-invokes the skill when it senses the question needs history:
 
