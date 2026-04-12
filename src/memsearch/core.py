@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +19,36 @@ from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
 logger = logging.getLogger(__name__)
+
+
+def _build_date_filter(date_after: date | None, date_before: date | None) -> str:
+    """Build Milvus filter for date range using source filename patterns.
+
+    Generates ``source like "%YYYY-MM-DD.md"`` clauses for each day in the
+    range.  When a full calendar month falls within the range, a single
+    ``source like "%YYYY-MM-%.md"`` wildcard replaces 28-31 per-day clauses.
+    """
+    if date_after is None and date_before is None:
+        return ""
+    start = date_after or date(2000, 1, 1)
+    end = date_before or date.today()
+    if start > end:
+        msg = f"date_after ({start}) must be before date_before ({end})"
+        raise ValueError(msg)
+
+    clauses: list[str] = []
+    current = start
+    while current <= end:
+        # If at day 1 and the entire month fits, use a month wildcard
+        month_end = (current.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        if current.day == 1 and month_end <= end:
+            clauses.append(f'source like "%{current.strftime("%Y-%m-")}%.md"')
+            current = month_end + timedelta(days=1)
+        else:
+            clauses.append(f'source like "%{current.isoformat()}.md"')
+            current += timedelta(days=1)
+
+    return "(" + " or ".join(clauses) + ")"
 
 
 class MemSearch:
@@ -203,6 +233,8 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        date_after: date | None = None,
+        date_before: date | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -215,6 +247,12 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+        date_after:
+            Only include results from this date onward (based on
+            ``YYYY-MM-DD`` pattern in source filename).
+        date_before:
+            Only include results up to this date (based on
+            ``YYYY-MM-DD`` pattern in source filename).
 
         Returns
         -------
@@ -222,11 +260,17 @@ class MemSearch:
             Each dict contains ``content``, ``source``, ``heading``,
             ``score``, and other metadata.
         """
-        filter_expr = ""
+        filters: list[str] = []
         if source_prefix is not None:
             prefix = str(Path(source_prefix).expanduser().resolve())
             escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
-            filter_expr = f'source like "{escaped}%"'
+            filters.append(f'source like "{escaped}%"')
+
+        date_filter = _build_date_filter(date_after, date_before)
+        if date_filter:
+            filters.append(date_filter)
+
+        filter_expr = " and ".join(filters)
 
         embeddings = await self._embedder.embed([query])
         fetch_k = top_k * 3 if self._reranker_model else top_k
