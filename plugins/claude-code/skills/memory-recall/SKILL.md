@@ -9,7 +9,9 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 ## Project Collection
 
-Collection: !`bash ${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh`
+Use the git toplevel when available so the skill targets the same collection as the SessionStart hook, even if Claude Code was launched from a subdirectory.
+
+Collection: !`bash -c 'root=$(git rev-parse --show-toplevel 2>/dev/null || echo ""); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi'`
 
 ## Your Task
 
