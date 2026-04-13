@@ -2,7 +2,7 @@
 name: memory-router
 description: "Route memory/history/session questions to the right memsearch tool flow. Use when the user asks about prior discussion, previous decisions, session-specific context, or when the assistant needs to decide whether to use memory-search, memory-expand, session-recall, memory-stats, or config-check."
 context: fork
-allowed-tools: Bash
+allowed-tools: Bash, Grep, Read, Glob
 ---
 
 You are the **memsearch orchestration skill** for Claude Code.
@@ -46,6 +46,8 @@ Use:
 - `config-check` when there is a plausible provider / model / API key / endpoint / collection mismatch
 - `memory-stats` when there is a plausible index-health or empty-collection problem
 
+When a downstream skill needs fallback, prefer search-first use of the available retrieval tools rather than forcing one rigid fallback path.
+
 Trigger this readiness branch when the user is asking a history/session/recall question **and** one or more of these are true:
 - startup/status text already suggests configuration or embedding issues
 - previous retrieval attempts returned suspiciously empty or weak results
@@ -67,6 +69,8 @@ Only broaden to `memory-search` if:
 ### 2) If the user asks a history / recall / previous-discussion question without a session id
 Use:
 - `memory-search`
+
+`memory-search` should still prefer indexed `memsearch search` first, then use bounded direct file-search fallback only when the indexed path is unavailable or clearly insufficient.
 
 If the top results look relevant but too compressed:
 - use `memory-expand` on the best 1-3 chunk hashes

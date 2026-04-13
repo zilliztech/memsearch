@@ -45,7 +45,7 @@ Examples:
 
 The intended retrieval order is:
 - try indexed `memsearch search` first
-- if the memsearch path is unavailable, clearly nonfunctional, or suspiciously insufficient, use a bounded direct scan of the markdown memory files as fallback
+- if the memsearch path is unavailable, clearly nonfunctional, or suspiciously insufficient, use the available search/read tools for a bounded direct search of the markdown memory files as fallback
 
 This still returns a bounded shortlist with `chunk_hash` values when available, and those can be passed to `memory-expand`.
 

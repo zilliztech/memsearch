@@ -111,7 +111,7 @@ This gives Claude four access styles:
 - **progressive recall** via `memory-recall`
 - **direct retrieval control** via `memory-search` and `memory-expand`
 
-`memory-search` stays shortlist-first, but now documents a two-stage retrieval ladder: indexed `memsearch search` first, then bounded direct memory-file scanning only when the memsearch path is unavailable or clearly insufficient.
+`memory-search` stays shortlist-first, but now documents a two-stage retrieval ladder: indexed `memsearch search` first, then bounded direct file search over memory files only when the memsearch path is unavailable or clearly insufficient.
 - **session-specific and diagnostic access** via `session-recall`, `memory-stats`, and `config-check`
 - **front-door orchestration** via `memory-router`, which chooses the correct memsearch path first and can check retrieval readiness before broader fallback behavior
 

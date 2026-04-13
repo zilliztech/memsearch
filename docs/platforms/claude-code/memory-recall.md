@@ -97,7 +97,7 @@ For narrower workflows, the plugin also exposes:
 /memory-router previous decision about auth flow
 ```
 
-Use `memory-search` when you want shortlist results first. Its intended retrieval order is indexed `memsearch search` first, then bounded direct memory-file scanning only when the memsearch path is unavailable or clearly insufficient.
+Use `memory-search` when you want shortlist results first. Its intended retrieval order is indexed `memsearch search` first, then bounded direct file search over memory files only when the memsearch path is unavailable or clearly insufficient.
 Use `memory-expand` when you already have a `chunk_hash` and want the full markdown section.
 Use `memory-router` when the main question is not only recall itself, but choosing the correct memsearch path first and avoiding premature `not found` conclusions.
 

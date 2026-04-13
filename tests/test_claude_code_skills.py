@@ -25,11 +25,12 @@ def test_memory_search_skill_metadata() -> None:
     text = _read_text(REPO_ROOT / "plugins/claude-code/skills/memory-search/SKILL.md")
     assert "name: memory-search" in text
     assert "context: fork" in text
-    assert "allowed-tools: Bash" in text
+    assert "allowed-tools: Bash, Grep, Read, Glob" in text
     assert 'memsearch search "<query>" --top-k 8 --json-output' in text
     assert "Try indexed memsearch search first" in text
-    assert "Use direct memory-file scanning only as a bounded fallback" in text
+    assert "Use a bounded direct file-search fallback only when needed" in text
     assert "Keep `memsearch search` as the primary path" in text
+    assert "Prefer search-first retrieval and bounded follow-up reading" in text
     assert "whether the result came from indexed memsearch search or bounded direct memory-file fallback" in text
 
 
@@ -48,13 +49,15 @@ def test_session_diagnostic_and_router_skill_metadata() -> None:
     router_text = _read_text(REPO_ROOT / "plugins/claude-code/skills/memory-router/SKILL.md")
 
     assert "name: session-recall" in session_text
+    assert "allowed-tools: Bash, Grep, Read, Glob" in session_text
     assert "name: memory-stats" in stats_text
     assert "name: config-check" in config_text
     assert "name: memory-router" in router_text
+    assert "allowed-tools: Bash, Grep, Read, Glob" in router_text
     assert "memsearch search \"<session_id>\"" in session_text
     assert "memsearch search \"<topic query> <session_id>\"" in session_text
     assert "Always attempt memsearch search first" in session_text
-    assert "Fallback to direct markdown/session anchor reading only if the memsearch path is genuinely insufficient" in session_text
+    assert "Use a bounded direct file-search fallback only if the memsearch path is genuinely insufficient" in session_text
     assert "the user gave only a session id with no meaningful semantic query" not in session_text
     assert "session-recall` should still attempt memsearch search first, including for a bare session id" in router_text
     assert "memsearch stats --collection" in stats_text

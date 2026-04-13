@@ -2,7 +2,7 @@
 name: session-recall
 description: "Recall memories for a specific Claude Code session id. Use when you know the session id and want bounded session-scoped memory lookup without broad semantic search first."
 context: fork
-allowed-tools: Bash
+allowed-tools: Bash, Grep, Read, Glob
 ---
 
 You are a session-specific memory retrieval agent for memsearch. Your job is to find memory entries tied to a specific Claude Code session id and return only the bounded relevant context for that session.
@@ -37,12 +37,12 @@ Session selector and optional query: $ARGUMENTS
    - Keep only results whose expanded section or anchor metadata clearly matches the target `session_id`.
    - Do not conclude `No relevant memories found for that session.` until this memsearch-first path has been attempted.
 
-3. **Fallback to direct markdown/session anchor reading only if the memsearch path is genuinely insufficient.**
+3. **Use a bounded direct file-search fallback only if the memsearch path is genuinely insufficient.**
    - Use this fallback when:
      - memsearch is unavailable or clearly nonfunctional
      - memsearch returns no plausible session-scoped matches
      - expanded results still do not expose the target session clearly enough
-   - In that case, search the markdown memory files under `.memsearch/memory/` for the session id and read only the relevant local section.
+   - In that case, use the available search/read tools to search the markdown memory files under `.memsearch/memory/` for the session id and read only the relevant local section.
 
 4. **Optional transcript drill-down**
    - If the chosen result includes a transcript path and the exact original conversation is necessary, run:
