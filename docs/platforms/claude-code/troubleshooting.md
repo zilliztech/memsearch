@@ -201,6 +201,7 @@ After the first download, the model is cached at `~/.cache/huggingface/hub/` and
 |---------|-------|-----|
 | "ERROR: KEY not set" in status | Export the required API key | `export OPENAI_API_KEY="sk-..."` or switch to `onnx` |
 | Search returns no results | `memsearch stats` + manual search | Re-index with `memsearch index .memsearch/memory/ --force` |
+| Recall returns empty from a git subdirectory | Compare collection / launch directory | Launch from repo root or upgrade to a version containing the git-root recall fix |
 | New memories not indexed | Watch process status | Check `.memsearch/.watch.pid`, restart if needed |
 | Skill never triggers automatically | Manual `/memory-recall` test | Ensure prompt >= 10 chars; memsearch in PATH |
 | First session hangs | ONNX model downloading | Pre-download with warmup command |
