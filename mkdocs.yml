@@ -42,6 +42,7 @@ nav:
   - Claude Code Plugin:
     - Overview: platforms/claude-code/index.md
     - Installation: platforms/claude-code/installation.md
+    - Embedding Evaluation: platforms/claude-code/evaluation.md
     - How It Works: platforms/claude-code/how-it-works.md
     - Memory Recall: platforms/claude-code/memory-recall.md
     - Troubleshooting: platforms/claude-code/troubleshooting.md
