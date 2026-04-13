@@ -8,7 +8,7 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 ## Project Collection
 
-Collection: !`bash __INSTALL_DIR__/scripts/derive-collection.sh`
+Collection: !`bash -c 'root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash __INSTALL_DIR__/scripts/derive-collection.sh "$root"; else bash __INSTALL_DIR__/scripts/derive-collection.sh; fi'`
 
 ## Your Task
 
