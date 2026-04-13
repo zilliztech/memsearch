@@ -17,23 +17,30 @@ Search memories relevant to: $ARGUMENTS
 
 ## Steps
 
-1. **Search first.** Run:
+1. **Try indexed memsearch search first.** Run:
    ```bash
    memsearch search "<query>" --top-k 8 --json-output --collection <collection name above>
    ```
    - If `memsearch` is not found, try `uvx memsearch` instead.
    - If the first query is too vague or returns nothing, try one tighter rephrase once.
 
-2. **Keep it bounded.** Do **not** expand full sections by default. This skill is for shortlist-first retrieval.
+2. **Use direct memory-file scanning only as a bounded fallback.**
+   - Keep `memsearch search` as the primary path.
+   - Fall back to directly searching the markdown memory files under `.memsearch/memory/` only when the memsearch path is unavailable, clearly nonfunctional, or suspiciously insufficient.
+   - Do not use fallback reading as the default path.
+   - Keep the fallback bounded and shortlist-oriented rather than expanding full sections by default.
 
-3. **Return a concise shortlist.** Include only the most relevant chunks. For each result include:
-   - `chunk_hash`
+3. **Keep it bounded.** Do **not** expand full sections by default. This skill is for shortlist-first retrieval.
+
+4. **Return a concise shortlist.** Include only the most relevant chunks. For each result include:
+   - `chunk_hash` when available
    - relevance score (if present)
    - source file
    - heading (if present)
    - one short snippet of why it looks relevant
+   - whether the result came from indexed memsearch search or bounded direct memory-file fallback when that distinction matters
 
-4. **If nothing useful is found**, say `No relevant memories found.` and do not invent likely matches.
+5. **If nothing useful is found**, say `No relevant memories found.` and do not invent likely matches.
 
 ## Output Format
 

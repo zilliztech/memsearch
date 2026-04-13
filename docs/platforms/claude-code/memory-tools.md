@@ -43,7 +43,11 @@ Examples:
 - `/memory-search Redis TTL`
 - `/memory-search auth refactor session cookies`
 
-This returns a bounded shortlist with `chunk_hash` values that can be passed to `memory-expand`.
+The intended retrieval order is:
+- try indexed `memsearch search` first
+- if the memsearch path is unavailable, clearly nonfunctional, or suspiciously insufficient, use a bounded direct scan of the markdown memory files as fallback
+
+This still returns a bounded shortlist with `chunk_hash` values when available, and those can be passed to `memory-expand`.
 
 ### `memory-expand`
 Use when you already have a `chunk_hash` and want the full markdown section.

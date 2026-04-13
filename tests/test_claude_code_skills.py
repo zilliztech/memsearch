@@ -27,6 +27,10 @@ def test_memory_search_skill_metadata() -> None:
     assert "context: fork" in text
     assert "allowed-tools: Bash" in text
     assert 'memsearch search "<query>" --top-k 8 --json-output' in text
+    assert "Try indexed memsearch search first" in text
+    assert "Use direct memory-file scanning only as a bounded fallback" in text
+    assert "Keep `memsearch search` as the primary path" in text
+    assert "whether the result came from indexed memsearch search or bounded direct memory-file fallback" in text
 
 
 def test_memory_expand_skill_metadata() -> None:
