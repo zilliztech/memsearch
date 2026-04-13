@@ -16,7 +16,7 @@ graph LR
 
     subgraph "plugins/claude-code"
         HOOKS["Shell hooks:<br/>SessionStart · UserPromptSubmit<br/>Stop · SessionEnd"]
-        SKILL["Skill:<br/>memory-recall (context: fork)"]
+        SKILL["Skills:<br/>memory-recall · memory-search · memory-expand<br/>session-recall · memory-stats · config-check · memory-router"]
     end
 
     LIB --> CLI
@@ -31,7 +31,7 @@ graph LR
     style CC fill:#2a3a5c,stroke:#c97bdb,color:#a8b2c1
 ```
 
-The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle and skill system -- hooks handle session management and memory capture, while the **memory-recall skill** handles intelligent retrieval in a forked subagent context.
+The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle and skill system -- hooks handle session management and memory capture, while the Claude-facing skills now include `memory-recall` for progressive retrieval, `memory-search` and `memory-expand` for direct retrieval control, bounded `session-recall` / diagnostics skills for more targeted workflows, and `memory-router` as a front-door orchestration skill that chooses the correct retrieval or diagnostic path before broader fallback behavior.
 
 This layered design means each piece is independently testable and replaceable. The plugin is just shell scripts and a skill definition -- no compiled code, no background services, no MCP servers.
 
@@ -72,9 +72,13 @@ stateDiagram-v2
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
         Hint --> ClaudeProcesses: "[memsearch] Memory available"
-        ClaudeProcesses --> MemoryRecall: needs context?
+        ClaudeProcesses --> MemoryRecall: needs broad context?
         MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
+        ClaudeProcesses --> DirectSkill: needs targeted retrieval?
+        DirectSkill --> ClaudeResponds: memory-search / memory-expand / session-recall / diagnostics
+        ClaudeProcesses --> Router: needs routing help first?
+        Router --> ClaudeResponds: memory-router chooses best retrieval path
         ClaudeProcesses --> ClaudeResponds: no memory needed
         ClaudeResponds --> UserInput: next turn
         ClaudeResponds --> Summary: Stop hook (async)
@@ -100,7 +104,7 @@ The cold-start injection is critical for early-session context. Without it, Clau
 
 ### UserPromptSubmit -- The Memory Hint
 
-A lightweight hook that returns a `systemMessage` hint: `[memsearch] Memory available -- use /memory-recall if needed`. This keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke the memory-recall skill when a question benefits from historical context.
+A lightweight hook that returns a `systemMessage` hint: `[memsearch] Memory available -- use /memory-recall if needed`. This keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke `memory-recall` for broad historical questions or one of the narrower direct skills for targeted retrieval and diagnostics.
 
 The hook skips prompts shorter than 10 characters (e.g., "y", "ok") to avoid noise on trivial confirmations.
 
