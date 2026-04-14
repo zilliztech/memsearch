@@ -21,10 +21,24 @@ from .config import (
     set_config_value,
 )
 
+try:
+    from pymilvus.exceptions import MilvusException
+except ImportError:
+    MilvusException = Exception
+
 
 def _run(coro):
     """Run an async coroutine synchronously."""
     return asyncio.run(coro)
+
+
+def _safe_resolve_config(overrides: dict | None = None):
+    """Resolve config with user-friendly error for missing env vars."""
+    try:
+        return resolve_config(overrides)
+    except KeyError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        raise SystemExit(1) from None
 
 
 # -- CLI param name → dotted config key mapping --
@@ -140,7 +154,7 @@ def index(
     """Index markdown files from PATHS."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -152,12 +166,17 @@ def index(
             milvus_token=milvus_token,
         )
     )
-    ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
+    ms = None
     try:
+        ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
         n = _run(ms.index(force=force))
         click.echo(f"Indexed {n} chunks.")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        ms.close()
+        if ms is not None:
+            ms.close()
 
 
 @cli.command()
@@ -190,7 +209,7 @@ def search(
     """Search indexed memory for QUERY."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -203,8 +222,9 @@ def search(
             reranker_model=reranker_model,
         )
     )
-    ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
+    ms = None
     try:
+        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
         results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
@@ -227,8 +247,12 @@ def search(
                     click.echo(f"  ... [truncated, run 'memsearch expand {chunk_hash}' for full content]")
                 else:
                     click.echo(content)
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        ms.close()
+        if ms is not None:
+            ms.close()
 
 
 # ======================================================================
@@ -273,7 +297,7 @@ def expand(
     """
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -285,13 +309,14 @@ def expand(
             milvus_token=milvus_token,
         )
     )
-    store = MilvusStore(
-        uri=cfg.milvus.uri,
-        token=cfg.milvus.token or None,
-        collection=cfg.milvus.collection,
-        dimension=None,
-    )
+    store = None
     try:
+        store = MilvusStore(
+            uri=cfg.milvus.uri,
+            token=cfg.milvus.token or None,
+            collection=cfg.milvus.collection,
+            dimension=None,
+        )
         chunks = store.query(filter_expr=f'chunk_hash == "{chunk_hash}"')
         if not chunks:
             click.echo(f"Chunk not found: {chunk_hash}", err=True)
@@ -361,8 +386,12 @@ def expand(
                 click.echo(f"Session: {anchor['session']}  Turn: {anchor['turn']}")
                 click.echo(f"Transcript: {anchor['transcript']}")
             click.echo(f"\n{expanded}")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        store.close()
+        if store is not None:
+            store.close()
 
 
 def _extract_section(
@@ -422,7 +451,7 @@ def watch(
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -435,28 +464,35 @@ def watch(
             debounce_ms=debounce_ms,
         )
     )
-    ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
-
-    # Initial index: ensure existing files are indexed before watching
-    n = _run(ms.index())
-    if n:
-        click.echo(f"Indexed {n} chunks.")
-
-    def _on_event(event_type: str, summary: str, file_path) -> None:
-        click.echo(summary)
-
-    click.echo(f"Watching {len(paths)} path(s) for changes... (Ctrl+C to stop)")
-    watcher = ms.watch(on_event=_on_event, debounce_ms=cfg.watch.debounce_ms)
+    ms = None
+    watcher = None
     try:
+        ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
+
+        # Initial index: ensure existing files are indexed before watching
+        n = _run(ms.index())
+        if n:
+            click.echo(f"Indexed {n} chunks.")
+
+        def _on_event(event_type: str, summary: str, file_path) -> None:
+            click.echo(summary)
+
+        click.echo(f"Watching {len(paths)} path(s) for changes... (Ctrl+C to stop)")
+        watcher = ms.watch(on_event=_on_event, debounce_ms=cfg.watch.debounce_ms)
         while True:
             import time
 
             time.sleep(1)
     except KeyboardInterrupt:
         click.echo("\nStopping watcher.")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        watcher.stop()
-        ms.close()
+        if watcher is not None:
+            watcher.stop()
+        if ms is not None:
+            ms.close()
 
 
 @cli.command()
@@ -492,7 +528,7 @@ def compact(
     """Compress stored memories into a summary."""
     from .core import MemSearch
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
             model=model,
@@ -516,8 +552,9 @@ def compact(
 
     normalized_source = _normalize_compact_source(source)
 
-    ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
+    ms = None
     try:
+        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
         summary = _run(
             ms.compact(
                 source=normalized_source,
@@ -536,8 +573,12 @@ def compact(
             click.echo(f"No chunks matched source: {normalized_source}")
         else:
             click.echo("No chunks to compact.")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        ms.close()
+        if ms is not None:
+            ms.close()
 
 
 @cli.command()
@@ -552,24 +593,29 @@ def stats(
     """Show statistics about the index."""
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             collection=collection,
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
         )
     )
-    store = MilvusStore(
-        uri=cfg.milvus.uri,
-        token=cfg.milvus.token or None,
-        collection=cfg.milvus.collection,
-        dimension=None,
-    )
+    store = None
     try:
+        store = MilvusStore(
+            uri=cfg.milvus.uri,
+            token=cfg.milvus.token or None,
+            collection=cfg.milvus.collection,
+            dimension=None,
+        )
         count = store.count()
         click.echo(f"Total indexed chunks: {count}")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        store.close()
+        if store is not None:
+            store.close()
 
 
 @cli.command()
@@ -585,24 +631,29 @@ def reset(
     """Drop all indexed data."""
     from .store import MilvusStore
 
-    cfg = resolve_config(
+    cfg = _safe_resolve_config(
         _build_cli_overrides(
             collection=collection,
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
         )
     )
-    store = MilvusStore(
-        uri=cfg.milvus.uri,
-        token=cfg.milvus.token or None,
-        collection=cfg.milvus.collection,
-        dimension=None,
-    )
+    store = None
     try:
+        store = MilvusStore(
+            uri=cfg.milvus.uri,
+            token=cfg.milvus.token or None,
+            collection=cfg.milvus.collection,
+            dimension=None,
+        )
         store.drop()
         click.echo("Dropped collection.")
+    except MilvusException as e:
+        click.echo(f"Milvus error: {e}", err=True)
+        raise SystemExit(1) from None
     finally:
-        store.close()
+        if store is not None:
+            store.close()
 
 
 # ======================================================================
