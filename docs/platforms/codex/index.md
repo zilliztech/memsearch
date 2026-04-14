@@ -24,7 +24,7 @@ Codex CLI runs in a sandboxed environment by default. The memsearch plugin requi
 - **Install option**: The `install.sh` script configures `hooks.json` which works in any mode
 - **Stop hook isolation**: The Stop hook uses `codex exec --ephemeral -s read-only` with an isolated `CODEX_HOME` to prevent sandbox conflicts during summarization
 
-If you experience issues with the Stop hook in strict sandbox mode, see [Troubleshooting](../../platforms/claude-code/troubleshooting.md) for diagnostic steps.
+If you experience issues with the Stop hook in strict sandbox mode, see the [Codex troubleshooting guide](troubleshooting.md) for diagnostic steps.
 
 ---
 
@@ -54,3 +54,4 @@ If you experience issues with the Stop hook in strict sandbox mode, see [Trouble
 - [Installation](installation.md) -- prerequisites, install, pre-cache, uninstall, updating
 - [How It Works](how-it-works.md) -- hook architecture, capture mechanism, memory files, Milvus Lite handling
 - [Memory Recall](memory-recall.md) -- three-layer progressive disclosure, comparison with Claude Code, manual invocation
+- [Troubleshooting](troubleshooting.md) -- hook install issues, sandbox failures, recall diagnostics

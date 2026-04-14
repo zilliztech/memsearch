@@ -60,6 +60,7 @@ nav:
     - Installation: platforms/codex/installation.md
     - How It Works: platforms/codex/how-it-works.md
     - Memory Recall: platforms/codex/memory-recall.md
+    - Troubleshooting: platforms/codex/troubleshooting.md
   - For Agent Developers:
     - CLI Reference: cli.md
     - Python API: python-api.md
