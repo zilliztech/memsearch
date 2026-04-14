@@ -76,3 +76,4 @@ This means agents with different workspaces have isolated memories, while agents
 - [Installation](installation.md) -- prerequisites, install, uninstall
 - [How It Works](how-it-works.md) -- capture architecture, cold-start, memory files, multi-agent isolation
 - [Memory Tools](memory-tools.md) -- three registered tools, progressive recall, comparisons
+- [Troubleshooting](troubleshooting.md) -- plugin loading, missing captures, weak recall, workspace mix-ups
