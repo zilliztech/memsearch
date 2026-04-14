@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-click installer for memsearch Codex CLI plugin.
-# Creates skill copy, generates hooks.json, enables feature flag.
+# Copies the skill, installs or updates memsearch hook entries, enables feature flag.
 #
 # Usage: bash plugins/codex/scripts/install.sh
 
@@ -8,6 +8,148 @@ set -euo pipefail
 
 # Determine install directory (parent of scripts/)
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+replace_text_in_file() {
+  local target_file="$1"
+  local old_text="$2"
+  local new_text="$3"
+
+  python3 - "$target_file" "$old_text" "$new_text" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+
+text = path.read_text()
+path.write_text(text.replace(old, new))
+PY
+}
+
+ensure_codex_hooks_enabled() {
+  local config_file="$1"
+
+  python3 - "$config_file" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+if not path.exists():
+    path.write_text("[features]\ncodex_hooks = true\n")
+    raise SystemExit
+
+text = path.read_text()
+
+if re.search(r"(?m)^codex_hooks\s*=", text):
+    text = re.sub(r"(?m)^codex_hooks\s*=.*$", "codex_hooks = true", text)
+elif re.search(r"(?m)^\[features\]\s*$", text):
+    text = re.sub(r"(?m)^\[features\]\s*$", "[features]\ncodex_hooks = true", text, count=1)
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text += "\n[features]\ncodex_hooks = true\n"
+
+path.write_text(text)
+PY
+}
+
+install_or_update_hooks_file() {
+  local hooks_file="$1"
+  local install_dir="$2"
+
+  python3 - "$hooks_file" "$install_dir" <<'PY'
+from pathlib import Path
+import json
+import math
+import sys
+
+hooks_file = Path(sys.argv[1])
+install_dir = sys.argv[2]
+
+spec = {
+    "SessionStart": {"script": "session-start.sh", "timeout": 30},
+    "UserPromptSubmit": {"script": "user-prompt-submit.sh", "timeout": 10},
+    "Stop": {"script": "stop.sh", "timeout": 30},
+}
+
+
+def convert_legacy_array(items):
+    data = {"hooks": {}}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        event = item.get("event")
+        command = item.get("command")
+        if not event or not command:
+            continue
+        hook = {"type": "command", "command": command}
+        timeout_ms = item.get("timeout_ms")
+        if isinstance(timeout_ms, (int, float)):
+            hook["timeout"] = max(1, math.ceil(timeout_ms / 1000))
+        if item.get("async") is True:
+            hook["async"] = True
+        data["hooks"].setdefault(event, []).append(
+            {"matcher": item.get("matcher", ""), "hooks": [hook]}
+        )
+    return data
+
+
+def load_existing():
+    if not hooks_file.exists():
+        return {"hooks": {}}
+
+    parsed = json.loads(hooks_file.read_text())
+    if isinstance(parsed, list):
+        return convert_legacy_array(parsed)
+    if isinstance(parsed, dict) and isinstance(parsed.get("hooks"), dict):
+        return parsed
+    return {"hooks": {}}
+
+
+def strip_old_memsearch(entries, script_name):
+    marker = f"plugins/codex/hooks/{script_name}"
+    cleaned = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        hooks = []
+        for hook in entry.get("hooks", []):
+            command = hook.get("command", "") if isinstance(hook, dict) else ""
+            if marker in command:
+                continue
+            hooks.append(hook)
+        if hooks:
+            copied = dict(entry)
+            copied["hooks"] = hooks
+            cleaned.append(copied)
+    return cleaned
+
+
+data = load_existing()
+hooks = data.setdefault("hooks", {})
+
+for event, details in spec.items():
+    script = details["script"]
+    cleaned = strip_old_memsearch(hooks.get(event, []), script)
+    cleaned.append(
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"bash {install_dir}/hooks/{script}",
+                    "timeout": details["timeout"],
+                }
+            ],
+        }
+    )
+    hooks[event] = cleaned
+
+hooks_file.write_text(json.dumps(data, indent=2) + "\n")
+PY
+}
 
 echo "=== memsearch Codex CLI Plugin Installer ==="
 echo "Install directory: $INSTALL_DIR"
@@ -48,91 +190,28 @@ echo "  ✓ Copied skill to $SKILL_DST"
 # --- 3. Replace __INSTALL_DIR__ placeholder in SKILL.md ---
 echo "[3/6] Configuring skill paths..."
 if [ -f "$SKILL_DST/SKILL.md" ]; then
-  sed -i "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$SKILL_DST/SKILL.md"
+  replace_text_in_file "$SKILL_DST/SKILL.md" "__INSTALL_DIR__" "$INSTALL_DIR"
   echo "  ✓ Updated SKILL.md with install path: $INSTALL_DIR"
 fi
 
-# --- 4. Generate hooks.json ---
+# --- 4. Install or update hooks.json ---
 echo "[4/6] Configuring hooks..."
 CODEX_DIR="$HOME/.codex"
 mkdir -p "$CODEX_DIR"
 HOOKS_FILE="$CODEX_DIR/hooks.json"
 
-NEW_HOOKS=$(cat <<EOF
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash $INSTALL_DIR/hooks/session-start.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash $INSTALL_DIR/hooks/user-prompt-submit.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash $INSTALL_DIR/hooks/stop.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
-}
-EOF
-)
-
 if [ -f "$HOOKS_FILE" ]; then
   echo "  ⚠ Existing hooks.json found — backing up to hooks.json.bak"
   cp "$HOOKS_FILE" "${HOOKS_FILE}.bak"
 fi
-echo "$NEW_HOOKS" > "$HOOKS_FILE"
-echo "  ✓ Generated $HOOKS_FILE"
+install_or_update_hooks_file "$HOOKS_FILE" "$INSTALL_DIR"
+echo "  ✓ Installed memsearch hooks in $HOOKS_FILE"
 
 # --- 5. Enable codex_hooks feature flag ---
 echo "[5/6] Enabling codex_hooks feature flag..."
 CONFIG_FILE="$CODEX_DIR/config.toml"
-if [ -f "$CONFIG_FILE" ]; then
-  if grep -q "codex_hooks" "$CONFIG_FILE"; then
-    # Update existing flag
-    sed -i 's/codex_hooks.*/codex_hooks = true/' "$CONFIG_FILE"
-    echo "  ✓ Updated existing codex_hooks flag"
-  else
-    # Add under [features] section if it exists, otherwise create it
-    if grep -q '^\[features\]' "$CONFIG_FILE"; then
-      sed -i '/^\[features\]/a codex_hooks = true' "$CONFIG_FILE"
-    else
-      echo -e "\n[features]\ncodex_hooks = true" >> "$CONFIG_FILE"
-    fi
-    echo "  ✓ Added codex_hooks = true to config.toml"
-  fi
-else
-  cat > "$CONFIG_FILE" <<'TOML'
-[features]
-codex_hooks = true
-TOML
-  echo "  ✓ Created config.toml with codex_hooks enabled"
-fi
+ensure_codex_hooks_enabled "$CONFIG_FILE"
+echo "  ✓ Ensured codex_hooks = true in $CONFIG_FILE"
 
 # --- 6. Make scripts executable ---
 echo "[6/6] Setting permissions..."

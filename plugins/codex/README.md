@@ -21,20 +21,20 @@ bash plugins/codex/scripts/install.sh
 
 The installer sets up everything automatically:
 - Copies the **memory-recall** skill to `~/.agents/skills/`
-- Generates `~/.codex/hooks.json` with the correct hook paths
+- Installs or updates memsearch hook entries in `~/.codex/hooks.json`
 - Enables the `codex_hooks` feature flag
 
 ## Usage
 
-Start Codex with `--yolo` to allow memsearch full access (network + filesystem):
+Start Codex with a full-access mode so hooks can run and the ONNX model can download on first use:
 
 ```bash
-codex --yolo
+codex --dangerously-bypass-approvals-and-sandbox
 ```
 
-> **Why `--yolo`?** The ONNX embedding model needs network on first run to download from HuggingFace (~100 MB). After that it's cached locally. Codex's default sandbox blocks network, which prevents model download and Milvus Lite file access. `--yolo` disables the sandbox — equivalent to Claude Code's `--dangerously-skip-permissions`.
+> **Why full access?** The ONNX embedding model needs network on first run to download from HuggingFace (~100 MB). After that it's cached locally. Codex's default sandbox blocks network, which prevents model download and can interfere with hook-launched shell commands. On current Codex builds, `--dangerously-bypass-approvals-and-sandbox` is the explicit full-access flag. Some builds may also accept the older `--yolo` alias.
 
-**Pre-cache the model** (optional) — run once so subsequent sessions work even without `--yolo`:
+**Pre-cache the model** (optional) — run once so subsequent sessions work even if you later tighten sandboxing:
 
 ```bash
 memsearch search "test" --collection test_warmup 2>/dev/null; memsearch reset --collection test_warmup --yes 2>/dev/null
@@ -60,7 +60,7 @@ Codex will search your memory, expand relevant results, and return a curated sum
 
 1. **Search** — `memsearch search` finds relevant chunks by semantic + keyword hybrid search
 2. **Expand** — `memsearch expand` retrieves the full markdown section around a match
-3. **Deep drill** — optionally parses the original Codex rollout transcript for exact conversation context
+3. **Deep drill** — when rollout anchors are available, optionally parses the original Codex rollout transcript for exact conversation context
 
 ## Configuration
 
@@ -100,11 +100,7 @@ These are plain markdown files — human-readable, editable, and version-control
 
 ## Uninstall
 
-```bash
-rm -rf ~/.agents/skills/memory-recall
-rm ~/.codex/hooks.json
-# Optionally remove the feature flag from ~/.codex/config.toml
-```
+Remove only memsearch's hook entries from `~/.codex/hooks.json` so unrelated Codex hooks stay intact. The safe uninstall steps are documented in [docs/platforms/codex/installation.md](../../docs/platforms/codex/installation.md).
 
 ## Updating
 
