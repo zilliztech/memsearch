@@ -15,17 +15,33 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 | **Local default** | ONNX bge-m3, no key | N/A (no search) | Chroma default | Local GGUF | Local Llama + Chroma | Needs LLM API on every write | Configurable |
 | **Scale** | Milvus Lite → Server → Zilliz Cloud (same API) | Bounded by context window | Single machine | Single machine | Single machine | Pluggable vector DB | Postgres / pgvector |
 
-## Coverage of coding CLIs
+## Feature matrix
 
 | | memsearch | Claude Code native | claude-mem | qmd | MemPalace | mem0 | Letta |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Claude Code | ✅ | ✅ (built-in) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Platform plugins** | | | | | | | |
+| Claude Code | ✅ | ✅ built-in | ✅ | ✅ | ✅ | ✅ | ❌ |
 | OpenClaw | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | OpenCode | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Codex CLI | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| MCP | — | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
-
-mem0 also ships a Cursor plugin; claude-mem and MemPalace also support Gemini CLI.
+| Cursor | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Gemini CLI | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Generic MCP | — | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| **Storage** | | | | | | | |
+| Markdown as source of truth | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ (MemFS) |
+| Git-diffable memory files | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ (MemFS) |
+| **Search & retrieval** | | | | | | | |
+| On-demand retrieval (not full-file reload) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Hybrid BM25 + dense | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| RRF fusion inside the vector DB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Pluggable embedding providers | ✅ (6: openai / google / voyage / ollama / local / onnx) | — | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Optional cross-encoder reranker | ✅ | ❌ | ❌ | ✅ (LLM rerank) | ❌ | ✅ | ❌ |
+| Progressive disclosure: search → expand → transcript | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Forked-subagent recall (isolated context) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Writes** | | | | | | | |
+| No external API key by default | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Scale** | | | | | | | |
+| Local → self-hosted → managed, one API | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ## Where memsearch is different
 
