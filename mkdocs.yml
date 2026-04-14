@@ -56,6 +56,7 @@ nav:
     - Installation: platforms/opencode/installation.md
     - How It Works: platforms/opencode/how-it-works.md
     - Memory Tools: platforms/opencode/memory-tools.md
+    - Troubleshooting: platforms/opencode/troubleshooting.md
   - Codex CLI Plugin:
     - Overview: platforms/codex/index.md
     - Installation: platforms/codex/installation.md

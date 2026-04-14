@@ -49,3 +49,4 @@ If you use multiple AI coding agents (e.g., OpenCode for some projects, Claude C
 - [Installation](installation.md) -- prerequisites, automated and manual install
 - [How It Works](how-it-works.md) -- capture daemon, cold-start, memory files, architecture
 - [Memory Tools](memory-tools.md) -- three registered tools, progressive recall, comparisons
+- [Troubleshooting](troubleshooting.md) -- daemon restarts, stale PID files, weak recall, cold-start issues
