@@ -54,7 +54,7 @@ This means agents with different workspaces have isolated memories, while agents
 ## When Is This Useful?
 
 - **Multi-agent workflows.** You use OpenClaw's main agent for general coding and a work agent for devops. Each needs its own context -- memsearch isolates them automatically.
-- **Long-running agent sessions.** OpenClaw agents can run for extended periods in TUI mode. memsearch captures every turn with debounced llm_output hooks, so nothing is lost even in marathon sessions.
+- **Long-running agent sessions.** OpenClaw agents can run for extended periods in TUI mode. memsearch captures completed turns through the plugin lifecycle and falls back to `agent_end`, so context is preserved even across long sessions and non-interactive runs.
 - **Cross-platform memory.** You use OpenClaw for some projects and Claude Code for others. memsearch's markdown-based storage means memories are portable -- the same `.md` files work with any plugin.
 - **Auditing agent behavior.** memsearch's three-layer drill-down lets you trace from a summary back to the original JSONL transcript, useful for understanding what the agent actually did.
 
@@ -62,7 +62,7 @@ This means agents with different workspaces have isolated memories, while agents
 
 ## Key Features
 
-- **Automatic capture** -- conversations summarized and saved after each LLM response via debounced `llm_output` hook
+- **Automatic capture** -- completed turns are summarized through the plugin lifecycle, with `agent_end` providing a reliable fallback for non-interactive runs
 - **Three-layer progressive recall** -- search, expand, and drill into original transcripts ([details](memory-tools.md))
 - **Multi-agent isolation** -- each agent gets its own memory directory and Milvus collection
 - **Cold-start context** -- recent memories injected on agent start via `before_agent_start` hook
