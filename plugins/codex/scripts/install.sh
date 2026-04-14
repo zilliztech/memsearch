@@ -63,6 +63,7 @@ install_or_update_hooks_file() {
 from pathlib import Path
 import json
 import math
+import os
 import sys
 
 hooks_file = Path(sys.argv[1])
@@ -147,7 +148,10 @@ for event, details in spec.items():
     )
     hooks[event] = cleaned
 
-hooks_file.write_text(json.dumps(data, indent=2) + "\n")
+# Write via sibling temp + os.replace so an interrupted write never leaves hooks_file truncated.
+tmp = hooks_file.with_name(hooks_file.name + ".tmp")
+tmp.write_text(json.dumps(data, indent=2) + "\n")
+os.replace(tmp, hooks_file)
 PY
 }
 
