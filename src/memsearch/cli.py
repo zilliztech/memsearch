@@ -12,6 +12,7 @@ import click
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
+    ConfigEnvVarError,
     MemSearchConfig,
     config_to_dict,
     get_config_value,
@@ -36,7 +37,7 @@ def _safe_resolve_config(overrides: dict | None = None):
     """Resolve config with user-friendly error for missing env vars."""
     try:
         return resolve_config(overrides)
-    except KeyError as e:
+    except ConfigEnvVarError as e:
         click.echo(f"Configuration error: {e}", err=True)
         raise SystemExit(1) from None
 
@@ -172,7 +173,7 @@ def index(
         n = _run(ms.index(force=force))
         click.echo(f"Indexed {n} chunks.")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if ms is not None:
@@ -248,7 +249,7 @@ def search(
                 else:
                     click.echo(content)
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if ms is not None:
@@ -387,7 +388,7 @@ def expand(
                 click.echo(f"Transcript: {anchor['transcript']}")
             click.echo(f"\n{expanded}")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if store is not None:
@@ -486,7 +487,7 @@ def watch(
     except KeyboardInterrupt:
         click.echo("\nStopping watcher.")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if watcher is not None:
@@ -574,7 +575,7 @@ def compact(
         else:
             click.echo("No chunks to compact.")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if ms is not None:
@@ -611,7 +612,7 @@ def stats(
         count = store.count()
         click.echo(f"Total indexed chunks: {count}")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if store is not None:
@@ -649,7 +650,7 @@ def reset(
         store.drop()
         click.echo("Dropped collection.")
     except MilvusException as e:
-        click.echo(f"Milvus error: {e}", err=True)
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
     finally:
         if store is not None:

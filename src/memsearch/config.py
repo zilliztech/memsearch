@@ -94,19 +94,29 @@ _SECTION_CLASSES: dict[str, type] = {
 _ENV_PREFIX = "env:"
 
 
+class ConfigEnvVarError(KeyError):
+    """Raised when an ``env:VAR_NAME`` reference points at an unset variable.
+
+    Subclasses ``KeyError`` so any existing `except KeyError` still catches it,
+    but allows the CLI layer to distinguish env-ref failures from unrelated
+    dict-lookup bugs that should not be reported as configuration errors.
+    """
+
+
 def resolve_env_ref(value: str) -> str:
     """Resolve an ``env:VAR_NAME`` reference to its environment variable value.
 
     If *value* starts with ``env:``, the remainder is used as an environment
-    variable name.  Returns the variable's value, or raises ``KeyError`` if
-    the variable is not set.  Non-prefixed strings are returned unchanged.
+    variable name.  Returns the variable's value, or raises
+    :class:`ConfigEnvVarError` if the variable is not set.  Non-prefixed
+    strings are returned unchanged.
     """
     if not isinstance(value, str) or not value.startswith(_ENV_PREFIX):
         return value
     var_name = value[len(_ENV_PREFIX) :]
     env_val = os.environ.get(var_name)
     if env_val is None:
-        raise KeyError(f"Environment variable {var_name!r} referenced in config (via {value!r}) is not set")
+        raise ConfigEnvVarError(f"Environment variable {var_name!r} referenced in config (via {value!r}) is not set")
     return env_val
 
 
