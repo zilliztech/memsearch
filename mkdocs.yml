@@ -38,6 +38,8 @@ nav:
     - Configuration: home/configuration.md
     - Architecture: architecture.md
     - Design Philosophy: design-philosophy.md
+    - Comparison with Alternatives: home/comparison.md
+    - Embedding Model Evaluation: home/embedding-evaluation.md
     - Quickstart: getting-started.md
   - Claude Code Plugin:
     - Overview: platforms/claude-code/index.md
