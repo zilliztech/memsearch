@@ -45,6 +45,8 @@ _required_env_var() {
     openai) echo "OPENAI_API_KEY" ;;
     google) echo "GOOGLE_API_KEY" ;;
     voyage) echo "VOYAGE_API_KEY" ;;
+    jina) echo "JINA_API_KEY" ;;
+    mistral) echo "MISTRAL_API_KEY" ;;
     *) echo "" ;;  # onnx, ollama, local — no API key needed
   esac
 }

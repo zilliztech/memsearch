@@ -29,6 +29,8 @@ dependencies = [
 [project.optional-dependencies]
 google = ["google-genai>=1.0"]
 voyage = ["voyageai>=0.3"]
+jina = ["httpx>=0.27"]
+mistral = ["mistralai>=1.0"]
 ollama = [
     "ollama>=0.4",
 ]
@@ -43,7 +45,7 @@ onnx = [
     "tokenizers>=0.15",
     "huggingface-hub>=0.20",
 ]
-all = ["memsearch[google,voyage,ollama,local,anthropic,onnx]"]
+all = ["memsearch[google,voyage,jina,mistral,ollama,local,anthropic,onnx]"]
 
 [project.scripts]
 memsearch = "memsearch.cli:cli"

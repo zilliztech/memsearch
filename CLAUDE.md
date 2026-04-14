@@ -46,7 +46,7 @@ Markdown files → Scanner → Chunker → Embedder → MilvusStore
 - **`core.py`** — `MemSearch` class: the public Python API that orchestrates everything. Entry point for `index()`, `search()`, `compact()`, `watch()`.
 - **`store.py`** — `MilvusStore`: Milvus wrapper handling collection creation, upsert, hybrid search (dense cosine + BM25 sparse + RRF reranking), and cleanup. The `chunk_hash` (composite ID of source+lines+content+model) is the VARCHAR primary key.
 - **`chunker.py`** — Splits markdown by headings into `Chunk` dataclasses. SHA-256 content hash enables dedup. `compute_chunk_id()` generates composite IDs matching OpenClaw's format.
-- **`embeddings/__init__.py`** — `EmbeddingProvider` protocol + lazy-loading factory (`get_provider()`). Providers: openai (default), google, voyage, ollama, local, onnx.
+- **`embeddings/__init__.py`** — `EmbeddingProvider` protocol + lazy-loading factory (`get_provider()`). Providers: openai (default), google, voyage, jina, mistral, ollama, local, onnx.
 - **`scanner.py`** — Walks directories to find `.md`/`.markdown` files, returns `ScannedFile` list.
 - **`config.py`** — Layered TOML config: dataclass defaults → `~/.memsearch/config.toml` → `.memsearch.toml` → CLI flags.
 - **`cli.py`** — Click CLI wrapping the Python API. All commands resolve config via `resolve_config()` then instantiate `MemSearch`.

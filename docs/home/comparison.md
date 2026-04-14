@@ -34,7 +34,7 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 | On-demand retrieval (not full-file reload) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Hybrid BM25 + dense | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | RRF fusion inside the vector DB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Pluggable embedding providers | ✅ (6: openai / google / voyage / ollama / local / onnx) | — | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Pluggable embedding providers | ✅ (8: openai / google / voyage / jina / mistral / ollama / local / onnx) | — | ❌ | ✅ | ❌ | ✅ | ✅ |
 | Optional cross-encoder reranker | ✅ | ❌ | ❌ | ✅ (LLM rerank) | ❌ | ✅ | ❌ |
 | Progressive disclosure: search → expand → transcript | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Forked-subagent recall (isolated context) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |

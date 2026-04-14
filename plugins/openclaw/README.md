@@ -94,7 +94,7 @@ Optional settings via `openclaw plugins config memsearch`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `provider` | `onnx` | Embedding provider (onnx, openai, google, voyage, ollama) |
+| `provider` | `onnx` | Embedding provider (onnx, openai, google, voyage, jina, mistral, ollama) |
 | `autoCapture` | `true` | Auto-capture conversation summaries after each turn |
 | `autoRecall` | `true` | Auto-inject recent memories at agent start |
 

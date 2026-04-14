@@ -652,11 +652,14 @@ def config_init(project: bool) -> None:
         "openai": "text-embedding-3-small",
         "google": "gemini-embedding-001",
         "voyage": "voyage-3-lite",
+        "jina": "jina-embeddings-v4",
+        "mistral": "mistral-embed",
         "ollama": "nomic-embed-text",
         "local": "all-MiniLM-L6-v2",
+        "onnx": "gpahal/bge-m3-onnx-int8",
     }
     result["embedding"]["provider"] = click.prompt(
-        "  Provider (openai/google/voyage/ollama/local)",
+        "  Provider (openai/google/voyage/jina/mistral/ollama/local/onnx)",
         default=current.embedding.provider,
     )
     _emb_provider = result["embedding"]["provider"]

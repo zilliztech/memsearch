@@ -15,7 +15,7 @@ OpenClaw ships with **memory-core**, a built-in memory plugin backed by SQLite +
 | **Storage format** | SQLite database (opaque) | Plain `.md` files (human-readable, git-friendly, editable) |
 | **Multi-agent isolation** | Shared database | Per-agent directory + per-agent Milvus collection |
 | **Progressive disclosure** | Single-layer (search only) | Three-layer: search → expand → transcript drill-down |
-| **Embedding model** | Depends on configuration | Pluggable: ONNX bge-m3 (default), OpenAI, Google, Voyage, Ollama |
+| **Embedding model** | Depends on configuration | Pluggable: ONNX bge-m3 (default), OpenAI, Google, Voyage, Jina, Mistral, Ollama |
 | **Data portability** | Locked in SQLite | Copy `.md` files, rebuild index anywhere |
 | **Cross-platform** | OpenClaw only | Same memories accessible from Claude Code, Codex, OpenCode |
 

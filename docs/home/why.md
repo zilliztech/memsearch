@@ -29,4 +29,4 @@ See the [Architecture](../architecture.md) deep dive and [Design Philosophy](../
 - **Smart Dedup** — SHA-256 content hashing skips unchanged content on re-index
 - **Live Sync** — file watcher auto-indexes changes in real time
 - **Progressive Disclosure** — 3-layer recall: search → expand → transcript
-- **Pluggable Embeddings** — ONNX (local, free), OpenAI, Google, Voyage, Ollama
+- **Pluggable Embeddings** — ONNX (local, free), OpenAI, Google, Voyage, Jina, Mistral, Ollama

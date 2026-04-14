@@ -360,7 +360,7 @@ graph LR
 The entire memsearch pipeline runs locally by default:
 
 - **Milvus Lite** stores data in a local `.db` file on your filesystem.
-- **Local embedding providers** (`memsearch[local]` with sentence-transformers, or `memsearch[ollama]` with a local Ollama server) process text without any network calls.
+- **Local embedding providers** (`memsearch[onnx]` with ONNX Runtime, `memsearch[local]` with sentence-transformers, or `memsearch[ollama]` with a local Ollama server) process text without any network calls.
 
 In a fully local configuration, your data never leaves your machine.
 
@@ -371,12 +371,12 @@ Data is transmitted externally only when you explicitly choose a remote componen
 | Component | Local Option | Remote Option |
 |-----------|-------------|---------------|
 | Vector store | Milvus Lite (default) | Milvus Server, Zilliz Cloud |
-| Embeddings | `local`, `ollama` | `openai`, `google`, `voyage` |
+| Embeddings | `onnx`, `local`, `ollama` | `openai`, `google`, `voyage`, `jina`, `mistral` |
 | Compact LLM | Ollama (local) | OpenAI, Anthropic, Gemini |
 
 ### API Key Handling
 
-API keys are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`). They are never written to config files by memsearch, never logged, and never stored in the vector database.
+API keys are read from standard environment variables (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`, `MISTRAL_API_KEY`, `ANTHROPIC_API_KEY`). They are never written to config files by memsearch, never logged, and never stored in the vector database.
 
 ### Filesystem Access
 

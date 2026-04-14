@@ -333,7 +333,7 @@ uv add memsearch
 pip install "memsearch[onnx]"    # Local ONNX (recommended, no API key)
 # or: uv add "memsearch[onnx]"
 
-# Other options: [openai], [google], [voyage], [ollama], [local], [all]
+# Other options: [openai], [google], [voyage], [jina], [mistral], [ollama], [local], [all]
 ```
 
 </details>

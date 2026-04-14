@@ -23,6 +23,8 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
     "openai": ("memsearch.embeddings.openai", "OpenAIEmbedding"),
     "google": ("memsearch.embeddings.google", "GoogleEmbedding"),
     "voyage": ("memsearch.embeddings.voyage", "VoyageEmbedding"),
+    "jina": ("memsearch.embeddings.jina", "JinaEmbedding"),
+    "mistral": ("memsearch.embeddings.mistral", "MistralEmbedding"),
     "ollama": ("memsearch.embeddings.ollama", "OllamaEmbedding"),
     "local": ("memsearch.embeddings.local", "LocalEmbedding"),
     "onnx": ("memsearch.embeddings.onnx", "OnnxEmbedding"),
@@ -34,6 +36,8 @@ DEFAULT_MODELS: dict[str, str] = {
     "openai": "text-embedding-3-small",
     "google": "gemini-embedding-001",
     "voyage": "voyage-3-lite",
+    "jina": "jina-embeddings-v4",
+    "mistral": "mistral-embed",
     "ollama": "nomic-embed-text",
     "local": "all-MiniLM-L6-v2",
     "onnx": "gpahal/bge-m3-onnx-int8",
@@ -43,6 +47,8 @@ _INSTALL_HINTS: dict[str, str] = {
     "openai": "pip install memsearch  (or: uv add memsearch)",
     "google": 'pip install "memsearch[google]"  (or: uv add "memsearch[google]")',
     "voyage": 'pip install "memsearch[voyage]"  (or: uv add "memsearch[voyage]")',
+    "jina": 'pip install "memsearch[jina]"  (or: uv add "memsearch[jina]")',
+    "mistral": 'pip install "memsearch[mistral]"  (or: uv add "memsearch[mistral]")',
     "ollama": 'pip install "memsearch[ollama]"  (or: uv add "memsearch[ollama]")',
     "local": 'pip install "memsearch[local]"  (or: uv add "memsearch[local]")',
     "onnx": 'pip install "memsearch[onnx]"  (or: uv add "memsearch[onnx]")',
@@ -96,6 +102,8 @@ def get_provider(
             kwargs["base_url"] = base_url
         if api_key:
             kwargs["api_key"] = api_key
+    elif name in ("jina", "mistral") and api_key:
+        kwargs["api_key"] = api_key
     return cls(**kwargs)
 
 

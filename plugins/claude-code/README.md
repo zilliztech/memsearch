@@ -156,7 +156,7 @@ stateDiagram-v2
 
 Fires once when a Claude Code session begins. This hook:
 
-1. **Reads config and checks API key.** Runs `memsearch config get` to read the configured embedding provider, model, and Milvus URI. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
+1. **Reads config and checks API key.** Runs `memsearch config get` to read the configured embedding provider, model, and Milvus URI. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`, `MISTRAL_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
 2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce. Milvus Lite falls back to a one-time `memsearch index` at session start.
 3. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
 4. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
@@ -388,7 +388,7 @@ Each file contains session summaries in plain markdown:
 | **Progressive disclosure** | **3-layer in subagent**: search → expand → transcript, all in forked context — only curated summary reaches main conversation | **3-layer**: `mem-search` skill for auto-recall; MCP tools for explicit drill-down |
 | **Session capture** | 1 async `claude -p --model haiku` call at session end | AI observation compression on every tool use (`PostToolUse` hook) + session summary |
 | **Vector backend** | [Milvus](https://milvus.io/) — hybrid search (dense + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) + RRF), scales from embedded to distributed cluster | [ChromaDB](https://www.trychroma.com/) — dense only; SQLite FTS5 for keyword search (separate, not fused) |
-| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
+| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Jina, Mistral, Ollama, local, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
 | **Storage format** | Transparent `.md` files — human-readable, git-friendly | SQLite database + ChromaDB binary |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild index | Export from SQLite + ChromaDB |
 | **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js / Bun + Express worker service |
@@ -556,6 +556,8 @@ The plugin checks for the required API key at session start. If missing, memory 
 | `openai` (Python API default) | `OPENAI_API_KEY` |
 | `google` | `GOOGLE_API_KEY` |
 | `voyage` | `VOYAGE_API_KEY` |
+| `jina` | `JINA_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
 | `ollama` | None (local) |
 | `local` | None (local) |
 

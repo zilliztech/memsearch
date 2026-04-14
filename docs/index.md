@@ -168,6 +168,8 @@ graph LR
 | OpenAI | `memsearch` (included) | `text-embedding-3-small` |
 | Google | `memsearch[google]` | `gemini-embedding-001` |
 | Voyage | `memsearch[voyage]` | `voyage-3-lite` |
+| Jina | `memsearch[jina]` | `jina-embeddings-v4` |
+| Mistral | `memsearch[mistral]` | `mistral-embed` |
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
 | Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
 

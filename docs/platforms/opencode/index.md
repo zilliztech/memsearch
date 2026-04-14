@@ -16,7 +16,7 @@ OpenCode does not ship with a built-in memory system. Several third-party option
 | **Cross-platform** | Same memories accessible from Claude Code, OpenClaw, Codex | OpenCode only | Single platform |
 | **Capture method** | Background daemon polls SQLite | Hook-based | Varies |
 | **Progressive disclosure** | Three-layer: search → expand → transcript | Typically single-layer | Typically single-layer |
-| **Embedding model** | Pluggable: ONNX bge-m3 (default), OpenAI, Google, Voyage, Ollama | Typically fixed | Varies |
+| **Embedding model** | Pluggable: ONNX bge-m3 (default), OpenAI, Google, Voyage, Jina, Mistral, Ollama | Typically fixed | Varies |
 
 ### The Cross-Platform Advantage
 

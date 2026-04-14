@@ -98,7 +98,7 @@ sequenceDiagram
 | **Memory recall** | Skill in forked subagent -- intermediate results stay isolated | Skill + MCP hybrid -- tool definitions permanently consume context tokens |
 | **Session capture** | 1 async `claude -p --model haiku` call at session end | AI observation compression on every tool use (`PostToolUse` hook) |
 | **Vector backend** | [Milvus](https://milvus.io/) -- [hybrid search](../../architecture.md#hybrid-search) (dense + BM25 + RRF) | [ChromaDB](https://www.trychroma.com/) -- dense only; SQLite FTS5 for keyword search (separate, not fused) |
-| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
+| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Jina, Mistral, Ollama, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
 | **Storage format** | Transparent `.md` files -- human-readable, git-friendly | SQLite database + ChromaDB binary |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild index | Export from SQLite + ChromaDB |
 | **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js / Bun + Express worker service |

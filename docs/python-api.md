@@ -40,7 +40,7 @@ MemSearch(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `paths` | `list[str \| Path]` | `[]` | Directories or files to index |
-| `embedding_provider` | `str` | `"openai"` | Embedding backend (`"openai"`, `"google"`, `"voyage"`, `"ollama"`, `"local"`) |
+| `embedding_provider` | `str` | `"openai"` | Embedding backend (`"openai"`, `"google"`, `"voyage"`, `"jina"`, `"mistral"`, `"ollama"`, `"local"`, `"onnx"`) |
 | `embedding_model` | `str \| None` | `None` | Override the default model for the chosen provider |
 | `embedding_batch_size` | `int` | `0` | Max texts per embedding API call (0 = provider default) |
 | `embedding_base_url` | `str \| None` | `None` | OpenAI-compatible API base URL. Overrides `OPENAI_BASE_URL` env var |

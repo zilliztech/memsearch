@@ -27,6 +27,8 @@ memsearch config set milvus.uri http://localhost:19530
 | openai | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
 | google | `pip install memsearch[google]` | `GOOGLE_API_KEY` | Gemini embeddings |
 | voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | High quality |
+| jina | `pip install memsearch[jina]` | `JINA_API_KEY` | jina-embeddings-v4, multilingual, long context |
+| mistral | `pip install memsearch[mistral]` | `MISTRAL_API_KEY` | EU-based, GDPR-friendly |
 | ollama | `pip install memsearch[ollama]` | No | Local, any model |
 
 ```bash

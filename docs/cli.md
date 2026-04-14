@@ -76,7 +76,7 @@ Writing to: /home/user/.memsearch/config.toml
   Collection name [memsearch_chunks]:
 
 -- Embedding --
-  Provider (openai/google/voyage/ollama/local) [openai]:
+  Provider (openai/google/voyage/jina/mistral/ollama/local/onnx) [openai]:
   Model (empty for provider default) []:
 
 -- Chunking --
@@ -216,7 +216,7 @@ Scan one or more directories (or files) and index all markdown files (`.md`, `.m
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `PATHS` | | *(required)* | One or more directories or files to index |
-| `--provider` | `-p` | `openai` | Embedding provider (`openai`, `google`, `voyage`, `ollama`, `local`) |
+| `--provider` | `-p` | `openai` | Embedding provider (`openai`, `google`, `voyage`, `jina`, `mistral`, `ollama`, `local`, `onnx`) |
 | `--model` | `-m` | provider default | Override the embedding model name |
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
@@ -711,6 +711,8 @@ memsearch reads API keys from environment variables by default. You can also con
 | `OPENAI_BASE_URL` | *(optional)* | Override the OpenAI API base URL (for proxies or compatible APIs) |
 | `GOOGLE_API_KEY` | `google` embedding provider, `gemini` LLM compact provider | Google AI API key |
 | `VOYAGE_API_KEY` | `voyage` embedding provider | Voyage AI API key |
+| `JINA_API_KEY` | `jina` embedding provider | Jina AI API key |
+| `MISTRAL_API_KEY` | `mistral` embedding provider | Mistral AI API key |
 | `ANTHROPIC_API_KEY` | `anthropic` LLM compact provider | Anthropic API key |
 | `OLLAMA_HOST` | `ollama` embedding provider *(optional)* | Ollama server URL (default: `http://localhost:11434`) |
 
@@ -736,8 +738,11 @@ $ memsearch compact --llm-provider anthropic
 | `openai` | included by default | `text-embedding-3-small` | 1536 | `OPENAI_API_KEY` |
 | `google` | `pip install "memsearch[google]"` | `gemini-embedding-001` | 768 | `GOOGLE_API_KEY` |
 | `voyage` | `pip install "memsearch[voyage]"` | `voyage-3-lite` | 512 | `VOYAGE_API_KEY` |
+| `jina` | `pip install "memsearch[jina]"` | `jina-embeddings-v4` | 2048 | `JINA_API_KEY` |
+| `mistral` | `pip install "memsearch[mistral]"` | `mistral-embed` | 1024 | `MISTRAL_API_KEY` |
 | `ollama` | `pip install "memsearch[ollama]"` | `nomic-embed-text` | 768 | *(none, local)* |
 | `local` | `pip install "memsearch[local]"` | `all-MiniLM-L6-v2` | 384 | *(none, local)* |
+| `onnx` | `pip install "memsearch[onnx]"` | `gpahal/bge-m3-onnx-int8` | 1024 | *(none, local)* |
 
 Install all optional providers at once:
 

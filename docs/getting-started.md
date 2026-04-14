@@ -16,6 +16,8 @@ Each optional extra pulls in the provider SDK you need:
 $ pip install "memsearch[onnx]"        # ONNX Runtime — bge-m3 int8, CPU, no API key
 $ pip install "memsearch[google]"      # Google Gemini embeddings
 $ pip install "memsearch[voyage]"      # Voyage AI embeddings
+$ pip install "memsearch[jina]"        # Jina AI embeddings
+$ pip install "memsearch[mistral]"     # Mistral AI embeddings
 $ pip install "memsearch[ollama]"      # Ollama (local, no API key)
 $ pip install "memsearch[local]"       # sentence-transformers (local, no API key)
 $ pip install "memsearch[anthropic]"   # Anthropic (for compact/summarization LLM)
@@ -295,6 +297,8 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 | OpenAI-compatible proxy | `OPENAI_BASE_URL` | For Azure OpenAI, vLLM, LiteLLM, etc. |
 | Google Gemini | `GOOGLE_API_KEY` | Requires `memsearch[google]` |
 | Voyage AI | `VOYAGE_API_KEY` | Requires `memsearch[voyage]` |
+| Jina AI | `JINA_API_KEY` | Requires `memsearch[jina]` |
+| Mistral AI | `MISTRAL_API_KEY` | Requires `memsearch[mistral]` |
 | Ollama | `OLLAMA_HOST` (optional) | Defaults to `http://localhost:11434` |
 | Local (sentence-transformers) | -- | No API key needed |
 | Anthropic | `ANTHROPIC_API_KEY` | Used by `compact` summarization only |
@@ -303,6 +307,8 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 $ export OPENAI_API_KEY="sk-..."         # OpenAI embeddings (default)
 $ export GOOGLE_API_KEY="..."            # Google Gemini embeddings
 $ export VOYAGE_API_KEY="..."            # Voyage AI embeddings
+$ export JINA_API_KEY="jina_..."         # Jina AI embeddings
+$ export MISTRAL_API_KEY="..."           # Mistral AI embeddings
 $ export ANTHROPIC_API_KEY="..."         # Anthropic (for compact summarization)
 ```
 
@@ -475,7 +481,7 @@ Writing to: /home/user/.memsearch/config.toml
   Collection name [memsearch_chunks]:
 
 ── Embedding ──
-  Provider (openai/google/voyage/ollama/local) [openai]:
+  Provider (openai/google/voyage/jina/mistral/ollama/local/onnx) [openai]:
   Model (empty for provider default) []:
 
 ── Chunking ──
