@@ -290,3 +290,14 @@ def test_mixed_path_slashes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 28 for chunk in chunks)
     assert not all(chunk.content.endswith("/") for chunk in chunks[:-1])
+
+
+def test_mixed_underscores_do_not_act_as_sentence_boundaries() -> None:
+    """Underscores in identifiers should not be treated as sentence boundaries."""
+    text = ("请检查 cache_hit_rate 和 build_status_done 这两个字段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="underscores.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+    assert not all(chunk.content.endswith("_") for chunk in chunks[:-1])
