@@ -236,7 +236,7 @@ def _split_large_section(
 
 # Sentence-ending punctuation for splitting long text without line breaks.
 # Includes common CJK punctuation plus Unicode/fullwidth ellipsis.
-_SENTENCE_END_RE = re.compile(r"(?:……|…|[。\uFF01\uFF1F.!?])\s*")
+_SENTENCE_END_RE = re.compile(r"(?:……|…|[。\uFF01\uFF1F\uFF1B.!?;])\s*")
 
 
 def _split_long_text(text: str, max_size: int) -> list[str]:

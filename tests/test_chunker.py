@@ -211,3 +211,15 @@ def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])
+
+
+def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
+    """Chinese semicolons should act as sentence boundaries for long text."""
+    sentence = "先检查缓存命中率；再确认索引是否完成；"
+    text = sentence * 5
+
+    chunks = chunk_markdown(text, source="semicolon.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])
