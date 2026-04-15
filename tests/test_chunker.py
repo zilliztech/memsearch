@@ -246,3 +246,14 @@ def test_cjk_colon_does_not_act_as_sentence_boundary() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 22 for chunk in chunks)
     assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])
+
+
+def test_cjk_enumeration_comma_does_not_act_as_sentence_boundary() -> None:
+    """Chinese enumeration commas should not be treated as sentence boundaries."""
+    text = ("先检查缓存、再检查索引、最后检查日志、" * 5)
+
+    chunks = chunk_markdown(text, source="enumeration.md", max_chunk_size=20)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 20 for chunk in chunks)
+    assert not all(chunk.content.endswith("、") for chunk in chunks[:-1])
