@@ -64,6 +64,42 @@ def test_parse_transcript_skips_invalid_and_tool_result(tmp_path: Path) -> None:
     assert turns[0].tool_calls == ["Bash(ls -la)"]
 
 
+def test_parse_transcript_supports_flat_content_format(tmp_path: Path) -> None:
+    transcript = tmp_path / "flat.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u-flat",
+                        "timestamp": "2026-03-07T05:00:00Z",
+                        "content": "Need the VSCode hook workaround",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "content": [
+                            {"type": "text", "text": "Try the compatibility mode."},
+                            {"type": "tool_use", "name": "Read", "input": {"file_path": "README.md"}},
+                        ],
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    turns = parse_transcript(transcript)
+
+    assert len(turns) == 1
+    assert turns[0].uuid == "u-flat"
+    assert "Need the VSCode hook workaround" in turns[0].content
+    assert "Try the compatibility mode." in turns[0].content
+    assert turns[0].tool_calls == ["Read(README.md)"]
+
+
 def test_find_turn_context_supports_uuid_prefix() -> None:
     turns = [
         type("T", (), {"uuid": "aaaabbbb-1"})(),
