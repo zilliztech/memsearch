@@ -52,6 +52,7 @@ nav:
     - Installation: platforms/openclaw/installation.md
     - How It Works: platforms/openclaw/how-it-works.md
     - Memory Tools: platforms/openclaw/memory-tools.md
+    - Troubleshooting: platforms/openclaw/troubleshooting.md
   - OpenCode Plugin:
     - Overview: platforms/opencode/index.md
     - Installation: platforms/opencode/installation.md
