@@ -21,6 +21,15 @@ from .store import MilvusStore
 logger = logging.getLogger(__name__)
 
 
+def _normalize_source_prefix(source_prefix: str | Path) -> str:
+    """Normalize path-like prefixes without rewriting non-path filters."""
+    raw = str(source_prefix)
+    candidate = Path(raw).expanduser()
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate.resolve())
+    return raw
+
+
 class MemSearch:
     """High-level API for semantic memory search.
 
