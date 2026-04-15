@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pymilvus.exceptions import MilvusException
+
 logger = logging.getLogger(__name__)
 
 
@@ -201,7 +203,12 @@ class MilvusStore:
             "output_fields": self._QUERY_FIELDS,
             "filter": filter_expr if filter_expr else 'chunk_hash != ""',
         }
-        return self._client.query(**kwargs)
+        try:
+            return self._client.query(**kwargs)
+        except MilvusException as exc:
+            if "collection not found" in str(exc).lower():
+                return []
+            raise
 
     def hashes_by_source(self, source: str) -> set[str]:
         """Return all chunk_hash values for a given source file."""
