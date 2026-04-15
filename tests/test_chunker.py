@@ -312,3 +312,14 @@ def test_mixed_hyphens_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
     assert not all(chunk.content.endswith("-") for chunk in chunks[:-1])
+
+
+def test_mixed_backslashes_do_not_act_as_sentence_boundaries() -> None:
+    """Backslashes in Windows-style paths should not be treated as sentence boundaries."""
+    text = (r"请检查 C:\logs\agent\run 和 config\\backup\\path 是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="backslashes.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+    assert not all(chunk.content.endswith("\\") for chunk in chunks[:-1])
