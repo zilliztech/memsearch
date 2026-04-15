@@ -350,12 +350,12 @@ def test_mixed_email_addresses_do_not_act_as_sentence_boundaries() -> None:
     assert not all(chunk.content.endswith(("@", ".")) for chunk in chunks[:-1])
 
 
-def test_mixed_email_addresses_do_not_act_as_sentence_boundaries() -> None:
-    """Email address punctuation should not be treated as sentence boundaries."""
-    text = ("请联系 ops-team@example.com 或 build.bot@example.org 确认状态" * 4)
+def test_mixed_file_extensions_do_not_act_as_sentence_boundaries() -> None:
+    """File extensions should not be treated as sentence boundaries."""
+    text = ("请检查 config.json、README.md 和 settings.yaml 是否都已更新" * 4)
 
-    chunks = chunk_markdown(text, source="emails.md", max_chunk_size=32)
+    chunks = chunk_markdown(text, source="file-ext.md", max_chunk_size=30)
 
     assert len(chunks) > 1
-    assert all(len(chunk.content) <= 32 for chunk in chunks)
-    assert not all(chunk.content.endswith(("@", ".")) for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+    assert not all(chunk.content.endswith("." ) for chunk in chunks[:-1])
