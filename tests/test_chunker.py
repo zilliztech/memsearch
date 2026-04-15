@@ -436,3 +436,14 @@ def test_mixed_single_quotes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
     assert not all(chunk.content.endswith("'") for chunk in chunks[:-1])
+
+
+def test_mixed_key_value_fragments_do_not_act_as_sentence_boundaries() -> None:
+    """Config/log key-value fragments should not be treated as sentence boundaries."""
+    text = ("请检查 status=ok、agent:memsearch、build=result_ok 这类字段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="key-value.md", max_chunk_size=32)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 32 for chunk in chunks)
+    assert not all(chunk.content.endswith(("=", ":")) for chunk in chunks[:-1])
