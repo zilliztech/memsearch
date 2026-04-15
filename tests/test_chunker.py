@@ -153,3 +153,15 @@ def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(chunk.content.endswith("。") for chunk in chunks[:-1])
     assert all(len(chunk.content) <= 40 for chunk in chunks)
+
+
+def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
+    """Chinese question/exclamation punctuation should also act as boundaries."""
+    sentence = "这个问题应该怎么处理？这个方案真的可行！"
+    text = sentence * 6
+
+    chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
