@@ -49,7 +49,7 @@ memsearch expand <chunk_hash>               # expand a chunk
 memsearch watch ./memory                    # live file watcher
 ```
 
-See the full [CLI Reference →](../cli.md) and [Python API →](../python-api.md).
+See the full [CLI Reference →](../cli.md), [Python API →](../python-api.md), and [Integrations →](../integrations.md).
 
 ## How Plugins Use the API
 
