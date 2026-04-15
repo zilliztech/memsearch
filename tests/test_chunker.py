@@ -141,3 +141,38 @@ def test_clean_content_handles_adjacent_html_comments() -> None:
     assert "first comment" not in cleaned
     assert "second comment" not in cleaned
     assert cleaned == "Header\n\nBody text"
+
+
+def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
+    """Long Chinese text should prefer sentence-ending punctuation when split."""
+    sentence = "这是一个用于测试中文分句行为的长句子。"
+    text = sentence * 8
+
+    chunks = chunk_markdown(text, source="zh.md", max_chunk_size=40)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith("。") for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 40 for chunk in chunks)
+
+
+def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
+    """Chinese question/exclamation punctuation should also act as boundaries."""
+    sentence = "这个问题应该怎么处理？这个方案真的可行！"
+    text = sentence * 6
+
+    chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+
+
+def test_long_cjk_text_without_punctuation_hard_splits() -> None:
+    """Long CJK text without sentence punctuation should still split safely."""
+    text = "中文连续文本" * 20
+
+    chunks = chunk_markdown(text, source="zh-no-punct.md", max_chunk_size=25)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 25 for chunk in chunks)
+    assert "".join(chunk.content for chunk in chunks) == text
