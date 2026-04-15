@@ -634,6 +634,7 @@ mem = MemSearch(paths=["./docs/shared-knowledge", "./.memsearch/memory"])
 - **[Architecture](architecture.md)** -- deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
 - **[Design Philosophy](design-philosophy.md)** -- why markdown, why Milvus, comparison with competitors
 - **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
+- **[Integrations](integrations.md)** -- see framework and agent integration patterns
 - **[Claude Code Plugin](platforms/claude-code/index.md)** -- install memsearch for Claude Code
 - **[Platform Comparison](platforms/index.md)** -- compare all 4 supported platforms
 - **[Python API](python-api.md)** -- build custom agent integrations
