@@ -165,3 +165,14 @@ def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
     assert len(chunks) > 1
     assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
     assert all(len(chunk.content) <= 30 for chunk in chunks)
+
+
+def test_long_cjk_text_without_punctuation_hard_splits() -> None:
+    """Long CJK text without sentence punctuation should still split safely."""
+    text = "中文连续文本" * 20
+
+    chunks = chunk_markdown(text, source="zh-no-punct.md", max_chunk_size=25)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 25 for chunk in chunks)
+    assert "".join(chunk.content for chunk in chunks) == text
