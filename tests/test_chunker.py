@@ -257,3 +257,14 @@ def test_cjk_enumeration_comma_does_not_act_as_sentence_boundary() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 20 for chunk in chunks)
     assert not all(chunk.content.endswith("、") for chunk in chunks[:-1])
+
+
+def test_cjk_parentheses_do_not_act_as_sentence_boundaries() -> None:
+    """Fullwidth parentheses should not be treated as sentence boundaries."""
+    text = ("请检查缓存命中（重点关注热数据）再检查索引状态（确认已完成）" * 4)
+
+    chunks = chunk_markdown(text, source="parentheses.md", max_chunk_size=26)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 26 for chunk in chunks)
+    assert not all(chunk.content.endswith(("（", "）")) for chunk in chunks[:-1])
