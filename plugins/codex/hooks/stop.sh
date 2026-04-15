@@ -75,13 +75,16 @@ with open(sys.argv[1]) as f:
     for line in f:
         try:
             obj = json.loads(line)
-            if obj.get('type') == 'event_msg':
-                p = obj.get('payload', {})
-                if p.get('type') == 'user_message':
-                    msg = p.get('message', '').strip()
-                    if msg:
-                        last_q = msg
-        except:
+            line_type = obj.get('type', '')
+            payload = obj.get('payload', obj)
+            if not isinstance(payload, dict):
+                continue
+            item_type = payload.get('type', '')
+            if item_type == 'user_message' and line_type in ('event_msg', 'user_message'):
+                msg = payload.get('message', '').strip()
+                if msg:
+                    last_q = msg
+        except Exception:
             pass
 # Truncate to first line, max 200 chars
 first_line = last_q.split('\n')[0][:200] if last_q else ''
