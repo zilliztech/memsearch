@@ -27,7 +27,7 @@ if [ -n "$_GIT_ROOT" ]; then
 else
   _PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 fi
-MEMSEARCH_DIR="$_PROJECT_DIR/.memsearch"
+MEMSEARCH_DIR="${MEMSEARCH_DIR:-$_PROJECT_DIR/.memsearch}"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
 # Find memsearch binary: prefer PATH, fallback to uvx
