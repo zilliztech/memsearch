@@ -91,6 +91,7 @@ print(results[0]["content"], results[0]["score"])       # content + similarity
 ```
 
 [:octicons-arrow-right-24: Python API reference](python-api.md){ .md-button }
+[:octicons-arrow-right-24: Integration patterns](integrations.md){ .md-button }
 
 ### CLI
 
