@@ -66,9 +66,13 @@ if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   fi
 fi
 
-# Check PyPI for newer version (2s timeout, non-blocking on failure)
+# Optional PyPI update check.
+# Disabled by default in SessionStart hooks because a synchronous network call
+# burns a meaningful slice of the 10s hook timeout budget and can trip
+# cancellation in stricter hook runtimes (for example VSCode Copilot's
+# compatibility layer). Set MEMSEARCH_HOOK_CHECK_UPDATES=1 to re-enable.
 UPDATE_HINT=""
-if [ -n "$VERSION" ]; then
+if [ "${MEMSEARCH_HOOK_CHECK_UPDATES:-0}" = "1" ] && [ -n "$VERSION" ]; then
   _PYPI_JSON=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
   LATEST=$(_json_val "$_PYPI_JSON" "info.version" "")
   if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
