@@ -19,6 +19,7 @@ from memsearch.cli import cli
         pytest.param(["config", "list", "--help"], "Usage:", id="config-list-help"),
         pytest.param(["index", "--help"], "Usage:", id="index-help"),
         pytest.param(["search", "--help"], "Usage:", id="search-help"),
+        pytest.param(["list", "--help"], "Usage:", id="list-help"),
         pytest.param(["expand", "--help"], "Usage:", id="expand-help"),
         pytest.param(["stats", "--help"], "Usage:", id="stats-help"),
         pytest.param(["reset", "--help"], "Usage:", id="reset-help"),
