@@ -480,3 +480,14 @@ def test_mixed_pipes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 32 for chunk in chunks)
     assert not all(chunk.content.endswith("|") for chunk in chunks[:-1])
+
+
+def test_mixed_dollar_signs_do_not_act_as_sentence_boundaries() -> None:
+    """Shell/env dollar-sign fragments should not be treated as sentence boundaries."""
+    text = ("请检查 $HOME/bin 和 ${CONFIG_PATH} 这类片段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="dollar-signs.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+    assert not all(chunk.content.endswith("$") for chunk in chunks[:-1])
