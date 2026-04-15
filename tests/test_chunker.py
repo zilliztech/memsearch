@@ -524,3 +524,14 @@ def test_mixed_tildes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
     assert not all(chunk.content.endswith("~") for chunk in chunks[:-1])
+
+
+def test_mixed_asterisks_do_not_act_as_sentence_boundaries() -> None:
+    """Asterisk fragments should not be treated as sentence boundaries."""
+    text = ("请检查 *.log 和 **bold_text** 这类片段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="asterisks.md", max_chunk_size=28)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 28 for chunk in chunks)
+    assert not all(chunk.content.endswith("*") for chunk in chunks[:-1])
