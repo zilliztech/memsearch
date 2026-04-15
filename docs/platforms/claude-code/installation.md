@@ -24,7 +24,7 @@ claude --plugin-dir ./plugins/claude-code
 ```
 
 !!! note "First-time ONNX model download"
-    The plugin defaults to **ONNX bge-m3** embedding -- no API key required, runs locally on CPU. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. Pre-download it manually:
+    The plugin defaults to **ONNX bge-m3** embedding -- no API key required, runs locally on CPU. See [Embedding Evaluation](evaluation.md) for why this became the default. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. Pre-download it manually:
 
     ```bash
     uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
@@ -36,7 +36,7 @@ claude --plugin-dir ./plugins/claude-code
 
 ## Configuration
 
-The plugin defaults to **ONNX bge-m3** embedding (no API key, CPU-only). To use a different provider:
+The plugin defaults to **ONNX bge-m3** embedding (no API key, CPU-only). If you want the benchmark rationale for that choice, see [Embedding Evaluation](evaluation.md). To use a different provider:
 
 ```bash
 memsearch config set embedding.provider openai
