@@ -200,3 +200,14 @@ def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 35 for chunk in chunks)
     assert all(chunk.content.endswith(("……",)) for chunk in chunks[:-1])
+
+
+def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
+    """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
+    text = ("这个步骤还没结束～～继续观察系统状态～～" * 5)
+
+    chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])
