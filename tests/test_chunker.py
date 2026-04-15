@@ -381,3 +381,14 @@ def test_mixed_brackets_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
     assert not all(chunk.content.endswith(("[", "]")) for chunk in chunks[:-1])
+
+
+def test_mixed_ascii_parentheses_do_not_act_as_sentence_boundaries() -> None:
+    """ASCII parentheses in calls/params should not be treated as sentence boundaries."""
+    text = ("请检查 run_task(cache_hit_rate) 和 handler(status_ok) 输出是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="ascii-parens.md", max_chunk_size=32)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 32 for chunk in chunks)
+    assert not all(chunk.content.endswith(("(", ")")) for chunk in chunks[:-1])
