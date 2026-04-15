@@ -136,7 +136,7 @@ Semantic search across indexed chunks. Returns a list of result dicts, sorted by
 | `source` | `str` | Path to the source markdown file |
 | `heading` | `str` | The heading this chunk belongs to |
 | `heading_level` | `int` | Heading level (1–6, or 0 for no heading) |
-| `chunk_hash` | `str` | Unique chunk identifier |
+| `chunk_hash` | `str` | Unique chunk identifier. See [Architecture](architecture.md#how-it-works) for how content hashes and composite IDs are derived |
 | `start_line` | `int` | Start line in the source file |
 | `end_line` | `int` | End line in the source file |
 | `score` | `float` | Relevance score (higher is better) |
