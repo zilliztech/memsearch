@@ -392,3 +392,14 @@ def test_mixed_ascii_parentheses_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 32 for chunk in chunks)
     assert not all(chunk.content.endswith(("(", ")")) for chunk in chunks[:-1])
+
+
+def test_mixed_angle_brackets_do_not_act_as_sentence_boundaries() -> None:
+    """Angle brackets in tags/placeholders should not be treated as sentence boundaries."""
+    text = ("请检查 <status_ok> 和 <agent_result> 这类片段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="angles.md", max_chunk_size=28)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 28 for chunk in chunks)
+    assert not all(chunk.content.endswith(("<", ">")) for chunk in chunks[:-1])
