@@ -323,3 +323,17 @@ def test_mixed_backslashes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
     assert not all(chunk.content.endswith("\\") for chunk in chunks[:-1])
+
+
+def test_mixed_url_query_symbols_do_not_break_chunking() -> None:
+    """URL query punctuation should not cause unexpected sentence splitting."""
+    text = (
+        "请检查 https://example.com/search?q=memsearch&lang=zh-CN 是否正常返回结果"
+        * 4
+    )
+
+    chunks = chunk_markdown(text, source="url-query.md", max_chunk_size=34)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 34 for chunk in chunks)
+    assert not all(chunk.content.endswith(("&", "=")) for chunk in chunks[:-1])
