@@ -268,3 +268,14 @@ def test_cjk_parentheses_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 26 for chunk in chunks)
     assert not all(chunk.content.endswith(("（", "）")) for chunk in chunks[:-1])
+
+
+def test_cjk_quotes_do_not_act_as_sentence_boundaries() -> None:
+    """Chinese quotes should not be treated as sentence boundaries."""
+    text = ("请检查“缓存命中率”是否正常再确认“索引状态”是否完成" * 4)
+
+    chunks = chunk_markdown(text, source="quotes.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert not all(chunk.content.endswith(("“", "”")) for chunk in chunks[:-1])
