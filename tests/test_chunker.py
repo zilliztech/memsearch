@@ -157,13 +157,15 @@ def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
 
 def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
     """Chinese question/exclamation punctuation should also act as boundaries."""
-    sentence = "这个问题应该怎么处理？这个方案真的可行！"
+    question = "\uFF1F"
+    exclamation = "\uFF01"
+    sentence = f"这个问题应该怎么处理{question}这个方案真的可行{exclamation}"
     text = sentence * 6
 
     chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
 
     assert len(chunks) > 1
-    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
+    assert all(chunk.content.endswith((question, exclamation)) for chunk in chunks[:-1])
     assert all(len(chunk.content) <= 30 for chunk in chunks)
 
 
@@ -204,22 +206,24 @@ def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
 
 def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
-    text = ("这个步骤还没结束～～继续观察系统状态～～" * 5)
+    wave = "\uFF5E"
+    text = ((f"这个步骤还没结束{wave}{wave}继续观察系统状态{wave}{wave}") * 5)
 
     chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith(wave) for chunk in chunks[:-1])
 
 
 def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
     """Chinese semicolons should act as sentence boundaries for long text."""
-    sentence = "先检查缓存命中率；再确认索引是否完成；"
+    semicolon = "\uFF1B"
+    sentence = f"先检查缓存命中率{semicolon}再确认索引是否完成{semicolon}"
     text = sentence * 5
 
     chunks = chunk_markdown(text, source="semicolon.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])
+    assert all(chunk.content.endswith(semicolon) for chunk in chunks[:-1])
