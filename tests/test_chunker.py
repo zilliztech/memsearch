@@ -141,3 +141,15 @@ def test_clean_content_handles_adjacent_html_comments() -> None:
     assert "first comment" not in cleaned
     assert "second comment" not in cleaned
     assert cleaned == "Header\n\nBody text"
+
+
+def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
+    """Long Chinese text should prefer sentence-ending punctuation when split."""
+    sentence = "这是一个用于测试中文分句行为的长句子。"
+    text = sentence * 8
+
+    chunks = chunk_markdown(text, source="zh.md", max_chunk_size=40)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith("。") for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 40 for chunk in chunks)
