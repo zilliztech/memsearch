@@ -1,6 +1,6 @@
 # Architecture
 
-This page explains the technical architecture and key implementation decisions behind memsearch. For design principles, competitor comparison, and the "why" behind these decisions, see [Design Philosophy](design-philosophy.md).
+This page explains the technical architecture and key implementation decisions behind memsearch. New here? Start with [Getting Started](getting-started.md) for the end-to-end user flow before diving into internals. For design principles, competitor comparison, and the "why" behind these decisions, see [Design Philosophy](design-philosophy.md).
 
 ---
 
