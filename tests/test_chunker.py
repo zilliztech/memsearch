@@ -235,3 +235,14 @@ def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert all(chunk.content.endswith(";") for chunk in chunks[:-1])
+
+
+def test_cjk_colon_does_not_act_as_sentence_boundary() -> None:
+    """Fullwidth colons should not be treated as sentence boundaries."""
+    text = ("处理步骤如下：继续检查日志输出：继续确认索引状态：" * 4)
+
+    chunks = chunk_markdown(text, source="colon.md", max_chunk_size=22)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 22 for chunk in chunks)
+    assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])
