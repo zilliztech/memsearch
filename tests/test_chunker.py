@@ -176,3 +176,15 @@ def test_long_cjk_text_without_punctuation_hard_splits() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 25 for chunk in chunks)
     assert "".join(chunk.content for chunk in chunks) == text
+
+
+def test_long_mixed_cjk_and_english_text_prefers_sentence_boundaries() -> None:
+    """Mixed Chinese/English text should still split on sentence punctuation."""
+    sentence = "请检查 Redis cache 是否命中。Then verify the fallback path works!"
+    text = sentence * 5
+
+    chunks = chunk_markdown(text, source="mixed.md", max_chunk_size=45)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 45 for chunk in chunks)
+    assert all(chunk.content.endswith(("。", "!")) for chunk in chunks[:-1])
