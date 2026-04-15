@@ -188,3 +188,15 @@ def test_long_mixed_cjk_and_english_text_prefers_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 45 for chunk in chunks)
     assert all(chunk.content.endswith(("。", "!")) for chunk in chunks[:-1])
+
+
+def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
+    """Chinese ellipsis should act as a sentence boundary when splitting."""
+    sentence = "这个排查过程还没结束……但是系统已经记录了关键上下文……"
+    text = sentence * 4
+
+    chunks = chunk_markdown(text, source="ellipsis.md", max_chunk_size=35)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 35 for chunk in chunks)
+    assert all(chunk.content.endswith(("……",)) for chunk in chunks[:-1])
