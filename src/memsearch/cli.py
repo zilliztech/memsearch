@@ -245,6 +245,96 @@ def search(
 
 
 @cli.command()
+@click.option(
+    "--source-prefix",
+    default=None,
+    type=click.Path(),
+    help="Only show memories whose source path starts with this prefix.",
+)
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+@_common_options
+def list(
+    source_prefix: str | None,
+    json_output: bool,
+    provider: str | None,
+    model: str | None,
+    batch_size: int | None,
+    base_url: str | None,
+    api_key: str | None,
+    collection: str | None,
+    milvus_uri: str | None,
+    milvus_token: str | None,
+) -> None:
+    """List indexed memories grouped by source file."""
+    from .store import MilvusStore
+
+    cfg = resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        )
+    )
+    store = MilvusStore(
+        uri=cfg.milvus.uri,
+        token=cfg.milvus.token or None,
+        collection=cfg.milvus.collection,
+        dimension=None,
+    )
+    try:
+        filter_expr = ""
+        if source_prefix is not None:
+            prefix = str(Path(source_prefix).expanduser().resolve())
+            escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
+            filter_expr = f'source like "{escaped}%"'
+
+        rows = store.query(filter_expr=filter_expr)
+        grouped: dict[str, dict[str, object]] = {}
+        for row in rows:
+            source = row.get("source", "")
+            heading = row.get("heading", "")
+            entry = grouped.setdefault(source, {"source": source, "chunk_count": 0, "headings": set()})
+            entry["chunk_count"] = int(entry["chunk_count"]) + 1
+            if heading:
+                headings = entry["headings"]
+                assert isinstance(headings, set)
+                headings.add(heading)
+
+        results = [
+            {
+                "source": source,
+                "chunk_count": data["chunk_count"],
+                "headings": sorted(data["headings"]),
+            }
+            for source, data in sorted(grouped.items())
+        ]
+
+        if json_output:
+            click.echo(json.dumps(results, indent=2, ensure_ascii=False))
+            return
+
+        if not results:
+            click.echo("No indexed memories found.")
+            return
+
+        for item in results:
+            click.echo(f"\n- {item['source']} ({item['chunk_count']} chunks)")
+            headings = item["headings"]
+            if headings:
+                for heading in headings[:5]:
+                    click.echo(f"  • {heading}")
+                if len(headings) > 5:
+                    click.echo(f"  • ... and {len(headings) - 5} more headings")
+    finally:
+        store.close()
+
+
+@cli.command()
 @click.argument("chunk_hash")
 @click.option("--section/--no-section", default=True, help="Show full heading section (default).")
 @click.option("--lines", "-n", default=None, type=int, help="Show N lines before/after instead of full section.")

@@ -141,3 +141,89 @@ def test_clean_content_handles_adjacent_html_comments() -> None:
     assert "first comment" not in cleaned
     assert "second comment" not in cleaned
     assert cleaned == "Header\n\nBody text"
+
+
+def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
+    """Long Chinese text should prefer sentence-ending punctuation when split."""
+    sentence = "这是一个用于测试中文分句行为的长句子。"
+    text = sentence * 8
+
+    chunks = chunk_markdown(text, source="zh.md", max_chunk_size=40)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith("。") for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 40 for chunk in chunks)
+
+
+def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
+    """Chinese question/exclamation punctuation should also act as boundaries."""
+    question = "\uff1f"
+    exclamation = "\uff01"
+    sentence = f"这个问题应该怎么处理{question}这个方案真的可行{exclamation}"
+    text = sentence * 6
+
+    chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(chunk.content.endswith((question, exclamation)) for chunk in chunks[:-1])
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+
+
+def test_long_cjk_text_without_punctuation_hard_splits() -> None:
+    """Long CJK text without sentence punctuation should still split safely."""
+    text = "中文连续文本" * 20
+
+    chunks = chunk_markdown(text, source="zh-no-punct.md", max_chunk_size=25)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 25 for chunk in chunks)
+    assert "".join(chunk.content for chunk in chunks) == text
+
+
+def test_long_mixed_cjk_and_english_text_prefers_sentence_boundaries() -> None:
+    """Mixed Chinese/English text should still split on sentence punctuation."""
+    sentence = "请检查 Redis cache 是否命中。Then verify the fallback path works!"
+    text = sentence * 5
+
+    chunks = chunk_markdown(text, source="mixed.md", max_chunk_size=45)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 45 for chunk in chunks)
+    assert all(chunk.content.endswith(("。", "!")) for chunk in chunks[:-1])
+
+
+def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
+    """Chinese ellipsis should act as a sentence boundary when splitting."""
+    sentence = "这个排查过程还没结束……但是系统已经记录了关键上下文……"
+    text = sentence * 4
+
+    chunks = chunk_markdown(text, source="ellipsis.md", max_chunk_size=35)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 35 for chunk in chunks)
+    assert all(chunk.content.endswith(("……",)) for chunk in chunks[:-1])
+
+
+def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
+    """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
+    wave = "\uff5e"
+    text = (f"这个步骤还没结束{wave}{wave}继续观察系统状态{wave}{wave}") * 5
+
+    chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert not all(chunk.content.endswith(wave) for chunk in chunks[:-1])
+
+
+def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
+    """Chinese semicolons should act as sentence boundaries for long text."""
+    semicolon = "\uff1b"
+    sentence = f"先检查缓存命中率{semicolon}再确认索引是否完成{semicolon}"
+    text = sentence * 5
+
+    chunks = chunk_markdown(text, source="semicolon.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert all(chunk.content.endswith(semicolon) for chunk in chunks[:-1])
