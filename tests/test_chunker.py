@@ -358,4 +358,15 @@ def test_mixed_file_extensions_do_not_act_as_sentence_boundaries() -> None:
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 30 for chunk in chunks)
-    assert not all(chunk.content.endswith("." ) for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith(".") for chunk in chunks[:-1])
+
+
+def test_mixed_braces_do_not_act_as_sentence_boundaries() -> None:
+    """Braces in JSON/templates should not be treated as sentence boundaries."""
+    text = ("请检查 {\"status\":\"ok\"} 和 {build_result} 这两个片段是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="braces.md", max_chunk_size=30)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 30 for chunk in chunks)
+    assert not all(chunk.content.endswith(("{", "}")) for chunk in chunks[:-1])
