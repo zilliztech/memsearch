@@ -279,3 +279,14 @@ def test_cjk_quotes_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert not all(chunk.content.endswith(("“", "”")) for chunk in chunks[:-1])
+
+
+def test_mixed_path_slashes_do_not_act_as_sentence_boundaries() -> None:
+    """Path-style slashes should not be treated as sentence boundaries."""
+    text = ("请检查 /var/log/app 和 docs/setup/path 再确认输出是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="slashes.md", max_chunk_size=28)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 28 for chunk in chunks)
+    assert not all(chunk.content.endswith("/") for chunk in chunks[:-1])
