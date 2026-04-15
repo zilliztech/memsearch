@@ -447,3 +447,14 @@ def test_mixed_key_value_fragments_do_not_act_as_sentence_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 32 for chunk in chunks)
     assert not all(chunk.content.endswith(("=", ":")) for chunk in chunks[:-1])
+
+
+def test_mixed_cli_flags_do_not_act_as_sentence_boundaries() -> None:
+    """CLI flag fragments should not be treated as sentence boundaries."""
+    text = ("请检查 --model=gpt-5 --reasoning=high 和 --output=json 这些参数是否正常" * 4)
+
+    chunks = chunk_markdown(text, source="cli-flags.md", max_chunk_size=34)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 34 for chunk in chunks)
+    assert not all(chunk.content.endswith(("=", "-")) for chunk in chunks[:-1])
