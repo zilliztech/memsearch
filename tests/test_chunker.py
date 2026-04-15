@@ -157,8 +157,8 @@ def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
 
 def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
     """Chinese question/exclamation punctuation should also act as boundaries."""
-    question = "\uFF1F"
-    exclamation = "\uFF01"
+    question = "\uff1f"
+    exclamation = "\uff01"
     sentence = f"这个问题应该怎么处理{question}这个方案真的可行{exclamation}"
     text = sentence * 6
 
@@ -206,8 +206,8 @@ def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
 
 def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
-    wave = "\uFF5E"
-    text = ((f"这个步骤还没结束{wave}{wave}继续观察系统状态{wave}{wave}") * 5)
+    wave = "\uff5e"
+    text = (f"这个步骤还没结束{wave}{wave}继续观察系统状态{wave}{wave}") * 5
 
     chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
 
@@ -218,7 +218,7 @@ def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
 
 def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
     """Chinese semicolons should act as sentence boundaries for long text."""
-    semicolon = "\uFF1B"
+    semicolon = "\uff1b"
     sentence = f"先检查缓存命中率{semicolon}再确认索引是否完成{semicolon}"
     text = sentence * 5
 
