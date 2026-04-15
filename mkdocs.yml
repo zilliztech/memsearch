@@ -45,6 +45,7 @@ nav:
     - Overview: platforms/claude-code/index.md
     - Installation: platforms/claude-code/installation.md
     - How It Works: platforms/claude-code/how-it-works.md
+    - Memory Surface: platforms/claude-code/memory-tools.md
     - Memory Recall: platforms/claude-code/memory-recall.md
     - Troubleshooting: platforms/claude-code/troubleshooting.md
   - OpenClaw Plugin:
