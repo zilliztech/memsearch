@@ -223,3 +223,15 @@ def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert all(chunk.content.endswith("；") for chunk in chunks[:-1])
+
+
+def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
+    """ASCII semicolons should also split mixed CJK/English long text."""
+    sentence = "先检查缓存; verify build;"
+    text = sentence * 6
+
+    chunks = chunk_markdown(text, source="mixed-semicolon.md", max_chunk_size=24)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.content) <= 24 for chunk in chunks)
+    assert all(chunk.content.endswith(";") for chunk in chunks[:-1])
