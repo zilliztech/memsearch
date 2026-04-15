@@ -46,15 +46,21 @@ def truncate(text, max_chars):
         return text
     return text[:max_chars] + "...(truncated)"
 
+def _entry(obj):
+    """Normalize both nested event_msg/response_item lines and flat transcript lines."""
+    line_type = obj.get("type", "")
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
+    item_type = payload.get("type", "") if isinstance(payload, dict) else ""
+    return line_type, item_type, payload if isinstance(payload, dict) else {}
+
 def find_last_turn_start(lines):
     """Find the index of the last task_started event."""
     for i in range(len(lines) - 1, -1, -1):
         try:
             obj = json.loads(lines[i])
-            if obj.get("type") == "event_msg":
-                payload = obj.get("payload", {})
-                if payload.get("type") == "task_started":
-                    return i
+            line_type, item_type, _payload = _entry(obj)
+            if item_type == "task_started" and line_type in ("event_msg", "task_started"):
+                return i
         except Exception:
             pass
     return None
@@ -64,10 +70,9 @@ def find_last_user_message(lines):
     for i in range(len(lines) - 1, -1, -1):
         try:
             obj = json.loads(lines[i])
-            if obj.get("type") == "event_msg":
-                payload = obj.get("payload", {})
-                if payload.get("type") == "user_message":
-                    return i
+            line_type, item_type, _payload = _entry(obj)
+            if item_type == "user_message" and line_type in ("event_msg", "user_message"):
+                return i
         except Exception:
             pass
     return None
@@ -82,56 +87,47 @@ def format_turn(lines):
         except Exception:
             continue
 
-        line_type = obj.get("type", "")
-        payload = obj.get("payload", {})
+        line_type, item_type, payload = _entry(obj)
 
-        if line_type == "event_msg":
-            msg_type = payload.get("type", "")
+        if item_type == "user_message" and line_type in ("event_msg", "user_message"):
+            message = payload.get("message", "")
+            if message.strip():
+                output.append(f"[Human]: {message.strip()}")
 
-            if msg_type == "user_message":
-                message = payload.get("message", "")
-                if message.strip():
-                    output.append(f"[Human]: {message.strip()}")
+        elif item_type == "agent_message" and line_type in ("event_msg", "agent_message"):
+            message = payload.get("message", "")
+            if message.strip():
+                output.append(f"[Codex]: {message.strip()}")
 
-            elif msg_type == "agent_message":
-                message = payload.get("message", "")
-                if message.strip():
-                    output.append(f"[Codex]: {message.strip()}")
+        elif item_type == "function_call" and line_type in ("response_item", "function_call"):
+            name = payload.get("name", "unknown")
+            args = payload.get("arguments", "")
+            # Parse arguments JSON for concise display
+            try:
+                args_obj = json.loads(args) if isinstance(args, str) else args
+                if isinstance(args_obj, dict):
+                    parts = []
+                    for k, v in args_obj.items():
+                        v_str = str(v)
+                        if len(v_str) > 120:
+                            v_str = v_str[:120] + "..."
+                        parts.append(f"{k}={v_str}")
+                    args_summary = ", ".join(parts)
+                else:
+                    args_summary = str(args_obj)
+            except Exception:
+                args_summary = str(args)
+            if len(args_summary) > 400:
+                args_summary = args_summary[:400] + "..."
+            output.append(f"[Codex calls tool]: {name}({args_summary})")
 
-            # Skip: task_started, task_complete, token_count, agent_reasoning
+        elif item_type == "function_call_output" and line_type in ("response_item", "function_call_output"):
+            result = payload.get("output", "")
+            result = truncate(str(result), MAX_RESULT_CHARS)
+            output.append(f"[Tool output]: {result}")
 
-        elif line_type == "response_item":
-            item_type = payload.get("type", "")
-
-            if item_type == "function_call":
-                name = payload.get("name", "unknown")
-                args = payload.get("arguments", "")
-                # Parse arguments JSON for concise display
-                try:
-                    args_obj = json.loads(args) if isinstance(args, str) else args
-                    if isinstance(args_obj, dict):
-                        parts = []
-                        for k, v in args_obj.items():
-                            v_str = str(v)
-                            if len(v_str) > 120:
-                                v_str = v_str[:120] + "..."
-                            parts.append(f"{k}={v_str}")
-                        args_summary = ", ".join(parts)
-                    else:
-                        args_summary = str(args_obj)
-                except Exception:
-                    args_summary = str(args)
-                if len(args_summary) > 400:
-                    args_summary = args_summary[:400] + "..."
-                output.append(f"[Codex calls tool]: {name}({args_summary})")
-
-            elif item_type == "function_call_output":
-                result = payload.get("output", "")
-                result = truncate(str(result), MAX_RESULT_CHARS)
-                output.append(f"[Tool output]: {result}")
-
-            # Skip response_item "message" — duplicates event_msg user_message/agent_message.
-            # Skip: reasoning, session_meta, turn_context, web_search_call
+        # Skip response_item "message" — duplicates event_msg user_message/agent_message.
+        # Skip: task_started, task_complete, token_count, agent_reasoning
 
     return "\n".join(output)
 

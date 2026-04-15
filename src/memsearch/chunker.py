@@ -235,7 +235,11 @@ def _split_large_section(
 
 
 # Sentence-ending punctuation for splitting long text without line breaks.
-_SENTENCE_END_RE = re.compile(r"[。\uFF01\uFF1F.!?]\s*")
+# Includes common CJK punctuation plus Unicode/fullwidth ellipsis.
+# ASCII punctuation is only treated as a boundary when it looks like a real
+# sentence ending (followed by whitespace or end-of-string), which avoids
+# splitting inside emails, URLs, file extensions, and similar engineering text.
+_SENTENCE_END_RE = re.compile(r"(?:……|…|[。\uFF01\uFF1F\uFF1B]\s*|[.!?;](?=\s|$|[\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF])\s*)")
 
 
 def _split_long_text(text: str, max_size: int) -> list[str]:
