@@ -1,6 +1,6 @@
 # Integrations
 
-memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
+memsearch is a plain Python library -- it works with any framework. New to the project? Start with [Getting Started](getting-started.md) for installation and first indexing, or skim the [CLI Reference](cli.md) if you want the command surface first. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
 
 ---
 
