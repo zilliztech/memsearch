@@ -245,7 +245,12 @@ def search(
 
 
 @cli.command()
-@click.option("--source-prefix", default=None, type=click.Path(), help="Only show memories whose source path starts with this prefix.")
+@click.option(
+    "--source-prefix",
+    default=None,
+    type=click.Path(),
+    help="Only show memories whose source path starts with this prefix.",
+)
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 @_common_options
 def list(
