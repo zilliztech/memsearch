@@ -70,7 +70,7 @@ _json_encode_str() {
 PROJECT_DIR=$(_json_val "$INPUT" "cwd" "$(pwd)")
 
 # Memory directory and memsearch state directory are project-scoped
-MEMSEARCH_DIR="${PROJECT_DIR}/.memsearch"
+MEMSEARCH_DIR="${MEMSEARCH_DIR:-${PROJECT_DIR}/.memsearch}"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
 # Find memsearch binary: prefer PATH, fallback to uvx
