@@ -68,12 +68,15 @@ function deriveCollectionName(projectDir: string): string {
 }
 
 /**
- * Read the tail of the N most recent daily .md files for cold-start context.
+ * Summarize the N most recent daily .md files for cold-start context.
+ * Extracts headings (## Session, ### turns) and bullet content from each
+ * file so the agent sees the structure of past days (what sessions existed,
+ * what topics came up), not just the tail of whichever file is newest.
  */
 function getRecentMemories(
   memDir: string,
   count = 2,
-  tailLines = 15
+  maxLinesPerFile = 30
 ): string {
   if (!existsSync(memDir)) return "";
 
@@ -84,23 +87,24 @@ function getRecentMemories(
 
   if (files.length === 0) return "";
 
-  const bullets: string[] = [];
+  const summary: string[] = [];
   for (const file of files) {
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n").slice(-tailLines);
-      const fileBullets = lines.filter((l) => l.startsWith("- ") || l.startsWith("[Human]") || l.startsWith("[Assistant]"));
-      if (fileBullets.length > 0) {
-        bullets.push(`[${file}]`, ...fileBullets);
+      const lines = content.split("\n")
+        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ") || l.startsWith("[Human]") || l.startsWith("[Assistant]"))
+        .slice(0, maxLinesPerFile);
+      if (lines.length > 0) {
+        summary.push(`[${file}]`, ...lines);
       }
     } catch { /* skip */ }
   }
 
-  if (bullets.length === 0) {
+  if (summary.length === 0) {
     return `You have ${files.length} past memory file(s). Use the memory_search tool when the user's question could benefit from historical context.`;
   }
 
-  return `Recent memories (use memory_search for full search):\n${bullets.join("\n")}`;
+  return `Recent memories (use memory_search for full search):\n${summary.join("\n")}`;
 }
 
 /** Shell-escape a string for safe use inside single quotes. */

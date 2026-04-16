@@ -41,3 +41,7 @@ Parses the original session transcript to retrieve the raw dialogue.
 - memory_get may reveal `<!-- session:UUID transcript:PATH -->` anchors — pass the path to memory_transcript
 - If memory_search returns no results, try rephrasing with different keywords
 - Results are sorted by relevance (hybrid BM25 + vector search)
+
+## When unsure what to search
+
+The SessionStart injection already shows you a heading-level preview of recent memory files — skim it first to spot concrete topics (dates, session numbers, task names). If that preview doesn't surface an obvious query, try broad keywords like `overview`, `recent work`, or a topic guess — hybrid BM25 + vector retrieval will surface chunks that share any of the terms, and you can iterate from there.

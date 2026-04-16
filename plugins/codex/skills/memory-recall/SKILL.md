@@ -30,6 +30,16 @@ bash -c 'root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$ro
 
 5. **Return results**: Output a curated summary of the most relevant memories. Be concise — only include information that is genuinely useful for the user's current question.
 
+## When unsure what to search
+
+If the user's question is vague or you can't form a concrete search query, explore the raw markdown first — it is the source of truth for memory:
+
+- `ls -t .memsearch/memory/ | head -10` — recent daily logs
+- `grep -h "^## " .memsearch/memory/*.md | sort -u | tail -40` — session headings across all days
+- `cat .memsearch/memory/<YYYY-MM-DD>.md` — read a specific day
+
+Once a concrete topic jumps out, go back to `memsearch search` with a specific query.
+
 ## Output Format
 
 Organize by relevance. For each memory include:

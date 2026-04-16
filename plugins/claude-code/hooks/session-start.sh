@@ -166,8 +166,11 @@ if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
   for f in $recent_files; do
     basename_f=$(basename "$f")
-    # Read last ~30 lines from each file
-    content=$(tail -30 "$f" 2>/dev/null || true)
+    # Extract headings (## Session, ### turn timestamps) and bullet content —
+    # higher signal density than a raw tail, so Claude can see the structure
+    # of past days (what sessions existed, what topics came up) rather than
+    # just the last 30 lines of whichever file happened to be newest.
+    content=$(grep -E '^(#{2,4} |- )' "$f" 2>/dev/null | head -40 || true)
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"
     fi
