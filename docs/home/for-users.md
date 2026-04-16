@@ -1,6 +1,6 @@
 # For Agent Users
 
-Pick your platform, install the plugin, and you're done. memsearch captures conversations, indexes them, and recalls relevant context — all automatically.
+Pick your platform, install the plugin, and you're done. New to memsearch overall? Start with [Overview](../index.md) for the product tour or jump to [Getting Started](../getting-started.md) for the quickest setup path. memsearch captures conversations, indexes them, and recalls relevant context — all automatically.
 
 ## Choose Your Platform
 
