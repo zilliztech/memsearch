@@ -157,13 +157,13 @@ def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
 
 def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
     """Chinese question/exclamation punctuation should also act as boundaries."""
-    sentence = "这个问题应该怎么处理？这个方案真的可行！"
+    sentence = "这个问题应该怎么处理？这个方案真的可行！"  # noqa: RUF001
     text = sentence * 6
 
     chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
 
     assert len(chunks) > 1
-    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
+    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])  # noqa: RUF001
     assert all(len(chunk.content) <= 30 for chunk in chunks)
 
 
@@ -204,25 +204,25 @@ def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
 
 def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
-    text = ("这个步骤还没结束～～继续观察系统状态～～" * 5)
+    text = "这个步骤还没结束～～继续观察系统状态～～" * 5  # noqa: RUF001
 
     chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
     """Chinese semicolons should act as sentence boundaries for long text."""
-    sentence = "先检查缓存命中率；再确认索引是否完成；"
+    sentence = "先检查缓存命中率；再确认索引是否完成；"  # noqa: RUF001
     text = sentence * 5
 
     chunks = chunk_markdown(text, source="semicolon.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])
+    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
@@ -239,18 +239,18 @@ def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
 
 def test_cjk_colon_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth colons should not be treated as sentence boundaries."""
-    text = ("处理步骤如下：继续检查日志输出：继续确认索引状态：" * 4)
+    text = "处理步骤如下：继续检查日志输出：继续确认索引状态：" * 4  # noqa: RUF001
 
     chunks = chunk_markdown(text, source="colon.md", max_chunk_size=22)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 22 for chunk in chunks)
-    assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_cjk_enumeration_comma_does_not_act_as_sentence_boundary() -> None:
     """Chinese enumeration commas should not be treated as sentence boundaries."""
-    text = ("先检查缓存、再检查索引、最后检查日志、" * 5)
+    text = "先检查缓存、再检查索引、最后检查日志、" * 5
 
     chunks = chunk_markdown(text, source="enumeration.md", max_chunk_size=20)
 
@@ -261,18 +261,18 @@ def test_cjk_enumeration_comma_does_not_act_as_sentence_boundary() -> None:
 
 def test_cjk_parentheses_do_not_act_as_sentence_boundaries() -> None:
     """Fullwidth parentheses should not be treated as sentence boundaries."""
-    text = ("请检查缓存命中（重点关注热数据）再检查索引状态（确认已完成）" * 4)
+    text = "请检查缓存命中（重点关注热数据）再检查索引状态（确认已完成）" * 4  # noqa: RUF001
 
     chunks = chunk_markdown(text, source="parentheses.md", max_chunk_size=26)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 26 for chunk in chunks)
-    assert not all(chunk.content.endswith(("（", "）")) for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith(("（", "）")) for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_cjk_quotes_do_not_act_as_sentence_boundaries() -> None:
     """Chinese quotes should not be treated as sentence boundaries."""
-    text = ("请检查“缓存命中率”是否正常再确认“索引状态”是否完成" * 4)
+    text = "请检查“缓存命中率”是否正常再确认“索引状态”是否完成" * 4
 
     chunks = chunk_markdown(text, source="quotes.md", max_chunk_size=24)
 
@@ -283,7 +283,7 @@ def test_cjk_quotes_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_path_slashes_do_not_act_as_sentence_boundaries() -> None:
     """Path-style slashes should not be treated as sentence boundaries."""
-    text = ("请检查 /var/log/app 和 docs/setup/path 再确认输出是否正常" * 4)
+    text = "请检查 /var/log/app 和 docs/setup/path 再确认输出是否正常" * 4
 
     chunks = chunk_markdown(text, source="slashes.md", max_chunk_size=28)
 
@@ -294,7 +294,7 @@ def test_mixed_path_slashes_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_underscores_do_not_act_as_sentence_boundaries() -> None:
     """Underscores in identifiers should not be treated as sentence boundaries."""
-    text = ("请检查 cache_hit_rate 和 build_status_done 这两个字段是否正常" * 4)
+    text = "请检查 cache_hit_rate 和 build_status_done 这两个字段是否正常" * 4
 
     chunks = chunk_markdown(text, source="underscores.md", max_chunk_size=30)
 
@@ -305,7 +305,7 @@ def test_mixed_underscores_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_hyphens_do_not_act_as_sentence_boundaries() -> None:
     """Hyphens in flags/slugs should not be treated as sentence boundaries."""
-    text = ("请检查 --cache-hit-rate 和 build-status-done 这两个字段是否正常" * 4)
+    text = "请检查 --cache-hit-rate 和 build-status-done 这两个字段是否正常" * 4
 
     chunks = chunk_markdown(text, source="hyphens.md", max_chunk_size=30)
 
@@ -316,7 +316,7 @@ def test_mixed_hyphens_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_backslashes_do_not_act_as_sentence_boundaries() -> None:
     """Backslashes in Windows-style paths should not be treated as sentence boundaries."""
-    text = (r"请检查 C:\logs\agent\run 和 config\\backup\\path 是否正常" * 4)
+    text = r"请检查 C:\logs\agent\run 和 config\\backup\\path 是否正常" * 4
 
     chunks = chunk_markdown(text, source="backslashes.md", max_chunk_size=30)
 
@@ -327,10 +327,7 @@ def test_mixed_backslashes_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_url_query_symbols_do_not_break_chunking() -> None:
     """URL query punctuation should not cause unexpected sentence splitting."""
-    text = (
-        "请检查 https://example.com/search?q=memsearch&lang=zh-CN 是否正常返回结果"
-        * 4
-    )
+    text = "请检查 https://example.com/search?q=memsearch&lang=zh-CN 是否正常返回结果" * 4
 
     chunks = chunk_markdown(text, source="url-query.md", max_chunk_size=34)
 
@@ -341,7 +338,7 @@ def test_mixed_url_query_symbols_do_not_break_chunking() -> None:
 
 def test_mixed_email_addresses_do_not_act_as_sentence_boundaries() -> None:
     """Email address punctuation should not be treated as sentence boundaries."""
-    text = ("请联系 ops-team@example.com 或 build.bot@example.org 确认状态" * 4)
+    text = "请联系 ops-team@example.com 或 build.bot@example.org 确认状态" * 4
 
     chunks = chunk_markdown(text, source="emails.md", max_chunk_size=32)
 
@@ -352,7 +349,7 @@ def test_mixed_email_addresses_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_file_extensions_do_not_act_as_sentence_boundaries() -> None:
     """File extensions should not be treated as sentence boundaries."""
-    text = ("请检查 config.json、README.md 和 settings.yaml 是否都已更新" * 4)
+    text = "请检查 config.json、README.md 和 settings.yaml 是否都已更新" * 4
 
     chunks = chunk_markdown(text, source="file-ext.md", max_chunk_size=30)
 
@@ -363,7 +360,7 @@ def test_mixed_file_extensions_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_braces_do_not_act_as_sentence_boundaries() -> None:
     """Braces in JSON/templates should not be treated as sentence boundaries."""
-    text = ("请检查 {\"status\":\"ok\"} 和 {build_result} 这两个片段是否正常" * 4)
+    text = '请检查 {"status":"ok"} 和 {build_result} 这两个片段是否正常' * 4
 
     chunks = chunk_markdown(text, source="braces.md", max_chunk_size=30)
 
@@ -374,7 +371,7 @@ def test_mixed_braces_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_brackets_do_not_act_as_sentence_boundaries() -> None:
     """Square brackets in logs/tags should not be treated as sentence boundaries."""
-    text = ("请检查 [INFO] agent_runner 和 [channel:ops] 输出是否正常" * 4)
+    text = "请检查 [INFO] agent_runner 和 [channel:ops] 输出是否正常" * 4
 
     chunks = chunk_markdown(text, source="brackets.md", max_chunk_size=30)
 
@@ -385,7 +382,7 @@ def test_mixed_brackets_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_ascii_parentheses_do_not_act_as_sentence_boundaries() -> None:
     """ASCII parentheses in calls/params should not be treated as sentence boundaries."""
-    text = ("请检查 run_task(cache_hit_rate) 和 handler(status_ok) 输出是否正常" * 4)
+    text = "请检查 run_task(cache_hit_rate) 和 handler(status_ok) 输出是否正常" * 4
 
     chunks = chunk_markdown(text, source="ascii-parens.md", max_chunk_size=32)
 
@@ -396,7 +393,7 @@ def test_mixed_ascii_parentheses_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_angle_brackets_do_not_act_as_sentence_boundaries() -> None:
     """Angle brackets in tags/placeholders should not be treated as sentence boundaries."""
-    text = ("请检查 <status_ok> 和 <agent_result> 这类片段是否正常" * 4)
+    text = "请检查 <status_ok> 和 <agent_result> 这类片段是否正常" * 4
 
     chunks = chunk_markdown(text, source="angles.md", max_chunk_size=28)
 
@@ -407,7 +404,7 @@ def test_mixed_angle_brackets_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_backticks_do_not_act_as_sentence_boundaries() -> None:
     """Inline-code backticks should not be treated as sentence boundaries."""
-    text = ("请检查 `memsearch search` 和 `python -m pytest` 这类片段是否正常" * 4)
+    text = "请检查 `memsearch search` 和 `python -m pytest` 这类片段是否正常" * 4
 
     chunks = chunk_markdown(text, source="backticks.md", max_chunk_size=30)
 
@@ -418,7 +415,7 @@ def test_mixed_backticks_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_double_quotes_do_not_act_as_sentence_boundaries() -> None:
     """Double quotes in JSON-like text should not be treated as sentence boundaries."""
-    text = ("请检查 \"status\": \"ok\" 和 \"agent\": \"memsearch\" 是否正常" * 4)
+    text = '请检查 "status": "ok" 和 "agent": "memsearch" 是否正常' * 4
 
     chunks = chunk_markdown(text, source="double-quotes.md", max_chunk_size=30)
 
@@ -429,7 +426,7 @@ def test_mixed_double_quotes_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_single_quotes_do_not_act_as_sentence_boundaries() -> None:
     """Single quotes in shell/YAML-like text should not be treated as sentence boundaries."""
-    text = ("请检查 'status_ok' 和 'agent_runner' 这类片段是否正常" * 4)
+    text = "请检查 'status_ok' 和 'agent_runner' 这类片段是否正常" * 4
 
     chunks = chunk_markdown(text, source="single-quotes.md", max_chunk_size=30)
 
@@ -440,7 +437,7 @@ def test_mixed_single_quotes_do_not_act_as_sentence_boundaries() -> None:
 
 def test_mixed_key_value_fragments_do_not_act_as_sentence_boundaries() -> None:
     """Config/log key-value fragments should not be treated as sentence boundaries."""
-    text = ("请检查 status=ok、agent:memsearch、build=result_ok 这类字段是否正常" * 4)
+    text = "请检查 status=ok、agent:memsearch、build=result_ok 这类字段是否正常" * 4
 
     chunks = chunk_markdown(text, source="key-value.md", max_chunk_size=32)
 
