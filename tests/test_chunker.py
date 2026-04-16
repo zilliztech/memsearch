@@ -148,9 +148,10 @@ def test_clean_content_handles_adjacent_html_comments() -> None:
 # The chunker falls back to sentence-level splitting when a paragraph is
 # longer than `max_chunk_size`. The tests below pin down the expected
 # behavior of `_SENTENCE_END_RE`:
-#   - CJK punctuation (。！？；……) always counts as a boundary
+#   - CJK punctuation (fullwidth stop/exclaim/question/semicolon + ellipsis)
+#     always counts as a boundary.
 #   - ASCII punctuation (.!?;) only counts when followed by whitespace,
-#     end-of-string, or a CJK character — so engineering text like emails,
+#     end-of-string, or a CJK character -- so engineering text like emails,
 #     URLs, file extensions, and version numbers is not split mid-token.
 
 
@@ -228,7 +229,7 @@ def test_long_cjk_text_splits_on_ellipsis() -> None:
 
 
 def test_long_cjk_text_splits_on_fullwidth_semicolon() -> None:
-    """Chinese fullwidth semicolon (；) acts as a sentence boundary."""
+    """Chinese fullwidth semicolon (U+FF1B) acts as a sentence boundary."""
     semicolon = "\uff1b"
     sentence = f"先检查缓存命中率{semicolon}再确认索引是否完成{semicolon}"
     text = sentence * 5
