@@ -25,7 +25,12 @@ class _DummyStore:
 
 
 def test_list_command_groups_chunks_by_source(monkeypatch) -> None:
-    monkeypatch.setattr("memsearch.cli.resolve_config", lambda *_args, **_kwargs: type("Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()})())
+    monkeypatch.setattr(
+        "memsearch.cli.resolve_config",
+        lambda *_args, **_kwargs: type(
+            "Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()}
+        )(),
+    )
     monkeypatch.setattr("memsearch.store.MilvusStore", _DummyStore)
 
     runner = CliRunner()
@@ -38,7 +43,12 @@ def test_list_command_groups_chunks_by_source(monkeypatch) -> None:
 
 
 def test_list_command_supports_json_output(monkeypatch) -> None:
-    monkeypatch.setattr("memsearch.cli.resolve_config", lambda *_args, **_kwargs: type("Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()})())
+    monkeypatch.setattr(
+        "memsearch.cli.resolve_config",
+        lambda *_args, **_kwargs: type(
+            "Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()}
+        )(),
+    )
     monkeypatch.setattr("memsearch.store.MilvusStore", _DummyStore)
 
     runner = CliRunner()
@@ -52,7 +62,12 @@ def test_list_command_supports_json_output(monkeypatch) -> None:
 
 
 def test_list_command_passes_source_prefix_filter(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("memsearch.cli.resolve_config", lambda *_args, **_kwargs: type("Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()})())
+    monkeypatch.setattr(
+        "memsearch.cli.resolve_config",
+        lambda *_args, **_kwargs: type(
+            "Cfg", (), {"milvus": type("M", (), {"uri": "sqlite", "token": "", "collection": "test"})()}
+        )(),
+    )
 
     created: dict[str, _DummyStore] = {}
 
