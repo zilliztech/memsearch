@@ -157,13 +157,13 @@ def test_long_cjk_text_splits_on_cjk_sentence_boundaries() -> None:
 
 def test_long_cjk_text_splits_on_question_and_exclamation_marks() -> None:
     """Chinese question/exclamation punctuation should also act as boundaries."""
-    sentence = "这个问题应该怎么处理？这个方案真的可行！"
+    sentence = "这个问题应该怎么处理？这个方案真的可行！"  # noqa: RUF001
     text = sentence * 6
 
     chunks = chunk_markdown(text, source="zh-punct.md", max_chunk_size=30)
 
     assert len(chunks) > 1
-    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])
+    assert all(chunk.content.endswith(("？", "！")) for chunk in chunks[:-1])  # noqa: RUF001
     assert all(len(chunk.content) <= 30 for chunk in chunks)
 
 
@@ -204,25 +204,25 @@ def test_long_cjk_text_splits_on_ellipsis_boundaries() -> None:
 
 def test_cjk_wave_dash_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth wave dash should fall back to hard splitting, not sentence splitting."""
-    text = ("这个步骤还没结束～～继续观察系统状态～～" * 5)
+    text = "这个步骤还没结束～～继续观察系统状态～～" * 5  # noqa: RUF001
 
     chunks = chunk_markdown(text, source="wave.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith("～") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_long_cjk_text_splits_on_semicolon_boundaries() -> None:
     """Chinese semicolons should act as sentence boundaries for long text."""
-    sentence = "先检查缓存命中率；再确认索引是否完成；"
+    sentence = "先检查缓存命中率；再确认索引是否完成；"  # noqa: RUF001
     text = sentence * 5
 
     chunks = chunk_markdown(text, source="semicolon.md", max_chunk_size=24)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
-    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])
+    assert all(chunk.content.endswith("；") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
@@ -239,18 +239,18 @@ def test_long_mixed_text_splits_on_ascii_semicolons() -> None:
 
 def test_cjk_colon_does_not_act_as_sentence_boundary() -> None:
     """Fullwidth colons should not be treated as sentence boundaries."""
-    text = ("处理步骤如下：继续检查日志输出：继续确认索引状态：" * 4)
+    text = "处理步骤如下：继续检查日志输出：继续确认索引状态：" * 4  # noqa: RUF001
 
     chunks = chunk_markdown(text, source="colon.md", max_chunk_size=22)
 
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 22 for chunk in chunks)
-    assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])
+    assert not all(chunk.content.endswith("：") for chunk in chunks[:-1])  # noqa: RUF001
 
 
 def test_cjk_enumeration_comma_does_not_act_as_sentence_boundary() -> None:
     """Chinese enumeration commas should not be treated as sentence boundaries."""
-    text = ("先检查缓存、再检查索引、最后检查日志、" * 5)
+    text = "先检查缓存、再检查索引、最后检查日志、" * 5
 
     chunks = chunk_markdown(text, source="enumeration.md", max_chunk_size=20)
 
