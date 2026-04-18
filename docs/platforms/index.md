@@ -101,3 +101,11 @@ All plugins write standard markdown and derive collection names from the project
 - **Python 3.10+**
 - **memsearch** installed: `uv tool install "memsearch[onnx]"` (or `pip install "memsearch[onnx]"`)
 - First-time ONNX model download: ~558 MB from HuggingFace Hub (cached after first run)
+
+## Next Steps
+
+- **Need shared backend/setup basics first?** → [Getting Started](../getting-started.md)
+- **Installing for Claude Code?** → [Claude Code Plugin](claude-code/index.md)
+- **Installing for OpenClaw?** → [OpenClaw Plugin](openclaw/index.md)
+- **Installing for OpenCode?** → [OpenCode Plugin](opencode/index.md)
+- **Installing for Codex CLI?** → [Codex CLI Plugin](codex/index.md)
