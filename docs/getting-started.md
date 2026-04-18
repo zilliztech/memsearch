@@ -637,9 +637,14 @@ mem = MemSearch(paths=["./docs/shared-knowledge", "./.memsearch/memory"])
 
 ## What's Next
 
+Now that you have a working setup, pick the next page based on what you're trying to do:
+
+- **[FAQ](faq.md)** -- common questions about Windows, reset/rebuild flows, and dimension mismatch
+- **[Troubleshooting](troubleshooting.md)** -- operational recovery steps when search, indexing, or embeddings behave unexpectedly
+- **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
+- **[Python API](python-api.md)** -- build custom agent integrations
+- **[Integrations](integrations.md)** -- plug memsearch into LangChain, LangGraph, LlamaIndex, and CrewAI
 - **[Architecture](architecture.md)** -- deep dive into the chunking pipeline, dedup strategy, and data flow diagrams
 - **[Design Philosophy](design-philosophy.md)** -- why markdown, why Milvus, comparison with competitors
-- **[CLI Reference](cli.md)** -- complete reference for all `memsearch` commands, flags, and options
 - **[Claude Code Plugin](platforms/claude-code/index.md)** -- install memsearch for Claude Code
-- **[Platform Comparison](platforms/index.md)** -- compare all 4 supported platforms
-- **[Python API](python-api.md)** -- build custom agent integrations
+- **[Platform Comparison](platforms/index.md)** -- compare all supported platforms
