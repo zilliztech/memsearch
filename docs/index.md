@@ -158,6 +158,8 @@ graph LR
 
 [:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
 
+Want to build this flow into your own tooling? See [For Agent Developers](home/for-developers.md).
+
 ---
 
 ## Embedding Providers
