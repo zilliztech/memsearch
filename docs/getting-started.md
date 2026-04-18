@@ -24,6 +24,38 @@ $ pip install "memsearch[anthropic]"   # Anthropic (for compact/summarization LL
 $ pip install "memsearch[all]"         # Everything above
 ```
 
+## Zero-config quick start (no API key)
+
+If you want the fastest path to a working local setup, use local embeddings plus the default **Milvus Lite** backend. This runs entirely on your machine and does not require an API key.
+
+```bash
+$ mkdir -p quickstart-notes
+$ printf '# Notes\n\n- Redis TTL is 15 minutes\n- Staging URL is https://staging.example.com\n' > quickstart-notes/MEMORY.md
+$ pip install "memsearch[local]"
+```
+
+```python
+import asyncio
+from memsearch import MemSearch
+
+async def main():
+    mem = MemSearch(
+        paths=["./quickstart-notes"],
+        embedding_provider="local",
+    )
+    await mem.index()
+
+    results = await mem.search("what is the Redis TTL?", top_k=3)
+    for r in results:
+        print(r["content"])
+
+    mem.close()
+
+asyncio.run(main())
+```
+
+Use this path when you want to evaluate memsearch quickly before wiring in OpenAI, Ollama, or a remote Milvus deployment.
+
 ---
 
 ## How It All Fits Together
