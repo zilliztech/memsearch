@@ -4,6 +4,10 @@
 
 > Install the plugin, get persistent memory. No commands to learn, no manual saving -- your agent remembers what you worked on across sessions, automatically.
 
+[:octicons-arrow-right-24: Getting Started](getting-started.md){ .md-button .md-button--primary }
+[:octicons-arrow-right-24: FAQ](faq.md){ .md-button }
+[:octicons-arrow-right-24: Troubleshooting](troubleshooting.md){ .md-button }
+
 ---
 
 ## For Agent Users
@@ -114,6 +118,8 @@ pip install "memsearch[onnx]"
 ```
 
 [:octicons-arrow-right-24: Getting Started](getting-started.md){ .md-button }
+[:octicons-arrow-right-24: FAQ](faq.md){ .md-button }
+[:octicons-arrow-right-24: Troubleshooting](troubleshooting.md){ .md-button }
 
 ---
 
