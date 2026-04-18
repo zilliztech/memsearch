@@ -94,6 +94,14 @@ All plugins write standard markdown and derive collection names from the project
 | Codex CLI user | [Codex plugin](codex/index.md) -- shell hooks, similar to Claude Code |
 | Using multiple platforms | Install plugins on each -- they share the same memory backend |
 
+### Next steps after choosing a platform
+
+- **Claude Code** → [Claude Code Plugin](claude-code/index.md)
+- **OpenClaw** → [OpenClaw Plugin](openclaw/index.md)
+- **OpenCode** → [OpenCode Plugin](opencode/index.md)
+- **Codex CLI** → [Codex CLI Plugin](codex/index.md)
+- **Still need backend/setup basics?** → [Getting Started](../getting-started.md)
+
 ---
 
 ## Prerequisites (all platforms)
