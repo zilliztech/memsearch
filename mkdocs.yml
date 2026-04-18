@@ -41,6 +41,7 @@ nav:
     - Comparison with Alternatives: home/comparison.md
     - Embedding Model Evaluation: home/embedding-evaluation.md
     - Quickstart: getting-started.md
+    - Troubleshooting: troubleshooting.md
   - Claude Code Plugin:
     - Overview: platforms/claude-code/index.md
     - Installation: platforms/claude-code/installation.md
