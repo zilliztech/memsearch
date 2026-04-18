@@ -41,3 +41,11 @@ Each platform adapts the same architecture to its own plugin system:
 - **Codex CLI**: [Full guide →](../platforms/codex/index.md)
 
 See the [Platform Comparison](../platforms/index.md) for a detailed feature matrix.
+
+## Next Steps
+
+- **Want the fastest shared setup path?** → [Getting Started](../getting-started.md)
+- **Already picked Claude Code?** → [Claude Code Plugin](../platforms/claude-code/index.md)
+- **Already picked OpenClaw?** → [OpenClaw Plugin](../platforms/openclaw/index.md)
+- **Already picked OpenCode?** → [OpenCode Plugin](../platforms/opencode/index.md)
+- **Already picked Codex CLI?** → [Codex CLI Plugin](../platforms/codex/index.md)
