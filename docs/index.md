@@ -10,6 +10,8 @@
 
 Pick your platform, install the plugin, and you're done. memsearch captures conversations, indexes them with hybrid search, and recalls relevant context when your agent needs it.
 
+[:octicons-arrow-right-24: User overview](home/for-users.md){ .md-button }
+
 ### Claude Code Plugin
 
 The most mature plugin. Marketplace install, zero config.
@@ -77,6 +79,8 @@ All platforms share the same markdown memory format and derive collection names 
 ## For Agent Developers
 
 Build custom agent integrations with the memsearch CLI or Python API.
+
+[:octicons-arrow-right-24: Developer overview](home/for-developers.md){ .md-button }
 
 ### Python API
 
