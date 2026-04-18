@@ -1,5 +1,12 @@
 # Getting Started
 
+If you're here to evaluate memsearch quickly, this page is the right place to start.
+
+If you already know you want to embed memsearch into your own agents or tooling:
+- Use [For Agent Developers](home/for-developers.md) for the developer-oriented overview
+- Jump to [Python API](python-api.md) for library integration
+- Jump to [CLI Reference](cli.md) for shell-based workflows
+
 ## Installation
 
 Install memsearch with pip (OpenAI embeddings are included by default):
