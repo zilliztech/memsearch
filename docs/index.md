@@ -158,6 +158,8 @@ graph LR
 
 [:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
 
+Want to operate directly from the terminal after understanding the model? See [CLI reference](cli.md).
+
 ---
 
 ## Embedding Providers
