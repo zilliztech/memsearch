@@ -2,6 +2,10 @@
 
 Pick your platform, install the plugin, and you're done. memsearch captures conversations, indexes them, and recalls relevant context — all automatically.
 
+New here?
+- Start with [Getting Started](../getting-started.md) for the fastest end-to-end setup
+- Use [Platform Comparison](../platforms/index.md) if you're deciding between Claude Code, OpenClaw, OpenCode, and Codex
+
 ## Choose Your Platform
 
 | Platform | Install | Maturity |
@@ -40,4 +44,4 @@ Each platform adapts the same architecture to its own plugin system:
 - **OpenCode**: [Full guide →](../platforms/opencode/index.md)
 - **Codex CLI**: [Full guide →](../platforms/codex/index.md)
 
-See the [Platform Comparison](../platforms/index.md) for a detailed feature matrix.
+See the [Platform Comparison](../platforms/index.md) for a detailed feature matrix. Once you've picked a platform, continue with [Getting Started](../getting-started.md) for backend and installation setup.
