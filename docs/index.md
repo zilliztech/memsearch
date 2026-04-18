@@ -185,6 +185,10 @@ graph LR
 
 ---
 
+Not sure where to go next?
+- **Using memsearch in an agent?** → [For Agent Users](home/for-users.md)
+- **Building on top of memsearch?** → [For Agent Developers](home/for-developers.md)
+
 ## License
 
 MIT
