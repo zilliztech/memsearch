@@ -156,7 +156,7 @@ graph LR
 - **Three-layer progressive disclosure** -- search summaries, expand to full sections, drill into original transcripts
 - **Cross-platform memory sharing** -- shared Milvus backend lets agents on different platforms access the same memories
 
-[:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
+[:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button } [:octicons-arrow-right-24: Comparison](home/comparison.md){ .md-button }
 
 ---
 
