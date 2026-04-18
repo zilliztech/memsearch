@@ -464,6 +464,8 @@ memsearch uses a layered configuration system. Settings are resolved in priority
 
 Higher-priority sources override lower ones. This means you can set defaults globally, customize per project, and override on the fly with CLI flags.
 
+Common operational questions? See the [FAQ](faq.md).
+
 > **Note:** API keys can be configured via environment variables (e.g. `OPENAI_API_KEY`) or in config files using the `env:` reference syntax (e.g. `api_key = "env:MY_API_KEY"`). See [API Keys](#api-keys) and [Environment Variable References](#environment-variable-references) below.
 
 ### Interactive config wizard
