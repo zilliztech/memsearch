@@ -173,6 +173,8 @@ graph LR
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
 | Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
 
+Want to know why the default embedding model is `bge-m3-onnx-int8`? See [Embedding Model Evaluation](home/embedding-evaluation.md).
+
 ---
 
 ## Milvus Backend
