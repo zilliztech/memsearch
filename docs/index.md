@@ -173,6 +173,8 @@ graph LR
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
 | Local | `memsearch[local]` | `all-MiniLM-L6-v2` |
 
+Have provider questions? See [FAQ](faq.md).
+
 ---
 
 ## Milvus Backend
