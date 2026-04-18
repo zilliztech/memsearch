@@ -2,6 +2,11 @@
 
 memsearch provides plugins for 4 AI coding agent platforms. All plugins share the same core architecture: capture conversations to markdown, index with Milvus, recall via semantic search.
 
+Need help beyond the feature matrix?
+- Start with [Getting Started](../getting-started.md) for the fastest working setup
+- Check the [FAQ](../faq.md) for common operational questions
+- Use [Troubleshooting](../troubleshooting.md) when indexing/search behavior looks wrong
+
 ---
 
 ## Comparison Table
