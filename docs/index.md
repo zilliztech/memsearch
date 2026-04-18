@@ -78,6 +78,8 @@ All platforms share the same markdown memory format and derive collection names 
 
 Build custom agent integrations with the memsearch CLI or Python API.
 
+Hit a common integration problem? See [Troubleshooting](troubleshooting.md).
+
 ### Python API
 
 ```python
