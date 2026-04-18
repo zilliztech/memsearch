@@ -158,6 +158,8 @@ graph LR
 
 [:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
 
+Want to see how the default embedding choice was evaluated? See [Embedding Model Evaluation](home/embedding-evaluation.md).
+
 ---
 
 ## Embedding Providers
