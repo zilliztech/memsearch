@@ -158,6 +158,8 @@ graph LR
 
 [:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
 
+Have questions after reading how it works? See [FAQ](faq.md).
+
 ---
 
 ## Embedding Providers
