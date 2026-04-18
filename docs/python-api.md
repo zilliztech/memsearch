@@ -2,6 +2,8 @@
 
 memsearch provides a high-level Python API through the `MemSearch` class. Import it, point it at your markdown files, and you get semantic memory for your agent in a few lines of code.
 
+For common operational failures such as dimension mismatch, stale indexes, or Windows backend questions, see the top-level [Troubleshooting](troubleshooting.md) guide and [FAQ](faq.md).
+
 ```python
 from memsearch import MemSearch
 
