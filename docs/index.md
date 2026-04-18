@@ -183,6 +183,8 @@ graph LR
 | **Milvus Server** | `http://localhost:19530` | Multi-agent, team environments |
 | **Zilliz Cloud** | `https://in03-xxx.zillizcloud.com` | Production, fully managed -- [free tier](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-docs) |
 
+Ready to configure a backend? See [Getting Started](getting-started.md#milvus-backends).
+
 ---
 
 ## License
