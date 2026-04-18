@@ -30,6 +30,8 @@ uv tool install 'memsearch[onnx]'
 }
 ```
 
+> Windows note: the current plugin shells out to `bash` and `python3` helper scripts. Plain Windows installs are not supported yet; use WSL2 (recommended) or a POSIX-compatible shell such as Git Bash. See issue #387.
+
 ### Install from Source (development)
 
 ```bash
@@ -72,6 +74,17 @@ OpenCode Session
         ├── memory_get    ──→ memsearch expand (full context)
         └── memory_transcript ──→ parse-transcript.py (SQLite reader)
 ```
+
+## Verify It Works
+
+After restarting OpenCode, chat for a few turns in a project and confirm memory capture is happening:
+
+```bash
+ls .memsearch/memory/
+cat .memsearch/memory/$(date +%Y-%m-%d).md
+```
+
+If the plugin is active, daily markdown files should appear and grow as conversations finish.
 
 ## Recall Memories
 
