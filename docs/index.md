@@ -72,6 +72,8 @@ All platforms share the same markdown memory format and derive collection names 
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 
+Want the practical user path after comparing platforms? See [For Agent Users](home/for-users.md).
+
 ---
 
 ## For Agent Developers
