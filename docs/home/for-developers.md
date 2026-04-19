@@ -2,6 +2,8 @@
 
 Build memory into your own agents using the memsearch CLI and Python API.
 
+> **Prefer a broader walkthrough first?** Read [Getting Started](../getting-started.md) for the indexing/search flow, or see the [Platform Comparison](../platforms/index.md) to understand how the plugins layer on top.
+
 ## Install
 
 ```bash
