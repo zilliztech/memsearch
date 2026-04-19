@@ -72,6 +72,8 @@ All platforms share the same markdown memory format and derive collection names 
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 
+Want the benchmark context behind the default model choices? See [Embedding Model Evaluation](home/embedding-evaluation.md).
+
 ---
 
 ## For Agent Developers
