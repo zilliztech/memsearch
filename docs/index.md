@@ -158,6 +158,8 @@ graph LR
 
 [:octicons-arrow-right-24: Architecture](architecture.md){ .md-button } [:octicons-arrow-right-24: Design Philosophy](design-philosophy.md){ .md-button }
 
+Want to integrate this flow programmatically after understanding the model? See [Python API reference](python-api.md).
+
 ---
 
 ## Embedding Providers
