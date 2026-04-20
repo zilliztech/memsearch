@@ -44,8 +44,13 @@ If you use multiple AI coding agents (e.g., OpenCode for some projects, Claude C
 
 ---
 
+## Platform Notes
+
+!!! warning "Native Windows is not supported yet"
+    The current OpenCode plugin depends on external `bash` and `python3` helper scripts. For Windows, run it inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) or another POSIX-compatible shell environment. See [issue #387](https://github.com/zilliztech/memsearch/issues/387).
+
 ## Pages
 
-- [Installation](installation.md) -- prerequisites, automated and manual install
+- [Installation](installation.md) -- prerequisites, automated and manual install, verification steps, Windows notes
 - [How It Works](how-it-works.md) -- capture daemon, cold-start, memory files, architecture
 - [Memory Tools](memory-tools.md) -- three registered tools, progressive recall, comparisons
