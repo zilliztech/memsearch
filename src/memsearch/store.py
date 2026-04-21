@@ -172,17 +172,22 @@ class MilvusStore:
             **req_kwargs,
         )
 
+        reqs = [dense_req, bm25_req]
+        rrf_k = 60
         results = self._client.hybrid_search(
             collection_name=self._collection,
-            reqs=[dense_req, bm25_req],
-            ranker=RRFRanker(k=60),
+            reqs=reqs,
+            ranker=RRFRanker(k=rrf_k),
             limit=top_k,
             output_fields=self._QUERY_FIELDS,
         )
 
         if not results or not results[0]:
             return []
-        return [{**hit["entity"], "score": hit["distance"]} for hit in results[0]]
+        # Normalize RRF scores to [0, 1].
+        # Theoretical max = num_retrievers / (k + 1), when a result ranks #1 in every retriever.
+        max_rrf = len(reqs) / (rrf_k + 1)
+        return [{**hit["entity"], "score": hit["distance"] / max_rrf} for hit in results[0]]
 
     _QUERY_FIELDS: ClassVar[list[str]] = [
         "content",
