@@ -558,8 +558,17 @@ def compact(
     )
 
     prompt_template = prompt
-    if cfg.compact.prompt_file and not prompt_template:
+    # Resolve prompt: CLI --prompt > prompts.compact > compact.prompt_file > built-in
+    if not prompt_template and cfg.prompts.compact:
+        prompt_template = Path(cfg.prompts.compact).expanduser().read_text(encoding="utf-8")
+    if not prompt_template and cfg.compact.prompt_file:
         prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
+
+    # Resolve LLM settings: [llm] > [compact] (deprecated) > defaults
+    eff_provider = cfg.llm.provider or cfg.compact.llm_provider
+    eff_model = cfg.llm.model or cfg.compact.llm_model or None
+    eff_base_url = cfg.llm.base_url or cfg.compact.base_url or None
+    eff_api_key = cfg.llm.api_key or cfg.compact.api_key or None
 
     normalized_source = _normalize_compact_source(source)
 
@@ -569,12 +578,12 @@ def compact(
         summary = _run(
             ms.compact(
                 source=normalized_source,
-                llm_provider=cfg.compact.llm_provider,
-                llm_model=cfg.compact.llm_model or None,
+                llm_provider=eff_provider,
+                llm_model=eff_model,
                 prompt_template=prompt_template,
                 output_dir=output_dir,
-                llm_base_url=cfg.compact.base_url or None,
-                llm_api_key=cfg.compact.api_key or None,
+                llm_base_url=eff_base_url,
+                llm_api_key=eff_api_key,
             )
         )
         if summary:
@@ -762,27 +771,45 @@ def config_init(project: bool) -> None:
         type=int,
     )
 
-    # Compact
-    click.echo("\n── Compact ──")
-    _compact_defaults = {
+    # LLM
+    click.echo("\n── LLM (for compact & plugin summarization) ──")
+    click.echo("  Leave empty to let plugins use their own agent model.")
+    _llm_defaults = {
         "openai": "gpt-4o-mini",
-        "anthropic": "claude-sonnet-4-5-20250929",
+        "anthropic": "claude-haiku-4-5-20251001",
         "gemini": "gemini-2.0-flash",
     }
-    result["compact"] = {}
-    result["compact"]["llm_provider"] = click.prompt(
-        "  LLM provider (openai/anthropic/gemini)",
-        default=current.compact.llm_provider,
+    result["llm"] = {}
+    result["llm"]["provider"] = click.prompt(
+        "  Provider (empty/openai/anthropic/gemini)",
+        default=current.llm.provider,
     )
-    _compact_provider = result["compact"]["llm_provider"]
-    _compact_model_default = current.compact.llm_model or _compact_defaults.get(_compact_provider, "")
-    result["compact"]["llm_model"] = click.prompt(
-        "  LLM model",
-        default=_compact_model_default,
+    _llm_provider = result["llm"]["provider"]
+    _llm_model_default = current.llm.model or _llm_defaults.get(_llm_provider, "")
+    result["llm"]["model"] = click.prompt(
+        "  Model",
+        default=_llm_model_default,
     )
-    result["compact"]["prompt_file"] = click.prompt(
-        "  Prompt file path (empty for built-in)",
-        default=current.compact.prompt_file,
+    result["llm"]["base_url"] = click.prompt(
+        "  Base URL (empty for default, or env:VAR_NAME)",
+        default=current.llm.base_url,
+    )
+    result["llm"]["api_key"] = click.prompt(
+        "  API key (empty for env default, or env:VAR_NAME)",
+        default=current.llm.api_key,
+    )
+
+    # Prompts
+    click.echo("\n── Prompts ──")
+    click.echo("  Leave empty to use built-in defaults.")
+    result["prompts"] = {}
+    result["prompts"]["compact"] = click.prompt(
+        "  Compact prompt file",
+        default=current.prompts.compact,
+    )
+    result["prompts"]["summarize"] = click.prompt(
+        "  Summarize prompt file (for plugin session notes)",
+        default=current.prompts.summarize,
     )
 
     save_config(result, target)

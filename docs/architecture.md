@@ -282,10 +282,18 @@ collection = "memsearch_chunks"
 provider = "openai"
 model = ""                           # empty = provider default
 
-[compact]
+[compact]                              # deprecated — use [llm] + [prompts]
 llm_provider = "openai"
-llm_model = ""                       # empty = provider default
-prompt_file = ""                     # custom prompt template path
+llm_model = ""
+prompt_file = ""
+
+[llm]                                  # LLM for compact & plugin summarization
+provider = ""                          # empty = plugin decides
+model = ""
+
+[prompts]
+compact = ""                           # custom compact prompt file
+summarize = ""                         # custom summarize prompt file
 
 [chunking]
 max_chunk_size = 1500

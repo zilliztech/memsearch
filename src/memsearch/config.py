@@ -71,6 +71,32 @@ class RerankerConfig:
 
 
 @dataclass
+class LLMConfig:
+    """LLM settings for plugin summarization and compact.
+
+    All fields default to empty.  When empty, plugin hooks fall back to
+    their own agent model; the ``compact`` CLI falls back to
+    ``[compact].llm_provider`` (deprecated) or ``"openai"``.
+    """
+
+    provider: str = ""  # empty = plugin decides; "openai"/"anthropic"/"gemini" for explicit
+    model: str = ""
+    base_url: str = ""  # OpenAI-compatible endpoint URL
+    api_key: str = ""  # API key (supports "env:VAR_NAME" syntax)
+
+
+@dataclass
+class PromptsConfig:
+    """Paths to custom prompt template files.
+
+    Empty string means "use built-in default".
+    """
+
+    compact: str = ""  # custom prompt file for memsearch compact
+    summarize: str = ""  # custom prompt file for plugin session summarization
+
+
+@dataclass
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
@@ -78,6 +104,8 @@ class MemSearchConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    prompts: PromptsConfig = field(default_factory=PromptsConfig)
 
 
 # -- Section name → dataclass mapping for typed reconstruction --
@@ -88,6 +116,8 @@ _SECTION_CLASSES: dict[str, type] = {
     "chunking": ChunkingConfig,
     "watch": WatchConfig,
     "reranker": RerankerConfig,
+    "llm": LLMConfig,
+    "prompts": PromptsConfig,
 }
 
 
@@ -177,6 +207,11 @@ def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
     return MemSearchConfig(**kwargs)
 
 
+def _has_legacy_compact(global_cfg: dict[str, Any], project_cfg: dict[str, Any]) -> bool:
+    """Check if the user's actual config files contain a [compact] section."""
+    return "compact" in global_cfg or "compact" in project_cfg
+
+
 def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConfig:
     """Layer all config sources and return the final MemSearchConfig.
 
@@ -184,12 +219,26 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
       defaults → global TOML → project TOML → cli_overrides
     """
     result = _default_dict()
-    result = deep_merge(result, load_config_file(GLOBAL_CONFIG_PATH))
-    result = deep_merge(result, load_config_file(PROJECT_CONFIG_PATH))
+    global_cfg = load_config_file(GLOBAL_CONFIG_PATH)
+    project_cfg = load_config_file(PROJECT_CONFIG_PATH)
+    result = deep_merge(result, global_cfg)
+    result = deep_merge(result, project_cfg)
     if cli_overrides:
         result = deep_merge(result, cli_overrides)
     result = _resolve_env_refs_in_dict(result)
     cfg = _dict_to_config(result)
+
+    # Warn about deprecated [compact] section in user config files
+    if _has_legacy_compact(global_cfg, project_cfg):
+        import warnings
+
+        warnings.warn(
+            "[compact] config section is deprecated. "
+            "Move LLM settings to [llm] and prompt settings to [prompts]. "
+            "See https://memsearch.dev/configuration for details.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Fill in the provider's default model when model is empty
     if not cfg.embedding.model:

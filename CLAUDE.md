@@ -102,7 +102,9 @@ When modifying hooks/skills, keep in mind:
 - **Markdown is the source of truth.** Milvus is a derived index, rebuildable anytime from `.md` files.
 - **Composite chunk ID as PK.** `hash(source:startLine:endLine:contentHash:model)` — enables natural dedup without a separate cache.
 - **ONNX bge-m3 as plugin default.** The Claude Code plugin hooks default to `onnx` provider (bge-m3, CPU, no API key). The Python API still defaults to `openai`.
-- **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them.
+- **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them. RRF scores are normalized to `[0, 1]` (theoretical max = `num_retrievers / (k + 1)`).
+- **`[llm]` + `[prompts]` config.** New config sections for LLM provider selection and custom prompt templates. `[compact]` is deprecated but still works (fallback: `[llm]` > `[compact]` > defaults). Plugins read `prompts.summarize` for custom session summarization prompts. **Migration plan:** `[compact]` will be removed in the next major version (1.0). During the transition, `resolve_config()` emits a `DeprecationWarning` when user config files contain `[compact]`. The compact CLI command resolves LLM settings as `cfg.llm.* or cfg.compact.*`.
+- **Shared prompt template.** All four plugins share a single `summarize.txt` template (maintained in `plugins/_shared/prompts/`, synced via `scripts/sync-prompts.sh`). Template uses `{{AGENT_NAME}}` placeholder.
 - **Remote Milvus `query()` requires a filter.** Use `chunk_hash != ""` as a "match all" filter when no filter is provided (Milvus Lite doesn't enforce this, but Milvus Server does).
 
 ## Versioning & Release

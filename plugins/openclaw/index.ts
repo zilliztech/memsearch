@@ -517,21 +517,30 @@ export default {
        * Tries: openclaw agent → raw text fallback.
        */
       async function summarizeWithLLM(turnText: string): Promise<string> {
-        const systemPrompt =
-          "You are a third-person note-taker. You will receive a transcript of ONE conversation turn " +
-          "between a human and an AI assistant (OpenClaw). " +
-          "Your job is to record what happened as factual third-person notes. " +
-          "You are an EXTERNAL OBSERVER — you are NOT the assistant. " +
-          "Do NOT answer the human's question, do NOT give suggestions. ONLY record what occurred.\n\n" +
-          "Output 2-6 bullet points, each starting with '- '. NOTHING else.\n\n" +
-          "Rules:\n" +
-          "- Write in third person: 'User asked...', 'OpenClaw replied...', 'OpenClaw ran command Y'\n" +
-          "- First bullet: what the user asked or wanted (one sentence)\n" +
-          "- Remaining bullets: what was done — tools called, files read/edited, key findings\n" +
-          "- Be specific: mention file names, function names, tool names, and concrete outcomes\n" +
-          "- Do NOT answer the human's question yourself — just note what was discussed\n" +
-          "- Do NOT add any text before or after the bullet points\n" +
-          "- Write in the same language as the human's message";
+        // Load summarization prompt: user custom (via config) > plugin built-in template
+        const agentName = "OpenClaw";
+        let systemPrompt = "";
+
+        // Try reading user-custom prompt from config
+        let customPromptFile = "";
+        try {
+          const r = await runCmd([memsearchCmd, "config", "get", "prompts.summarize"], { timeoutMs: 5000 });
+          customPromptFile = r.stdout?.trim() || "";
+        } catch { /* ignore */ }
+
+        if (customPromptFile && existsSync(customPromptFile)) {
+          systemPrompt = readFileSync(customPromptFile, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
+        } else {
+          // Fall back to plugin built-in template
+          const builtinPath = join(PLUGIN_DIR, "prompts", "summarize.txt");
+          if (existsSync(builtinPath)) {
+            systemPrompt = readFileSync(builtinPath, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
+          } else {
+            systemPrompt =
+              "You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. " +
+              "Write in third person. Output ONLY bullet points.";
+          }
+        }
 
         // 1. Try openclaw agent (uses user's default model)
         try {

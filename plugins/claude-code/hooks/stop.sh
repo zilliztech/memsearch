@@ -82,38 +82,30 @@ with open(sys.argv[1]) as f:
 print(uuid)
 " "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
-# Use claude -p to summarize the last turn into structured bullet points.
-# --model haiku: cheap and fast model for summarization
-# --no-session-persistence: don't save this throwaway session to disk
-# --no-chrome: skip browser integration
-# --system-prompt: separate role instructions from data (transcript via stdin)
+# Load summarization prompt: user custom (via config) > plugin built-in template
+AGENT_NAME="Claude Code"
+PROMPT_FILE=""
+if [ -n "$MEMSEARCH_CMD" ]; then
+  PROMPT_FILE=$($MEMSEARCH_CMD config get prompts.summarize 2>/dev/null || true)
+fi
+if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
+  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$PROMPT_FILE")
+elif [ -f "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt" ]; then
+  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt")
+else
+  SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. Write in third person. Output ONLY bullet points."
+fi
+
+# Summarize the last turn into structured bullet points.
+# Default: use claude -p (plugin's own agent). If [llm] is configured, still
+# use claude -p since it's the most reliable path for Claude Code plugin.
 SUMMARY=""
 if command -v claude &>/dev/null; then
   SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
     --model haiku \
     --no-session-persistence \
     --no-chrome \
-    --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human (labeled [Human]) and Claude Code (labeled [Claude Code]). Tool calls are labeled [Tool Call] and their results [Tool RESULT] or [Tool ERROR].
-
-Your job is to record what happened as factual third-person notes. You are an EXTERNAL OBSERVER — you are NOT Claude Code, NOT an assistant. Do NOT answer the human's question, do NOT give suggestions, do NOT offer help. ONLY record what occurred.
-
-Output 2-6 bullet points, each starting with '- '. NOTHING else.
-
-Rules:
-- Write in third person: 'User asked...', 'Claude read file X', 'Claude ran command Y'
-- First bullet: what the user asked or wanted (one sentence)
-- Remaining bullets: what Claude did — tools called, files read/edited, commands run, key findings
-- Be specific: mention file names, function names, tool names, and concrete outcomes
-- Do NOT answer the human's question yourself — just note what was discussed
-- Do NOT add any text before or after the bullet points
-- Write in the same language as the human's message (the [Human] line) in the transcript
-
-The transcript uses these labels:
-- [Human]: what the user said
-- [Claude Code]: what Claude Code said
-- [Claude Code calls tool]: a tool Claude Code invoked
-- [Tool output]: the result returned by a tool
-- [Tool error]: an error returned by a tool" \
+    --system-prompt "$SYSTEM_PROMPT" \
     2>/dev/null || true)
 fi
 

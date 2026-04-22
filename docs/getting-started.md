@@ -149,13 +149,13 @@ Indexed 8 chunks.
 
 ```bash
 $ memsearch search "what caching solution are we using?"
---- Result 1 (score: 0.0332) ---
+--- Result 1 (score: 0.9919) ---
 Source: MEMORY.md
 Heading: Architecture Decisions
 - ADR-003: Redis 7 for caching and sessions
 
 $ memsearch search "what did Bob work on recently?" --top-k 3
---- Result 1 (score: 0.0328) ---
+--- Result 1 (score: 0.9838) ---
 Source: memory/2026-02-10.md
 Heading: Standup Notes
 - Bob fixed the N+1 query in the order service — response time dropped from 800ms to 120ms
@@ -560,10 +560,18 @@ overlap_lines = 2
 [watch]
 debounce_ms = 1500
 
-[compact]
+[compact]                    # deprecated — use [llm] + [prompts] instead
 llm_provider = "openai"
 llm_model = ""
 prompt_file = ""
+
+[llm]                        # LLM settings for compact & plugin summarization
+provider = ""                # empty = plugin decides; "openai"/"anthropic"/"gemini"
+model = ""
+
+[prompts]                    # custom prompt template files
+compact = ""                 # for memsearch compact
+summarize = ""               # for plugin session summarization
 ```
 
 ### Environment variable references

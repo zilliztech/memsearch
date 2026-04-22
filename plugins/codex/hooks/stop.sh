@@ -79,23 +79,25 @@ run_worker() {
 
   ensure_memory_dir
 
+  # Load summarization prompt: user custom (via config) > plugin built-in template
+  local AGENT_NAME="Codex"
+  local PROMPT_FILE=""
+  if [ -n "$MEMSEARCH_CMD" ]; then
+    PROMPT_FILE=$($MEMSEARCH_CMD config get prompts.summarize 2>/dev/null || true)
+  fi
+  local SYSTEM_PROMPT=""
+  if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
+    SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$PROMPT_FILE")
+  elif [ -f "$SCRIPT_DIR/../prompts/summarize.txt" ]; then
+    SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$SCRIPT_DIR/../prompts/summarize.txt")
+  else
+    SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. Write in third person. Output ONLY bullet points."
+  fi
+
   local SUMMARY=""
   if command -v codex &>/dev/null; then
     local LLM_PROMPT
-    LLM_PROMPT="You are a third-person note-taker. You will receive a transcript of ONE conversation turn between a human and Codex CLI. Tool calls are labeled [Codex calls tool] and their results [Tool output].
-
-Your job is to record what happened as factual third-person notes. You are an EXTERNAL OBSERVER — you are NOT Codex, NOT an assistant. Do NOT answer the human's question, do NOT give suggestions, do NOT offer help. ONLY record what occurred.
-
-Output 2-6 bullet points, each starting with '- '. NOTHING else.
-
-Rules:
-- Write in third person: 'User asked...', 'Codex read file X', 'Codex ran command Y'
-- First bullet: what the user asked or wanted (one sentence)
-- Remaining bullets: what Codex did — tools called, files read/edited, commands run, key findings
-- Be specific: mention file names, function names, tool names, and concrete outcomes
-- Do NOT answer the human's question yourself — just note what was discussed
-- Do NOT add any text before or after the bullet points
-- Write in the same language as the human's message (the [Human] line) in the transcript
+    LLM_PROMPT="${SYSTEM_PROMPT}
 
 Here is the transcript:
 

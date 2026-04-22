@@ -173,6 +173,14 @@ debounce_ms = 1500
 llm_provider = "openai"
 llm_model = ""
 prompt_file = ""
+
+[llm]
+provider = ""
+model = ""
+
+[prompts]
+compact = ""
+summarize = ""
 ```
 
 ```bash
@@ -201,9 +209,15 @@ provider = "openai"
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
 | `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
-| `compact.llm_provider` | string | `openai` | LLM provider for compact summarization |
-| `compact.llm_model` | string | `""` | Override LLM model (empty = provider default) |
-| `compact.prompt_file` | string | `""` | Path to a custom prompt template file |
+| `compact.llm_provider` | string | `openai` | *(deprecated)* LLM provider for compact — use `llm.provider` instead |
+| `compact.llm_model` | string | `""` | *(deprecated)* LLM model — use `llm.model` instead |
+| `compact.prompt_file` | string | `""` | *(deprecated)* Prompt file — use `prompts.compact` instead |
+| `llm.provider` | string | `""` | LLM provider (empty = plugin decides / compact defaults to openai) |
+| `llm.model` | string | `""` | LLM model override |
+| `llm.base_url` | string | `""` | OpenAI-compatible API base URL |
+| `llm.api_key` | string | `""` | API key (supports `env:VAR_NAME` syntax) |
+| `prompts.compact` | string | `""` | Custom prompt file for `memsearch compact` |
+| `prompts.summarize` | string | `""` | Custom prompt file for plugin session summarization |
 
 ---
 
@@ -297,13 +311,13 @@ Basic search:
 ```bash
 $ memsearch search "how to configure Redis caching"
 
---- Result 1 (score: 0.0328) ---
+--- Result 1 (score: 0.9919) ---
 Source: /home/user/docs/2026-01-15.md
 Heading: Redis Configuration
 Set REDIS_URL in .env to point to your Redis instance.
 Use `cache.set(key, value, ttl=300)` for 5-minute expiry...
 
---- Result 2 (score: 0.0326) ---
+--- Result 2 (score: 0.4919) ---
 Source: /home/user/docs/architecture.md
 Heading: Caching Layer
 We use Redis as the primary caching backend...
@@ -328,7 +342,7 @@ $ memsearch search "error handling" --json-output
     "heading_level": 2,
     "start_line": 45,
     "end_line": 62,
-    "score": 0.0330
+    "score": 0.9919
   }
 ]
 ```
@@ -342,7 +356,7 @@ $ memsearch search "database migrations" --provider google
 ### Notes
 
 - **Provider must match.** The search embedding provider and model must match whatever was used during indexing. Mixing providers will return poor results because the vector spaces are incompatible.
-- **Hybrid search.** Results are ranked using Reciprocal Rank Fusion (RRF) across both dense (cosine) and sparse (BM25) retrieval, giving you the best of semantic and keyword matching.
+- **Hybrid search.** Results are ranked using Reciprocal Rank Fusion (RRF) across both dense (cosine) and sparse (BM25) retrieval, giving you the best of semantic and keyword matching. Scores are normalized to `[0, 1]` where 1.0 means ranked #1 in all retrievers.
 - **Content is truncated.** In the default text output, each result's content is truncated to 500 characters. Use `--json-output` to get the full content.
 
 ---

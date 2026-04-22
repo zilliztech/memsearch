@@ -53,20 +53,41 @@ def ensure_isolated_config():
     return os.path.dirname(isolated)  # /tmp/opencode-memsearch-summarize
 
 
-def summarize_with_llm(turn_text, small_model):
+def _load_summarize_prompt(agent_name, memsearch_cmd=None):
+    """Load summarization prompt: user custom > plugin built-in > inline fallback."""
+    # Try user-custom prompt via config
+    if memsearch_cmd:
+        try:
+            result = subprocess.run(
+                memsearch_cmd.split() + ["config", "get", "prompts.summarize"],
+                capture_output=True, text=True, timeout=5,
+            )
+            custom_path = result.stdout.strip()
+            if custom_path and os.path.isfile(custom_path):
+                template = Path(custom_path).read_text(encoding="utf-8")
+                return template.replace("{{AGENT_NAME}}", agent_name)
+        except Exception:
+            pass
+
+    # Plugin built-in template
+    builtin = Path(__file__).resolve().parent.parent / "prompts" / "summarize.txt"
+    if builtin.is_file():
+        template = builtin.read_text(encoding="utf-8")
+        return template.replace("{{AGENT_NAME}}", agent_name)
+
+    # Inline fallback
+    return (
+        "You are a third-person note-taker. Summarize the transcript as "
+        "2-6 bullet points. Write in third person. Output ONLY bullet points."
+    )
+
+
+def summarize_with_llm(turn_text, small_model, memsearch_cmd=None):
     """Summarize using opencode run in isolated env (no plugins -> no recursion)."""
-    # Keep the instruction short and put it AFTER the transcript to avoid
-    # the LLM treating the instruction itself as the conversation content.
-    # Clear delimiters (===) separate the transcript from the task.
+    system_prompt = _load_summarize_prompt("OpenCode", memsearch_cmd)
     full_prompt = (
-        f"===TRANSCRIPT START===\n"
-        f"{turn_text}\n"
-        f"===TRANSCRIPT END===\n\n"
-        f"Summarize the transcript above as 2-6 third-person bullet points (each starting with '- '). "
-        f"Write 'User asked/did...' and 'OpenCode replied/did...'. "
-        f"Be specific (file names, tools, outcomes). "
-        f"Same language as the human. "
-        f"Output ONLY bullet points, nothing else."
+        f"{system_prompt}\n\n"
+        f"Transcript:\n{turn_text}"
     )
     isolated_dir = ensure_isolated_config()
 
@@ -279,7 +300,7 @@ def main():
             for session_id, turn_text, msg_time in new_turns:
                 if turn_text and len(turn_text) > 10:
                     # Summarize with LLM, fallback to raw text
-                    summary = summarize_with_llm(turn_text, small_model)
+                    summary = summarize_with_llm(turn_text, small_model, args.memsearch_cmd)
                     write_capture(memory_dir, summary if summary else turn_text, session_id, db_path)
                     if msg_time > last_msg_time:
                         last_msg_time = msg_time
