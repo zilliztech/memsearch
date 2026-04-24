@@ -17,10 +17,10 @@ import {
   mkdirSync,
   readdirSync,
   writeFileSync,
+  unlinkSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -563,27 +563,28 @@ export default {
         }
 
         // 1. Try openclaw agent (uses user's default model)
-        // Use Node.js execSync instead of runCmd (api.runtime.system.runCommandWithTimeout)
-        // because runCommandWithTimeout truncates stdout before the LLM response arrives.
+        // Redirect stdout to a temp file because runCommandWithTimeout
+        // truncates stdout before the LLM response arrives.
         try {
           const msgText = `${systemPrompt}\n\nTranscript:\n${turnText}`;
-          const raw = execSync(
-            `openclaw agent --local --session-id memsearch-summarize -m ${JSON.stringify(msgText)}`,
-            {
-              timeout: 60000,
-              env: { ...process.env, MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" },
-              encoding: "utf-8",
-              stdio: ["pipe", "pipe", "pipe"],
+          const tmpFile = `/tmp/memsearch-summarize-${Date.now()}.txt`;
+          const shellCmd = `openclaw agent --local --session-id memsearch-summarize -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
+          await runCmd(["bash", "-c", shellCmd], {
+            timeoutMs: 60000,
+            env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
+          });
+          if (existsSync(tmpFile)) {
+            const raw = readFileSync(tmpFile, "utf-8");
+            try { unlinkSync(tmpFile); } catch { /* ignore cleanup errors */ }
+            // Filter out plugin loading logs polluting stdout (openclaw/openclaw#51076)
+            const output = raw
+              .split("\n")
+              .filter((line: string) => !line.startsWith("[plugins]") && !line.startsWith("[agents]"))
+              .join("\n")
+              .trim();
+            if (output && output.includes("- ")) {
+              return output;
             }
-          );
-          // Filter out plugin loading logs polluting stdout (openclaw/openclaw#51076)
-          const output = (raw || "")
-            .split("\n")
-            .filter((line: string) => !line.startsWith("[plugins]") && !line.startsWith("[agents]"))
-            .join("\n")
-            .trim();
-          if (output && output.includes("- ")) {
-            return output;
           }
         } catch {
           /* timeout or exec error — fall through to fallback */
