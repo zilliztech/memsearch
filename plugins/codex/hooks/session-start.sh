@@ -68,18 +68,11 @@ if [ -n "$VERSION" ]; then
   LATEST=$(_json_val "$_PYPI_JSON" "info.version" "")
   if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
     # Detect install method to suggest the right upgrade command
-    if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ]; then
-      UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
+    _MS_REAL=$(readlink -f "$(command -v memsearch 2>/dev/null)" 2>/dev/null || echo "")
+    if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ] || [[ "$_MS_REAL" == *"uv/tools"* ]]; then
+      UPGRADE_CMD="uv tool install -U 'memsearch[onnx]'"
     else
-      _MS_PATH=$(command -v memsearch 2>/dev/null || true)
-      _MS_REAL=$(readlink -f "$_MS_PATH" 2>/dev/null \
-        || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$_MS_PATH" 2>/dev/null \
-        || echo "$_MS_PATH")
-      if [[ "$_MS_REAL" == *"uv/tools"* ]]; then
-        UPGRADE_CMD="uv tool upgrade memsearch"
-      else
-        UPGRADE_CMD="pip install --upgrade memsearch"
-      fi
+      UPGRADE_CMD="pip install --upgrade 'memsearch[onnx]'"
     fi
     UPDATE_HINT=" | UPDATE: v${LATEST} available — run: ${UPGRADE_CMD}"
   fi
