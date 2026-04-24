@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -153,6 +154,22 @@ function extractText(content: any): string {
  * Extract the last user+assistant turn from an array of messages.
  * Returns a formatted string or null if no valid turn found.
  */
+/**
+ * Strip injected memory context from a user message.
+ * OpenClaw injects "Recent memories (use memory_search for full search):" blocks
+ * and "Conversation info (untrusted metadata):" blocks into user messages.
+ * These should not be captured as part of the user's actual input.
+ */
+function stripInjectedContext(text: string): string {
+  // Remove "Recent memories ..." block (goes until a blank line followed by non-indented text, or end)
+  let cleaned = text.replace(/Recent memories \(use memory_search for full search\):[\s\S]*?(?=\n\n(?!\s|-)|\n*$)/g, "");
+  // Remove "Conversation info (untrusted metadata):" block
+  cleaned = cleaned.replace(/Conversation info \(untrusted metadata\):[\s\S]*?(?=\n\n(?!\s|")|\n*$)/g, "");
+  // Remove "[message_id: ...]" lines
+  cleaned = cleaned.replace(/\[message_id:.*?\]\n/g, "");
+  return cleaned.trim();
+}
+
 function extractLastTurn(messages: any[]): string | null {
   // Find the last real user message (not tool_result, not empty)
   let lastUserIdx = -1;
@@ -176,11 +193,14 @@ function extractLastTurn(messages: any[]): string | null {
     const msg = messages[i];
     const role = msg?.role || msg?.message?.role;
     const content = msg?.content || msg?.message?.content;
-    const text = extractText(content);
+    let text = extractText(content);
 
     if (!text || text.length < 5) continue;
 
     if (role === "user") {
+      // Strip injected memory context — only capture the user's actual message
+      text = stripInjectedContext(text);
+      if (!text || text.length < 5) continue;
       parts.push(`[Human]: ${text}`);
     } else if (role === "assistant") {
       // Truncate long assistant responses
@@ -543,21 +563,30 @@ export default {
         }
 
         // 1. Try openclaw agent (uses user's default model)
+        // Use Node.js execSync instead of runCmd (api.runtime.system.runCommandWithTimeout)
+        // because runCommandWithTimeout truncates stdout before the LLM response arrives.
         try {
           const msgText = `${systemPrompt}\n\nTranscript:\n${turnText}`;
-          const result = await runCmd(
-            ["openclaw", "agent", "--local", "--session-id", "memsearch-summarize", "-m", msgText],
+          const raw = execSync(
+            `openclaw agent --local --session-id memsearch-summarize -m ${JSON.stringify(msgText)}`,
             {
-              timeoutMs: 30000,
-              env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1" }),
+              timeout: 60000,
+              env: { ...process.env, MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" },
+              encoding: "utf-8",
+              stdio: ["pipe", "pipe", "pipe"],
             }
           );
-          const output = result.stdout?.trim();
+          // Filter out plugin loading logs polluting stdout (openclaw/openclaw#51076)
+          const output = (raw || "")
+            .split("\n")
+            .filter((line: string) => !line.startsWith("[plugins]") && !line.startsWith("[agents]"))
+            .join("\n")
+            .trim();
           if (output && output.includes("- ")) {
             return output;
           }
         } catch {
-          /* ignore */
+          /* timeout or exec error — fall through to fallback */
         }
 
         // 2. Fallback: return raw text (truncated)
