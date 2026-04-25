@@ -47,7 +47,10 @@ stateDiagram-v2
     StartWatch --> Prompting
     OneTimeIndex --> Prompting
 
-    note right of Prompting: No SessionEnd hook\nOrphans cleaned at next SessionStart
+    note right of Prompting
+      No SessionEnd hook.
+      Orphans cleaned at next SessionStart.
+    end note
 ```
 
 ---
