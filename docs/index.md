@@ -10,6 +10,8 @@
 
 Pick your platform, install the plugin, and you're done. memsearch captures conversations, indexes them with hybrid search, and recalls relevant context when your agent needs it.
 
+Not sure which platform fits best? See [Platform comparison](platforms/index.md).
+
 ### Claude Code Plugin
 
 The most mature plugin. Marketplace install, zero config.
