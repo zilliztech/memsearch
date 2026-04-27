@@ -2,6 +2,8 @@
 
 Pick your platform, install the plugin, and you're done. memsearch captures conversations, indexes them, and recalls relevant context — all automatically.
 
+If you want a feature-by-feature matrix before choosing, see the full [Platform Comparison](../platforms/index.md).
+
 ## Choose Your Platform
 
 | Platform | Install | Maturity |
