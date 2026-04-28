@@ -151,12 +151,13 @@ fi
 
 context=""
 
-# Find the 2 most recent daily log files (sorted by filename descending)
-recent_files=$(ls -1 "$MEMORY_DIR"/*.md 2>/dev/null | sort -r | head -2)
+# Find the 2 most recent daily log files (sorted by filename descending).
+recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | sort -r | head -2)
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
-  for f in $recent_files; do
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
     basename_f=$(basename "$f")
     # Extract headings (## Session, ### turn timestamps) and bullet content —
     # higher signal density than a raw tail, so Claude can see the structure
@@ -166,7 +167,7 @@ if [ -n "$recent_files" ]; then
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"
     fi
-  done
+  done <<< "$recent_files"
 fi
 
 # Note: Detailed memory search is handled by the memory-recall skill (pull-based).
