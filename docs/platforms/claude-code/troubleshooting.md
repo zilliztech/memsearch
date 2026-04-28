@@ -20,7 +20,7 @@ The plugin displays a status line at session start:
 
 **Update available:**
 ```
-[memsearch v0.2.9] ... | UPDATE: v0.2.10 available -- run: uv tool upgrade memsearch
+[memsearch v0.2.9] ... | UPDATE: v0.2.10 available -- run: uv tool upgrade 'memsearch[onnx]'
 ```
 
 ### "ERROR: \<KEY\> not set"

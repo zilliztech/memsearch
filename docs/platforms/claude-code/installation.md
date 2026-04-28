@@ -44,3 +44,34 @@ export OPENAI_API_KEY="sk-..."
 ```
 
 For Milvus backend configuration, see [Getting Started -- Milvus Backends](../../getting-started.md#milvus-backends).
+
+---
+
+## Updating
+
+Marketplace installs use Claude Code's plugin update commands:
+
+```bash
+# Refresh marketplace metadata, then update the installed plugin
+claude plugin marketplace update memsearch-plugins
+claude plugin update memsearch
+```
+
+Restart Claude Code after updating so the new hooks and skill files are loaded.
+
+For source installs, pull the latest repo and restart Claude Code with the same plugin directory:
+
+```bash
+cd memsearch
+git pull
+uv sync
+claude --plugin-dir ./plugins/claude-code
+```
+
+## Uninstall
+
+```bash
+claude plugin uninstall memsearch --keep-data
+```
+
+The uninstall command removes the Claude Code plugin integration. Your project memories under `.memsearch/memory/` are not deleted.

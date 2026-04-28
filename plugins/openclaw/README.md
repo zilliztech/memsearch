@@ -118,7 +118,8 @@ These files are human-readable, editable, and version-controllable. Milvus is a 
 ## Uninstall
 
 ```bash
-openclaw plugins install --remove memsearch
-# Or manually:
-rm -rf ~/.openclaw/extensions/memsearch
+openclaw plugins uninstall memsearch
+openclaw gateway restart
 ```
+
+Uninstalling the plugin does not delete memory files in `.memsearch/memory/`.

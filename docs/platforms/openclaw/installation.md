@@ -45,9 +45,29 @@ openclaw plugins config memsearch
 
 For Milvus backend configuration, run `memsearch config set milvus.uri <uri>`.
 
+## Updating
+
+For ClawHub installs, install the plugin again and restart the gateway:
+
+```bash
+openclaw plugins install clawhub:memsearch
+openclaw gateway restart
+```
+
+For source installs, pull the latest repo, reinstall from the local plugin directory, and restart:
+
+```bash
+cd memsearch
+git pull
+openclaw plugins install ./plugins/openclaw
+openclaw gateway restart
+```
+
 ## Uninstall
 
 ```bash
 openclaw plugins uninstall memsearch
 openclaw gateway restart
 ```
+
+Uninstalling the plugin does not delete memory files in `.memsearch/memory/`.

@@ -73,3 +73,36 @@ The plugin defaults to ONNX embedding (no API key). Configuration uses the stand
 memsearch config set embedding.provider onnx
 memsearch config set milvus.uri http://localhost:19530  # optional: remote Milvus
 ```
+
+## Updating
+
+For npm installs, keep the package name in `~/.config/opencode/opencode.json` and restart OpenCode so it reloads the configured plugin:
+
+```json
+{
+  "plugin": ["@zilliz/memsearch-opencode"]
+}
+```
+
+If you pinned a package version in that file, update the version string before restarting OpenCode.
+
+For source installs, pull the latest repo and re-run the installer:
+
+```bash
+cd memsearch
+git pull
+bash plugins/opencode/install.sh
+```
+
+## Uninstall
+
+For npm installs, remove `@zilliz/memsearch-opencode` from the `plugin` array in `~/.config/opencode/opencode.json`, then restart OpenCode.
+
+For source installs, remove the symlinks created by the installer:
+
+```bash
+rm -f ~/.config/opencode/plugins/memsearch.ts
+rm -rf ~/.agents/skills/memory-recall
+```
+
+Uninstalling the plugin does not delete memory files in `.memsearch/memory/`.
