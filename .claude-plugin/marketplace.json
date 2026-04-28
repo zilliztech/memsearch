@@ -12,7 +12,7 @@
     {
       "name": "memsearch",
       "description": "Automatic semantic memory for Claude Code — remembers what you worked on across sessions",
-      "version": "0.3.6",
+      "version": "0.4.1",
       "source": "./plugins/claude-code",
       "category": "productivity",
       "author": {
