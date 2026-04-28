@@ -92,7 +92,9 @@ if [ -n "$_GIT_ROOT" ]; then
   PROJECT_DIR="$_GIT_ROOT"
 fi
 
-# Memory directory and memsearch state directory are project-scoped
+# When MEMSEARCH_DIR is explicitly set, use global scope (shared dir + collection).
+# Otherwise, default to per-project isolation.
+_MEMSEARCH_DIR_EXPLICIT="${MEMSEARCH_DIR:+true}"
 MEMSEARCH_DIR="${MEMSEARCH_DIR:-${PROJECT_DIR}/.memsearch}"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
@@ -119,8 +121,13 @@ _memsearch() {
   "${MEMSEARCH_CMD[@]}" "$@"
 }
 
-# Derive per-project collection name from project directory
-COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$PROJECT_DIR" 2>/dev/null || true)
+# Derive collection name: from MEMSEARCH_DIR when explicitly set (global scope),
+# otherwise from project directory (per-project isolation).
+if [ "$_MEMSEARCH_DIR_EXPLICIT" = "true" ]; then
+  COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$MEMSEARCH_DIR" 2>/dev/null || true)
+else
+  COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$PROJECT_DIR" 2>/dev/null || true)
+fi
 
 # Helper: ensure memory directory exists
 ensure_memory_dir() {

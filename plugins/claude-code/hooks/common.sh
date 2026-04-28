@@ -27,6 +27,9 @@ if [ -n "$_GIT_ROOT" ]; then
 else
   _PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 fi
+# When MEMSEARCH_DIR is explicitly set, use global scope (shared dir + collection).
+# Otherwise, default to per-project isolation.
+_MEMSEARCH_DIR_EXPLICIT="${MEMSEARCH_DIR:+true}"
 MEMSEARCH_DIR="${MEMSEARCH_DIR:-$_PROJECT_DIR/.memsearch}"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
@@ -44,8 +47,13 @@ _detect_memsearch
 # Short command prefix for injected instructions (falls back to "memsearch" even if unavailable)
 MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
 
-# Derive per-project collection name from project directory
-COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
+# Derive collection name: from MEMSEARCH_DIR when explicitly set (global scope),
+# otherwise from project directory (per-project isolation).
+if [ "$_MEMSEARCH_DIR_EXPLICIT" = "true" ]; then
+  COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$MEMSEARCH_DIR" 2>/dev/null || true)
+else
+  COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
+fi
 
 # --- JSON helpers (jq preferred, python3 fallback) ---
 
