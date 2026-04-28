@@ -221,6 +221,14 @@ memsearch config set milvus.uri http://localhost:19530
 
 > 📖 Full configuration guide: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/) · [Platform comparison](https://zilliztech.github.io/memsearch/platforms/)
 
+### What can you use it for?
+
+- **Resume debugging threads** — ask how a similar Redis, Docker, database, or deployment issue was fixed last time.
+- **Recover decision rationale** — find why the project chose one architecture, library, migration path, or API design over another.
+- **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
+- **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
+- **Carry context across agents** — keep Claude Code, Codex CLI, OpenClaw, and OpenCode working from the same project memory.
+
 ---
 
 ## 🛠️ For Agent Developers
