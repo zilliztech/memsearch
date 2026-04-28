@@ -40,7 +40,8 @@
 
 Pick your platform, install the plugin, and you're done. Each plugin captures conversations automatically and provides semantic recall with zero configuration.
 
-### For Claude Code Users
+<details open>
+<summary><h3>For Claude Code Users</h3></summary>
 
 ```bash
 # Install
@@ -70,10 +71,14 @@ We discussed Redis caching before, what was the TTL we chose?
 
 > 📖 [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/platforms/claude-code/) · [Troubleshooting](https://zilliztech.github.io/memsearch/platforms/claude-code/troubleshooting/)
 
-### For Codex CLI Users
+</details>
+
+<details open>
+<summary><h3>For Codex CLI Users</h3></summary>
 
 ```bash
 # Install
+git clone --depth 1 https://github.com/zilliztech/memsearch.git
 bash memsearch/plugins/codex/scripts/install.sh
 codex --yolo  # needed for ONNX model network access
 ```
@@ -94,7 +99,10 @@ $memory-recall what did we discuss about deployment?
 
 > 📖 [Codex CLI Plugin docs](https://zilliztech.github.io/memsearch/platforms/codex/)
 
-### For OpenClaw Users
+</details>
+
+<details>
+<summary><h3>For OpenClaw Users</h3></summary>
 
 ```bash
 # Install from ClawHub
@@ -125,7 +133,10 @@ We discussed batch size limits before, what did we decide?
 
 > 📖 [OpenClaw Plugin docs](https://zilliztech.github.io/memsearch/platforms/openclaw/) · [Browse on ClawHub](https://clawhub.ai/plugins/memsearch)
 
-### For OpenCode Users
+</details>
+
+<details>
+<summary><h3>For OpenCode Users</h3></summary>
 
 ```json
 // In ~/.config/opencode/opencode.json
@@ -151,6 +162,8 @@ We discussed the authentication flow before, what was the approach?
 ```
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
+
+</details>
 
 ### ⚙️ Configuration (all platforms)
 
