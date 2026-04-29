@@ -16,6 +16,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 - **Recover decision rationale** — find why the project chose one architecture, library, migration path, or API design over another.
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
+- **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
 - **Carry context across agents** — keep Claude Code, Codex CLI, OpenClaw, and OpenCode working from the same project memory.
 
 ### Claude Code Plugin
