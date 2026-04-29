@@ -9,7 +9,7 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 ## Project Collection
 
-Collection: !`bash -c 'root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi'`
+Collection: !`bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi; fi'`
 
 ## Your Task
 
@@ -35,9 +35,9 @@ Search for memories relevant to: $ARGUMENTS
 
 If the user's question is vague or you can't form a concrete search query, explore the raw markdown first — it is the source of truth for memory:
 
-- `ls -t $(git rev-parse --show-toplevel)/.memsearch/memory/ | head -10` — recent daily logs
-- `grep -h "^## " $(git rev-parse --show-toplevel)/.memsearch/memory/*.md | sort -u | tail -40` — session headings across all days
-- `cat $(git rev-parse --show-toplevel)/.memsearch/memory/<YYYY-MM-DD>.md` — read a specific day
+- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; ls -t "$MDIR/memory/" | head -10` — recent daily logs
+- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; grep -h "^## " "$MDIR/memory/"*.md | sort -u | tail -40` — session headings across all days
+- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; cat "$MDIR/memory/<YYYY-MM-DD>.md"` — read a specific day
 
 Once a concrete topic jumps out, go back to `memsearch search` with a specific query.
 
