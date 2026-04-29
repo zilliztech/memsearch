@@ -11,15 +11,14 @@ extracts the last turn, summarizes it as bullet points, and writes to
 It also triggers memsearch indexing after writing.
 """
 
-import sqlite3
-import json
-import sys
-import os
-import time
-import shutil
-import subprocess
 import argparse
+import json
+import os
 import signal
+import sqlite3
+import subprocess
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -41,16 +40,39 @@ def get_small_model():
     return ""
 
 
+def _ensure_symlink(src, dst):
+    """Ensure dst is a symlink pointing to src. Recreate if broken or wrong target."""
+    if not os.path.exists(src):
+        return
+    if os.path.lexists(dst) and os.path.islink(dst) and os.readlink(dst) == src:
+        return  # Already correct
+    if os.path.lexists(dst):
+        os.remove(dst)
+    os.symlink(src, dst)
+
+
 def ensure_isolated_config():
-    """Create isolated config dir without plugins/ to prevent recursion."""
-    isolated = "/tmp/opencode-memsearch-summarize/opencode"
-    os.makedirs(isolated, exist_ok=True)
-    # Copy opencode.json (provider config) but NOT plugins/
-    src = os.path.expanduser("~/.config/opencode/opencode.json")
-    dst = os.path.join(isolated, "opencode.json")
-    if os.path.exists(src) and not os.path.exists(dst):
-        shutil.copy2(src, dst)
-    return os.path.dirname(isolated)  # /tmp/opencode-memsearch-summarize
+    """Create isolated config dir with symlinks to required files (no plugins/)."""
+    isolated_base = "/tmp/opencode-memsearch-summarize"
+    isolated_config = os.path.join(isolated_base, "opencode")
+    isolated_data = os.path.join(isolated_base, "data", "opencode")
+
+    os.makedirs(isolated_config, exist_ok=True)
+    os.makedirs(isolated_data, exist_ok=True)
+
+    # Symlink config files
+    _ensure_symlink(
+        os.path.expanduser("~/.config/opencode/opencode.json"),
+        os.path.join(isolated_config, "opencode.json"),
+    )
+
+    # Symlink auth credentials
+    _ensure_symlink(
+        os.path.expanduser("~/.local/share/opencode/auth.json"),
+        os.path.join(isolated_data, "auth.json"),
+    )
+
+    return isolated_base
 
 
 def _load_summarize_prompt(agent_name, memsearch_cmd=None):
@@ -60,7 +82,9 @@ def _load_summarize_prompt(agent_name, memsearch_cmd=None):
         try:
             result = subprocess.run(
                 memsearch_cmd.split() + ["config", "get", "prompts.summarize"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             custom_path = result.stdout.strip()
             if custom_path and os.path.isfile(custom_path):
@@ -85,10 +109,7 @@ def _load_summarize_prompt(agent_name, memsearch_cmd=None):
 def summarize_with_llm(turn_text, small_model, memsearch_cmd=None):
     """Summarize using opencode run in isolated env (no plugins -> no recursion)."""
     system_prompt = _load_summarize_prompt("OpenCode", memsearch_cmd)
-    full_prompt = (
-        f"{system_prompt}\n\n"
-        f"Transcript:\n{turn_text}"
-    )
+    full_prompt = f"{system_prompt}\n\nTranscript:\n{turn_text}"
     isolated_dir = ensure_isolated_config()
 
     cmd = ["opencode", "run"]
@@ -105,12 +126,14 @@ def summarize_with_llm(turn_text, small_model, memsearch_cmd=None):
                 "XDG_DATA_HOME": os.path.join(isolated_dir, "data"),
                 "MEMSEARCH_NO_WATCH": "1",
             },
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         output = result.stdout.strip()
         # Extract bullet points (skip any opencode run header lines)
         lines = output.split("\n")
-        bullets = [l for l in lines if l.strip().startswith("- ")]
+        bullets = [line for line in lines if line.strip().startswith("- ")]
         if bullets:
             return "\n".join(bullets)
     except Exception:
@@ -312,10 +335,7 @@ def main():
 
             if new_turns:
                 # Index in background after batch capture
-                os.system(
-                    f"{args.memsearch_cmd} index '{memory_dir}' "
-                    f"--collection {args.collection_name} &"
-                )
+                os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
 
             conn.close()
         except Exception:
