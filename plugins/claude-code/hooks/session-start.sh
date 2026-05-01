@@ -152,7 +152,7 @@ fi
 context=""
 
 # Find the 2 most recent daily log files (sorted by filename descending).
-recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | sort -r | head -2)
+recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | sort -r | head -2 || true)
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
