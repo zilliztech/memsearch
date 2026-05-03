@@ -116,6 +116,7 @@ class PromptsConfig:
     summarize: str = ""  # custom prompt file for plugin session summarization
 
 
+# NOTE: ScopeConfig/DefaultScopeConfig are wired in by Task 2 (multi-scope plan).
 @dataclass
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
@@ -128,6 +129,7 @@ class MemSearchConfig:
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
 
 
+# NOTE: ScopeConfig/DefaultScopeConfig are wired in by Task 2 (multi-scope plan).
 # -- Section name → dataclass mapping for typed reconstruction --
 _SECTION_CLASSES: dict[str, type] = {
     "milvus": MilvusConfig,
