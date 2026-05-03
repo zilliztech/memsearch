@@ -81,6 +81,19 @@ def _build_cli_overrides(**kwargs) -> dict:
 
 def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
     """Extract MemSearch constructor kwargs from a resolved config."""
+    from .core import Scope
+
+    extra_scopes = [
+        Scope(
+            name=sc.name,
+            collection=sc.collection,
+            paths=list(sc.paths),
+            quota=sc.quota,
+            uri=sc.uri or None,
+            token=sc.token or None,
+        )
+        for sc in cfg.scopes
+    ]
     return {
         "embedding_provider": cfg.embedding.provider,
         "embedding_model": cfg.embedding.model or None,
@@ -93,6 +106,9 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
         "reranker_model": cfg.reranker.model,
+        "default_scope_name": cfg.default_scope.name,
+        "default_scope_quota": cfg.default_scope.quota,
+        "extra_scopes": extra_scopes,
     }
 
 
@@ -259,11 +275,13 @@ def search(
             reranker_model=reranker_model,
         )
     )
-    extra_scopes = [_parse_extra_scope(v) for v in extra_scope]
     only_scope_list = [s.strip() for s in only_scope.split(",") if s.strip()] if only_scope else None
     ms = None
     try:
-        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg), extra_scopes=extra_scopes)
+        base_kwargs = _cfg_to_memsearch_kwargs(cfg)
+        cli_extra = [_parse_extra_scope(v) for v in extra_scope]
+        base_kwargs["extra_scopes"] = base_kwargs.get("extra_scopes", []) + cli_extra
+        ms = MemSearch(**base_kwargs)
         results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, only_scope=only_scope_list))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))

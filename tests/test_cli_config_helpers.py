@@ -84,4 +84,24 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "max_chunk_size": 1800,
         "overlap_lines": 4,
         "reranker_model": "",
+        "default_scope_name": "project",
+        "default_scope_quota": None,
+        "extra_scopes": [],
     }
+
+
+def test_cfg_to_memsearch_kwargs_includes_scopes():
+    from memsearch.cli import _cfg_to_memsearch_kwargs
+    from memsearch.config import DefaultScopeConfig, MemSearchConfig, ScopeConfig
+
+    cfg = MemSearchConfig(
+        default_scope=DefaultScopeConfig(name="myproj", quota=5),
+        scopes=[ScopeConfig(name="global", collection="ms_global", quota=3)],
+    )
+    kwargs = _cfg_to_memsearch_kwargs(cfg)
+    assert kwargs["default_scope_name"] == "myproj"
+    assert kwargs["default_scope_quota"] == 5
+    assert len(kwargs["extra_scopes"]) == 1
+    assert kwargs["extra_scopes"][0].name == "global"
+    assert kwargs["extra_scopes"][0].collection == "ms_global"
+    assert kwargs["extra_scopes"][0].quota == 3
