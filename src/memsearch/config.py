@@ -71,6 +71,26 @@ class RerankerConfig:
 
 
 @dataclass
+class ScopeConfig:
+    """One additional memory scope. See [[scopes]] in TOML."""
+
+    name: str = ""
+    collection: str = ""
+    paths: list[str] = field(default_factory=list)
+    quota: int | None = None
+    uri: str = ""    # empty = inherit [milvus].uri
+    token: str = ""  # empty = inherit [milvus].token
+
+
+@dataclass
+class DefaultScopeConfig:
+    """Tunable settings for the default (single-collection) scope."""
+
+    name: str = "project"
+    quota: int | None = None
+
+
+@dataclass
 class LLMConfig:
     """LLM settings for plugin summarization and compact.
 

@@ -364,3 +364,22 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
     assert cfg.embedding.provider == "openai"
     assert cfg.milvus.collection == "memsearch_chunks"
     assert cfg.watch.debounce_ms == 1500
+
+
+def test_scope_config_defaults():
+    """ScopeConfig should have sensible defaults."""
+    from memsearch.config import ScopeConfig
+    sc = ScopeConfig(name="x", collection="c")
+    assert sc.name == "x"
+    assert sc.collection == "c"
+    assert sc.paths == []
+    assert sc.quota is None
+    assert sc.uri == ""
+    assert sc.token == ""
+
+
+def test_default_scope_config_defaults():
+    from memsearch.config import DefaultScopeConfig
+    ds = DefaultScopeConfig()
+    assert ds.name == "project"
+    assert ds.quota is None
