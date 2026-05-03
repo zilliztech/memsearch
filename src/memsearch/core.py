@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -245,6 +246,42 @@ class MemSearch:
         _st = p.stat()
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
         return await self._index_file(sf)
+
+    def _resolve_scope_for_path(self, file_path: Path | str) -> str | None:
+        """Return the scope name whose paths contain ``file_path`` (longest prefix wins).
+
+        Returns None if the path is not under any configured scope.
+        """
+        target = Path(file_path).expanduser().resolve()
+
+        # Build (scope_name, resolved_path) entries for default scope and all extras
+        candidates: list[tuple[str, Path]] = [
+            (self._default_scope_name, Path(p).expanduser().resolve()) for p in self._paths
+        ]
+        candidates.extend((sc.name, Path(p).expanduser().resolve()) for sc in self._extra_scopes for p in sc.paths)
+
+        # Find all candidates that are an ancestor of (or equal to) target
+        matches: list[tuple[str, Path]] = []
+        for name, root in candidates:
+            with contextlib.suppress(ValueError):
+                target.relative_to(root)
+                matches.append((name, root))
+
+        if not matches:
+            return None
+        # Longest path wins (most specific)
+        matches.sort(key=lambda x: len(x[1].parts), reverse=True)
+        return matches[0][0]
+
+    async def index_file_for_scope(self, path: str | Path, scope_name: str) -> int:
+        """Index a single file into the named scope's store.
+
+        Returns the number of chunks indexed.
+        """
+        p = Path(path).expanduser().resolve()
+        st = p.stat()
+        sf = ScannedFile(path=p, mtime=st.st_mtime, size=st.st_size)
+        return await self._index_file(sf, scope_name=scope_name)
 
     async def _index_file(self, f: ScannedFile, *, scope_name: str | None = None, force: bool = False) -> int:
         store = self._stores[scope_name] if scope_name else self._store
@@ -540,12 +577,17 @@ class MemSearch:
 
         def _on_change(event_type: str, file_path: Path) -> None:
             try:
+                scope_name = self._resolve_scope_for_path(file_path)
+                if scope_name is None:
+                    logger.debug("Watcher event for %s ignored: not under any scope", file_path)
+                    return
+                store = self._stores[scope_name]
                 if event_type == "deleted":
-                    self._store.delete_by_source(str(file_path))
-                    summary = f"Removed chunks for {file_path}"
+                    store.delete_by_source(str(file_path))
+                    summary = f"[{scope_name}] removed chunks for {file_path}"
                 else:
-                    n = loop.run_until_complete(self.index_file(file_path))
-                    summary = f"Indexed {n} chunks from {file_path}"
+                    n = loop.run_until_complete(self.index_file_for_scope(file_path, scope_name))
+                    summary = f"[{scope_name}] indexed {n} chunks from {file_path}"
                 logger.info(summary)
                 if on_event is not None:
                     on_event(event_type, summary, file_path)
@@ -558,7 +600,11 @@ class MemSearch:
         fw_kwargs: dict[str, Any] = {}
         if debounce_ms is not None:
             fw_kwargs["debounce_ms"] = debounce_ms
-        watcher = FileWatcher(self._paths, _on_change, **fw_kwargs)
+        # Watch all scopes' paths, not just the default scope
+        all_paths: list[str] = list(self._paths)
+        for sc in self._extra_scopes:
+            all_paths.extend(sc.paths)
+        watcher = FileWatcher(all_paths, _on_change, **fw_kwargs)
         watcher.start()
         return watcher
 
