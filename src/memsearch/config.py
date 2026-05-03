@@ -116,7 +116,6 @@ class PromptsConfig:
     summarize: str = ""  # custom prompt file for plugin session summarization
 
 
-# NOTE: ScopeConfig/DefaultScopeConfig are wired in by Task 2 (multi-scope plan).
 @dataclass
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
@@ -127,9 +126,10 @@ class MemSearchConfig:
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
+    default_scope: DefaultScopeConfig = field(default_factory=DefaultScopeConfig)
+    scopes: list[ScopeConfig] = field(default_factory=list)
 
 
-# NOTE: ScopeConfig/DefaultScopeConfig are wired in by Task 2 (multi-scope plan).
 # -- Section name → dataclass mapping for typed reconstruction --
 _SECTION_CLASSES: dict[str, type] = {
     "milvus": MilvusConfig,
@@ -140,6 +140,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "reranker": RerankerConfig,
     "llm": LLMConfig,
     "prompts": PromptsConfig,
+    "default_scope": DefaultScopeConfig,
 }
 
 
@@ -174,10 +175,16 @@ def resolve_env_ref(value: str) -> str:
 
 def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Walk a nested config dict and resolve all ``env:`` references."""
-    resolved = {}
+    resolved: dict[str, Any] = {}
     for key, val in d.items():
         if isinstance(val, dict):
             resolved[key] = _resolve_env_refs_in_dict(val)
+        elif isinstance(val, list):
+            resolved[key] = [
+                _resolve_env_refs_in_dict(item) if isinstance(item, dict)
+                else (resolve_env_ref(item) if isinstance(item, str) and item.startswith(_ENV_PREFIX) else item)
+                for item in val
+            ]
         elif isinstance(val, str) and val.startswith(_ENV_PREFIX):
             resolved[key] = resolve_env_ref(val)
         else:
@@ -226,6 +233,18 @@ def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
         valid = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in section_data.items() if k in valid}
         kwargs[section_name] = cls(**filtered)
+
+    scopes_raw = d.get("scopes", [])
+    scopes: list[ScopeConfig] = []
+    if isinstance(scopes_raw, list):
+        valid_scope_keys = {f.name for f in fields(ScopeConfig)}
+        for entry in scopes_raw:
+            if not isinstance(entry, dict):
+                continue
+            filtered = {k: v for k, v in entry.items() if k in valid_scope_keys}
+            scopes.append(ScopeConfig(**filtered))
+    kwargs["scopes"] = scopes
+
     return MemSearchConfig(**kwargs)
 
 

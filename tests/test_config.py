@@ -385,3 +385,34 @@ def test_default_scope_config_defaults():
     ds = DefaultScopeConfig()
     assert ds.name == "project"
     assert ds.quota is None
+
+
+def test_memsearch_config_has_scopes_and_default_scope():
+    cfg = MemSearchConfig()
+    assert cfg.scopes == []
+    assert cfg.default_scope.name == "project"
+
+
+def test_resolve_config_loads_scopes_array(tmp_path, monkeypatch):
+    """[[scopes]] array-of-tables should round-trip into MemSearchConfig.scopes."""
+    import memsearch.config as cfg_mod
+    proj = tmp_path / ".memsearch.toml"
+    proj.write_text(
+        '[default_scope]\nname = "myproj"\nquota = 5\n\n'
+        '[[scopes]]\nname = "global"\ncollection = "ms_global"\n'
+        'paths = ["/tmp/g"]\nquota = 3\n\n'
+        '[[scopes]]\nname = "personal"\ncollection = "ms_personal"\n'
+        'paths = ["/tmp/p"]\n'
+    )
+    monkeypatch.setattr(cfg_mod, "PROJECT_CONFIG_PATH", proj)
+    monkeypatch.setattr(cfg_mod, "GLOBAL_CONFIG_PATH", tmp_path / "global-absent.toml")
+    cfg = cfg_mod.resolve_config()
+    assert cfg.default_scope.name == "myproj"
+    assert cfg.default_scope.quota == 5
+    assert len(cfg.scopes) == 2
+    assert cfg.scopes[0].name == "global"
+    assert cfg.scopes[0].collection == "ms_global"
+    assert cfg.scopes[0].paths == ["/tmp/g"]
+    assert cfg.scopes[0].quota == 3
+    assert cfg.scopes[1].name == "personal"
+    assert cfg.scopes[1].quota is None
