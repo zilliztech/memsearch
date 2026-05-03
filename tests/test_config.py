@@ -396,6 +396,7 @@ def test_memsearch_config_has_scopes_and_default_scope():
 def test_resolve_config_loads_scopes_array(tmp_path, monkeypatch):
     """[[scopes]] array-of-tables should round-trip into MemSearchConfig.scopes."""
     import memsearch.config as cfg_mod
+
     proj = tmp_path / ".memsearch.toml"
     proj.write_text(
         '[default_scope]\nname = "myproj"\nquota = 5\n\n'

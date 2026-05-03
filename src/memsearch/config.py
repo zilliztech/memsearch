@@ -181,7 +181,8 @@ def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
             resolved[key] = _resolve_env_refs_in_dict(val)
         elif isinstance(val, list):
             resolved[key] = [
-                _resolve_env_refs_in_dict(item) if isinstance(item, dict)
+                _resolve_env_refs_in_dict(item)
+                if isinstance(item, dict)
                 else (resolve_env_ref(item) if isinstance(item, str) and item.startswith(_ENV_PREFIX) else item)
                 for item in val
             ]
