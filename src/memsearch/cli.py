@@ -276,7 +276,12 @@ def search(
                 source = r.get("source", "?")
                 heading = r.get("heading", "")
                 content = r.get("content", "")
-                click.echo(f"\n--- Result {i} (score: {score:.4f}) ---")
+                scope = r.get("scope")
+                header = f"\n--- Result {i} (score: {score:.4f}"
+                if scope:
+                    header += f", scope: {scope}"
+                header += ") ---"
+                click.echo(header)
                 click.echo(f"Source: {source}")
                 if heading:
                     click.echo(f"Heading: {heading}")
