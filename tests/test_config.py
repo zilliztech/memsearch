@@ -417,3 +417,38 @@ def test_resolve_config_loads_scopes_array(tmp_path, monkeypatch):
     assert cfg.scopes[0].quota == 3
     assert cfg.scopes[1].name == "personal"
     assert cfg.scopes[1].quota is None
+
+
+def test_validate_scope_paths_rejects_overlap(tmp_path):
+    from memsearch.config import ScopeConfig, ScopePathOverlapError, validate_scope_paths
+
+    a = tmp_path / "shared"
+    a.mkdir()
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=[str(a)]),
+        ScopeConfig(name="b", collection="cb", paths=[str(a / "sub")]),
+    ]
+    with pytest.raises(ScopePathOverlapError) as exc:
+        validate_scope_paths(scopes)
+    assert "a" in str(exc.value) and "b" in str(exc.value)
+
+
+def test_validate_scope_paths_allows_disjoint(tmp_path):
+    from memsearch.config import ScopeConfig, validate_scope_paths
+
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=[str(tmp_path / "a")]),
+        ScopeConfig(name="b", collection="cb", paths=[str(tmp_path / "b")]),
+    ]
+    validate_scope_paths(scopes)  # must not raise
+
+
+def test_validate_scope_paths_skips_empty_paths():
+    """Read-only scopes (no paths) cannot conflict with anything."""
+    from memsearch.config import ScopeConfig, validate_scope_paths
+
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=["/tmp/foo"]),
+        ScopeConfig(name="b", collection="cb", paths=[]),  # read-only
+    ]
+    validate_scope_paths(scopes)

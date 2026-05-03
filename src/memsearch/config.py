@@ -156,6 +156,39 @@ class ConfigEnvVarError(KeyError):
     """
 
 
+class ScopePathOverlapError(ValueError):
+    """Raised when two scopes have overlapping paths."""
+
+
+def validate_scope_paths(scopes: list[ScopeConfig]) -> None:
+    """Raise ScopePathOverlapError if any two scopes' paths overlap.
+
+    Path A overlaps path B if A is a parent of B (or vice versa). Read-only
+    scopes (empty paths) cannot conflict.
+    """
+    resolved: list[tuple[str, Path]] = []
+    for sc in scopes:
+        resolved.extend((sc.name, Path(p).expanduser().resolve()) for p in sc.paths)
+    for i, (name_a, path_a) in enumerate(resolved):
+        for name_b, path_b in resolved[i + 1 :]:
+            if name_a == name_b:
+                continue
+            if _is_parent_or_equal(path_a, path_b) or _is_parent_or_equal(path_b, path_a):
+                raise ScopePathOverlapError(
+                    f"Scope paths overlap: scope {name_a!r} path {path_a} conflicts with scope {name_b!r} path {path_b}"
+                )
+
+
+def _is_parent_or_equal(parent: Path, child: Path) -> bool:
+    if parent == child:
+        return True
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 def resolve_env_ref(value: str) -> str:
     """Resolve an ``env:VAR_NAME`` reference to its environment variable value.
 
@@ -287,6 +320,8 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
         from .embeddings import DEFAULT_MODELS
 
         cfg.embedding.model = DEFAULT_MODELS.get(cfg.embedding.provider, "")
+
+    validate_scope_paths(cfg.scopes)
 
     return cfg
 
