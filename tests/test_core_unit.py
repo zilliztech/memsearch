@@ -126,3 +126,47 @@ def test_blend_tiebreak_default_scope_wins():
     )
     assert result[0]["scope"] == "project"
     assert result[1]["scope"] == "global"
+
+
+def test_memsearch_default_only_one_store(tmp_path):
+    """No extra_scopes → exactly one store, named after default_scope_name."""
+    from memsearch.core import MemSearch
+
+    m = MemSearch(milvus_uri=str(tmp_path / "x.db"), embedding_provider="openai", embedding_api_key="fake")
+    try:
+        assert list(m._stores.keys()) == ["project"]
+    finally:
+        m.close()
+
+
+def test_memsearch_extra_scopes_create_per_scope_stores(tmp_path):
+    from memsearch.core import MemSearch, Scope
+
+    m = MemSearch(
+        milvus_uri=str(tmp_path / "x.db"),
+        embedding_provider="openai",
+        embedding_api_key="fake",
+        extra_scopes=[
+            Scope(name="global", collection="ms_global"),
+            Scope(name="personal", collection="ms_personal"),
+        ],
+    )
+    try:
+        assert set(m._stores.keys()) == {"project", "global", "personal"}
+    finally:
+        m.close()
+
+
+def test_memsearch_default_scope_name_override(tmp_path):
+    from memsearch.core import MemSearch
+
+    m = MemSearch(
+        milvus_uri=str(tmp_path / "x.db"),
+        embedding_provider="openai",
+        embedding_api_key="fake",
+        default_scope_name="myproj",
+    )
+    try:
+        assert list(m._stores.keys()) == ["myproj"]
+    finally:
+        m.close()

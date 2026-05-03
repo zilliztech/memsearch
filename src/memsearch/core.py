@@ -146,6 +146,9 @@ class MemSearch:
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
         reranker_model: str = "",
+        default_scope_name: str = "project",
+        default_scope_quota: int | None = None,
+        extra_scopes: list[Scope] | None = None,
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -157,14 +160,35 @@ class MemSearch:
             base_url=embedding_base_url,
             api_key=embedding_api_key,
         )
-        self._store = MilvusStore(
-            uri=milvus_uri,
-            token=milvus_token,
-            collection=collection,
-            dimension=self._embedder.dimension,
-            description=description,
-        )
         self._reranker_model = reranker_model
+        self._default_scope_name = default_scope_name
+        self._default_scope_quota = default_scope_quota
+        self._extra_scopes: list[Scope] = list(extra_scopes or [])
+
+        # Default scope's store (uses parent milvus_uri/token + collection kwarg)
+        self._stores: dict[str, MilvusStore] = {
+            default_scope_name: MilvusStore(
+                uri=milvus_uri,
+                token=milvus_token,
+                collection=collection,
+                dimension=self._embedder.dimension,
+                description=description,
+            )
+        }
+        # Back-compat alias for code that still references self._store
+        self._store = self._stores[default_scope_name]
+
+        # Extra scopes: each gets its own store, optionally on a different Milvus
+        for sc in self._extra_scopes:
+            if sc.name in self._stores:
+                raise ValueError(f"Duplicate scope name: {sc.name!r}")
+            self._stores[sc.name] = MilvusStore(
+                uri=sc.uri or milvus_uri,
+                token=sc.token if sc.token is not None else milvus_token,
+                collection=sc.collection,
+                dimension=self._embedder.dimension,
+                description=description,
+            )
 
     # ------------------------------------------------------------------
     # Indexing
@@ -490,7 +514,12 @@ class MemSearch:
 
     def close(self) -> None:
         """Release resources."""
-        self._store.close()
+        stores = getattr(self, "_stores", None)
+        if stores is not None:
+            for store in stores.values():
+                store.close()
+        elif (store := getattr(self, "_store", None)) is not None:
+            store.close()
 
     def __enter__(self) -> MemSearch:
         return self
