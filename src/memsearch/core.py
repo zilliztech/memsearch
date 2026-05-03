@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,6 +20,23 @@ from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Scope:
+    """One memory scope. See spec for full semantics.
+
+    A scope with empty ``paths`` is read-only (search-only, never indexed).
+    ``quota=None`` means "share remaining slots with other unquota'd scopes".
+    ``uri``/``token`` of ``None`` means inherit from the parent ``MemSearch``.
+    """
+
+    name: str
+    collection: str
+    paths: list[str] = field(default_factory=list)
+    quota: int | None = None
+    uri: str | None = None
+    token: str | None = None
 
 
 class MemSearch:
