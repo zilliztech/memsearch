@@ -313,8 +313,9 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        only_scope: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Semantic search across indexed chunks.
+        """Semantic search across one or more scopes.
 
         Parameters
         ----------
@@ -325,27 +326,89 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+            In multi-scope mode this filter applies only to the default scope.
+        only_scope:
+            If given, restrict the search to the named scope(s).  Raises
+            ``ValueError`` if any name is not a known scope.
 
         Returns
         -------
         list[dict]
             Each dict contains ``content``, ``source``, ``heading``,
-            ``score``, and other metadata.
+            ``score``, and other metadata.  In multi-scope mode each result
+            also carries a ``scope`` field.
         """
-        filter_expr = ""
+        # Single-scope fast path: no extra_scopes → original behavior, no 'scope' tag
+        if not self._extra_scopes:
+            filter_expr = ""
+            if source_prefix is not None:
+                prefix = str(Path(source_prefix).expanduser().resolve())
+                escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
+                filter_expr = f'source like "{escaped}%"'
+            embeddings = await self._embedder.embed([query])
+            fetch_k = top_k * 3 if self._reranker_model else top_k
+            results = self._store.search(
+                embeddings[0],
+                query_text=query,
+                top_k=fetch_k,
+                filter_expr=filter_expr,
+            )
+            if self._reranker_model and results:
+                from .reranker import rerank
+
+                results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+            return results
+
+        # Multi-scope path
+        all_scope_names = list(self._stores.keys())
+        if only_scope is not None:
+            unknown = set(only_scope) - set(all_scope_names)
+            if unknown:
+                raise ValueError(f"unknown scope(s) in only_scope: {sorted(unknown)}")
+            active = [n for n in all_scope_names if n in set(only_scope)]
+        else:
+            active = all_scope_names
+
+        # Source-prefix filter only applies to the default scope
+        default_filter = ""
         if source_prefix is not None:
             prefix = str(Path(source_prefix).expanduser().resolve())
             escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
-            filter_expr = f'source like "{escaped}%"'
+            default_filter = f'source like "{escaped}%"'
 
         embeddings = await self._embedder.embed([query])
-        fetch_k = top_k * 3 if self._reranker_model else top_k
-        results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
-        if self._reranker_model and results:
+        fetch_k_per = max(top_k * 2, 10)  # over-fetch for dedup margin
+
+        async def _fetch(scope_name: str) -> tuple[str, list[dict]]:
+            store = self._stores[scope_name]
+            filt = default_filter if scope_name == self._default_scope_name else ""
+            hits = store.search(embeddings[0], query_text=query, top_k=fetch_k_per, filter_expr=filt)
+            return scope_name, hits
+
+        per_scope = await asyncio.gather(*[_fetch(n) for n in active])
+
+        # Build quota map
+        scope_quotas: dict[str, int | None] = {}
+        for sc in self._extra_scopes:
+            if sc.name in active:
+                scope_quotas[sc.name] = sc.quota
+        if self._default_scope_name in active:
+            scope_quotas[self._default_scope_name] = self._default_scope_quota
+
+        scope_order = [self._default_scope_name] + [s.name for s in self._extra_scopes]
+        merged = _blend_scope_results(
+            per_scope=list(per_scope),
+            scope_quotas=scope_quotas,
+            default_scope_name=self._default_scope_name,
+            scope_order=scope_order,
+            top_k=top_k,
+        )
+
+        if self._reranker_model and merged:
             from .reranker import rerank
 
-            results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
-        return results
+            merged = rerank(query, merged, model_name=self._reranker_model, top_k=top_k)
+        return merged
 
     # ------------------------------------------------------------------
     # Compact (compress memories)
