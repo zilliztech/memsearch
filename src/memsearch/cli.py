@@ -96,6 +96,23 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
     }
 
 
+def _parse_extra_scope(value: str):
+    """Parse 'name:collection[:quota]' into a Scope."""
+    from .core import Scope
+
+    parts = value.split(":")
+    if len(parts) < 2 or len(parts) > 3:
+        raise click.BadParameter(f"Invalid --extra-scope format: {value!r}. Expected 'name:collection[:quota]'.")
+    name, collection = parts[0], parts[1]
+    quota: int | None = None
+    if len(parts) == 3:
+        try:
+            quota = int(parts[2])
+        except ValueError:
+            raise click.BadParameter(f"Invalid quota in --extra-scope: {parts[2]!r}. Must be an integer.") from None
+    return Scope(name=name, collection=collection, quota=quota)
+
+
 def _normalize_compact_source(source: str | None) -> str | None:
     """Normalize compact --source paths to the absolute form used at index time.
 
@@ -197,6 +214,18 @@ def index(
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+@click.option(
+    "--extra-scope",
+    "extra_scope",
+    multiple=True,
+    help="Add a search scope: name:collection[:quota]. Repeatable.",
+)
+@click.option(
+    "--only-scope",
+    "only_scope",
+    default=None,
+    help="Comma-separated scope names to restrict the search to.",
+)
 def search(
     query: str,
     top_k: int | None,
@@ -211,6 +240,8 @@ def search(
     milvus_token: str | None,
     reranker_model: str | None,
     json_output: bool,
+    extra_scope: tuple[str, ...],
+    only_scope: str | None,
 ) -> None:
     """Search indexed memory for QUERY."""
     from .core import MemSearch
@@ -228,10 +259,12 @@ def search(
             reranker_model=reranker_model,
         )
     )
+    extra_scopes = [_parse_extra_scope(v) for v in extra_scope]
+    only_scope_list = [s.strip() for s in only_scope.split(",") if s.strip()] if only_scope else None
     ms = None
     try:
-        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
-        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
+        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg), extra_scopes=extra_scopes)
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, only_scope=only_scope_list))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:

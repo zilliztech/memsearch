@@ -43,3 +43,10 @@ def test_chunk_size_flag_appears_in_help(args: list[str]) -> None:
 
     assert result.exit_code == 0
     assert "--max-chunk-size" in result.output
+
+
+def test_search_help_mentions_extra_scope():
+    result = CliRunner().invoke(cli, ["search", "--help"])
+    assert result.exit_code == 0
+    assert "--extra-scope" in result.output
+    assert "--only-scope" in result.output
