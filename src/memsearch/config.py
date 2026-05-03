@@ -78,7 +78,7 @@ class ScopeConfig:
     collection: str = ""
     paths: list[str] = field(default_factory=list)
     quota: int | None = None
-    uri: str = ""    # empty = inherit [milvus].uri
+    uri: str = ""  # empty = inherit [milvus].uri
     token: str = ""  # empty = inherit [milvus].token
 
 

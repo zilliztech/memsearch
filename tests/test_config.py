@@ -369,6 +369,7 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
 def test_scope_config_defaults():
     """ScopeConfig should have sensible defaults."""
     from memsearch.config import ScopeConfig
+
     sc = ScopeConfig(name="x", collection="c")
     assert sc.name == "x"
     assert sc.collection == "c"
@@ -380,6 +381,7 @@ def test_scope_config_defaults():
 
 def test_default_scope_config_defaults():
     from memsearch.config import DefaultScopeConfig
+
     ds = DefaultScopeConfig()
     assert ds.name == "project"
     assert ds.quota is None
