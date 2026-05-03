@@ -39,6 +39,74 @@ class Scope:
     token: str | None = None
 
 
+def _blend_scope_results(
+    per_scope: list[tuple[str, list[dict]]],
+    scope_quotas: dict[str, int | None],
+    default_scope_name: str,
+    scope_order: list[str],
+    top_k: int,
+) -> list[dict]:
+    """Dedup, apply per-scope quotas, return top-K blended.
+
+    Algorithm:
+      1. Tag each hit with its scope name.
+      2. Dedup by chunk_hash; keep highest-scoring; remember winning scope.
+      3. Quota modes:
+         - all scopes have quotas → hard cap per scope, no redistribution
+         - no scopes have quotas → return globally top-K by score
+         - mixed → quota'd capped first; unquota'd share remainder by score
+      4. Tie-break: default scope wins, then ``scope_order`` index.
+    """
+    # 1+2. Tag & dedup
+    seen: dict[str, dict] = {}
+    for scope_name, hits in per_scope:
+        for h in hits:
+            key = h["chunk_hash"]
+            tagged = {**h, "scope": scope_name}
+            existing = seen.get(key)
+            if existing is None or tagged["score"] > existing["score"]:
+                seen[key] = tagged
+
+    scope_rank = {name: i for i, name in enumerate(scope_order)}
+
+    def sort_key(r: dict) -> tuple:
+        # Higher score first; then default scope wins; then config order
+        return (
+            -r["score"],
+            0 if r["scope"] == default_scope_name else 1,
+            scope_rank.get(r["scope"], len(scope_order)),
+        )
+
+    all_hits = sorted(seen.values(), key=sort_key)
+
+    # 3. Quota modes
+    quotas_present = [v for v in scope_quotas.values() if v is not None]
+
+    # All-no-quota: just top-k
+    if not quotas_present:
+        return all_hits[:top_k]
+
+    capped: dict[str, list[dict]] = {n: [] for n in scope_quotas}
+    leftovers: list[dict] = []
+
+    for h in all_hits:
+        sc = h["scope"]
+        q = scope_quotas.get(sc)
+        if q is None:
+            leftovers.append(h)
+        elif len(capped[sc]) < q:
+            capped[sc].append(h)
+        # else: quota'd scope full; drop this hit (no redistribution)
+
+    quota_total = sum(scope_quotas[n] or 0 for n in scope_quotas)
+    remaining_slots = max(0, top_k - quota_total)
+    chosen_leftovers = leftovers[:remaining_slots]
+
+    merged = [h for hits in capped.values() for h in hits] + chosen_leftovers
+    merged.sort(key=sort_key)
+    return merged[:top_k]
+
+
 class MemSearch:
     """High-level API for semantic memory search.
 
