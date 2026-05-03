@@ -155,3 +155,59 @@ async def test_search_only_scope_restriction(two_scope_mem, tmp_path):
 async def test_search_only_scope_unknown_raises(two_scope_mem):
     with pytest.raises(ValueError, match="unknown scope"):
         await two_scope_mem.search("foo", top_k=4, only_scope=["nope"])
+
+
+@pytest.mark.asyncio
+async def test_index_routes_files_by_scope_paths(tmp_path):
+    """Files under scope A's paths land in scope A's store; same for B."""
+    from memsearch.core import MemSearch, Scope
+
+    proj_dir = tmp_path / "proj"
+    glob_dir = tmp_path / "glob"
+    proj_dir.mkdir()
+    glob_dir.mkdir()
+    (proj_dir / "p.md").write_text("# Project\n\nProject-specific note.\n")
+    (glob_dir / "g.md").write_text("# Global\n\nGlobal preference note.\n")
+
+    m = MemSearch(
+        milvus_uri=str(tmp_path / "x.db"),
+        paths=[str(proj_dir)],
+        collection="ms_proj",
+        extra_scopes=[Scope(name="global", collection="ms_global", paths=[str(glob_dir)])],
+    )
+    try:
+        await m.index()
+        proj_results = m._stores["project"].search([0.0] * m._embedder.dimension, top_k=10)
+        glob_results = m._stores["global"].search([0.0] * m._embedder.dimension, top_k=10)
+        proj_sources = {r["source"] for r in proj_results}
+        glob_sources = {r["source"] for r in glob_results}
+        assert any("p.md" in s for s in proj_sources)
+        assert not any("g.md" in s for s in proj_sources)
+        assert any("g.md" in s for s in glob_sources)
+        assert not any("p.md" in s for s in glob_sources)
+    finally:
+        m.close()
+
+
+@pytest.mark.asyncio
+async def test_index_skips_read_only_scope(tmp_path):
+    """A scope with empty paths must not be touched by index()."""
+    from memsearch.core import MemSearch, Scope
+
+    proj_dir = tmp_path / "proj"
+    proj_dir.mkdir()
+    (proj_dir / "p.md").write_text("# P\n\nx.\n")
+    m = MemSearch(
+        milvus_uri=str(tmp_path / "x.db"),
+        paths=[str(proj_dir)],
+        collection="ms_proj",
+        extra_scopes=[Scope(name="readonly", collection="ms_team", paths=[])],
+    )
+    try:
+        n = await m.index()
+        # Read-only scope's collection should be empty
+        ro_results = m._stores["readonly"].search([0.0] * m._embedder.dimension, top_k=10)
+        assert ro_results == []
+        assert n > 0
+    finally:
+        m.close()
