@@ -17,7 +17,7 @@
 graph TB
     subgraph "Capture"
         SQLITE[("OpenCode SQLite<br/>~/.local/share/opencode/opencode.db")] --> DAEMON["capture-daemon.py<br/>(background poller, 10s interval)"]
-        DAEMON --> SUMMARIZE["opencode run<br/>(isolated XDG_CONFIG_HOME)"]
+        DAEMON --> SUMMARIZE["opencode run<br/>(isolated env + symlinked credentials)"]
         SUMMARIZE --> MD["memory/YYYY-MM-DD.md"]
     end
 
@@ -70,7 +70,7 @@ sequenceDiagram
         DB->>Daemon: Messages newer than last_msg_time
         alt New turns found
             Daemon->>Daemon: Group into user+assistant pairs
-            Daemon->>LLM: Summarize turn (isolated config)
+            Daemon->>LLM: Summarize turn (isolated env with symlinked credentials)
             LLM->>Daemon: 2-6 bullet points
             Daemon->>File: Append with session anchor
             Daemon->>Daemon: Update last_msg_time (persist to disk)
@@ -91,7 +91,7 @@ Step by step:
 
 ### LLM Summarization with Isolation
 
-The daemon summarizes turns via `opencode run` -- but it must avoid triggering the memsearch plugin recursively. It achieves this with **XDG isolation**:
+The daemon summarizes turns via `opencode run` -- but it must avoid triggering the memsearch plugin recursively. It achieves this with **XDG isolation** combined with **symlinked credentials**:
 
 ```python
 result = subprocess.run(
@@ -104,9 +104,7 @@ result = subprocess.run(
 )
 ```
 
-The isolated `XDG_CONFIG_HOME` contains a copy of `opencode.json` (for provider/model config) but **no `plugins/` directory** -- so the memsearch plugin doesn't load in the summarization subprocess. The `MEMSEARCH_NO_WATCH` env var provides an additional guard.
-
-The daemon also reads `small_model` from `opencode.json` config, using a lighter model for summarization when available.
+The isolated `XDG_CONFIG_HOME` and `XDG_DATA_HOME` ensure the summarization subprocess writes to a temporary SQLite database invisible to the daemon, preventing feedback loops. Inside the isolated config directory, `opencode.json` and `auth.json` are **symlinked** (not copied) from the user's real config — so provider credentials and model settings are always up-to-date without manual synchronization. The `plugins/` directory is intentionally absent from the isolated config, so the memsearch plugin doesn't load in the summarization subprocess. The `MEMSEARCH_NO_WATCH` env var provides an additional guard.
 
 ### Daemon Self-Management
 
@@ -193,7 +191,7 @@ The `<!-- session:... db:~/.local/share/opencode/opencode.db -->` anchors are us
 | **L3 source** | OpenCode SQLite DB | Claude Code JSONL | OpenClaw JSONL | Codex rollout JSONL |
 | **Recall trigger** | Tool-based (LLM decides) | Skill in forked subagent (`context: fork`) | Tool-based (LLM decides) | Skill-based (main context) |
 | **Install** | npm + opencode.json | Plugin marketplace | `openclaw plugins install` | `install.sh` + hooks.json |
-| **Recursion prevention** | XDG_CONFIG_HOME isolation | `CLAUDECODE=` env var | `MEMSEARCH_NO_WATCH` flag | Isolated CODEX_HOME |
+| **Recursion prevention** | Isolated env + symlinked credentials | `CLAUDECODE=` env var | `MEMSEARCH_NO_WATCH` flag | Isolated CODEX_HOME |
 
 ---
 
