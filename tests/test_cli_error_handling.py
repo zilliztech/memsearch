@@ -77,3 +77,15 @@ def test_missing_env_var_in_real_resolve(monkeypatch) -> None:
     assert result.exit_code == 1
     assert "Configuration error:" in result.stderr
     assert "DEFINITELY_NOT_SET_MEMSEARCH_API_KEY" in result.stderr
+
+
+def test_search_extra_scope_malformed_raises():
+    # Single token (no colon) is invalid
+    result = CliRunner().invoke(cli, ["search", "foo", "--extra-scope", "badformat"])
+    assert result.exit_code != 0
+    assert "extra-scope" in result.output.lower() or "format" in result.output.lower()
+
+
+def test_search_extra_scope_quota_not_int_raises():
+    result = CliRunner().invoke(cli, ["search", "foo", "--extra-scope", "g:c:notanint"])
+    assert result.exit_code != 0

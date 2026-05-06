@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,6 +21,91 @@ from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Scope:
+    """One memory scope. See spec for full semantics.
+
+    A scope with empty ``paths`` is read-only (search-only, never indexed).
+    ``quota=None`` means "share remaining slots with other unquota'd scopes".
+    ``uri``/``token`` of ``None`` means inherit from the parent ``MemSearch``.
+    """
+
+    name: str
+    collection: str
+    paths: list[str] = field(default_factory=list)
+    quota: int | None = None
+    uri: str | None = None
+    token: str | None = None
+
+
+def _blend_scope_results(
+    per_scope: list[tuple[str, list[dict]]],
+    scope_quotas: dict[str, int | None],
+    default_scope_name: str,
+    scope_order: list[str],
+    top_k: int,
+) -> list[dict]:
+    """Dedup, apply per-scope quotas, return top-K blended.
+
+    Algorithm:
+      1. Tag each hit with its scope name.
+      2. Dedup by chunk_hash; keep highest-scoring; remember winning scope.
+      3. Quota modes:
+         - all scopes have quotas → hard cap per scope, no redistribution
+         - no scopes have quotas → return globally top-K by score
+         - mixed → quota'd capped first; unquota'd share remainder by score
+      4. Tie-break: default scope wins, then ``scope_order`` index.
+    """
+    # 1+2. Tag & dedup
+    seen: dict[str, dict] = {}
+    for scope_name, hits in per_scope:
+        for h in hits:
+            key = h["chunk_hash"]
+            tagged = {**h, "scope": scope_name}
+            existing = seen.get(key)
+            if existing is None or tagged["score"] > existing["score"]:
+                seen[key] = tagged
+
+    scope_rank = {name: i for i, name in enumerate(scope_order)}
+
+    def sort_key(r: dict) -> tuple:
+        # Higher score first; then default scope wins; then config order
+        return (
+            -r["score"],
+            0 if r["scope"] == default_scope_name else 1,
+            scope_rank.get(r["scope"], len(scope_order)),
+        )
+
+    all_hits = sorted(seen.values(), key=sort_key)
+
+    # 3. Quota modes
+    quotas_present = [v for v in scope_quotas.values() if v is not None]
+
+    # All-no-quota: just top-k
+    if not quotas_present:
+        return all_hits[:top_k]
+
+    capped: dict[str, list[dict]] = {n: [] for n in scope_quotas}
+    leftovers: list[dict] = []
+
+    for h in all_hits:
+        sc = h["scope"]
+        q = scope_quotas.get(sc)
+        if q is None:
+            leftovers.append(h)
+        elif len(capped[sc]) < q:
+            capped[sc].append(h)
+        # else: quota'd scope full; drop this hit (no redistribution)
+
+    quota_total = sum(scope_quotas[n] or 0 for n in scope_quotas)
+    remaining_slots = max(0, top_k - quota_total)
+    chosen_leftovers = leftovers[:remaining_slots]
+
+    merged = [h for hits in capped.values() for h in hits] + chosen_leftovers
+    merged.sort(key=sort_key)
+    return merged[:top_k]
 
 
 class MemSearch:
@@ -60,6 +147,9 @@ class MemSearch:
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
         reranker_model: str = "",
+        default_scope_name: str = "project",
+        default_scope_quota: int | None = None,
+        extra_scopes: list[Scope] | None = None,
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -71,49 +161,83 @@ class MemSearch:
             base_url=embedding_base_url,
             api_key=embedding_api_key,
         )
-        self._store = MilvusStore(
-            uri=milvus_uri,
-            token=milvus_token,
-            collection=collection,
-            dimension=self._embedder.dimension,
-            description=description,
-        )
         self._reranker_model = reranker_model
+        self._default_scope_name = default_scope_name
+        self._default_scope_quota = default_scope_quota
+        self._extra_scopes: list[Scope] = list(extra_scopes or [])
+
+        # Default scope's store (uses parent milvus_uri/token + collection kwarg)
+        self._stores: dict[str, MilvusStore] = {
+            default_scope_name: MilvusStore(
+                uri=milvus_uri,
+                token=milvus_token,
+                collection=collection,
+                dimension=self._embedder.dimension,
+                description=description,
+            )
+        }
+        # Back-compat alias for code that still references self._store
+        self._store = self._stores[default_scope_name]
+
+        # Extra scopes: each gets its own store, optionally on a different Milvus
+        for sc in self._extra_scopes:
+            if sc.name in self._stores:
+                raise ValueError(f"Duplicate scope name: {sc.name!r}")
+            self._stores[sc.name] = MilvusStore(
+                uri=sc.uri or milvus_uri,
+                token=sc.token if sc.token is not None else milvus_token,
+                collection=sc.collection,
+                dimension=self._embedder.dimension,
+                description=description,
+            )
 
     # ------------------------------------------------------------------
     # Indexing
     # ------------------------------------------------------------------
 
     async def index(self, *, force: bool = False) -> int:
-        """Scan paths and index all markdown files.
+        """Scan all scopes' paths and index files into the per-scope stores.
 
-        Returns the number of chunks indexed.  Also removes chunks for
-        files that no longer exist on disk (deleted-file cleanup).
+        Default scope uses ``self._paths``. Extra scopes with non-empty
+        ``paths`` are also indexed into their own stores. Read-only scopes
+        (empty paths) are skipped.
+        Returns total chunks indexed across all scopes.
         """
-        files = scan_paths(self._paths)
+        default_name: str | None = getattr(self, "_default_scope_name", None)
+        extra_scopes: list[Scope] = getattr(self, "_extra_scopes", [])
+        stores: dict[str, MilvusStore] = getattr(self, "_stores", {})
+
+        plan: list[tuple[str | None, list[str]]] = [(default_name, self._paths)]
+        plan.extend((sc.name, sc.paths) for sc in extra_scopes if sc.paths)
+
         total = 0
-        failed = 0
-        active_sources: set[str] = set()
-        for f in files:
-            active_sources.add(str(f.path))
-            try:
-                n = await self._index_file(f, force=force)
-                total += n
-            except Exception:
-                failed += 1
-                logger.exception("Failed to index %s, skipping", f.path)
+        for scope_name, paths in plan:
+            if not paths:
+                continue
+            files = scan_paths(paths)
+            failed = 0
+            active_sources: set[str] = set()
+            for f in files:
+                active_sources.add(str(f.path))
+                try:
+                    if scope_name is not None:
+                        n = await self._index_file(f, scope_name=scope_name, force=force)
+                    else:
+                        n = await self._index_file(f, force=force)
+                    total += n
+                except Exception:
+                    failed += 1
+                    logger.exception("Failed to index %s, skipping", f.path)
 
-        # Clean up chunks for files that no longer exist
-        indexed_sources = self._store.indexed_sources()
-        for source in indexed_sources:
-            if source not in active_sources:
-                self._store.delete_by_source(source)
-                logger.info("Removed stale chunks for deleted file: %s", source)
+            store = stores.get(scope_name) if scope_name else getattr(self, "_store", None)
+            if store is not None:
+                for source in store.indexed_sources():
+                    if source not in active_sources:
+                        store.delete_by_source(source)
+                        logger.info("[%s] removed stale chunks for deleted file: %s", scope_name, source)
 
-        if failed:
-            logger.warning("Indexed %d chunks from %d files (%d files failed)", total, len(files) - failed, failed)
-        else:
-            logger.info("Indexed %d chunks from %d files", total, len(files))
+            if failed:
+                logger.warning("[%s] indexed (%d files failed)", scope_name, failed)
         return total
 
     async def index_file(self, path: str | Path) -> int:
@@ -123,7 +247,44 @@ class MemSearch:
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
         return await self._index_file(sf)
 
-    async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
+    def _resolve_scope_for_path(self, file_path: Path | str) -> str | None:
+        """Return the scope name whose paths contain ``file_path`` (longest prefix wins).
+
+        Returns None if the path is not under any configured scope.
+        """
+        target = Path(file_path).expanduser().resolve()
+
+        # Build (scope_name, resolved_path) entries for default scope and all extras
+        candidates: list[tuple[str, Path]] = [
+            (self._default_scope_name, Path(p).expanduser().resolve()) for p in self._paths
+        ]
+        candidates.extend((sc.name, Path(p).expanduser().resolve()) for sc in self._extra_scopes for p in sc.paths)
+
+        # Find all candidates that are an ancestor of (or equal to) target
+        matches: list[tuple[str, Path]] = []
+        for name, root in candidates:
+            with contextlib.suppress(ValueError):
+                target.relative_to(root)
+                matches.append((name, root))
+
+        if not matches:
+            return None
+        # Longest path wins (most specific)
+        matches.sort(key=lambda x: len(x[1].parts), reverse=True)
+        return matches[0][0]
+
+    async def index_file_for_scope(self, path: str | Path, scope_name: str) -> int:
+        """Index a single file into the named scope's store.
+
+        Returns the number of chunks indexed.
+        """
+        p = Path(path).expanduser().resolve()
+        st = p.stat()
+        sf = ScannedFile(path=p, mtime=st.st_mtime, size=st.st_size)
+        return await self._index_file(sf, scope_name=scope_name)
+
+    async def _index_file(self, f: ScannedFile, *, scope_name: str | None = None, force: bool = False) -> int:
+        store = self._stores[scope_name] if scope_name else self._store
         source = str(f.path)
         text = f.path.read_text(encoding="utf-8")
         chunks = chunk_markdown(
@@ -133,21 +294,14 @@ class MemSearch:
             overlap_lines=self._overlap_lines,
         )
         model = self._embedder.model_name
-
-        # Compute composite chunk IDs (matching OpenClaw format)
         chunk_ids = {compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) for c in chunks}
-        old_ids = self._store.hashes_by_source(source)
-
-        # Delete stale chunks that are no longer in the file
+        old_ids = store.hashes_by_source(source)
         stale = old_ids - chunk_ids
         if stale:
-            self._store.delete_by_hashes(list(stale))
-
+            store.delete_by_hashes(list(stale))
         if not chunks:
             return 0
-
         if not force:
-            # Only embed chunks whose ID doesn't already exist
             chunks = [
                 c
                 for c in chunks
@@ -155,29 +309,18 @@ class MemSearch:
             ]
             if not chunks:
                 return 0
+        return await self._embed_and_store(chunks, scope_name=scope_name)
 
-        return await self._embed_and_store(chunks)
-
-    async def _embed_and_store(self, chunks: list[Chunk]) -> int:
+    async def _embed_and_store(self, chunks: list[Chunk], *, scope_name: str | None = None) -> int:
         if not chunks:
             return 0
-
+        store = self._stores[scope_name] if scope_name else self._store
         model = self._embedder.model_name
-        # Clean content for embedding: strip HTML comments and metadata noise
-        # so the embedding vector captures semantics, not UUIDs/paths.
-        # The original content is preserved in the Milvus record below.
         contents = [clean_content_for_embedding(c.content) for c in chunks]
         embeddings = await self._embedder.embed(contents)
-
         records: list[dict[str, Any]] = []
         for i, chunk in enumerate(chunks):
-            chunk_id = compute_chunk_id(
-                chunk.source,
-                chunk.start_line,
-                chunk.end_line,
-                chunk.content_hash,
-                model,
-            )
+            chunk_id = compute_chunk_id(chunk.source, chunk.start_line, chunk.end_line, chunk.content_hash, model)
             records.append(
                 {
                     "chunk_hash": chunk_id,
@@ -190,8 +333,7 @@ class MemSearch:
                     "end_line": chunk.end_line,
                 }
             )
-
-        return self._store.upsert(records)
+        return store.upsert(records)
 
     # ------------------------------------------------------------------
     # Search
@@ -203,8 +345,9 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        only_scope: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Semantic search across indexed chunks.
+        """Semantic search across one or more scopes.
 
         Parameters
         ----------
@@ -215,27 +358,89 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+            In multi-scope mode this filter applies only to the default scope.
+        only_scope:
+            If given, restrict the search to the named scope(s).  Raises
+            ``ValueError`` if any name is not a known scope.
 
         Returns
         -------
         list[dict]
             Each dict contains ``content``, ``source``, ``heading``,
-            ``score``, and other metadata.
+            ``score``, and other metadata.  In multi-scope mode each result
+            also carries a ``scope`` field.
         """
-        filter_expr = ""
+        # Single-scope fast path: no extra_scopes → original behavior, no 'scope' tag
+        if not self._extra_scopes:
+            filter_expr = ""
+            if source_prefix is not None:
+                prefix = str(Path(source_prefix).expanduser().resolve())
+                escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
+                filter_expr = f'source like "{escaped}%"'
+            embeddings = await self._embedder.embed([query])
+            fetch_k = top_k * 3 if self._reranker_model else top_k
+            results = self._store.search(
+                embeddings[0],
+                query_text=query,
+                top_k=fetch_k,
+                filter_expr=filter_expr,
+            )
+            if self._reranker_model and results:
+                from .reranker import rerank
+
+                results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+            return results
+
+        # Multi-scope path
+        all_scope_names = list(self._stores.keys())
+        if only_scope is not None:
+            unknown = set(only_scope) - set(all_scope_names)
+            if unknown:
+                raise ValueError(f"unknown scope(s) in only_scope: {sorted(unknown)}")
+            active = [n for n in all_scope_names if n in set(only_scope)]
+        else:
+            active = all_scope_names
+
+        # Source-prefix filter only applies to the default scope
+        default_filter = ""
         if source_prefix is not None:
             prefix = str(Path(source_prefix).expanduser().resolve())
             escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
-            filter_expr = f'source like "{escaped}%"'
+            default_filter = f'source like "{escaped}%"'
 
         embeddings = await self._embedder.embed([query])
-        fetch_k = top_k * 3 if self._reranker_model else top_k
-        results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
-        if self._reranker_model and results:
+        fetch_k_per = max(top_k * 2, 10)  # over-fetch for dedup margin
+
+        async def _fetch(scope_name: str) -> tuple[str, list[dict]]:
+            store = self._stores[scope_name]
+            filt = default_filter if scope_name == self._default_scope_name else ""
+            hits = store.search(embeddings[0], query_text=query, top_k=fetch_k_per, filter_expr=filt)
+            return scope_name, hits
+
+        per_scope = await asyncio.gather(*[_fetch(n) for n in active])
+
+        # Build quota map
+        scope_quotas: dict[str, int | None] = {}
+        for sc in self._extra_scopes:
+            if sc.name in active:
+                scope_quotas[sc.name] = sc.quota
+        if self._default_scope_name in active:
+            scope_quotas[self._default_scope_name] = self._default_scope_quota
+
+        scope_order = [self._default_scope_name] + [s.name for s in self._extra_scopes]
+        merged = _blend_scope_results(
+            per_scope=list(per_scope),
+            scope_quotas=scope_quotas,
+            default_scope_name=self._default_scope_name,
+            scope_order=scope_order,
+            top_k=top_k,
+        )
+
+        if self._reranker_model and merged:
             from .reranker import rerank
 
-            results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
-        return results
+            merged = rerank(query, merged, model_name=self._reranker_model, top_k=top_k)
+        return merged
 
     # ------------------------------------------------------------------
     # Compact (compress memories)
@@ -372,12 +577,17 @@ class MemSearch:
 
         def _on_change(event_type: str, file_path: Path) -> None:
             try:
+                scope_name = self._resolve_scope_for_path(file_path)
+                if scope_name is None:
+                    logger.debug("Watcher event for %s ignored: not under any scope", file_path)
+                    return
+                store = self._stores[scope_name]
                 if event_type == "deleted":
-                    self._store.delete_by_source(str(file_path))
-                    summary = f"Removed chunks for {file_path}"
+                    store.delete_by_source(str(file_path))
+                    summary = f"[{scope_name}] removed chunks for {file_path}"
                 else:
-                    n = loop.run_until_complete(self.index_file(file_path))
-                    summary = f"Indexed {n} chunks from {file_path}"
+                    n = loop.run_until_complete(self.index_file_for_scope(file_path, scope_name))
+                    summary = f"[{scope_name}] indexed {n} chunks from {file_path}"
                 logger.info(summary)
                 if on_event is not None:
                     on_event(event_type, summary, file_path)
@@ -390,7 +600,11 @@ class MemSearch:
         fw_kwargs: dict[str, Any] = {}
         if debounce_ms is not None:
             fw_kwargs["debounce_ms"] = debounce_ms
-        watcher = FileWatcher(self._paths, _on_change, **fw_kwargs)
+        # Watch all scopes' paths, not just the default scope
+        all_paths: list[str] = list(self._paths)
+        for sc in self._extra_scopes:
+            all_paths.extend(sc.paths)
+        watcher = FileWatcher(all_paths, _on_change, **fw_kwargs)
         watcher.start()
         return watcher
 
@@ -404,7 +618,12 @@ class MemSearch:
 
     def close(self) -> None:
         """Release resources."""
-        self._store.close()
+        stores = getattr(self, "_stores", None)
+        if stores is not None:
+            for store in stores.values():
+                store.close()
+        elif (store := getattr(self, "_store", None)) is not None:
+            store.close()
 
     def __enter__(self) -> MemSearch:
         return self

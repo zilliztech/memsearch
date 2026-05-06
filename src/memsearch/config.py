@@ -71,6 +71,26 @@ class RerankerConfig:
 
 
 @dataclass
+class ScopeConfig:
+    """One additional memory scope. See [[scopes]] in TOML."""
+
+    name: str = ""
+    collection: str = ""
+    paths: list[str] = field(default_factory=list)
+    quota: int | None = None
+    uri: str = ""  # empty = inherit [milvus].uri
+    token: str = ""  # empty = inherit [milvus].token
+
+
+@dataclass
+class DefaultScopeConfig:
+    """Tunable settings for the default (single-collection) scope."""
+
+    name: str = "project"
+    quota: int | None = None
+
+
+@dataclass
 class LLMConfig:
     """LLM settings for plugin summarization and compact.
 
@@ -106,6 +126,8 @@ class MemSearchConfig:
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
+    default_scope: DefaultScopeConfig = field(default_factory=DefaultScopeConfig)
+    scopes: list[ScopeConfig] = field(default_factory=list)
 
 
 # -- Section name → dataclass mapping for typed reconstruction --
@@ -118,6 +140,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "reranker": RerankerConfig,
     "llm": LLMConfig,
     "prompts": PromptsConfig,
+    "default_scope": DefaultScopeConfig,
 }
 
 
@@ -131,6 +154,39 @@ class ConfigEnvVarError(KeyError):
     but allows the CLI layer to distinguish env-ref failures from unrelated
     dict-lookup bugs that should not be reported as configuration errors.
     """
+
+
+class ScopePathOverlapError(ValueError):
+    """Raised when two scopes have overlapping paths."""
+
+
+def validate_scope_paths(scopes: list[ScopeConfig]) -> None:
+    """Raise ScopePathOverlapError if any two scopes' paths overlap.
+
+    Path A overlaps path B if A is a parent of B (or vice versa). Read-only
+    scopes (empty paths) cannot conflict.
+    """
+    resolved: list[tuple[str, Path]] = []
+    for sc in scopes:
+        resolved.extend((sc.name, Path(p).expanduser().resolve()) for p in sc.paths)
+    for i, (name_a, path_a) in enumerate(resolved):
+        for name_b, path_b in resolved[i + 1 :]:
+            if name_a == name_b:
+                continue
+            if _is_parent_or_equal(path_a, path_b) or _is_parent_or_equal(path_b, path_a):
+                raise ScopePathOverlapError(
+                    f"Scope paths overlap: scope {name_a!r} path {path_a} conflicts with scope {name_b!r} path {path_b}"
+                )
+
+
+def _is_parent_or_equal(parent: Path, child: Path) -> bool:
+    if parent == child:
+        return True
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 def resolve_env_ref(value: str) -> str:
@@ -152,10 +208,17 @@ def resolve_env_ref(value: str) -> str:
 
 def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Walk a nested config dict and resolve all ``env:`` references."""
-    resolved = {}
+    resolved: dict[str, Any] = {}
     for key, val in d.items():
         if isinstance(val, dict):
             resolved[key] = _resolve_env_refs_in_dict(val)
+        elif isinstance(val, list):
+            resolved[key] = [
+                _resolve_env_refs_in_dict(item)
+                if isinstance(item, dict)
+                else (resolve_env_ref(item) if isinstance(item, str) and item.startswith(_ENV_PREFIX) else item)
+                for item in val
+            ]
         elif isinstance(val, str) and val.startswith(_ENV_PREFIX):
             resolved[key] = resolve_env_ref(val)
         else:
@@ -204,6 +267,18 @@ def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
         valid = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in section_data.items() if k in valid}
         kwargs[section_name] = cls(**filtered)
+
+    scopes_raw = d.get("scopes", [])
+    scopes: list[ScopeConfig] = []
+    if isinstance(scopes_raw, list):
+        valid_scope_keys = {f.name for f in fields(ScopeConfig)}
+        for entry in scopes_raw:
+            if not isinstance(entry, dict):
+                continue
+            filtered = {k: v for k, v in entry.items() if k in valid_scope_keys}
+            scopes.append(ScopeConfig(**filtered))
+    kwargs["scopes"] = scopes
+
     return MemSearchConfig(**kwargs)
 
 
@@ -245,6 +320,8 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
         from .embeddings import DEFAULT_MODELS
 
         cfg.embedding.model = DEFAULT_MODELS.get(cfg.embedding.provider, "")
+
+    validate_scope_paths(cfg.scopes)
 
     return cfg
 

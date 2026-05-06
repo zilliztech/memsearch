@@ -364,3 +364,91 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
     assert cfg.embedding.provider == "openai"
     assert cfg.milvus.collection == "memsearch_chunks"
     assert cfg.watch.debounce_ms == 1500
+
+
+def test_scope_config_defaults():
+    """ScopeConfig should have sensible defaults."""
+    from memsearch.config import ScopeConfig
+
+    sc = ScopeConfig(name="x", collection="c")
+    assert sc.name == "x"
+    assert sc.collection == "c"
+    assert sc.paths == []
+    assert sc.quota is None
+    assert sc.uri == ""
+    assert sc.token == ""
+
+
+def test_default_scope_config_defaults():
+    from memsearch.config import DefaultScopeConfig
+
+    ds = DefaultScopeConfig()
+    assert ds.name == "project"
+    assert ds.quota is None
+
+
+def test_memsearch_config_has_scopes_and_default_scope():
+    cfg = MemSearchConfig()
+    assert cfg.scopes == []
+    assert cfg.default_scope.name == "project"
+
+
+def test_resolve_config_loads_scopes_array(tmp_path, monkeypatch):
+    """[[scopes]] array-of-tables should round-trip into MemSearchConfig.scopes."""
+    import memsearch.config as cfg_mod
+
+    proj = tmp_path / ".memsearch.toml"
+    proj.write_text(
+        '[default_scope]\nname = "myproj"\nquota = 5\n\n'
+        '[[scopes]]\nname = "global"\ncollection = "ms_global"\n'
+        'paths = ["/tmp/g"]\nquota = 3\n\n'
+        '[[scopes]]\nname = "personal"\ncollection = "ms_personal"\n'
+        'paths = ["/tmp/p"]\n'
+    )
+    monkeypatch.setattr(cfg_mod, "PROJECT_CONFIG_PATH", proj)
+    monkeypatch.setattr(cfg_mod, "GLOBAL_CONFIG_PATH", tmp_path / "global-absent.toml")
+    cfg = cfg_mod.resolve_config()
+    assert cfg.default_scope.name == "myproj"
+    assert cfg.default_scope.quota == 5
+    assert len(cfg.scopes) == 2
+    assert cfg.scopes[0].name == "global"
+    assert cfg.scopes[0].collection == "ms_global"
+    assert cfg.scopes[0].paths == ["/tmp/g"]
+    assert cfg.scopes[0].quota == 3
+    assert cfg.scopes[1].name == "personal"
+    assert cfg.scopes[1].quota is None
+
+
+def test_validate_scope_paths_rejects_overlap(tmp_path):
+    from memsearch.config import ScopeConfig, ScopePathOverlapError, validate_scope_paths
+
+    a = tmp_path / "shared"
+    a.mkdir()
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=[str(a)]),
+        ScopeConfig(name="b", collection="cb", paths=[str(a / "sub")]),
+    ]
+    with pytest.raises(ScopePathOverlapError) as exc:
+        validate_scope_paths(scopes)
+    assert "a" in str(exc.value) and "b" in str(exc.value)
+
+
+def test_validate_scope_paths_allows_disjoint(tmp_path):
+    from memsearch.config import ScopeConfig, validate_scope_paths
+
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=[str(tmp_path / "a")]),
+        ScopeConfig(name="b", collection="cb", paths=[str(tmp_path / "b")]),
+    ]
+    validate_scope_paths(scopes)  # must not raise
+
+
+def test_validate_scope_paths_skips_empty_paths():
+    """Read-only scopes (no paths) cannot conflict with anything."""
+    from memsearch.config import ScopeConfig, validate_scope_paths
+
+    scopes = [
+        ScopeConfig(name="a", collection="ca", paths=["/tmp/foo"]),
+        ScopeConfig(name="b", collection="cb", paths=[]),  # read-only
+    ]
+    validate_scope_paths(scopes)
