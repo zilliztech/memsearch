@@ -110,6 +110,7 @@ if command -v claude &>/dev/null; then
     fi
   fi
   SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
+    --strict-mcp-config \
     --model "$SUMMARIZE_MODEL" \
     --no-session-persistence \
     --no-chrome \
