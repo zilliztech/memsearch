@@ -351,20 +351,24 @@ def build_turns(
             continue
 
         role = msg_data.get("role", "unknown")
+        parent_id = msg_data.get("parentID")
+        time_created = int(row["time_created"])
+        finish = msg_data.get("finish")
         message_text = extract_message_text(conn, row["id"]).strip()
-        if not message_text:
-            continue
-
-        message = OpenCodeMessage(
-            id=row["id"],
-            role=role,
-            parent_id=msg_data.get("parentID"),
-            time_created=int(row["time_created"]),
-            finish=msg_data.get("finish"),
-            text=message_text,
-        )
 
         if role == "user":
+            if not message_text:
+                continue
+
+            message = OpenCodeMessage(
+                id=row["id"],
+                role=role,
+                parent_id=parent_id,
+                time_created=time_created,
+                finish=finish,
+                text=message_text,
+            )
+
             if current is not None:
                 current.complete = _is_complete(current)
                 turns.append(current)
@@ -386,8 +390,21 @@ def build_turns(
             continue
 
         if role == "assistant" and current is not None:
-            if message.parent_id and message.parent_id not in current_message_ids:
+            if parent_id and parent_id not in current_message_ids:
                 continue
+
+            if not message_text:
+                current_message_ids.add(row["id"])
+                continue
+
+            message = OpenCodeMessage(
+                id=row["id"],
+                role=role,
+                parent_id=parent_id,
+                time_created=time_created,
+                finish=finish,
+                text=message_text,
+            )
 
             current.messages.append(message)
             current_message_ids.add(message.id)

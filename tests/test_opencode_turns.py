@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sqlite3
 import sys
@@ -205,6 +206,38 @@ def test_build_turns_keeps_assistant_descendants_in_same_turn(tmp_path: Path) ->
     assert turns[0].assistant_message_count == 2
     assert turns[0].complete is True
     assert [message.id for message in turns[0].messages] == ["u1", "a1", "a2"]
+
+    conn.close()
+
+
+def test_build_turns_keeps_descendants_through_textless_assistant_nodes(tmp_path: Path) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_textless_descendants"
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Investigate the failure")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="tool-calls")
+    _insert_message(
+        conn,
+        "a2",
+        session_id,
+        120,
+        "assistant",
+        parent_id="a1",
+        finish="stop",
+        text="Found the root cause",
+    )
+    _insert_message(conn, "u2", session_id, 130, "user", text="Apply the fix")
+    conn.commit()
+
+    turns = build_turns(conn, session_id)
+
+    assert len(turns) == 2
+    assert turns[0].turn_id == "u1"
+    assert turns[0].assistant_message_count == 1
+    assert turns[0].complete is True
+    assert [message.id for message in turns[0].messages] == ["u1", "a2"]
+    assert "Found the root cause" in turns[0].render()
 
     conn.close()
 
