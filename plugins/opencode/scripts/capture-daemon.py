@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -39,6 +40,16 @@ from opencode_turns import (
 )
 
 _ANCHOR_RE = re.compile(r"<!-- session:([^ ]+) turn:([^ ]+) db:")
+_TAIL_TURN_QUIET_PERIOD_MS = 300_000
+
+
+class TailTurnObservation:
+    __slots__ = ("fingerprint", "stable_since_ms", "turn_id")
+
+    def __init__(self, turn_id: str, fingerprint: str, stable_since_ms: int) -> None:
+        self.turn_id = turn_id
+        self.fingerprint = fingerprint
+        self.stable_since_ms = stable_since_ms
 
 
 def split_memsearch_cmd(memsearch_cmd: str) -> list[str]:
@@ -304,6 +315,69 @@ def get_next_turn_index(conn: sqlite3.Connection, session_id: str) -> int:
     return int(row["max_turn_index"]) + 1
 
 
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _compute_turn_fingerprint(turn) -> str:
+    payload = {
+        "turn_id": turn.turn_id,
+        "last_message_id": turn.last_message_id,
+        "message_count": turn.message_count,
+        "assistant_message_count": turn.assistant_message_count,
+        "complete": turn.complete,
+        "messages": [
+            {
+                "id": message.id,
+                "role": message.role,
+                "parent_id": message.parent_id,
+                "time_created": message.time_created,
+                "finish": message.finish,
+                "text": message.text,
+            }
+            for message in turn.messages
+        ],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+
+
+def _tail_turn_is_stable_for_capture(
+    turn,
+    tail_turn_cache: dict[str, TailTurnObservation],
+) -> bool:
+    if not turn.complete:
+        tail_turn_cache.pop(turn.session_id, None)
+        return False
+
+    fingerprint = _compute_turn_fingerprint(turn)
+    now_ms = _now_ms()
+    observed = tail_turn_cache.get(turn.session_id)
+    if observed is None or observed.turn_id != turn.turn_id or observed.fingerprint != fingerprint:
+        tail_turn_cache[turn.session_id] = TailTurnObservation(
+            turn_id=turn.turn_id,
+            fingerprint=fingerprint,
+            stable_since_ms=now_ms,
+        )
+        return False
+
+    return now_ms - observed.stable_since_ms >= _TAIL_TURN_QUIET_PERIOD_MS
+
+
+def _turn_ready_for_capture(
+    turn,
+    is_tail_turn: bool,
+    tail_turn_cache: dict[str, TailTurnObservation],
+) -> bool:
+    # A non-tail turn has already been closed by a later user message.
+    if not is_tail_turn:
+        tail_turn_cache.pop(turn.session_id, None)
+        return True
+
+    # The final turn must stay textually stable for a quiet window before capture.
+    return _tail_turn_is_stable_for_capture(turn, tail_turn_cache)
+
+
 def capture_session_turns(
     conn: sqlite3.Connection,
     turn_db: sqlite3.Connection,
@@ -312,11 +386,14 @@ def capture_session_turns(
     small_model: str,
     memsearch_cmd: str,
     db_path: str,
+    tail_turn_cache: dict[str, TailTurnObservation] | None = None,
 ) -> bool:
     """Capture all newly completed turns for a single session."""
     state = load_turn_state(turn_db, session_id)
     captured_any = False
     next_turn_index = get_next_turn_index(turn_db, session_id)
+    if tail_turn_cache is None:
+        tail_turn_cache = {}
 
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
@@ -331,8 +408,9 @@ def capture_session_turns(
         after_message_id=after_message_id,
     )
 
-    for turn in turns:
-        if not turn.complete:
+    for index, turn in enumerate(turns):
+        is_tail_turn = index == len(turns) - 1
+        if not _turn_ready_for_capture(turn, is_tail_turn, tail_turn_cache):
             break
 
         saved_turn_index = load_saved_turn_index(turn_db, session_id, turn.turn_id)
@@ -362,6 +440,7 @@ def capture_session_turns(
         state.last_completed_message_id = turn.last_message_id
         state.last_completed_turn_id = turn.turn_id
         save_turn_state(turn_db, state)
+        tail_turn_cache.pop(session_id, None)
         captured_any = True
 
     return captured_any
@@ -397,6 +476,7 @@ def main() -> None:
 
     small_model = get_small_model()
     turn_db = open_turn_db(args.project_dir)
+    tail_turn_cache: dict[str, TailTurnObservation] = {}
 
     while True:
         any_new = False
@@ -414,6 +494,7 @@ def main() -> None:
                         small_model,
                         args.memsearch_cmd,
                         db_path,
+                        tail_turn_cache,
                     )
                     or any_new
                 )

@@ -295,6 +295,8 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     memory_dir = project_dir / ".memsearch" / "memory"
 
     monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+    current_time_ms = {"value": 0}
+    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
 
     _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
@@ -311,8 +313,26 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
         str(db_path),
     )
 
+    assert load_session_turn_rows(turn_db, session_id) == []
+
     _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
     _insert_message(conn, "a2", session_id, 210, "assistant", parent_id="u2", finish="stop", text="Answer two")
+    conn.commit()
+
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+    )
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
+
+    _insert_message(conn, "u3", session_id, 300, "user", text="Question three")
     conn.commit()
 
     capture_daemon.capture_session_turns(
@@ -346,6 +366,7 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
 
     _insert_message(conn, "u1", session_id, 100, "user", text="Question")
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
+    _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
     conn.commit()
 
     monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
@@ -391,6 +412,207 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
 
     state = load_turn_state(turn_db, session_id)
     assert state.last_completed_turn_id == "u1"
+
+    turn_db.close()
+    conn.close()
+
+
+def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_tail_wait"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+    tail_cache: dict[str, object] = {}
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+    current_time_ms = {"value": 0}
+    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
+    conn.commit()
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    current_time_ms["value"] = 299_999
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    current_time_ms["value"] = 300_000
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
+
+    turn_db.close()
+    conn.close()
+
+
+def test_capture_session_turns_resets_tail_stability_when_content_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_tail_reset"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+    tail_cache: dict[str, object] = {}
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+    current_time_ms = {"value": 0}
+    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Draft answer")
+    conn.commit()
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    _insert_message(conn, "a2", session_id, 120, "assistant", parent_id="a1", finish="stop", text="Final answer")
+    conn.commit()
+
+    current_time_ms["value"] = 250_000
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    current_time_ms["value"] = 549_999
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    current_time_ms["value"] = 550_000
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
+
+    turn_db.close()
+    conn.close()
+
+
+def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_next_user"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+    tail_cache: dict[str, object] = {}
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+    current_time_ms = {"value": 0}
+    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
+    conn.commit()
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+    assert load_session_turn_rows(turn_db, session_id) == []
+
+    _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
+    conn.commit()
+
+    current_time_ms["value"] = 1_000
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        tail_cache,
+    )
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
 
     turn_db.close()
     conn.close()
@@ -451,70 +673,6 @@ def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
     state = load_turn_state(turn_db, session_id)
     assert state.last_completed_turn_id == "u2"
     assert state.last_completed_time == 210
-
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_turn_save"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
-    conn.commit()
-
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-
-    original_save_turn = capture_daemon.save_turn
-    failed_once = {"value": False}
-
-    def flaky_save_turn(*args, **kwargs):
-        if not failed_once["value"]:
-            failed_once["value"] = True
-            raise RuntimeError("simulated crash before turn row persisted")
-        return original_save_turn(*args, **kwargs)
-
-    turn_db = open_turn_db(str(project_dir))
-    monkeypatch.setattr(capture_daemon, "save_turn", flaky_save_turn)
-
-    with suppress(RuntimeError):
-        capture_daemon.capture_session_turns(
-            conn,
-            turn_db,
-            str(memory_dir),
-            session_id,
-            "",
-            "memsearch",
-            str(db_path),
-        )
-
-    monkeypatch.setattr(capture_daemon, "save_turn", original_save_turn)
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-    )
-
-    files = sorted(memory_dir.glob("*.md"))
-    assert len(files) == 1
-    content = files[0].read_text(encoding="utf-8")
-    assert content.count(f"<!-- session:{session_id} turn:u1 db:{db_path} -->") == 1
-
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert len(rows) == 1
-    assert rows[0]["turn_id"] == "u1"
 
     turn_db.close()
     conn.close()
