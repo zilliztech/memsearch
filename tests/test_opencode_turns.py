@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import io
 import json
 import sqlite3
 import sys
@@ -395,9 +394,69 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
 
     turn_db.close()
     conn.close()
+def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_upgrade"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+    memory_dir.mkdir(parents=True)
+    legacy_state_file = project_dir / ".memsearch" / ".last_msg_time"
+    legacy_state_file.write_text("150", encoding="utf-8")
+
+    today = capture_daemon.datetime.now().strftime("%Y-%m-%d")
+    legacy_memory = memory_dir / f"{today}.md"
+    legacy_memory.write_text(
+        f"# {today}\n\n"
+        "## Session 00:00\n\n"
+        "### 00:00\n"
+        f"<!-- session:{session_id} db:{db_path} -->\n"
+        "- legacy summary for turn u1\n\n",
+        encoding="utf-8",
+    )
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
+    _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
+    _insert_message(conn, "a2", session_id, 210, "assistant", parent_id="u2", finish="stop", text="Answer two")
+    _insert_message(conn, "u3", session_id, 300, "user", text="Question three")
+    conn.commit()
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+    )
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert [row["turn_id"] for row in rows] == ["u2"]
+
+    content = legacy_memory.read_text(encoding="utf-8")
+    assert f"<!-- session:{session_id} db:{db_path} -->" in content
+    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" not in content
+    assert f"<!-- session:{session_id} turn:u2 db:{db_path} -->" in content
+    assert "Question two" in content
+
+    state = load_turn_state(turn_db, session_id)
+    assert state.last_completed_turn_id == "u2"
+    assert state.last_completed_time == 210
+
+    turn_db.close()
+    conn.close()
 
 
-def test_capture_session_turns_repairs_sidecar_after_partial_turn_save_failure(
+def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
     tmp_path: Path,
     monkeypatch,
 ) -> None:

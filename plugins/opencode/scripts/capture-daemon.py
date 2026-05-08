@@ -18,6 +18,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -36,6 +37,8 @@ from opencode_turns import (
     save_turn,
     save_turn_state,
 )
+
+_ANCHOR_RE = re.compile(r"<!-- session:([^ ]+) turn:([^ ]+) db:")
 
 
 def split_memsearch_cmd(memsearch_cmd: str) -> list[str]:
@@ -186,7 +189,49 @@ def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     return [row[0] for row in sessions]
 
 
-def write_capture(memory_dir: str, turn_text: str, session_id: str, turn_id: str, db_path: str = "") -> str:
+def _load_legacy_last_msg_time(project_dir: str) -> int:
+    """Read the pre-sidecar capture checkpoint for upgrade compatibility."""
+    path = Path(project_dir) / ".memsearch" / ".last_msg_time"
+    try:
+        value = int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+    return max(value, 0)
+
+
+def _make_capture_anchor_key(session_id: str, turn_id: str) -> tuple[str, str]:
+    return (session_id, turn_id)
+
+
+def load_capture_anchor_cache(memory_dir: str) -> set[tuple[str, str]]:
+    if not os.path.isdir(memory_dir):
+        return set()
+
+    anchor_cache: set[tuple[str, str]] = set()
+    for name in os.listdir(memory_dir):
+        if not name.endswith(".md"):
+            continue
+
+        path = os.path.join(memory_dir, name)
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        for session_id, turn_id in _ANCHOR_RE.findall(text):
+            anchor_cache.add(_make_capture_anchor_key(session_id, turn_id))
+
+    return anchor_cache
+
+
+def write_capture(
+    memory_dir: str,
+    turn_text: str,
+    session_id: str,
+    turn_id: str,
+    db_path: str = "",
+    anchor_cache: set[tuple[str, str]] | None = None,
+) -> str:
     """Write a captured turn to the daily memory file."""
     os.makedirs(memory_dir, exist_ok=True)
 
@@ -203,6 +248,9 @@ def write_capture(memory_dir: str, turn_text: str, session_id: str, turn_id: str
 
     with open(memory_file, "a", encoding="utf-8") as f:
         f.write(entry)
+
+    if session_id and anchor_cache is not None:
+        anchor_cache.add(_make_capture_anchor_key(session_id, turn_id))
 
     return memory_file
 
@@ -271,6 +319,10 @@ def capture_session_turns(
     next_turn_index = get_next_turn_index(turn_db, session_id)
 
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
+    if after_time is None:
+        legacy_after_time = _load_legacy_last_msg_time(str(Path(memory_dir).resolve().parent.parent))
+        if legacy_after_time > 0:
+            after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None
     turns = build_turns(
         conn,
