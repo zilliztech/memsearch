@@ -10,7 +10,7 @@ The plugin registers three tools via OpenCode's `tool()` API. All tools are avai
 |------|-----------|-------------|
 | `memory_search` | `query` (string), `top_k` (number, optional) | Semantic search over indexed memories via `memsearch search --json-output`. Returns top-K relevant chunks with scores, dates, and content snippets. Powered by Milvus hybrid search (BM25 + dense vectors + RRF reranking). |
 | `memory_get` | `chunk_hash` (string) | Expand a chunk to full markdown section via `memsearch expand`. Shows the complete section with surrounding context, session anchors, and source file metadata. |
-| `memory_transcript` | `session_id` (string), `limit` (number, optional) | Read original conversation from OpenCode's SQLite database via `parse-transcript.py`. Returns formatted dialogue with `[Human]` and `[Assistant]` labels, including tool call details. |
+| `memory_transcript` | `session_id` (string), `turn_id` (string, optional), `context` (number, optional), `limit` (number, optional) | Read original conversation from OpenCode's SQLite database via `parse-transcript.py`. When a turn cursor is available, return that turn plus surrounding context. Otherwise return the latest turns. |
 
 ---
 
@@ -74,7 +74,7 @@ graph TD
 **L2 -- memory_get:** LLM calls `memory_get("a1b2c3...")`:
 ```markdown
 ### 15:45
-<!-- session:ses_xyz789 db:~/.local/share/opencode/opencode.db -->
+<!-- session:ses_xyz789 turn:msg_xyz789 db:~/.local/share/opencode/opencode.db -->
 - User reported Alembic migration failing on user_preferences table
 - OpenCode found a missing nullable=True on the email column
 - Fixed by adding server_default="" to the column definition

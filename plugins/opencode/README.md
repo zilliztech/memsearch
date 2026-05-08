@@ -62,6 +62,7 @@ OpenCode Session
     ├── chat.message hook ──→ Detect turn completion
     │                              │
     │                              ├── Extract last turn from SQLite
+    │                              ├── Persist turn metadata to .memsearch/opencode-turns.db
     │                              ├── Summarize via LLM (third-person notes)
     │                              └── Append to .memsearch/memory/YYYY-MM-DD.md
     │                                     │
@@ -106,7 +107,7 @@ We discussed the authentication flow before, what was the approach?
 |------|-------------|
 | `memory_search` | Semantic search over past memories. Returns ranked chunks. |
 | `memory_get` | Expand a chunk hash to see the full markdown section. |
-| `memory_transcript` | Read original conversation from OpenCode SQLite DB. |
+| `memory_transcript` | Read original conversation from OpenCode SQLite DB, optionally centered on a turn cursor. |
 
 ## Memory Files
 
@@ -127,7 +128,7 @@ Each file contains timestamped entries with bullet-point summaries:
 ## Session 14:30
 
 ### 14:30
-<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
+<!-- session:ses_abc123 turn:msg_123abc db:~/.local/share/opencode/opencode.db -->
 - User asked about the authentication flow.
 - Assistant explained the OAuth2 implementation in auth.ts.
 - Assistant modified the token refresh logic in refresh.ts.

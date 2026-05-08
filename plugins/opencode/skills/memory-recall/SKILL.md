@@ -25,7 +25,8 @@ Search for memories relevant to: $ARGUMENTS
 3. **Expand**: For each relevant result, run `memsearch expand <chunk_hash> --collection <collection name above>` to get the full markdown section with surrounding context.
 
 4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session info), and the original conversation seems critical:
-   - If the anchor contains `db:`, run `python3 __INSTALL_DIR__/scripts/parse-transcript.py <session_id> --limit 10` to retrieve the original conversation turns from the SQLite database.
+   - If the anchor contains `turn:`, run `python3 __INSTALL_DIR__/scripts/parse-transcript.py <session_id> --turn <turn_id> --context 3` to retrieve the original conversation around that turn.
+   - If the anchor only contains `db:` / `session:` with no turn cursor, run `python3 __INSTALL_DIR__/scripts/parse-transcript.py <session_id> --limit 10` to retrieve the most recent turns from the SQLite database.
    - If the anchor format is unfamiliar (e.g. `transcript:`, `rollout:` instead of `db:`), try reading the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
 
 5. **Return results**: Output a curated summary of the most relevant memories. Be concise — only include information that is genuinely useful for the user's current question.

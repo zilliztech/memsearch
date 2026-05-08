@@ -52,8 +52,8 @@ Unlike Claude Code and Codex (which use hook-based capture), OpenCode uses a **b
 OpenCode stores all conversations in a SQLite database (`~/.local/share/opencode/opencode.db`). The daemon polls this database directly, which means:
 
 - **No hook limitations** -- capture works regardless of which hooks OpenCode exposes
-- **Reliable detection** -- new turns are detected by tracking `last_msg_time`, not by fragile event timing
-- **Crash resilience** -- state is persisted to `.memsearch/.last_msg_time`, so daemon restarts don't re-capture old turns
+- **Reliable detection** -- new turns are detected by tracking a per-session completed-turn cursor, not by fragile event timing
+- **Crash resilience** -- state is persisted to `.memsearch/opencode-turns.db`, so daemon restarts don't re-capture old turns
 
 ### Daemon Flow
 
@@ -67,13 +67,13 @@ sequenceDiagram
 
     loop Every 10 seconds
         Daemon->>DB: Query sessions for project_dir
-        DB->>Daemon: Messages newer than last_msg_time
+        DB->>Daemon: Messages newer than the last completed turn cursor
         alt New turns found
-            Daemon->>Daemon: Group into user+assistant pairs
+            Daemon->>Daemon: Group into turns via user message + assistant descendants
             Daemon->>LLM: Summarize turn (isolated config)
             LLM->>Daemon: 2-6 bullet points
             Daemon->>File: Append with session anchor
-            Daemon->>Daemon: Update last_msg_time (persist to disk)
+            Daemon->>Daemon: Update turn cursor (persist to sidecar DB)
             Daemon->>Index: memsearch index (background)
         end
     end
@@ -81,12 +81,12 @@ sequenceDiagram
 
 Step by step:
 
-1. **Poll SQLite** -- queries the `session` and `message` tables for the current project directory, looking for messages newer than `last_msg_time`
-2. **Group into turns** -- pairs consecutive `user` + `assistant` messages into turns
+1. **Poll SQLite** -- queries the `session` and `message` tables for the current project directory, looking for messages newer than the last completed turn cursor
+2. **Group into turns** -- groups each `user` message with its assistant/tool descendants until the next `user` message
 3. **Extract text** -- reads message `parts` (text content, tool calls with names/paths) into a readable format
 4. **Summarize** -- calls `opencode run` with the turn text and a third-person summarization prompt
-5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID db:PATH -->` anchors
-6. **Persist state** -- writes `last_msg_time` to `.memsearch/.last_msg_time` so restarts don't re-capture
+5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID turn:ID db:PATH -->` anchors
+6. **Persist state** -- writes the completed-turn cursor to `.memsearch/opencode-turns.db` so restarts don't re-capture
 7. **Re-index** -- triggers `memsearch index` in the background
 
 ### LLM Summarization with Isolation
@@ -97,8 +97,8 @@ The daemon summarizes turns via `opencode run` -- but it must avoid triggering t
 result = subprocess.run(
     ["opencode", "run", "-m", small_model, prompt],
     env={
-        "XDG_CONFIG_HOME": "/tmp/opencode-memsearch-summarize",
-        "XDG_DATA_HOME": "/tmp/opencode-memsearch-summarize/data",
+        "XDG_CONFIG_HOME": "~/.codex/tmp/opencode-memsearch-summarize",
+        "XDG_DATA_HOME": "~/.codex/tmp/opencode-memsearch-summarize/data",
         "MEMSEARCH_NO_WATCH": "1",
     },
 )
@@ -157,14 +157,14 @@ your-project/.memsearch/memory/
 ## Session 14:30
 
 ### 14:30
-<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
+<!-- session:ses_abc123 turn:msg_123abc db:~/.local/share/opencode/opencode.db -->
 - User asked about authentication flow in the Express API
 - OpenCode explained the OAuth2 implementation in auth.ts
 - OpenCode modified token refresh logic in refresh.ts to handle expired tokens
 - Added error handling for revoked refresh tokens
 
 ### 15:15
-<!-- session:ses_abc123 db:~/.local/share/opencode/opencode.db -->
+<!-- session:ses_abc123 turn:msg_456def db:~/.local/share/opencode/opencode.db -->
 - User reported 500 error on /api/users endpoint
 - OpenCode traced the issue to a missing null check in userController.ts
 - OpenCode added optional chaining and a 404 response for missing users
@@ -173,14 +173,14 @@ your-project/.memsearch/memory/
 ## Session 17:00
 
 ### 17:00
-<!-- session:ses_def456 db:~/.local/share/opencode/opencode.db -->
+<!-- session:ses_def456 turn:msg_789ghi db:~/.local/share/opencode/opencode.db -->
 - User asked to refactor the middleware chain for better error handling
 - OpenCode created a centralized error handler in middleware/errorHandler.ts
 - Removed try/catch blocks from individual route handlers
 - Added structured error logging with request ID correlation
 ```
 
-The `<!-- session:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database.
+The `<!-- session:... turn:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database.
 
 ---
 
