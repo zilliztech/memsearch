@@ -53,7 +53,7 @@ OpenCode stores all conversations in a SQLite database (`~/.local/share/opencode
 
 - **No hook limitations** -- capture works regardless of which hooks OpenCode exposes
 - **Reliable detection** -- new turns are detected by tracking a per-session completed-turn cursor, not by fragile event timing
-- **Crash resilience** -- state is persisted to `.memsearch/opencode-turns.db`, so daemon restarts don't re-capture old turns
+- **Crash resilience** -- derived state is persisted to `.memsearch/opencode-turns.db`, so daemon restarts can replay safely without duplicating captured markdown
 
 ### Daemon Flow
 
@@ -86,8 +86,13 @@ Step by step:
 3. **Extract text** -- reads message `parts` (text content, tool calls with names/paths) into a readable format
 4. **Summarize** -- calls `opencode run` with the turn text and a third-person summarization prompt
 5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID turn:ID db:PATH -->` anchors
-6. **Persist state** -- writes the completed-turn cursor to `.memsearch/opencode-turns.db` so restarts don't re-capture
+6. **Persist state** -- writes the completed-turn cursor and derived turn ordering to `.memsearch/opencode-turns.db`
 7. **Re-index** -- triggers `memsearch index` in the background
+
+OpenCode SQLite remains the source of truth for original transcript reads. The
+sidecar database is derived capture state only. If markdown append succeeds and
+the sidecar write fails later, the next daemon replay uses the existing
+session+turn anchor to avoid duplicate memory entries and repair the sidecar.
 
 ### LLM Summarization with Isolation
 
@@ -180,7 +185,7 @@ your-project/.memsearch/memory/
 - Added structured error logging with request ID correlation
 ```
 
-The `<!-- session:... turn:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database.
+The `<!-- session:... turn:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database. The sidecar database is not required for transcript reads.
 
 ---
 

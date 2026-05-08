@@ -8,7 +8,7 @@ Options:
   --limit N        Max number of turns to return when no turn is targeted (default: 20)
   --turn TURN_ID   Return the target turn plus surrounding context turns
   --context N      Number of turns before/after the target turn (default: 3)
-  --project-dir    OpenCode project directory (reserved for sidecar cache lookup)
+  --project-dir    OpenCode project directory (unused for transcript reads; kept for tool compatibility)
 
 The script reads from the OpenCode SQLite database at:
   ~/.local/share/opencode/opencode.db
@@ -88,12 +88,12 @@ def main() -> None:
     parser.add_argument(
         "--project-dir",
         default=os.getcwd(),
-        help="OpenCode project directory (reserved for the turn sidecar cache)",
+        help="OpenCode project directory (unused for transcript reads; kept for tool compatibility)",
     )
     args = parser.parse_args()
 
-    # The turn sidecar is currently maintained by the capture daemon. The raw
-    # OpenCode SQLite database remains the source of truth for transcript reads.
+    # The capture daemon may maintain a turn sidecar for replay-safe progress,
+    # but transcript reads always rebuild from the raw OpenCode SQLite database.
     parse_session(
         args.session_id,
         limit=args.limit,

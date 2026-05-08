@@ -10,7 +10,7 @@ The plugin registers three tools via OpenCode's `tool()` API. All tools are avai
 |------|-----------|-------------|
 | `memory_search` | `query` (string), `top_k` (number, optional) | Semantic search over indexed memories via `memsearch search --json-output`. Returns top-K relevant chunks with scores, dates, and content snippets. Powered by Milvus hybrid search (BM25 + dense vectors + RRF reranking). |
 | `memory_get` | `chunk_hash` (string) | Expand a chunk to full markdown section via `memsearch expand`. Shows the complete section with surrounding context, session anchors, and source file metadata. |
-| `memory_transcript` | `session_id` (string), `turn_id` (string, optional), `context` (number, optional), `limit` (number, optional) | Read original conversation from OpenCode's SQLite database via `parse-transcript.py`. When a turn cursor is available, return that turn plus surrounding context. Otherwise return the latest turns. |
+| `memory_transcript` | `session_id` (string), `turn_id` (string, optional), `context` (number, optional), `limit` (number, optional) | Read original conversation from OpenCode's SQLite database via `parse-transcript.py`. When a turn cursor is available, return that turn plus surrounding context. Otherwise return the latest turns. The sidecar DB is not required for these reads. |
 
 ---
 
@@ -54,6 +54,10 @@ graph TD
 | **L1: Search** | `memory_search` | Top-K chunk snippets with relevance scores | Starting point -- find potentially relevant memories |
 | **L2: Expand** | `memory_get` | Full markdown section with session anchors | When a snippet looks relevant but needs more context |
 | **L3: Transcript** | `memory_transcript` | Original conversation from OpenCode SQLite | When you need the exact exchange -- what was tried, what failed |
+
+`memory_transcript` rebuilds turns from the raw OpenCode SQLite database on
+demand. `.memsearch/opencode-turns.db` only stores derived capture checkpoints
+and stable turn ordering for the daemon.
 
 ### Real-World Example
 

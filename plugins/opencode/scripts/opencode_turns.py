@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Shared helpers for OpenCode transcript turn handling.
 
-This module keeps the OpenCode SQLite database as the source of truth and
-stores derived turn metadata in a small sidecar SQLite database under
-<project>/.memsearch/opencode-turns.db.
+The raw OpenCode SQLite database remains the source of truth for transcript
+content. This module also manages a small sidecar SQLite database under
+<project>/.memsearch/opencode-turns.db for derived capture checkpoints and
+stable turn ordering during replay.
 """
 
 from __future__ import annotations

@@ -109,6 +109,10 @@ We discussed the authentication flow before, what was the approach?
 | `memory_get` | Expand a chunk hash to see the full markdown section. |
 | `memory_transcript` | Read original conversation from OpenCode SQLite DB, optionally centered on a turn cursor. |
 
+`<project>/.memsearch/opencode-turns.db` stores derived capture checkpoints and
+turn ordering only. It is rebuildable state, not the source of truth for
+transcript recall.
+
 ## Memory Files
 
 Memory is stored as markdown in `<project>/.memsearch/memory/`:
@@ -158,7 +162,7 @@ Leave it empty or unset to keep the current `small_model` / plugin default behav
 
 2. **Index**: The markdown files are indexed by memsearch into a Milvus collection (Milvus Lite by default, runs in-process).
 
-3. **Recall**: When the assistant needs historical context, it calls `memory_search` to find relevant chunks. Results can be expanded with `memory_get` or drilled into with `memory_transcript`.
+3. **Recall**: When the assistant needs historical context, it calls `memory_search` to find relevant chunks. Results can be expanded with `memory_get` or drilled into with `memory_transcript`, which reads the original transcript from OpenCode SQLite.
 
 4. **Cold-start**: At session start, recent memory bullets are injected into the system prompt so the assistant has immediate context.
 

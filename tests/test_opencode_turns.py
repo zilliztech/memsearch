@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sqlite3
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent / "plugins" / "opencode" / "scripts"
@@ -329,7 +330,7 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
     turn_db = open_turn_db(str(project_dir))
     monkeypatch.setattr(capture_daemon, "save_turn_state", flaky_save_turn_state)
 
-    try:
+    with suppress(RuntimeError):
         capture_daemon.capture_session_turns(
             conn,
             turn_db,
@@ -339,8 +340,6 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
             "memsearch",
             str(db_path),
         )
-    except RuntimeError:
-        pass
 
     monkeypatch.setattr(capture_daemon, "save_turn_state", original_save_turn_state)
     capture_daemon.capture_session_turns(
@@ -360,6 +359,117 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
 
     state = load_turn_state(turn_db, session_id)
     assert state.last_completed_turn_id == "u1"
+
+    turn_db.close()
+    conn.close()
+
+
+def test_capture_session_turns_repairs_sidecar_after_partial_turn_save_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_turn_save"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
+    conn.commit()
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+
+    original_save_turn = capture_daemon.save_turn
+    failed_once = {"value": False}
+
+    def flaky_save_turn(*args, **kwargs):
+        if not failed_once["value"]:
+            failed_once["value"] = True
+            raise RuntimeError("simulated crash before turn row persisted")
+        return original_save_turn(*args, **kwargs)
+
+    turn_db = open_turn_db(str(project_dir))
+    monkeypatch.setattr(capture_daemon, "save_turn", flaky_save_turn)
+
+    with suppress(RuntimeError):
+        capture_daemon.capture_session_turns(
+            conn,
+            turn_db,
+            str(memory_dir),
+            session_id,
+            "",
+            "memsearch",
+            str(db_path),
+        )
+
+    monkeypatch.setattr(capture_daemon, "save_turn", original_save_turn)
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+    )
+
+    files = sorted(memory_dir.glob("*.md"))
+    assert len(files) == 1
+    content = files[0].read_text(encoding="utf-8")
+    assert content.count(f"<!-- session:{session_id} turn:u1 db:{db_path} -->") == 1
+
+    rows = load_session_turn_rows(turn_db, session_id)
+    assert len(rows) == 1
+    assert rows[0]["turn_id"] == "u1"
+
+    turn_db.close()
+    conn.close()
+
+
+def test_capture_session_turns_does_not_advance_sidecar_when_markdown_write_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_write_fail"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
+    conn.commit()
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        capture_daemon,
+        "write_capture",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+
+    turn_db = open_turn_db(str(project_dir))
+
+    with suppress(OSError):
+        capture_daemon.capture_session_turns(
+            conn,
+            turn_db,
+            str(memory_dir),
+            session_id,
+            "",
+            "memsearch",
+            str(db_path),
+        )
+
+    state = load_turn_state(turn_db, session_id)
+    rows = load_session_turn_rows(turn_db, session_id)
+
+    assert state.last_completed_turn_id == ""
+    assert state.last_completed_message_id == ""
+    assert state.last_completed_time == 0
+    assert rows == []
 
     turn_db.close()
     conn.close()
