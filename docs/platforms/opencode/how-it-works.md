@@ -106,7 +106,7 @@ result = subprocess.run(
 
 The isolated `XDG_CONFIG_HOME` contains a copy of `opencode.json` (for provider/model config) but **no `plugins/` directory** -- so the memsearch plugin doesn't load in the summarization subprocess. The `MEMSEARCH_NO_WATCH` env var provides an additional guard.
 
-The daemon also reads `small_model` from `opencode.json` config, using a lighter model for summarization when available.
+The daemon also reads `small_model` from `opencode.json` config, using a lighter model for summarization when available. Set `plugins.opencode.summarize.model` to override only this capture model; empty or unset keeps the current `small_model` / plugin default behavior. This setting does not fall back to `llm.model`.
 
 ### Daemon Self-Management
 

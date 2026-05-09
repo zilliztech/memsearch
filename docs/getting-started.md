@@ -565,9 +565,21 @@ llm_provider = "openai"
 llm_model = ""
 prompt_file = ""
 
-[llm]                        # LLM settings for compact & plugin summarization
-provider = ""                # empty = plugin decides; "openai"/"anthropic"/"gemini"
+[llm]                        # LLM settings for memsearch compact
+provider = ""                # empty = compact defaults to openai
 model = ""
+
+[plugins.claude-code.summarize] # optional plugin-specific summarize model overrides
+model = ""                    # empty = Claude Code plugin default
+
+[plugins.codex.summarize]
+model = ""                    # empty = Codex plugin default
+
+[plugins.opencode.summarize]
+model = ""                    # empty = OpenCode small_model/default behavior
+
+[plugins.openclaw.summarize]
+model = ""                    # empty = OpenClaw default agent model
 
 [prompts]                    # custom prompt template files
 compact = ""                 # for memsearch compact

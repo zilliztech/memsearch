@@ -178,6 +178,18 @@ prompt_file = ""
 provider = ""
 model = ""
 
+[plugins.claude-code.summarize]
+model = ""
+
+[plugins.codex.summarize]
+model = ""
+
+[plugins.opencode.summarize]
+model = ""
+
+[plugins.openclaw.summarize]
+model = ""
+
 [prompts]
 compact = ""
 summarize = ""
@@ -212,10 +224,14 @@ provider = "openai"
 | `compact.llm_provider` | string | `openai` | *(deprecated)* LLM provider for compact — use `llm.provider` instead |
 | `compact.llm_model` | string | `""` | *(deprecated)* LLM model — use `llm.model` instead |
 | `compact.prompt_file` | string | `""` | *(deprecated)* Prompt file — use `prompts.compact` instead |
-| `llm.provider` | string | `""` | LLM provider (empty = plugin decides / compact defaults to openai) |
-| `llm.model` | string | `""` | LLM model override |
+| `llm.provider` | string | `""` | LLM provider for `memsearch compact` (empty = compact defaults to openai) |
+| `llm.model` | string | `""` | LLM model override for `memsearch compact` |
 | `llm.base_url` | string | `""` | OpenAI-compatible API base URL |
 | `llm.api_key` | string | `""` | API key (supports `env:VAR_NAME` syntax) |
+| `plugins.claude-code.summarize.model` | string | `""` | Claude Code plugin summarize model override (empty = plugin default) |
+| `plugins.codex.summarize.model` | string | `""` | Codex plugin summarize model override (empty = plugin default) |
+| `plugins.opencode.summarize.model` | string | `""` | OpenCode plugin summarize model override (empty = `small_model` / plugin default) |
+| `plugins.openclaw.summarize.model` | string | `""` | OpenClaw plugin summarize model override (empty = default agent model) |
 | `prompts.compact` | string | `""` | Custom prompt file for `memsearch compact` |
 | `prompts.summarize` | string | `""` | Custom prompt file for plugin session summarization |
 

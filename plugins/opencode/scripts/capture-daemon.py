@@ -11,17 +11,24 @@ extracts the last turn, summarizes it as bullet points, and writes to
 It also triggers memsearch indexing after writing.
 """
 
-import sqlite3
-import json
-import sys
-import os
-import time
-import shutil
-import subprocess
 import argparse
+import contextlib
+import json
+import os
+import shlex
+import shutil
 import signal
+import sqlite3
+import subprocess
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
+
+
+def split_memsearch_cmd(memsearch_cmd):
+    """Split the configured memsearch command preserving quoted arguments."""
+    return shlex.split(memsearch_cmd)
 
 
 def get_small_model():
@@ -41,6 +48,20 @@ def get_small_model():
     return ""
 
 
+def get_plugin_summarize_model(memsearch_cmd=None):
+    """Read the memsearch OpenCode summarize model override."""
+    if not memsearch_cmd:
+        return ""
+    try:
+        result = subprocess.run(
+            [*split_memsearch_cmd(memsearch_cmd), "config", "get", "plugins.opencode.summarize.model"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
 def ensure_isolated_config():
     """Create isolated config dir without plugins/ to prevent recursion."""
     isolated = "/tmp/opencode-memsearch-summarize/opencode"
@@ -48,6 +69,9 @@ def ensure_isolated_config():
     # Copy opencode.json (provider config) but NOT plugins/
     src = os.path.expanduser("~/.config/opencode/opencode.json")
     dst = os.path.join(isolated, "opencode.json")
+    if os.path.islink(dst) or (os.path.lexists(dst) and not os.path.isfile(dst)):
+        with contextlib.suppress(OSError):
+            os.remove(dst)
     if os.path.exists(src) and not os.path.exists(dst):
         shutil.copy2(src, dst)
     return os.path.dirname(isolated)  # /tmp/opencode-memsearch-summarize
@@ -59,7 +83,7 @@ def _load_summarize_prompt(agent_name, memsearch_cmd=None):
     if memsearch_cmd:
         try:
             result = subprocess.run(
-                memsearch_cmd.split() + ["config", "get", "prompts.summarize"],
+                [*split_memsearch_cmd(memsearch_cmd), "config", "get", "prompts.summarize"],
                 capture_output=True, text=True, timeout=5,
             )
             custom_path = result.stdout.strip()
@@ -91,9 +115,10 @@ def summarize_with_llm(turn_text, small_model, memsearch_cmd=None):
     )
     isolated_dir = ensure_isolated_config()
 
+    summarize_model = get_plugin_summarize_model(memsearch_cmd) or small_model
     cmd = ["opencode", "run"]
-    if small_model:
-        cmd += ["-m", small_model]
+    if summarize_model:
+        cmd += ["-m", summarize_model]
     cmd.append(full_prompt)
 
     try:
@@ -110,7 +135,7 @@ def summarize_with_llm(turn_text, small_model, memsearch_cmd=None):
         output = result.stdout.strip()
         # Extract bullet points (skip any opencode run header lines)
         lines = output.split("\n")
-        bullets = [l for l in lines if l.strip().startswith("- ")]
+        bullets = [line for line in lines if line.strip().startswith("- ")]
         if bullets:
             return "\n".join(bullets)
     except Exception:
@@ -260,7 +285,7 @@ def main():
 
     db_path = get_db_path()
     if not os.path.exists(db_path):
-        print(f"OpenCode database not found at {db_path}", file=sys.stderr)
+        sys.stderr.write(f"OpenCode database not found at {db_path}\n")
         sys.exit(1)
 
     memory_dir = os.path.join(args.project_dir, ".memsearch", "memory")
@@ -273,10 +298,8 @@ def main():
 
     # Clean up on exit
     def cleanup(signum=None, frame=None):
-        try:
+        with contextlib.suppress(OSError):
             os.remove(pid_file)
-        except OSError:
-            pass
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, cleanup)
@@ -287,10 +310,8 @@ def main():
     state_file = os.path.join(args.project_dir, ".memsearch", ".last_msg_time")
     last_msg_time = 0
     if os.path.exists(state_file):
-        try:
-            last_msg_time = int(open(state_file).read().strip())
-        except (ValueError, OSError):
-            pass
+        with contextlib.suppress(ValueError, OSError), open(state_file) as f:
+            last_msg_time = int(f.read().strip())
 
     while True:
         try:

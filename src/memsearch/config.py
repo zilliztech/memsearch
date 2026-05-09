@@ -72,14 +72,13 @@ class RerankerConfig:
 
 @dataclass
 class LLMConfig:
-    """LLM settings for plugin summarization and compact.
+    """LLM settings for memsearch-managed summarization jobs.
 
-    All fields default to empty.  When empty, plugin hooks fall back to
-    their own agent model; the ``compact`` CLI falls back to
+    All fields default to empty.  When empty, the ``compact`` CLI falls back to
     ``[compact].llm_provider`` (deprecated) or ``"openai"``.
     """
 
-    provider: str = ""  # empty = plugin decides; "openai"/"anthropic"/"gemini" for explicit
+    provider: str = ""  # empty = compact defaults to openai; "openai"/"anthropic"/"gemini" for explicit
     model: str = ""
     base_url: str = ""  # OpenAI-compatible endpoint URL
     api_key: str = ""  # API key (supports "env:VAR_NAME" syntax)
@@ -97,6 +96,33 @@ class PromptsConfig:
 
 
 @dataclass
+class PluginSummarizeConfig:
+    """Plugin summarization settings."""
+
+    model: str = ""  # empty = keep plugin default/native model selection
+
+
+@dataclass
+class PluginPlatformConfig:
+    """Settings for one platform plugin."""
+
+    summarize: PluginSummarizeConfig = field(default_factory=PluginSummarizeConfig)
+
+
+@dataclass
+class PluginsConfig:
+    """Platform plugin settings.
+
+    Python field names use underscores where TOML keys use hyphens.
+    """
+
+    claude_code: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    codex: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    opencode: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    openclaw: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+
+
+@dataclass
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
@@ -106,6 +132,7 @@ class MemSearchConfig:
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
+    plugins: PluginsConfig = field(default_factory=PluginsConfig)
 
 
 # -- Section name → dataclass mapping for typed reconstruction --
@@ -118,6 +145,21 @@ _SECTION_CLASSES: dict[str, type] = {
     "reranker": RerankerConfig,
     "llm": LLMConfig,
     "prompts": PromptsConfig,
+    "plugins": PluginsConfig,
+}
+
+_PLUGIN_KEY_TO_FIELD = {
+    "claude-code": "claude_code",
+    "claude_code": "claude_code",
+    "codex": "codex",
+    "opencode": "opencode",
+    "openclaw": "openclaw",
+}
+_PLUGIN_FIELD_TO_KEY = {
+    "claude_code": "claude-code",
+    "codex": "codex",
+    "opencode": "opencode",
+    "openclaw": "openclaw",
 }
 
 
@@ -165,7 +207,37 @@ def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
 
 def _default_dict() -> dict[str, Any]:
     """Return MemSearchConfig defaults as a nested dict."""
-    return asdict(MemSearchConfig())
+    return config_to_dict(MemSearchConfig())
+
+
+def _plugins_to_dict(cfg: PluginsConfig) -> dict[str, Any]:
+    """Convert plugin config to TOML-facing keys."""
+    data = asdict(cfg)
+    return {_PLUGIN_FIELD_TO_KEY[key]: value for key, value in data.items()}
+
+
+def _dict_to_plugins_config(section_data: dict[str, Any]) -> PluginsConfig:
+    """Convert a TOML plugins table to PluginsConfig."""
+    kwargs: dict[str, Any] = {}
+    valid_platform_fields = {f.name for f in fields(PluginPlatformConfig)}
+    valid_summarize_fields = {f.name for f in fields(PluginSummarizeConfig)}
+
+    for raw_platform, raw_platform_data in section_data.items():
+        platform = _PLUGIN_KEY_TO_FIELD.get(raw_platform)
+        if not platform or not isinstance(raw_platform_data, dict):
+            continue
+
+        platform_kwargs: dict[str, Any] = {}
+        summarize_data = raw_platform_data.get("summarize", {})
+        if isinstance(summarize_data, dict):
+            summarize_filtered = {k: v for k, v in summarize_data.items() if k in valid_summarize_fields}
+            platform_kwargs["summarize"] = PluginSummarizeConfig(**summarize_filtered)
+
+        filtered = {k: v for k, v in raw_platform_data.items() if k in valid_platform_fields and k != "summarize"}
+        platform_kwargs.update(filtered)
+        kwargs[platform] = PluginPlatformConfig(**platform_kwargs)
+
+    return PluginsConfig(**kwargs)
 
 
 def load_config_file(path: Path | str) -> dict[str, Any]:
@@ -200,6 +272,9 @@ def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
     for section_name, cls in _SECTION_CLASSES.items():
         section_data = d.get(section_name, {})
         if not isinstance(section_data, dict):
+            continue
+        if section_name == "plugins":
+            kwargs[section_name] = _dict_to_plugins_config(section_data)
             continue
         valid = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in section_data.items() if k in valid}
@@ -259,7 +334,9 @@ def save_config(cfg_dict: dict[str, Any], path: Path | str) -> None:
 
 def config_to_dict(cfg: MemSearchConfig) -> dict[str, Any]:
     """Convert a MemSearchConfig to a nested dict (for saving)."""
-    return asdict(cfg)
+    data = asdict(cfg)
+    data["plugins"] = _plugins_to_dict(cfg.plugins)
+    return data
 
 
 def get_config_value(key: str, cfg: MemSearchConfig | None = None) -> Any:
@@ -269,7 +346,7 @@ def get_config_value(key: str, cfg: MemSearchConfig | None = None) -> Any:
     """
     if cfg is None:
         cfg = resolve_config()
-    d = asdict(cfg)
+    d = config_to_dict(cfg)
     parts = key.split(".")
     current: Any = d
     for part in parts:
@@ -296,21 +373,42 @@ def set_config_value(key: str, value: Any, *, project: bool = False) -> None:
     existing = load_config_file(path)
 
     parts = key.split(".")
-    if len(parts) != 2:
+    if len(parts) < 2:
         raise ValueError(f"Key must be section.field (got {key!r})")
-    section, field_name = parts
+    section = parts[0]
 
     # Validate key
     if section not in _SECTION_CLASSES:
         raise KeyError(f"Unknown config section: {section}")
-    cls = _SECTION_CLASSES[section]
-    valid = {f.name for f in fields(cls)}
-    if field_name not in valid:
-        raise KeyError(f"Unknown config field: {field_name} in section {section}")
+    if section == "plugins":
+        if len(parts) != 4:
+            raise ValueError(f"Plugin config keys must be plugins.<platform>.summarize.model (got {key!r})")
+        platform, subsection, field_name = parts[1:]
+        if platform not in _PLUGIN_KEY_TO_FIELD:
+            raise KeyError(f"Unknown plugin platform: {platform}")
+        if subsection != "summarize":
+            raise KeyError(f"Unknown plugin config section: {subsection} in platform {platform}")
+        if field_name != "model":
+            raise KeyError(f"Unknown plugin summarize field: {field_name} in platform {platform}")
+    else:
+        if len(parts) != 2:
+            raise ValueError(f"Key must be section.field (got {key!r})")
+        field_name = parts[1]
+        cls = _SECTION_CLASSES[section]
+        valid = {f.name for f in fields(cls)}
+        if field_name not in valid:
+            raise KeyError(f"Unknown config field: {field_name} in section {section}")
 
     # Auto-convert int fields
     if field_name in _INT_FIELDS and isinstance(value, str):
         value = int(value)
 
-    existing.setdefault(section, {})[field_name] = value
+    current: dict[str, Any] = existing
+    for part in parts[:-1]:
+        next_value = current.setdefault(part, {})
+        if not isinstance(next_value, dict):
+            next_value = {}
+            current[part] = next_value
+        current = next_value
+    current[parts[-1]] = value
     save_config(existing, path)

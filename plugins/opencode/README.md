@@ -143,6 +143,14 @@ memsearch config set embedding.provider openai
 export OPENAI_API_KEY=sk-...
 ```
 
+To override only the OpenCode capture summarization model:
+
+```bash
+memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
+```
+
+Leave it empty or unset to keep the current `small_model` / plugin default behavior. This setting does not fall back to `llm.model`.
+
 ## How It Works
 
 1. **Capture**: After each conversation turn, the plugin extracts the user+assistant exchange, summarizes it via LLM, and appends to a daily markdown file.

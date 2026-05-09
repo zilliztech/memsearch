@@ -14,6 +14,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=== memsearch OpenClaw plugin installer ==="
 
+for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
+  [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
+done
+
 # 1. Ensure memsearch is available
 if command -v memsearch &>/dev/null; then
   echo "[OK] memsearch found: $(memsearch --version 2>/dev/null || echo 'unknown')"
@@ -46,7 +50,12 @@ fi
 # 3. Install the plugin
 echo ""
 echo "Installing memsearch plugin into OpenClaw..."
-openclaw plugins install "$SCRIPT_DIR"
+openclaw plugins install --force "$SCRIPT_DIR"
+
+# OpenClaw 2026.5+ requires non-bundled plugins to explicitly opt in before
+# they can read conversation content in agent_end or mutate prompt context.
+openclaw config set plugins.entries.memsearch.hooks.allowConversationAccess true >/dev/null
+openclaw config set plugins.entries.memsearch.hooks.allowPromptInjection true >/dev/null
 
 echo ""
 echo "=== Installation complete ==="

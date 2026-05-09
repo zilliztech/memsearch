@@ -293,6 +293,15 @@ export default {
       return _memsearchCmd;
     }
 
+    async function getMemsearchConfigValue(key: string): Promise<string> {
+      const cmd = await getMemsearchCmd();
+      const r = await runCmd(
+        ["bash", "-c", `${cmd} config get '${shellEscape(key)}'`],
+        { timeoutMs: 5000 }
+      );
+      return r.stdout?.trim() || "";
+    }
+
     // --- Lazy-cached collection name derivation ---
     let _collectionNameFor = "";
     let _collectionName = "ms_openclaw_default";
@@ -544,8 +553,7 @@ export default {
         // Try reading user-custom prompt from config
         let customPromptFile = "";
         try {
-          const r = await runCmd([memsearchCmd, "config", "get", "prompts.summarize"], { timeoutMs: 5000 });
-          customPromptFile = r.stdout?.trim() || "";
+          customPromptFile = await getMemsearchConfigValue("prompts.summarize");
         } catch { /* ignore */ }
 
         if (customPromptFile && existsSync(customPromptFile)) {
@@ -562,13 +570,19 @@ export default {
           }
         }
 
-        // 1. Try openclaw agent (uses user's default model)
+        let summarizeModel = "";
+        try {
+          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model");
+        } catch { /* ignore */ }
+
+        // 1. Try openclaw agent (uses user's default model unless overridden)
         // Redirect stdout to a temp file because runCommandWithTimeout
         // truncates stdout before the LLM response arrives.
         try {
           const msgText = `${systemPrompt}\n\nTranscript:\n${turnText}`;
           const tmpFile = `/tmp/memsearch-summarize-${Date.now()}.txt`;
-          const shellCmd = `openclaw agent --local --session-id memsearch-summarize -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
+          const modelArg = summarizeModel ? ` --model ${JSON.stringify(summarizeModel)}` : "";
+          const shellCmd = `openclaw agent --local --session-id memsearch-summarize${modelArg} -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
           await runCmd(["bash", "-c", shellCmd], {
             timeoutMs: 60000,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),

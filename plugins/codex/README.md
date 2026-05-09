@@ -85,6 +85,16 @@ Default is Milvus Lite (local `.db` file). For larger memory stores or team shar
 memsearch config set milvus.uri http://localhost:19530
 ```
 
+### Summarization model
+
+The Stop hook uses its built-in Codex summarize model by default. To override only this plugin's capture model:
+
+```bash
+memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+```
+
+Leave it empty or unset to keep the current default. This setting does not fall back to `llm.model`.
+
 ## Memory files
 
 Each project stores memory under `<project>/.memsearch/memory/`:

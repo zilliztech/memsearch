@@ -18,6 +18,13 @@ memsearch provides plugins for 4 AI coding agent platforms. All plugins share th
 | **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
 | **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
 
+Each plugin keeps its current summarization model when the plugin-specific model
+setting is empty. To override one plugin only, set
+`plugins.<platform>.summarize.model`, for example
+`plugins.claude-code.summarize.model`, `plugins.codex.summarize.model`,
+`plugins.opencode.summarize.model`, or `plugins.openclaw.summarize.model`.
+These plugin settings do not fall back to `llm.model`.
+
 ---
 
 ## Shared Architecture

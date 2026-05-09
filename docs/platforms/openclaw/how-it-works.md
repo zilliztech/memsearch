@@ -12,11 +12,11 @@
 
 ## TypeScript Plugin Architecture
 
-The plugin is a single `index.ts` file that registers tools, hooks, and a CLI subcommand using OpenClaw's plugin API:
+The plugin source is `index.ts`, built to `index.js` for OpenClaw 2026.5+ runtime loading. It registers tools, hooks, and a CLI subcommand using OpenClaw's plugin API:
 
 ```mermaid
 graph TB
-    subgraph "Plugin Registration (index.ts)"
+    subgraph "Plugin Registration (index.ts -> index.js)"
         TOOLS["registerTool (factory pattern)<br/>memory_search · memory_get · memory_transcript"]
         HOOKS["Event hooks<br/>before_agent_start · agent_end · session_start"]
         CLI["registerCli<br/>openclaw memsearch search/index/status"]
@@ -81,7 +81,9 @@ sequenceDiagram
     Plugin->>Plugin: memsearch index (background)
 ```
 
-The plugin extracts the last user question and assistant response from `event.messages`, summarizes them via LLM, and appends the summary to the daily markdown file. No debounce or noise filtering is needed — `agent_end` provides a clean, complete message history for each turn.
+The plugin extracts the last user question and assistant response from `event.messages`, summarizes them via LLM, and appends the summary to the daily markdown file. Set `plugins.openclaw.summarize.model` to override only this capture model; empty or unset keeps the default OpenClaw agent model, with no fallback to `llm.model`. No debounce or noise filtering is needed — `agent_end` provides a clean, complete message history for each turn.
+
+OpenClaw 2026.5+ requires third-party plugins to opt in before reading raw conversation content from `agent_end`. The installer sets `plugins.entries.memsearch.hooks.allowConversationAccess = true` for capture and `plugins.entries.memsearch.hooks.allowPromptInjection = true` for recent-memory injection.
 
 !!! note "Known limitations"
 
@@ -186,7 +188,8 @@ The `<!-- session:... transcript:... -->` anchors enable L3 drill-down: the `mem
 plugins/openclaw/
 ├── package.json                    # npm package with openclaw peer dependency
 ├── openclaw.plugin.json            # Plugin config schema (kind: memory)
-├── index.ts                        # Main plugin: tools, hooks, helpers (~800 lines)
+├── index.ts                        # Main plugin source: tools, hooks, helpers
+├── index.js                        # Built runtime entry loaded by OpenClaw
 ├── install.sh                      # Installation script
 ├── skills/
 │   └── memory-recall/
@@ -200,7 +203,8 @@ plugins/openclaw/
 |------|---------|
 | `package.json` | npm package with `openclaw >=2026.3.11` as peer dependency |
 | `openclaw.plugin.json` | Plugin configuration schema: `provider`, `autoCapture`, `autoRecall` settings |
-| `index.ts` | Main plugin entry. Registers 3 tools (factory pattern), 3 event hooks, and CLI subcommand |
+| `index.ts` | Main plugin source. Registers 3 tools (factory pattern), 3 event hooks, and CLI subcommand |
+| `index.js` | Built runtime entry required by OpenClaw 2026.5+ plugin installs |
 | `install.sh` | Installation script: checks memsearch availability, registers plugin |
 | `SKILL.md` | Memory recall skill guide -- helps the LLM decide when and how to use the memory tools |
 | `derive-collection.sh` | Generates deterministic per-agent Milvus collection names |

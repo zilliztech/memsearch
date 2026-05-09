@@ -16,9 +16,13 @@ Automatic persistent memory for [OpenClaw](https://github.com/openclaw/openclaw)
 uv tool install "memsearch[onnx]"
 
 # 2. Install the plugin from ClawHub
-openclaw plugins install clawhub:memsearch
+openclaw plugins install --force clawhub:memsearch
 
-# 3. Restart the gateway
+# 3. Allow memsearch to read conversation turns and inject recall context
+openclaw config set plugins.entries.memsearch.hooks.allowConversationAccess true
+openclaw config set plugins.entries.memsearch.hooks.allowPromptInjection true
+
+# 4. Restart the gateway
 openclaw gateway restart
 ```
 
@@ -31,9 +35,13 @@ uv tool install "memsearch[onnx]"
 # 2. Clone the repo and install the plugin
 git clone https://github.com/zilliztech/memsearch.git
 cd memsearch
-openclaw plugins install ./plugins/openclaw
+openclaw plugins install --force ./plugins/openclaw
 
-# 3. Restart the gateway
+# 3. Allow memsearch to read conversation turns and inject recall context
+openclaw config set plugins.entries.memsearch.hooks.allowConversationAccess true
+openclaw config set plugins.entries.memsearch.hooks.allowPromptInjection true
+
+# 4. Restart the gateway
 openclaw gateway restart
 ```
 
@@ -97,6 +105,14 @@ Optional settings via `openclaw plugins config memsearch`:
 | `provider` | `onnx` | Embedding provider (onnx, openai, google, voyage, jina, mistral, ollama) |
 | `autoCapture` | `true` | Auto-capture conversation summaries after each turn |
 | `autoRecall` | `true` | Auto-inject recent memories at agent start |
+
+To override only the OpenClaw capture summarization model:
+
+```bash
+memsearch config set plugins.openclaw.summarize.model qwen3-coder
+```
+
+Leave it empty or unset to keep the default OpenClaw agent model. This setting does not fall back to `llm.model`.
 
 ## Memory files
 

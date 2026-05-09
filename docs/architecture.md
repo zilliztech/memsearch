@@ -287,8 +287,20 @@ llm_provider = "openai"
 llm_model = ""
 prompt_file = ""
 
-[llm]                                  # LLM for compact & plugin summarization
-provider = ""                          # empty = plugin decides
+[llm]                                  # LLM for memsearch compact
+provider = ""                          # empty = compact defaults to openai
+model = ""
+
+[plugins.claude-code.summarize]        # optional plugin summarize model overrides
+model = ""                             # empty = plugin default/native model
+
+[plugins.codex.summarize]
+model = ""
+
+[plugins.opencode.summarize]
+model = ""
+
+[plugins.openclaw.summarize]
 model = ""
 
 [prompts]

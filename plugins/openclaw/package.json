@@ -3,8 +3,11 @@
   "version": "0.3.2",
   "description": "Semantic memory search plugin for OpenClaw — persistent cross-session memory powered by Milvus vector search. Automatically captures conversation summaries and recalls relevant context.",
   "type": "module",
+  "scripts": {
+    "build": "esbuild index.ts --platform=node --format=esm --outfile=index.js"
+  },
   "openclaw": {
-    "extensions": ["./index.ts"],
+    "extensions": ["./index.js"],
     "compat": {
       "pluginApi": ">=2026.3.11"
     },
@@ -15,5 +18,8 @@
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.11"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.1"
   }
 }

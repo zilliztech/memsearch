@@ -135,6 +135,8 @@ MEMSEARCH_NO_WATCH=1 \
 
 This avoids assuming `~/.codex/auth.json` exists. Installations that authenticate through Codex's default keyring flow still work, and the child `codex exec` cannot recurse because hooks are disabled explicitly.
 
+Set `plugins.codex.summarize.model` to override only this capture model. Empty or unset keeps the built-in Codex plugin default, and this setting does not fall back to `llm.model`.
+
 ### Local Fallback
 
 If `codex exec` is unavailable or returns empty output, the hook falls back to raw text truncation:

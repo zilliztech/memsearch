@@ -97,12 +97,20 @@ else
 fi
 
 # Summarize the last turn into structured bullet points.
-# Default: use claude -p (plugin's own agent). If [llm] is configured, still
-# use claude -p since it's the most reliable path for Claude Code plugin.
+# Default: use claude -p with the plugin default model. A plugin-specific
+# summarize model override can replace the model without changing provider
+# routing.
 SUMMARY=""
 if command -v claude &>/dev/null; then
+  SUMMARIZE_MODEL="haiku"
+  if [ -n "$MEMSEARCH_CMD" ]; then
+    CONFIG_MODEL=$($MEMSEARCH_CMD config get plugins.claude-code.summarize.model 2>/dev/null || true)
+    if [ -n "$CONFIG_MODEL" ]; then
+      SUMMARIZE_MODEL="$CONFIG_MODEL"
+    fi
+  fi
   SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
-    --model haiku \
+    --model "$SUMMARIZE_MODEL" \
     --no-session-persistence \
     --no-chrome \
     --system-prompt "$SYSTEM_PROMPT" \

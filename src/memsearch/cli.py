@@ -772,8 +772,8 @@ def config_init(project: bool) -> None:
     )
 
     # LLM
-    click.echo("\n── LLM (for compact & plugin summarization) ──")
-    click.echo("  Leave empty to let plugins use their own agent model.")
+    click.echo("\n── LLM (for memsearch compact) ──")
+    click.echo("  Plugin summarization uses plugins.<platform>.summarize.model.")
     _llm_defaults = {
         "openai": "gpt-4o-mini",
         "anthropic": "claude-haiku-4-5-20251001",
@@ -797,6 +797,32 @@ def config_init(project: bool) -> None:
     result["llm"]["api_key"] = click.prompt(
         "  API key (empty for env default, or env:VAR_NAME)",
         default=current.llm.api_key,
+    )
+
+    # Plugin summarize model overrides
+    click.echo("\n── Plugin summarize models ──")
+    click.echo("  Leave empty to keep each plugin's current default/native model.")
+    result["plugins"] = {
+        "claude-code": {"summarize": {}},
+        "codex": {"summarize": {}},
+        "opencode": {"summarize": {}},
+        "openclaw": {"summarize": {}},
+    }
+    result["plugins"]["claude-code"]["summarize"]["model"] = click.prompt(
+        "  Claude Code summarize model",
+        default=current.plugins.claude_code.summarize.model,
+    )
+    result["plugins"]["codex"]["summarize"]["model"] = click.prompt(
+        "  Codex summarize model",
+        default=current.plugins.codex.summarize.model,
+    )
+    result["plugins"]["opencode"]["summarize"]["model"] = click.prompt(
+        "  OpenCode summarize model",
+        default=current.plugins.opencode.summarize.model,
+    )
+    result["plugins"]["openclaw"]["summarize"]["model"] = click.prompt(
+        "  OpenClaw summarize model",
+        default=current.plugins.openclaw.summarize.model,
     )
 
     # Prompts

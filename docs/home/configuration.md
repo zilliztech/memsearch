@@ -74,6 +74,20 @@ memsearch config list          # show all settings
 memsearch config get milvus.uri  # show specific value
 ```
 
+## Plugin Summarization Models
+
+Plugins keep their existing native/default summarization model unless you set a
+platform-specific override. These settings do not fall back to `llm.model`.
+
+```bash
+memsearch config set plugins.claude-code.summarize.model haiku
+memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
+memsearch config set plugins.openclaw.summarize.model qwen3-coder
+```
+
+Leave the value empty or unset to preserve the current plugin behavior.
+
 ## Platform-Specific Config
 
 Each plugin may have additional configuration. See:
