@@ -106,7 +106,9 @@ $memory-recall what did we discuss about deployment?
 
 ```bash
 # Install from ClawHub
-openclaw plugins install clawhub:memsearch
+openclaw plugins install --force clawhub:memsearch
+openclaw config set plugins.entries.memsearch.hooks.allowConversationAccess true
+openclaw config set plugins.entries.memsearch.hooks.allowPromptInjection true
 openclaw gateway restart
 ```
 
@@ -220,6 +222,17 @@ memsearch config set milvus.uri http://localhost:19530
 </details>
 
 > 📖 Full configuration guide: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/) · [Platform comparison](https://zilliztech.github.io/memsearch/platforms/)
+
+#### Capture Summarization Model
+
+Each plugin keeps its default capture summarization model unless you override it explicitly:
+
+```bash
+memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
+```
+
+Plugin-specific summarize settings do not fall back to `llm.model`; leave them empty or unset to preserve the default behavior.
 
 ### What can you use it for?
 

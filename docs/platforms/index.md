@@ -14,7 +14,7 @@ memsearch provides plugins for 4 AI coding agent platforms. All plugins share th
 | **Recall mechanism** | SKILL.md (context: fork) | memory_search tool | memory_search tool | SKILL.md |
 | **L3 transcript format** | Claude Code JSONL | OpenClaw JSONL | OpenCode SQLite | Codex rollout JSONL |
 | **Isolation** | Per-project collection | Per-workspace collection | Per-project collection | Per-project collection |
-| **Install method** | Plugin marketplace | `openclaw plugins install` | npm + opencode.json | `install.sh` |
+| **Install method** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` |
 | **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
 | **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
 

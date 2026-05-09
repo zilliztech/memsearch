@@ -39,7 +39,9 @@ Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-sum
 Native TypeScript plugin with `kind: memory`. Per-workspace memory isolation out of the box.
 
 ```bash
-openclaw plugins install clawhub:memsearch
+openclaw plugins install --force clawhub:memsearch
+openclaw config set plugins.entries.memsearch.hooks.allowConversationAccess true
+openclaw config set plugins.entries.memsearch.hooks.allowPromptInjection true
 openclaw gateway restart
 ```
 
@@ -78,7 +80,7 @@ All platforms share the same markdown memory format and derive collection names 
 | **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks |
 | **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex |
 | **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md |
-| **Install** | Plugin marketplace | `openclaw plugins install` | npm + opencode.json | `install.sh` |
+| **Install** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 

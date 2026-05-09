@@ -16,7 +16,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 | Platform | Install | Maturity |
 |----------|---------|----------|
 | [**Claude Code**](../platforms/claude-code/index.md) | Marketplace or `--plugin-dir` | Most mature |
-| [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install` | Stable |
+| [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install --force` + hook permissions | Stable |
 | [**OpenCode**](../platforms/opencode/index.md) | Add to `opencode.json` plugin array | Stable |
 | [**Codex CLI**](../platforms/codex/index.md) | `bash install.sh` | Stable |
 
