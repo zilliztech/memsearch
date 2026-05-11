@@ -27,7 +27,7 @@ path.write_text(text.replace(old, new))
 PY
 }
 
-ensure_codex_hooks_enabled() {
+ensure_hooks_enabled() {
   local config_file="$1"
 
   python3 - "$config_file" <<'PY'
@@ -37,19 +37,28 @@ import sys
 
 path = Path(sys.argv[1])
 if not path.exists():
-    path.write_text("[features]\ncodex_hooks = true\n")
+    path.write_text("[features]\nhooks = true\n")
     raise SystemExit
 
 text = path.read_text()
 
-if re.search(r"(?m)^codex_hooks\s*=", text):
-    text = re.sub(r"(?m)^codex_hooks\s*=.*$", "codex_hooks = true", text)
-elif re.search(r"(?m)^\[features\]\s*$", text):
-    text = re.sub(r"(?m)^\[features\]\s*$", "[features]\ncodex_hooks = true", text, count=1)
+features_match = re.search(r"(?m)^\[features\]\s*$", text)
+if features_match:
+    next_section = re.search(r"(?m)^\[[^]]+\]\s*$", text[features_match.end():])
+    block_end = len(text) if next_section is None else features_match.end() + next_section.start()
+    block = text[features_match.end():block_end]
+    block = re.sub(r"(?m)^codex_hooks\s*=.*\n?", "", block)
+    if re.search(r"(?m)^hooks\s*=", block):
+        block = re.sub(r"(?m)^hooks\s*=.*$", "hooks = true", block)
+    else:
+        if block and not block.startswith("\n"):
+            block = "\n" + block
+        block = "\nhooks = true" + block
+    text = text[:features_match.end()] + block + text[block_end:]
 else:
     if text and not text.endswith("\n"):
         text += "\n"
-    text += "\n[features]\ncodex_hooks = true\n"
+    text += "\n[features]\nhooks = true\n"
 
 path.write_text(text)
 PY
@@ -211,11 +220,11 @@ fi
 install_or_update_hooks_file "$HOOKS_FILE" "$INSTALL_DIR"
 echo "  ✓ Installed memsearch hooks in $HOOKS_FILE"
 
-# --- 5. Enable codex_hooks feature flag ---
-echo "[5/6] Enabling codex_hooks feature flag..."
+# --- 5. Enable hooks feature flag ---
+echo "[5/6] Enabling hooks feature flag..."
 CONFIG_FILE="$CODEX_DIR/config.toml"
-ensure_codex_hooks_enabled "$CONFIG_FILE"
-echo "  ✓ Ensured codex_hooks = true in $CONFIG_FILE"
+ensure_hooks_enabled "$CONFIG_FILE"
+echo "  ✓ Ensured hooks = true in $CONFIG_FILE"
 
 # --- 6. Make scripts executable ---
 echo "[6/6] Setting permissions..."
@@ -237,6 +246,6 @@ echo ""
 echo "Memory files:   <project>/.memsearch/memory/*.md"
 echo "Hooks config:   $HOOKS_FILE"
 echo "Skill location: $SKILL_DST"
-echo "Feature flag:   codex_hooks = true in $CONFIG_FILE"
+echo "Feature flag:   hooks = true in $CONFIG_FILE"
 echo ""
 echo "To verify: start a new codex session and check for [memsearch] status line."

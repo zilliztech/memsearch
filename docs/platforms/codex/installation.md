@@ -20,7 +20,7 @@ The installer:
 
 1. Copies the memory-recall skill to `~/.agents/skills/`
 2. Installs or updates memsearch hooks in `~/.codex/hooks.json`
-3. Enables `codex_hooks = true` in `~/.codex/config.toml`
+3. Enables `hooks = true` in `~/.codex/config.toml`
 4. Makes all scripts executable
 
 ## Usage

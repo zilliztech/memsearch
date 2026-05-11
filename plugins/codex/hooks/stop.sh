@@ -116,7 +116,7 @@ ${CONTENT}"
         --ephemeral \
         --skip-git-repo-check \
         -s read-only \
-        -c features.codex_hooks=false \
+        -c features.hooks=false \
         -c model_reasoning_effort='"low"' \
         -m "$SUMMARIZE_MODEL" \
         "$LLM_PROMPT" 2>/dev/null || true)
@@ -125,7 +125,7 @@ ${CONTENT}"
         --ephemeral \
         --skip-git-repo-check \
         -s read-only \
-        -c features.codex_hooks=false \
+        -c features.hooks=false \
         -c model_reasoning_effort='"low"' \
         -m "$SUMMARIZE_MODEL" \
         "$LLM_PROMPT" 2>/dev/null || true)
@@ -178,7 +178,7 @@ fi
 source "$SCRIPT_DIR/common.sh"
 
 # Defense-in-depth against recursion: the worker's `codex exec` passes
-# `features.codex_hooks=false`, but if a future build ignores that flag the
+# `features.hooks=false`, but if a future build ignores that flag the
 # nested Stop hook would spawn another worker. MEMSEARCH_IN_STOP_WORKER is
 # exported across the exec boundary so the nested invocation no-ops here.
 if [ -n "${MEMSEARCH_IN_STOP_WORKER:-}" ]; then

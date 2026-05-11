@@ -22,7 +22,7 @@ memsearch fills this gap with a shell-hook-based plugin that gives Codex the sam
 Codex CLI runs in a sandboxed environment by default. The memsearch plugin requires file system access to write memory files and run the `memsearch` CLI. The recommended approach:
 
 - **Install option**: The `install.sh` script configures `hooks.json` which works in any mode
-- **Stop hook isolation**: The Stop hook uses `codex exec --ephemeral -s read-only -c features.codex_hooks=false` so summarization reuses normal auth without recursing into hooks
+- **Stop hook isolation**: The Stop hook uses `codex exec --ephemeral -s read-only -c features.hooks=false` so summarization reuses normal auth without recursing into hooks
 
 If you experience issues with the Stop hook in strict sandbox mode, see [Troubleshooting](../../platforms/claude-code/troubleshooting.md) for diagnostic steps.
 
