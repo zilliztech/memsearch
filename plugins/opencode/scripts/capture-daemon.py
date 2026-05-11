@@ -424,10 +424,10 @@ def capture_session_turns(
         if len(turn_text.strip()) <= 10:
             continue
 
-        # Persist markdown first so a later sidecar failure can be repaired by
-        # replay. Existing session+turn anchors are the dedupe signal.
-        summary = summarize_with_llm(turn_text, small_model, memsearch_cmd)
+        # Check anchor first so that sidecar rebuilds repair state without
+        # calling the summarizer again for already-captured turns.
         if not capture_exists(memory_dir, session_id, turn.turn_id):
+            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd)
             write_capture(
                 memory_dir,
                 summary if summary else turn_text,

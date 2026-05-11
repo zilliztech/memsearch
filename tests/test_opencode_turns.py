@@ -723,3 +723,65 @@ def test_capture_session_turns_does_not_advance_sidecar_when_markdown_write_fail
 
     turn_db.close()
     conn.close()
+
+
+def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    summarize_calls = {"count": 0}
+
+    def tracking_summarize(*args, **kwargs):
+        summarize_calls["count"] += 1
+        return "- summarized"
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", tracking_summarize)
+
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_rebuild"
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    memory_dir = project_dir / ".memsearch" / "memory"
+    memory_dir.mkdir(parents=True)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
+    _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
+    conn.commit()
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+    )
+
+    assert summarize_calls["count"] == 1
+    content = next(memory_dir.glob("*.md")).read_text(encoding="utf-8")
+    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
+
+    turn_db.close()
+
+    turn_db = open_turn_db(str(project_dir))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+    )
+
+    assert summarize_calls["count"] == 1
+
+    content = next(memory_dir.glob("*.md")).read_text(encoding="utf-8")
+    assert content.count(f"<!-- session:{session_id} turn:u1 db:{db_path} -->") == 1
+
+    turn_db.close()
+    conn.close()
