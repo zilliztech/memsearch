@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 stop_watch
+stop_watch_superpowers
 kill_orphaned_index
 
 exit 0
