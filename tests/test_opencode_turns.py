@@ -616,6 +616,8 @@ def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
 
     turn_db.close()
     conn.close()
+
+
 def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
     tmp_path: Path,
     monkeypatch,
