@@ -51,7 +51,18 @@ class MilvusStore:
         connect_kwargs: dict[str, Any] = {"uri": resolved}
         if token:
             connect_kwargs["token"] = token
-        self._client = MilvusClient(**connect_kwargs)
+        try:
+            self._client = MilvusClient(**connect_kwargs)
+        except Exception as exc:
+            if is_local:
+                raise RuntimeError(
+                    "Failed to open the local Milvus Lite database. If this database was created "
+                    "with an older Milvus Lite release, it may not be compatible with Milvus Lite "
+                    "3.x. Move the existing .db file aside, then rebuild the index from your "
+                    "source markdown files with 'memsearch index'. Alternatively, use Milvus "
+                    "Server via Docker or Zilliz Cloud."
+                ) from exc
+            raise
         self._is_lite = is_local
         self._resolved_uri = resolved
         self._collection = collection
@@ -62,6 +73,7 @@ class MilvusStore:
     def _ensure_collection(self) -> None:
         if self._client.has_collection(self._collection):
             self._check_dimension()
+            self._load_collection()
             return
 
         if self._dimension is None:
@@ -100,6 +112,14 @@ class MilvusStore:
             schema=schema,
             index_params=index_params,
         )
+        self._load_collection()
+
+    def _load_collection(self) -> None:
+        """Load the collection before query/search operations."""
+        try:
+            self._client.load_collection(collection_name=self._collection)
+        except TypeError:
+            self._client.load_collection(self._collection)
 
     def _check_dimension(self) -> None:
         """Verify that the existing collection's embedding dimension matches."""

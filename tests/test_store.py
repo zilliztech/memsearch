@@ -140,6 +140,32 @@ def test_dimension_mismatch(tmp_path: Path):
         MilvusStore(uri=db, dimension=8)
 
 
+def test_reopened_collection_is_loaded_for_query(tmp_path: Path):
+    db = str(tmp_path / "reopen_test.db")
+    chunk = {
+        "embedding": [1.0, 0.0, 0.0, 0.0],
+        "content": "Reopened collection",
+        "source": "test.md",
+        "heading": "",
+        "chunk_hash": "reopen_hash",
+        "heading_level": 0,
+        "start_line": 1,
+        "end_line": 1,
+    }
+
+    s1 = MilvusStore(uri=db, dimension=4)
+    s1.upsert([chunk])
+    s1.close()
+
+    s2 = MilvusStore(uri=db, dimension=4)
+    try:
+        results = s2.query()
+    finally:
+        s2.close()
+
+    assert [r["chunk_hash"] for r in results] == ["reopen_hash"]
+
+
 def test_drop(store: MilvusStore):
     chunk = {
         "embedding": [1.0, 0.0, 0.0, 0.0],

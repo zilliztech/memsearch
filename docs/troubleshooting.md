@@ -61,6 +61,25 @@ On Windows, use one of these options instead:
 
 See [Getting Started — Milvus Backends](getting-started.md#milvus-backends).
 
+## Milvus Lite collection is released
+
+If `memsearch search`, `memsearch index`, or `memsearch expand` fails with an error like this:
+
+```text
+Collection '...' is in state 'released'; call load() before search/get/query
+```
+
+Upgrade memsearch first. Current memsearch versions explicitly load existing Milvus collections before query/search operations.
+
+If this started after upgrading Milvus Lite, check whether the local `.db` file was created by an older Milvus Lite release. Milvus Lite 3.x uses a new pure-Python storage engine and cannot read `.db` files from the previous storage format. Move the old `.db` file aside, then rebuild the index from source markdown:
+
+```bash
+mv ~/.memsearch/milvus.db ~/.memsearch/milvus.db.bak
+memsearch index . --force
+```
+
+Alternatively, keep using the older Milvus Lite environment that created the `.db` file, or switch to Milvus Server via Docker / Zilliz Cloud.
+
 ## Rebuild from source markdown
 
 To wipe the current collection and rebuild from markdown files:

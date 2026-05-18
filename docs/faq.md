@@ -25,6 +25,26 @@ This deletes the indexed chunks in Milvus, but it does **not** delete your sourc
 
 For command details, see the [CLI reference](cli.md#memsearch-reset).
 
+## Why do I see "collection is in state 'released'" with Milvus Lite?
+
+Milvus requires a collection to be loaded before `search`, `query`, or `get` operations. Some newer Milvus Lite / PyMilvus combinations reopen an existing local collection in a released state, especially across separate CLI invocations such as:
+
+```bash
+memsearch index .
+memsearch search "my query"
+```
+
+Current memsearch versions explicitly load an existing collection before search/query operations. If you still see this error, upgrade memsearch first.
+
+If the error started after upgrading Milvus Lite itself, also check whether you are reusing a local `.db` file created by an older Milvus Lite release. Milvus Lite 3.x was rewritten with a new pure-Python storage engine, and old `.db` files from the previous storage format are not compatible with the new engine. In that case, move the old `.db` file aside and rebuild from your source markdown files:
+
+```bash
+mv ~/.memsearch/milvus.db ~/.memsearch/milvus.db.bak
+memsearch index . --force
+```
+
+If you do not want to rebuild the local database, keep using the older Milvus Lite environment that created it. For a more stable shared or long-running backend, use Milvus Server via Docker or Zilliz Cloud.
+
 ## How do I see what is indexed?
 
 Start with index stats:
