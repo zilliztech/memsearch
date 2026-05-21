@@ -135,7 +135,7 @@ Step by step:
     [Claude Code] The issue is in the get_orders function...
     ```
 
-4. **Haiku summarization** -- the extracted turn is piped to `claude -p --model haiku` with a system prompt instructing it to write 2-6 third-person bullet points. Set `plugins.claude-code.summarize.model` to override only this capture model; empty or unset keeps the Haiku default. The third-person framing ("User asked about...", "Agent implemented...") makes the summaries more useful as memory entries than first-person notes.
+4. **Haiku summarization** -- the extracted turn is piped to `claude -p --model haiku` with a system prompt instructing it to write 2-6 third-person bullet points. Set `plugins.claude-code.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.claude-code.summarize.provider` to that name. Empty or `native` keeps the Haiku default. The third-person framing ("User asked about...", "Agent implemented...") makes the summaries more useful as memory entries than first-person notes.
 
 5. **Append with anchors** -- the summary is written to `.memsearch/memory/YYYY-MM-DD.md` under a `### HH:MM` heading with an HTML comment anchor:
     ```markdown

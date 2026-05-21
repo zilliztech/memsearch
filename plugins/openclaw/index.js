@@ -390,6 +390,32 @@ var index_default = {
           summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model");
         } catch {
         }
+        let summarizeProvider = "";
+        try {
+          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider");
+        } catch {
+        }
+        if (summarizeProvider && summarizeProvider !== "native") {
+          try {
+            const cmd = await getMemsearchCmd();
+            const tmpInput = `/tmp/memsearch-summarize-input-${Date.now()}.txt`;
+            writeFileSync(tmpInput, turnText, "utf-8");
+            const shellCmd = `cat ${JSON.stringify(tmpInput)} | ${cmd} summarize --plugin openclaw --agent-name OpenClaw`;
+            const result = await runCmd(["bash", "-c", shellCmd], {
+              timeoutMs: 6e4,
+              env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
+            });
+            try {
+              unlinkSync(tmpInput);
+            } catch {
+            }
+            const output = (result.stdout || "").trim();
+            if (output) {
+              return output;
+            }
+          } catch {
+          }
+        }
         try {
           const msgText = `${systemPrompt}
 

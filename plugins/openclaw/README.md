@@ -106,13 +106,22 @@ Optional settings via `openclaw plugins config memsearch`:
 | `autoCapture` | `true` | Auto-capture conversation summaries after each turn |
 | `autoRecall` | `true` | Auto-inject recent memories at agent start |
 
-To override only the OpenClaw capture summarization model:
+To override only the OpenClaw native capture summarization model:
 
 ```bash
 memsearch config set plugins.openclaw.summarize.model qwen3-coder
 ```
 
-Leave it empty or unset to keep the default OpenClaw agent model. This setting does not fall back to `llm.model`.
+To use a memsearch-managed API provider instead:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.openclaw.summarize.provider openai
+```
+
+Leave `plugins.openclaw.summarize.provider` empty or set it to `native` to keep the default OpenClaw agent model. This setting does not fall back to `llm.model`.
 
 ## Memory files
 

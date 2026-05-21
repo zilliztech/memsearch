@@ -148,13 +148,22 @@ memsearch config set embedding.provider openai
 export OPENAI_API_KEY=sk-...
 ```
 
-To override only the OpenCode capture summarization model:
+To override only the OpenCode native capture summarization model:
 
 ```bash
 memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 ```
 
-Leave it empty or unset to keep the current `small_model` / plugin default behavior. This setting does not fall back to `llm.model`.
+To use a memsearch-managed API provider instead:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.opencode.summarize.provider openai
+```
+
+Leave `plugins.opencode.summarize.provider` empty or set it to `native` to keep the current `small_model` / plugin default behavior. This setting does not fall back to `llm.model`.
 
 ## How It Works
 

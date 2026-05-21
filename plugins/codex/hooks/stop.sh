@@ -95,7 +95,17 @@ run_worker() {
   fi
 
   local SUMMARY=""
-  if command -v codex &>/dev/null; then
+  local SUMMARIZE_PROVIDER=""
+  if [ -n "$MEMSEARCH_CMD" ]; then
+    SUMMARIZE_PROVIDER=$($MEMSEARCH_CMD config get plugins.codex.summarize.provider 2>/dev/null || true)
+  fi
+
+  if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && [ -n "$MEMSEARCH_CMD" ]; then
+    SUMMARY=$(printf '%s' "$CONTENT" | MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 $MEMSEARCH_CMD summarize \
+      --plugin codex \
+      --agent-name "$AGENT_NAME" \
+      2>/dev/null || true)
+  elif command -v codex &>/dev/null; then
     local LLM_PROMPT
     LLM_PROMPT="${SYSTEM_PROMPT}
 

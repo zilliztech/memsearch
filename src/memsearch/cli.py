@@ -112,6 +112,30 @@ def _normalize_compact_source(source: str | None) -> str | None:
     return source
 
 
+def _plugin_summarize_config(cfg: MemSearchConfig, plugin: str) -> dict:
+    """Return TOML-facing summarize config for a plugin platform."""
+    plugins = config_to_dict(cfg).get("plugins", {})
+    plugin_cfg = plugins.get(plugin)
+    if not isinstance(plugin_cfg, dict):
+        raise KeyError(f"Unknown plugin platform: {plugin}")
+    summarize = plugin_cfg.get("summarize", {})
+    if not isinstance(summarize, dict):
+        return {}
+    return summarize
+
+
+def _load_plugin_summarize_prompt(cfg: MemSearchConfig, agent_name: str) -> str:
+    """Load the plugin summarize prompt template."""
+    if cfg.prompts.summarize:
+        prompt_path = Path(cfg.prompts.summarize).expanduser()
+        if prompt_path.is_file():
+            return prompt_path.read_text(encoding="utf-8").replace("{{AGENT_NAME}}", agent_name)
+    return (
+        "You are a third-person note-taker. Summarize the transcript as "
+        "2-6 bullet points. Write in third person. Output ONLY bullet points."
+    )
+
+
 # -- Common CLI options --
 
 
@@ -602,6 +626,55 @@ def compact(
 
 
 @cli.command()
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--agent-name", default="", help="Agent display name for the summarize prompt.")
+def summarize(plugin: str, agent_name: str) -> None:
+    """Summarize stdin using a configured memsearch-managed LLM provider."""
+    from .compact import summarize_text
+
+    cfg = _safe_resolve_config()
+    summarize_cfg = _plugin_summarize_config(cfg, plugin)
+    provider_name = str(summarize_cfg.get("provider") or "").strip()
+    if not provider_name or provider_name == "native":
+        click.echo(
+            f"Plugin {plugin!r} is configured for native summarization; no memsearch-managed provider selected.",
+            err=True,
+        )
+        raise SystemExit(2)
+
+    provider_cfg = cfg.llm.providers.get(provider_name)
+    if provider_cfg is None:
+        click.echo(f"Unknown LLM provider {provider_name!r}. Configure [llm.providers.{provider_name}].", err=True)
+        raise SystemExit(1)
+
+    provider_type = provider_cfg.type or provider_name
+    model = str(summarize_cfg.get("model") or provider_cfg.model or "").strip() or None
+    transcript = sys.stdin.read()
+    if not transcript.strip():
+        return
+
+    prompt_agent_name = agent_name or plugin
+    system_prompt = _load_plugin_summarize_prompt(cfg, prompt_agent_name)
+    prompt = f"{system_prompt}\n\nTranscript:\n{transcript}"
+    try:
+        summary = _run(
+            summarize_text(
+                prompt,
+                llm_provider=provider_type,
+                model=model,
+                base_url=provider_cfg.base_url or None,
+                api_key=provider_cfg.api_key or None,
+            )
+        )
+    except (ConfigEnvVarError, ValueError) as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
+
+    if summary:
+        click.echo(summary)
+
+
+@cli.command()
 @click.option("--collection", "-c", default=None, help="Milvus collection name.")
 @click.option("--milvus-uri", default=None, help="Milvus connection URI.")
 @click.option("--milvus-token", default=None, help="Milvus auth token.")
@@ -800,25 +873,41 @@ def config_init(project: bool) -> None:
     )
 
     # Plugin summarize model overrides
-    click.echo("\n── Plugin summarize models ──")
-    click.echo("  Leave empty to keep each plugin's current default/native model.")
+    click.echo("\n── Plugin summarize routing ──")
+    click.echo("  Leave provider empty/native to keep each plugin's current native summarizer.")
     result["plugins"] = {
         "claude-code": {"summarize": {}},
         "codex": {"summarize": {}},
         "opencode": {"summarize": {}},
         "openclaw": {"summarize": {}},
     }
+    result["plugins"]["claude-code"]["summarize"]["provider"] = click.prompt(
+        "  Claude Code summarize provider",
+        default=current.plugins.claude_code.summarize.provider,
+    )
     result["plugins"]["claude-code"]["summarize"]["model"] = click.prompt(
         "  Claude Code summarize model",
         default=current.plugins.claude_code.summarize.model,
+    )
+    result["plugins"]["codex"]["summarize"]["provider"] = click.prompt(
+        "  Codex summarize provider",
+        default=current.plugins.codex.summarize.provider,
     )
     result["plugins"]["codex"]["summarize"]["model"] = click.prompt(
         "  Codex summarize model",
         default=current.plugins.codex.summarize.model,
     )
+    result["plugins"]["opencode"]["summarize"]["provider"] = click.prompt(
+        "  OpenCode summarize provider",
+        default=current.plugins.opencode.summarize.provider,
+    )
     result["plugins"]["opencode"]["summarize"]["model"] = click.prompt(
         "  OpenCode summarize model",
         default=current.plugins.opencode.summarize.model,
+    )
+    result["plugins"]["openclaw"]["summarize"]["provider"] = click.prompt(
+        "  OpenClaw summarize provider",
+        default=current.plugins.openclaw.summarize.provider,
     )
     result["plugins"]["openclaw"]["summarize"]["model"] = click.prompt(
         "  OpenClaw summarize model",

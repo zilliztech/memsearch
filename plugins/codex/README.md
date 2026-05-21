@@ -85,15 +85,24 @@ Default is Milvus Lite (local `.db` file). For larger memory stores or team shar
 memsearch config set milvus.uri http://localhost:19530
 ```
 
-### Summarization model
+### Summarization routing
 
-The Stop hook uses its built-in Codex summarize model by default. To override only this plugin's capture model:
+The Stop hook uses its built-in Codex summarize model by default. To override only this plugin's native capture model:
 
 ```bash
 memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
 ```
 
-Leave it empty or unset to keep the current default. This setting does not fall back to `llm.model`.
+To use a memsearch-managed API provider instead:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.codex.summarize.provider openai
+```
+
+Leave `plugins.codex.summarize.provider` empty or set it to `native` to keep the current default. This setting does not fall back to `llm.model`.
 
 ## Memory files
 

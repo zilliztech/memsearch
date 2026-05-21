@@ -78,6 +78,27 @@ async def compact_chunks(
         raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
 
 
+async def summarize_text(
+    prompt: str,
+    *,
+    llm_provider: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> str:
+    """Summarize preformatted text with a memsearch-managed LLM provider."""
+    provider = "openai" if llm_provider == "openai-compatible" else llm_provider
+    if provider == "openai":
+        return await _compact_openai(prompt, model or "gpt-4o-mini", base_url=base_url, api_key=api_key)
+    if provider == "anthropic":
+        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
+    if provider == "gemini":
+        return await _compact_gemini(prompt, model or "gemini-2.0-flash")
+    raise ValueError(
+        f"Unknown LLM provider type {llm_provider!r}. Available: openai, openai-compatible, anthropic, gemini"
+    )
+
+
 async def _compact_openai(prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None) -> str:
     import openai
 

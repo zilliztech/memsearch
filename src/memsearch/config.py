@@ -82,6 +82,17 @@ class LLMConfig:
     model: str = ""
     base_url: str = ""  # OpenAI-compatible endpoint URL
     api_key: str = ""  # API key (supports "env:VAR_NAME" syntax)
+    providers: dict[str, LLMProviderConfig] = field(default_factory=dict)
+
+
+@dataclass
+class LLMProviderConfig:
+    """Named LLM provider settings for plugin summarization routing."""
+
+    type: str = ""
+    model: str = ""
+    base_url: str = ""
+    api_key: str = ""  # supports "env:VAR_NAME" syntax
 
 
 @dataclass
@@ -99,6 +110,7 @@ class PromptsConfig:
 class PluginSummarizeConfig:
     """Plugin summarization settings."""
 
+    provider: str = ""  # empty/native = keep plugin-native summarization path
     model: str = ""  # empty = keep plugin default/native model selection
 
 
@@ -192,14 +204,21 @@ def resolve_env_ref(value: str) -> str:
     return env_val
 
 
-def _resolve_env_refs_in_dict(d: dict[str, Any]) -> dict[str, Any]:
+def _resolve_env_refs_in_dict(d: dict[str, Any], path: tuple[str, ...] = ()) -> dict[str, Any]:
     """Walk a nested config dict and resolve all ``env:`` references."""
     resolved = {}
     for key, val in d.items():
+        child_path = (*path, key)
         if isinstance(val, dict):
-            resolved[key] = _resolve_env_refs_in_dict(val)
+            resolved[key] = _resolve_env_refs_in_dict(val, child_path)
         elif isinstance(val, str) and val.startswith(_ENV_PREFIX):
-            resolved[key] = resolve_env_ref(val)
+            if len(child_path) == 4 and child_path[0] == "llm" and child_path[1] == "providers":
+                # Named LLM providers are selected lazily by plugin summarization.
+                # Keep env refs raw here so unused providers do not break unrelated
+                # config commands. The selected provider resolves env refs when used.
+                resolved[key] = val
+            else:
+                resolved[key] = resolve_env_ref(val)
         else:
             resolved[key] = val
     return resolved
@@ -240,6 +259,23 @@ def _dict_to_plugins_config(section_data: dict[str, Any]) -> PluginsConfig:
     return PluginsConfig(**kwargs)
 
 
+def _dict_to_llm_config(section_data: dict[str, Any]) -> LLMConfig:
+    """Convert a TOML llm table to LLMConfig, preserving named providers."""
+    valid = {f.name for f in fields(LLMConfig) if f.name != "providers"}
+    kwargs = {k: v for k, v in section_data.items() if k in valid}
+    provider_items = section_data.get("providers", {})
+    providers: dict[str, LLMProviderConfig] = {}
+    if isinstance(provider_items, dict):
+        valid_provider_fields = {f.name for f in fields(LLMProviderConfig)}
+        for name, raw_provider in provider_items.items():
+            if not isinstance(name, str) or not isinstance(raw_provider, dict):
+                continue
+            filtered = {k: v for k, v in raw_provider.items() if k in valid_provider_fields}
+            providers[name] = LLMProviderConfig(**filtered)
+    kwargs["providers"] = providers
+    return LLMConfig(**kwargs)
+
+
 def load_config_file(path: Path | str) -> dict[str, Any]:
     """Read a TOML config file, returning a nested dict (or {} if missing)."""
     p = Path(path).expanduser()
@@ -275,6 +311,9 @@ def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
             continue
         if section_name == "plugins":
             kwargs[section_name] = _dict_to_plugins_config(section_data)
+            continue
+        if section_name == "llm":
+            kwargs[section_name] = _dict_to_llm_config(section_data)
             continue
         valid = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in section_data.items() if k in valid}
@@ -339,6 +378,50 @@ def config_to_dict(cfg: MemSearchConfig) -> dict[str, Any]:
     return data
 
 
+def _validate_dotted_key(parts: list[str]) -> str:
+    """Validate a dotted config key and return its final field name."""
+    if len(parts) < 2:
+        raise ValueError(f"Key must be section.field (got {'.'.join(parts)!r})")
+
+    section = parts[0]
+    if section not in _SECTION_CLASSES:
+        raise KeyError(f"Unknown config section: {section}")
+
+    if section == "plugins":
+        if len(parts) != 4:
+            raise ValueError(
+                f"Plugin config keys must be plugins.<platform>.summarize.<field> (got {'.'.join(parts)!r})"
+            )
+        platform, subsection, field_name = parts[1:]
+        if platform not in _PLUGIN_KEY_TO_FIELD:
+            raise KeyError(f"Unknown plugin platform: {platform}")
+        if subsection != "summarize":
+            raise KeyError(f"Unknown plugin config section: {subsection} in platform {platform}")
+        valid = {f.name for f in fields(PluginSummarizeConfig)}
+        if field_name not in valid:
+            raise KeyError(f"Unknown plugin summarize field: {field_name} in platform {platform}")
+        return field_name
+
+    if section == "llm" and len(parts) == 4 and parts[1] == "providers":
+        _, _, provider_name, field_name = parts
+        if not provider_name:
+            raise KeyError("LLM provider name must not be empty")
+        valid = {f.name for f in fields(LLMProviderConfig)}
+        if field_name not in valid:
+            raise KeyError(f"Unknown LLM provider field: {field_name}")
+        return field_name
+
+    if len(parts) != 2:
+        raise ValueError(f"Key must be section.field (got {'.'.join(parts)!r})")
+
+    field_name = parts[1]
+    cls = _SECTION_CLASSES[section]
+    valid = {f.name for f in fields(cls)}
+    if field_name not in valid:
+        raise KeyError(f"Unknown config field: {field_name} in section {section}")
+    return field_name
+
+
 def get_config_value(key: str, cfg: MemSearchConfig | None = None) -> Any:
     """Get a config value by dotted key (e.g. ``milvus.uri``).
 
@@ -373,31 +456,7 @@ def set_config_value(key: str, value: Any, *, project: bool = False) -> None:
     existing = load_config_file(path)
 
     parts = key.split(".")
-    if len(parts) < 2:
-        raise ValueError(f"Key must be section.field (got {key!r})")
-    section = parts[0]
-
-    # Validate key
-    if section not in _SECTION_CLASSES:
-        raise KeyError(f"Unknown config section: {section}")
-    if section == "plugins":
-        if len(parts) != 4:
-            raise ValueError(f"Plugin config keys must be plugins.<platform>.summarize.model (got {key!r})")
-        platform, subsection, field_name = parts[1:]
-        if platform not in _PLUGIN_KEY_TO_FIELD:
-            raise KeyError(f"Unknown plugin platform: {platform}")
-        if subsection != "summarize":
-            raise KeyError(f"Unknown plugin config section: {subsection} in platform {platform}")
-        if field_name != "model":
-            raise KeyError(f"Unknown plugin summarize field: {field_name} in platform {platform}")
-    else:
-        if len(parts) != 2:
-            raise ValueError(f"Key must be section.field (got {key!r})")
-        field_name = parts[1]
-        cls = _SECTION_CLASSES[section]
-        valid = {f.name for f in fields(cls)}
-        if field_name not in valid:
-            raise KeyError(f"Unknown config field: {field_name} in section {section}")
+    field_name = _validate_dotted_key(parts)
 
     # Auto-convert int fields
     if field_name in _INT_FIELDS and isinstance(value, str):

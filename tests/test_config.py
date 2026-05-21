@@ -32,6 +32,8 @@ def test_default_config():
     assert cfg.chunking.overlap_lines == 2
     assert cfg.watch.debounce_ms == 1500
     assert cfg.compact.llm_provider == "openai"
+    assert cfg.llm.providers == {}
+    assert cfg.plugins.claude_code.summarize.provider == ""
     assert cfg.plugins.claude_code.summarize.model == ""
     assert cfg.plugins.codex.summarize.model == ""
 
@@ -150,6 +152,47 @@ def test_plugin_summarize_model_config_roundtrip(tmp_path: Path, monkeypatch: py
 
     saved = load_config_file(cfg_path)
     assert saved["plugins"]["claude-code"]["summarize"]["model"] == "claude-haiku-4-5"
+
+
+def test_plugin_summarize_provider_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Plugin summarize provider routes should be addressable by dotted keys."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    set_config_value("plugins.codex.summarize.provider", "openai")
+    set_config_value("plugins.opencode.summarize.provider", "native")
+
+    cfg = resolve_config()
+    assert cfg.plugins.codex.summarize.provider == "openai"
+    assert cfg.plugins.opencode.summarize.provider == "native"
+    assert get_config_value("plugins.codex.summarize.provider", cfg) == "openai"
+
+    saved = load_config_file(cfg_path)
+    assert saved["plugins"]["codex"]["summarize"]["provider"] == "openai"
+
+
+def test_named_llm_provider_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Named LLM providers should round-trip through TOML and dotted config keys."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+    set_config_value("llm.providers.openai.type", "openai")
+    set_config_value("llm.providers.openai.model", "gpt-test")
+    set_config_value("llm.providers.openai.api_key", "env:OPENAI_API_KEY")
+    set_config_value("llm.providers.local.type", "openai-compatible")
+    set_config_value("llm.providers.local.base_url", "http://localhost:11434/v1")
+
+    cfg = resolve_config()
+    assert cfg.llm.providers["openai"].type == "openai"
+    assert cfg.llm.providers["openai"].model == "gpt-test"
+    assert cfg.llm.providers["openai"].api_key == "env:OPENAI_API_KEY"
+    assert cfg.llm.providers["local"].type == "openai-compatible"
+    assert get_config_value("llm.providers.local.base_url", cfg) == "http://localhost:11434/v1"
+
+    saved = load_config_file(cfg_path)
+    assert saved["llm"]["providers"]["openai"]["model"] == "gpt-test"
+    assert saved["llm"]["providers"]["openai"]["api_key"] == "env:OPENAI_API_KEY"
 
 
 def test_plugin_summarize_model_empty_preserves_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -74,9 +74,9 @@ memsearch config list          # show all settings
 memsearch config get milvus.uri  # show specific value
 ```
 
-## Plugin Summarization Models
+## Plugin Summarization Routing
 
-Plugins keep their existing native/default summarization model unless you set a
+Plugins keep their existing native/default summarizer unless you set a
 platform-specific override. These settings do not fall back to `llm.model`.
 
 ```bash
@@ -86,7 +86,18 @@ memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 memsearch config set plugins.openclaw.summarize.model qwen3-coder
 ```
 
-Leave the value empty or unset to preserve the current plugin behavior.
+To route plugin summarization through a memsearch-managed API provider, define a
+named provider and point a plugin at it:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.codex.summarize.provider openai
+```
+
+Set `plugins.<platform>.summarize.provider` to `native`, or leave it empty, to
+preserve the current plugin behavior.
 
 ## Platform-Specific Config
 

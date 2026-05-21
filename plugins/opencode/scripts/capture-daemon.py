@@ -90,6 +90,22 @@ def get_plugin_summarize_model(memsearch_cmd: str | None = None) -> str:
         return ""
 
 
+def get_plugin_summarize_provider(memsearch_cmd: str | None = None) -> str:
+    """Read the memsearch OpenCode summarize provider route."""
+    if not memsearch_cmd:
+        return ""
+    try:
+        result = subprocess.run(
+            [*split_memsearch_cmd(memsearch_cmd), "config", "get", "plugins.opencode.summarize.provider"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
 def ensure_isolated_config() -> str:
     """Create isolated config dir without plugins/ to prevent recursion."""
     isolated = os.path.expanduser("~/.codex/tmp/opencode-memsearch-summarize/opencode")
@@ -137,9 +153,33 @@ def _load_summarize_prompt(agent_name: str, memsearch_cmd: str | None = None) ->
 
 
 def summarize_with_llm(turn_text: str, small_model: str, memsearch_cmd: str | None = None) -> str | None:
-    """Summarize using opencode run in isolated env (no plugins -> no recursion)."""
+    """Summarize using configured provider routing."""
     system_prompt = _load_summarize_prompt("OpenCode", memsearch_cmd)
     full_prompt = f"{system_prompt}\n\nTranscript:\n{turn_text}"
+
+    summarize_provider = get_plugin_summarize_provider(memsearch_cmd)
+    if summarize_provider and summarize_provider != "native" and memsearch_cmd:
+        try:
+            result = subprocess.run(
+                [*split_memsearch_cmd(memsearch_cmd), "summarize", "--plugin", "opencode", "--agent-name", "OpenCode"],
+                input=turn_text,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={**os.environ, "MEMSEARCH_NO_WATCH": "1"},
+            )
+            output = result.stdout.strip()
+            lines = output.split("\n")
+            bullets = [line for line in lines if line.strip().startswith("- ")]
+            if bullets:
+                return "\n".join(bullets)
+            if output:
+                return output
+        except Exception:
+            pass
+        return None
+
+    # Native path: summarize using opencode run in isolated env (no plugins -> no recursion).
     isolated_dir = ensure_isolated_config()
 
     summarize_model = get_plugin_summarize_model(memsearch_cmd) or small_model

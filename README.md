@@ -223,16 +223,25 @@ memsearch config set milvus.uri http://localhost:19530
 
 > 📖 Full configuration guide: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/) · [Platform comparison](https://zilliztech.github.io/memsearch/platforms/)
 
-#### Capture Summarization Model
+#### Capture Summarization Routing
 
-Each plugin keeps its default capture summarization model unless you override it explicitly:
+Each plugin keeps its native capture summarizer unless you override it explicitly:
 
 ```bash
 memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
 memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 ```
 
-Plugin-specific summarize settings do not fall back to `llm.model`; leave them empty or unset to preserve the default behavior.
+Advanced users can route plugin summarization through a memsearch-managed API provider:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.codex.summarize.provider openai
+```
+
+Leave `plugins.<platform>.summarize.provider` empty or set it to `native` to preserve the default behavior. Plugin-specific summarize settings do not fall back to `llm.model`.
 
 ### What can you use it for?
 

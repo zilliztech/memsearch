@@ -7,6 +7,7 @@ from click.testing import CliRunner
 
 from memsearch import cli as cli_module
 from memsearch.cli import cli
+from memsearch.config import save_config
 
 
 class DummyMemSearch:
@@ -85,3 +86,71 @@ def test_compact_reads_prompt_file_and_passes_template(monkeypatch, tmp_path: Pa
 
     assert result.exit_code == 0
     assert DummyMemSearch.last_prompt_template == "Summarize carefully:\n{chunks}\n"
+
+
+def test_summarize_uses_named_provider(monkeypatch, tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    save_config(
+        {
+            "llm": {
+                "providers": {
+                    "openai": {
+                        "type": "openai",
+                        "model": "provider-model",
+                        "api_key": "env:OPENAI_API_KEY",
+                    }
+                }
+            },
+            "plugins": {
+                "codex": {
+                    "summarize": {
+                        "provider": "openai",
+                        "model": "plugin-model",
+                    }
+                }
+            },
+        },
+        cfg_path,
+    )
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    captured = {}
+
+    async def fake_summarize_text(prompt, **kwargs):
+        captured["prompt"] = prompt
+        captured.update(kwargs)
+        return "- summarized"
+
+    monkeypatch.setattr("memsearch.compact.summarize_text", fake_summarize_text)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["summarize", "--plugin", "codex", "--agent-name", "Codex"],
+        input="[Human]: hello\n[Codex]: hi",
+    )
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "- summarized"
+    assert "Transcript:\n[Human]: hello" in captured["prompt"]
+    assert captured["llm_provider"] == "openai"
+    assert captured["model"] == "plugin-model"
+    assert captured["api_key"] == "env:OPENAI_API_KEY"
+
+
+def test_summarize_rejects_native_provider(monkeypatch, tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    save_config(
+        {"plugins": {"codex": {"summarize": {"provider": "native"}}}},
+        cfg_path,
+    )
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["summarize", "--plugin", "codex"], input="hello")
+
+    assert result.exit_code == 2
+    assert "native summarization" in result.output
