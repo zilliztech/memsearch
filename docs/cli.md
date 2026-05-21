@@ -178,16 +178,26 @@ prompt_file = ""
 provider = ""
 model = ""
 
+[llm.providers.openai]
+type = "openai"
+model = "gpt-4o-mini"
+base_url = ""
+api_key = "env:OPENAI_API_KEY"
+
 [plugins.claude-code.summarize]
+provider = ""
 model = ""
 
 [plugins.codex.summarize]
+provider = ""
 model = ""
 
 [plugins.opencode.summarize]
+provider = ""
 model = ""
 
 [plugins.openclaw.summarize]
+provider = ""
 model = ""
 
 [prompts]
@@ -228,10 +238,18 @@ provider = "openai"
 | `llm.model` | string | `""` | LLM model override for `memsearch compact` |
 | `llm.base_url` | string | `""` | OpenAI-compatible API base URL |
 | `llm.api_key` | string | `""` | API key (supports `env:VAR_NAME` syntax) |
-| `plugins.claude-code.summarize.model` | string | `""` | Claude Code plugin summarize model override (empty = plugin default) |
-| `plugins.codex.summarize.model` | string | `""` | Codex plugin summarize model override (empty = plugin default) |
-| `plugins.opencode.summarize.model` | string | `""` | OpenCode plugin summarize model override (empty = `small_model` / plugin default) |
-| `plugins.openclaw.summarize.model` | string | `""` | OpenClaw plugin summarize model override (empty = default agent model) |
+| `llm.providers.<name>.type` | string | `""` | Named provider type for plugin summarization (`openai`, `openai-compatible`, `anthropic`, `gemini`) |
+| `llm.providers.<name>.model` | string | `""` | Default model for a named plugin summarization provider |
+| `llm.providers.<name>.base_url` | string | `""` | OpenAI-compatible API base URL for a named provider |
+| `llm.providers.<name>.api_key` | string | `""` | API key for a named provider (supports `env:VAR_NAME` syntax) |
+| `plugins.claude-code.summarize.provider` | string | `""` | Claude Code summarize provider route (empty/`native` = native summarizer) |
+| `plugins.claude-code.summarize.model` | string | `""` | Claude Code native model override, or named provider model override |
+| `plugins.codex.summarize.provider` | string | `""` | Codex summarize provider route (empty/`native` = native summarizer) |
+| `plugins.codex.summarize.model` | string | `""` | Codex native model override, or named provider model override |
+| `plugins.opencode.summarize.provider` | string | `""` | OpenCode summarize provider route (empty/`native` = native summarizer) |
+| `plugins.opencode.summarize.model` | string | `""` | OpenCode native model override, or named provider model override |
+| `plugins.openclaw.summarize.provider` | string | `""` | OpenClaw summarize provider route (empty/`native` = native summarizer) |
+| `plugins.openclaw.summarize.model` | string | `""` | OpenClaw native model override, or named provider model override |
 | `prompts.compact` | string | `""` | Custom prompt file for `memsearch compact` |
 | `prompts.summarize` | string | `""` | Custom prompt file for plugin session summarization |
 

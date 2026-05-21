@@ -28,7 +28,7 @@ If you use multiple AI coding agents (e.g., OpenCode for some projects, Claude C
 
 - **SQLite-based capture** -- background daemon polls OpenCode's database for new turns, no hook limitations
 - **Three-layer progressive recall** -- search, expand, and drill into original conversations ([details](memory-tools.md))
-- **Automatic summarization** -- each turn summarized via `opencode run` with isolated config
+- **Automatic summarization** -- each turn summarized via native `opencode run` with isolated config by default, with optional API provider routing
 - **Cold-start context** -- recent memories injected via `system.transform` hook
 - **ONNX embedding by default** -- no API key required, runs locally on CPU
 - **Daemon self-management** -- PID file singleton, automatic restart, persistent state across daemon restarts

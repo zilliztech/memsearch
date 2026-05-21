@@ -5,7 +5,7 @@
 | Event | What memsearch does |
 |-------|-------------------|
 | **Agent starts** | Recent memories from the 2 most recent daily logs are injected as context (`before_agent_start`) |
-| **Each turn ends** | Conversation is summarized by the OpenClaw agent and appended to daily `.md` (`agent_end` hook) |
+| **Each turn ends** | Conversation is summarized by the native OpenClaw agent by default, or by a configured API provider, then appended to daily `.md` (`agent_end` hook) |
 | **LLM needs history** | Calls `memory_search`, `memory_get`, or `memory_transcript` tools progressively |
 
 ---

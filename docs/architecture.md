@@ -291,16 +291,26 @@ prompt_file = ""
 provider = ""                          # empty = compact defaults to openai
 model = ""
 
-[plugins.claude-code.summarize]        # optional plugin summarize model overrides
-model = ""                             # empty = plugin default/native model
+[llm.providers.openai]                  # optional named providers for plugin summarization
+type = "openai"                         # openai/openai-compatible/anthropic/gemini
+model = "gpt-4o-mini"
+base_url = ""
+api_key = "env:OPENAI_API_KEY"
+
+[plugins.claude-code.summarize]        # optional plugin summarize routing
+provider = ""                           # empty/native = plugin native summarizer
+model = ""                              # native model override, or API provider model override
 
 [plugins.codex.summarize]
+provider = ""
 model = ""
 
 [plugins.opencode.summarize]
+provider = ""
 model = ""
 
 [plugins.openclaw.summarize]
+provider = ""
 model = ""
 
 [prompts]

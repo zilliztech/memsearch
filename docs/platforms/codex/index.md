@@ -30,7 +30,7 @@ If you experience issues with the Stop hook in strict sandbox mode, see [Trouble
 
 ## Key Features
 
-- **Automatic capture** -- conversations summarized via `codex exec` using `gpt-5.1-codex-mini` after each turn
+- **Automatic capture** -- conversations summarized via native `codex exec` by default, with optional API provider routing
 - **Best-effort rollout drill-down** -- search and expand always work, with original rollout parsing available when Codex includes rollout anchors ([details](memory-recall.md))
 - **Shell hook architecture** -- similar to [Claude Code plugin](../claude-code/index.md), easy to understand and modify
 - **Orphan cleanup** -- handles missing `SessionEnd` hook gracefully (Codex doesn't have one)

@@ -147,7 +147,7 @@ stateDiagram-v2
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
-| **Stop** | command | **yes** | 120s | Extract last turn from transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize (third-person notes), append summary with session/turn anchors to daily `.md` |
+| **Stop** | command | **yes** | 120s | Extract last turn from transcript with `parse-transcript.sh`, summarize via native Haiku by default or configured API provider, append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
 ### What Each Hook Does

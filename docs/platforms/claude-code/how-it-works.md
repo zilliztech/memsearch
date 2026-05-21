@@ -45,7 +45,7 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch`, write session heading, inject recent memories as cold-start context, display config status |
 | **UserPromptSubmit** | command | no | 15s | Return `systemMessage` hint "[memsearch] Memory available" (skips prompts < 10 chars) |
-| **Stop** | command | **yes** | 120s | Parse last turn from transcript, call `claude -p --model haiku` to summarize, append to daily `.md`, re-index |
+| **Stop** | command | **yes** | 120s | Parse last turn from transcript, summarize via native Haiku by default or configured API provider, append to daily `.md`, re-index |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process |
 
 All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
@@ -253,7 +253,7 @@ plugins/claude-code/
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). Changes here affect all hooks. |
 | `session-start.sh` | Starts the watcher, writes session heading, reads recent memory files for cold-start injection, checks for updates. |
 | `user-prompt-submit.sh` | Returns lightweight `systemMessage` hint. No search -- retrieval is handled by the memory-recall skill. |
-| `stop.sh` | Extracts transcript, validates it, calls `parse-transcript.sh`, summarizes via Haiku, appends with anchors. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
+| `stop.sh` | Extracts transcript, validates it, calls `parse-transcript.sh`, summarizes via native Haiku by default or configured API provider, appends with anchors. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
 | `session-end.sh` | Calls `stop_watch` to terminate background watcher and clean up. |
 | `derive-collection.sh` | Generates a deterministic per-project Milvus collection name from the project path (e.g., `ms_myproject_a1b2c3`). |

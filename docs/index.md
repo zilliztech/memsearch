@@ -29,7 +29,7 @@ The most mature plugin. Marketplace install, zero config.
 /plugin install memsearch
 ```
 
-Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-summarized via Haiku and recalled via semantic search -- all without polluting your main context window.
+Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-summarized by the native CLI by default, with optional API provider routing, and recalled via semantic search -- all without polluting your main context window.
 
 [:octicons-arrow-right-24: Claude Code Plugin docs](platforms/claude-code/index.md){ .md-button .md-button--primary }
 [:octicons-arrow-right-24: Troubleshooting](platforms/claude-code/troubleshooting.md){ .md-button }
