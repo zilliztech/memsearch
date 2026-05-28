@@ -12,6 +12,10 @@ Determine the collection name by running:
 bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash __INSTALL_DIR__/scripts/derive-collection.sh "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash __INSTALL_DIR__/scripts/derive-collection.sh "$root"; else bash __INSTALL_DIR__/scripts/derive-collection.sh; fi; fi'
 ```
 
+## Hermes vs MemSearch impact
+
+When explaining Hermes/MemSearch impact, distinguish runtime behaviour from infrastructure health: Hermes affects Hermes-native runs; MemSearch hooks affect Claude/Codex recall. Answer what changes in live Claude/Codex sessions, not just whether Milvus is healthy.
+
 ## Steps
 
 1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name from above>` to find relevant chunks.

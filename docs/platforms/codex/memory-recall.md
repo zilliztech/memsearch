@@ -111,7 +111,7 @@ In practice, this works well for targeted queries but is less efficient for broa
 
 **Use specific queries.** "Redis caching" will return better results than "the thing we did". The hybrid search combines semantic similarity with keyword matching, so including specific terms helps.
 
-**Check the skill install.** The `$memory-recall` skill must be installed at `~/.agents/skills/memory-recall/SKILL.md`. The installer substitutes `__INSTALL_DIR__` with the actual plugin path. If recall doesn't work, verify the skill file exists and paths are correct.
+**Check the skill install.** The `$memory-recall` skill must be installed at `~/.codex/skills/memory-recall/SKILL.md`. The installer substitutes `__INSTALL_DIR__` with the actual plugin path. If recall doesn't work, verify the skill file exists and paths are correct.
 
 **Derive collection manually.** If you need to debug collection issues:
 ```bash

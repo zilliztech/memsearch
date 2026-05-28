@@ -18,7 +18,7 @@ bash memsearch/plugins/codex/scripts/install.sh
 
 The installer:
 
-1. Copies the memory-recall skill to `~/.agents/skills/`
+1. Copies the memory-recall skill to `~/.codex/skills/`
 2. Installs or updates memsearch hooks in `~/.codex/hooks.json`
 3. Enables `hooks = true` in `~/.codex/config.toml`
 4. Makes all scripts executable
@@ -69,7 +69,7 @@ from pathlib import Path
 import json
 import shutil
 
-skill_dir = Path.home() / ".agents/skills/memory-recall"
+skill_dir = Path.home() / ".codex/skills/memory-recall"
 if skill_dir.is_symlink() or skill_dir.is_file():
     skill_dir.unlink()
 elif skill_dir.exists():
