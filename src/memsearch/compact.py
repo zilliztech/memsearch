@@ -69,11 +69,11 @@ async def compact_chunks(
     prompt = template.format(chunks=combined)
 
     if llm_provider == "openai":
-        return await _compact_openai(prompt, model or "gpt-4o-mini", base_url=base_url, api_key=api_key)
+        return await _compact_openai(prompt, model or "gpt-5-mini", base_url=base_url, api_key=api_key)
     elif llm_provider == "anthropic":
-        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
+        return await _compact_anthropic(prompt, model or "claude-sonnet-4-6")
     elif llm_provider == "gemini":
-        return await _compact_gemini(prompt, model or "gemini-2.0-flash")
+        return await _compact_gemini(prompt, model or "gemini-3-flash-preview")
     else:
         raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
 
@@ -89,11 +89,11 @@ async def summarize_text(
     """Summarize preformatted text with a memsearch-managed LLM provider."""
     provider = "openai" if llm_provider == "openai-compatible" else llm_provider
     if provider == "openai":
-        return await _compact_openai(prompt, model or "gpt-4o-mini", base_url=base_url, api_key=api_key)
+        return await _compact_openai(prompt, model or "gpt-5-mini", base_url=base_url, api_key=api_key)
     if provider == "anthropic":
-        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
+        return await _compact_anthropic(prompt, model or "claude-sonnet-4-6")
     if provider == "gemini":
-        return await _compact_gemini(prompt, model or "gemini-2.0-flash")
+        return await _compact_gemini(prompt, model or "gemini-3-flash-preview")
     raise ValueError(
         f"Unknown LLM provider type {llm_provider!r}. Available: openai, openai-compatible, anthropic, gemini"
     )

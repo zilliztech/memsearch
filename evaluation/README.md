@@ -12,7 +12,7 @@ The evaluation dataset was built from real-world memsearch memory logs (`.memsea
 
 1. **Collect** — Scan markdown memory files, chunk by heading using memsearch's `chunk_markdown()`
 2. **Clean** — Remove HTML comments, short chunks (<50 chars), sanitize sensitive data (paths, IPs, tokens)
-3. **Annotate** — Generate queries with `gpt-4o-mini`:
+3. **Annotate** — Generate queries with `gpt-5-mini`:
    - **Simple** (1 per chunk): straightforward factual questions
    - **Complex** (1 per substantial chunk): reasoning-required questions
    - **Multi-hop** (group related chunks by project+date): questions requiring information from 2+ chunks

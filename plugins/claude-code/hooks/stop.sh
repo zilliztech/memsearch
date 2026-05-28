@@ -54,6 +54,12 @@ fi
 
 ensure_memory_dir
 
+SUMMARIZE_ENABLED=$($MEMSEARCH_CMD config get plugins.claude-code.summarize.enabled 2>/dev/null || echo "true")
+if [ "$SUMMARIZE_ENABLED" = "false" ]; then
+  echo '{}'
+  exit 0
+fi
+
 # Parse transcript — extract the last turn only (one user question + all responses)
 PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
 

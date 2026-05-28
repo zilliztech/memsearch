@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-@dataclass(slots=True)
+@dataclass
 class OpenCodeMessage:
     """A single meaningful OpenCode message with rendered text."""
 
@@ -29,7 +29,7 @@ class OpenCodeMessage:
     text: str
 
 
-@dataclass(slots=True)
+@dataclass
 class OpenCodeTurn:
     """A user turn plus its assistant follow-up messages."""
 
@@ -60,7 +60,7 @@ class OpenCodeTurn:
         return "\n".join(lines).strip()
 
 
-@dataclass(slots=True)
+@dataclass
 class TurnState:
     """Persistent capture progress for a session."""
 

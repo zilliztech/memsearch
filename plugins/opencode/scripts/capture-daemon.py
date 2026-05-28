@@ -40,7 +40,7 @@ from opencode_turns import (
 )
 
 _ANCHOR_RE = re.compile(r"<!-- session:([^ ]+) turn:([^ ]+) db:")
-_TAIL_TURN_QUIET_PERIOD_MS = 300_000
+_TAIL_TURN_QUIET_PERIOD_MS = int(os.environ.get("MEMSEARCH_OPENCODE_TAIL_QUIET_MS", "300000"))
 
 
 class TailTurnObservation:
@@ -106,6 +106,22 @@ def get_plugin_summarize_provider(memsearch_cmd: str | None = None) -> str:
         return ""
 
 
+def get_plugin_summarize_enabled(memsearch_cmd: str | None = None) -> bool:
+    """Read whether the memsearch OpenCode summarizer is enabled."""
+    if not memsearch_cmd:
+        return True
+    try:
+        result = subprocess.run(
+            [*split_memsearch_cmd(memsearch_cmd), "config", "get", "plugins.opencode.summarize.enabled"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip().lower() != "false"
+    except Exception:
+        return True
+
+
 def ensure_isolated_config() -> str:
     """Create isolated config dir without plugins/ to prevent recursion."""
     isolated = os.path.expanduser("~/.codex/tmp/opencode-memsearch-summarize/opencode")
@@ -154,6 +170,9 @@ def _load_summarize_prompt(agent_name: str, memsearch_cmd: str | None = None) ->
 
 def summarize_with_llm(turn_text: str, small_model: str, memsearch_cmd: str | None = None) -> str | None:
     """Summarize using configured provider routing."""
+    if not get_plugin_summarize_enabled(memsearch_cmd):
+        return None
+
     system_prompt = _load_summarize_prompt("OpenCode", memsearch_cmd)
     full_prompt = f"{system_prompt}\n\nTranscript:\n{turn_text}"
 
@@ -467,6 +486,8 @@ def capture_session_turns(
         # Check anchor first so that sidecar rebuilds repair state without
         # calling the summarizer again for already-captured turns.
         if not capture_exists(memory_dir, session_id, turn.turn_id):
+            if not get_plugin_summarize_enabled(memsearch_cmd):
+                continue
             summary = summarize_with_llm(turn_text, small_model, memsearch_cmd)
             write_capture(
                 memory_dir,
@@ -543,6 +564,12 @@ def main() -> None:
                 os.system(
                     f"{args.memsearch_cmd} index '{memory_dir}' "
                     f"--collection {args.collection_name} &"
+                )
+                os.system(
+                    f"python3 {shlex.quote(str(Path(__file__).resolve().parent / 'maintenance-runner.py'))} "
+                    f"--platform opencode "
+                    f"--project-dir {shlex.quote(args.project_dir)} "
+                    f"--memsearch-dir {shlex.quote(os.path.join(args.project_dir, '.memsearch'))} &"
                 )
         except Exception:
             pass

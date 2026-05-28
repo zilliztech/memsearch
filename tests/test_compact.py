@@ -57,7 +57,7 @@ async def test_compact_chunks_dispatches_to_anthropic(monkeypatch) -> None:
     )
 
     assert result == "anthropic-summary"
-    assert captured["model"] == "claude-sonnet-4-5-20250929"
+    assert captured["model"] == "claude-sonnet-4-6"
     assert "memory chunk" in captured["prompt"]
 
 
@@ -81,7 +81,7 @@ async def test_compact_chunks_dispatches_to_gemini(monkeypatch) -> None:
     assert result == "gemini-summary"
     assert captured == {
         "prompt": "Summarize:\nmemory chunk",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-3-flash-preview",
     }
 
 

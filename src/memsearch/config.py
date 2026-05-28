@@ -26,7 +26,8 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size"}
+_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours"}
+_BOOL_FIELDS = {"enabled"}
 
 
 @dataclass
@@ -104,14 +105,29 @@ class PromptsConfig:
 
     compact: str = ""  # custom prompt file for memsearch compact
     summarize: str = ""  # custom prompt file for plugin session summarization
+    project_review: str = ""  # custom prompt file for project maintenance
+    user_profile: str = ""  # custom prompt file for user profile maintenance
 
 
 @dataclass
 class PluginSummarizeConfig:
     """Plugin summarization settings."""
 
+    enabled: bool = True
     provider: str = ""  # empty/native = keep plugin-native summarization path
     model: str = ""  # empty = keep plugin default/native model selection
+
+
+@dataclass
+class PluginMaintenanceTaskConfig:
+    """Advanced plugin maintenance task settings."""
+
+    enabled: bool = False
+    provider: str = "native"
+    model: str = ""
+    min_interval_hours: int = 24
+    input_dir: str = ".memsearch/memory"
+    output_file: str = ""
 
 
 @dataclass
@@ -119,6 +135,12 @@ class PluginPlatformConfig:
     """Settings for one platform plugin."""
 
     summarize: PluginSummarizeConfig = field(default_factory=PluginSummarizeConfig)
+    project_review: PluginMaintenanceTaskConfig = field(
+        default_factory=lambda: PluginMaintenanceTaskConfig(output_file=".memsearch/PROJECT.md")
+    )
+    user_profile: PluginMaintenanceTaskConfig = field(
+        default_factory=lambda: PluginMaintenanceTaskConfig(output_file=".memsearch/USER.md")
+    )
 
 
 @dataclass
@@ -239,7 +261,11 @@ def _dict_to_plugins_config(section_data: dict[str, Any]) -> PluginsConfig:
     """Convert a TOML plugins table to PluginsConfig."""
     kwargs: dict[str, Any] = {}
     valid_platform_fields = {f.name for f in fields(PluginPlatformConfig)}
-    valid_summarize_fields = {f.name for f in fields(PluginSummarizeConfig)}
+    task_classes = {
+        "summarize": PluginSummarizeConfig,
+        "project_review": PluginMaintenanceTaskConfig,
+        "user_profile": PluginMaintenanceTaskConfig,
+    }
 
     for raw_platform, raw_platform_data in section_data.items():
         platform = _PLUGIN_KEY_TO_FIELD.get(raw_platform)
@@ -247,12 +273,14 @@ def _dict_to_plugins_config(section_data: dict[str, Any]) -> PluginsConfig:
             continue
 
         platform_kwargs: dict[str, Any] = {}
-        summarize_data = raw_platform_data.get("summarize", {})
-        if isinstance(summarize_data, dict):
-            summarize_filtered = {k: v for k, v in summarize_data.items() if k in valid_summarize_fields}
-            platform_kwargs["summarize"] = PluginSummarizeConfig(**summarize_filtered)
+        for task_name, task_cls in task_classes.items():
+            task_data = raw_platform_data.get(task_name, {})
+            if isinstance(task_data, dict):
+                valid_task_fields = {f.name for f in fields(task_cls)}
+                task_filtered = {k: v for k, v in task_data.items() if k in valid_task_fields}
+                platform_kwargs[task_name] = task_cls(**task_filtered)
 
-        filtered = {k: v for k, v in raw_platform_data.items() if k in valid_platform_fields and k != "summarize"}
+        filtered = {k: v for k, v in raw_platform_data.items() if k in valid_platform_fields and k not in task_classes}
         platform_kwargs.update(filtered)
         kwargs[platform] = PluginPlatformConfig(**platform_kwargs)
 
@@ -389,17 +417,21 @@ def _validate_dotted_key(parts: list[str]) -> str:
 
     if section == "plugins":
         if len(parts) != 4:
-            raise ValueError(
-                f"Plugin config keys must be plugins.<platform>.summarize.<field> (got {'.'.join(parts)!r})"
-            )
+            raise ValueError(f"Plugin config keys must be plugins.<platform>.<task>.<field> (got {'.'.join(parts)!r})")
         platform, subsection, field_name = parts[1:]
         if platform not in _PLUGIN_KEY_TO_FIELD:
             raise KeyError(f"Unknown plugin platform: {platform}")
-        if subsection != "summarize":
+        task_classes = {
+            "summarize": PluginSummarizeConfig,
+            "project_review": PluginMaintenanceTaskConfig,
+            "user_profile": PluginMaintenanceTaskConfig,
+        }
+        task_cls = task_classes.get(subsection)
+        if task_cls is None:
             raise KeyError(f"Unknown plugin config section: {subsection} in platform {platform}")
-        valid = {f.name for f in fields(PluginSummarizeConfig)}
+        valid = {f.name for f in fields(task_cls)}
         if field_name not in valid:
-            raise KeyError(f"Unknown plugin summarize field: {field_name} in platform {platform}")
+            raise KeyError(f"Unknown plugin {subsection} field: {field_name} in platform {platform}")
         return field_name
 
     if section == "llm" and len(parts) == 4 and parts[1] == "providers":
@@ -461,6 +493,14 @@ def set_config_value(key: str, value: Any, *, project: bool = False) -> None:
     # Auto-convert int fields
     if field_name in _INT_FIELDS and isinstance(value, str):
         value = int(value)
+    if field_name in _BOOL_FIELDS and isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            value = True
+        elif normalized in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(f"Boolean field {field_name!r} must be true or false")
 
     current: dict[str, Any] = existing
     for part in parts[:-1]:

@@ -68,7 +68,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = ChatOpenAI(model="gpt-5-mini")
 retriever = MemSearchRetriever(mem=mem, top_k=3)
 
 
@@ -129,7 +129,7 @@ def search_memory(query: str) -> str:
     )
 
 
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = ChatOpenAI(model="gpt-5-mini")
 agent = create_react_agent(llm, [search_memory])
 
 result = agent.invoke(

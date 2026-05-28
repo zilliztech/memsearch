@@ -185,27 +185,32 @@ else
   uvx --from 'memsearch[onnx]' memsearch --version 2>/dev/null || true
 fi
 
-# --- 2. Install memory-recall skill ---
-echo "[2/6] Installing memory-recall skill..."
-SKILL_SRC="$INSTALL_DIR/skills/memory-recall"
-SKILL_DST="$HOME/.agents/skills/memory-recall"
+# --- 2. Install skills ---
+echo "[2/6] Installing memsearch skills..."
 mkdir -p "$HOME/.agents/skills"
 
-if [ -d "$SKILL_DST" ] || [ -L "$SKILL_DST" ]; then
-  echo "  ⚠ Existing memory-recall skill found — replacing"
-  rm -rf "$SKILL_DST"
-fi
+for skill_name in memory-recall memory-config; do
+  SKILL_SRC="$INSTALL_DIR/skills/$skill_name"
+  SKILL_DST="$HOME/.agents/skills/$skill_name"
+  if [ -d "$SKILL_DST" ] || [ -L "$SKILL_DST" ]; then
+    echo "  ⚠ Existing $skill_name skill found — replacing"
+    rm -rf "$SKILL_DST"
+  fi
 
-# Copy (not symlink) so we can substitute __INSTALL_DIR__ placeholder
-cp -r "$SKILL_SRC" "$SKILL_DST"
-echo "  ✓ Copied skill to $SKILL_DST"
+  # Copy (not symlink) so we can substitute __INSTALL_DIR__ placeholder
+  cp -r "$SKILL_SRC" "$SKILL_DST"
+  echo "  ✓ Copied $skill_name skill to $SKILL_DST"
+done
 
 # --- 3. Replace __INSTALL_DIR__ placeholder in SKILL.md ---
 echo "[3/6] Configuring skill paths..."
-if [ -f "$SKILL_DST/SKILL.md" ]; then
-  replace_text_in_file "$SKILL_DST/SKILL.md" "__INSTALL_DIR__" "$INSTALL_DIR"
-  echo "  ✓ Updated SKILL.md with install path: $INSTALL_DIR"
-fi
+for skill_name in memory-recall memory-config; do
+  SKILL_DST="$HOME/.agents/skills/$skill_name"
+  if [ -f "$SKILL_DST/SKILL.md" ]; then
+    replace_text_in_file "$SKILL_DST/SKILL.md" "__INSTALL_DIR__" "$INSTALL_DIR"
+    echo "  ✓ Updated $skill_name SKILL.md with install path: $INSTALL_DIR"
+  fi
+done
 
 # --- 4. Install or update hooks.json ---
 echo "[4/6] Configuring hooks..."
@@ -242,10 +247,11 @@ echo "  • SessionStart: indexes project memory, injects recent context"
 echo "  • Stop: summarizes each turn and saves to memory"
 echo "  • UserPromptSubmit: reminds Codex about memory-recall skill"
 echo "  • memory-recall skill: search past memories when relevant"
+echo "  • memory-config skill: diagnose and configure memsearch"
 echo ""
 echo "Memory files:   <project>/.memsearch/memory/*.md"
 echo "Hooks config:   $HOOKS_FILE"
-echo "Skill location: $SKILL_DST"
+echo "Skill location: $HOME/.agents/skills/{memory-recall,memory-config}"
 echo "Feature flag:   hooks = true in $CONFIG_FILE"
 echo ""
 echo "To verify: start a new codex session and check for [memsearch] status line."

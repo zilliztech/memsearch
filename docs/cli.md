@@ -86,10 +86,26 @@ Writing to: /home/user/.memsearch/config.toml
 -- Watch --
   Debounce (ms) [1500]:
 
--- Compact --
-  LLM provider [openai]:
-  LLM model (empty for default) []:
-  Prompt file path (empty for built-in) []:
+-- LLM (for memsearch compact) --
+  Provider (empty/openai/anthropic/gemini) []:
+  Model []:
+
+-- Plugin summarize routing --
+  Leave provider empty/native to keep each plugin's current native summarizer.
+  Codex automatic summaries enabled [Y/n]:
+  Codex summarize provider []:
+  Codex summarize model []:
+
+-- Advanced maintenance --
+  Disabled by default. Configure provider/model if you enable these tasks.
+  Codex project review enabled [y/N]:
+  Codex user profile enabled [y/N]:
+
+-- Prompts --
+  Leave empty to use built-in defaults.
+  Summarize prompt file (for plugin session notes) []:
+  Project review prompt file []:
+  User profile prompt file []:
 
 Config saved to /home/user/.memsearch/config.toml
 ```
@@ -123,6 +139,23 @@ Set embedding.provider = google in .memsearch.toml
 $ memsearch config set chunking.max_chunk_size 2000
 Set chunking.max_chunk_size = 2000 in /home/user/.memsearch/config.toml
 ```
+
+Plugin config keys use `plugins.<platform>.<task>.<field>`:
+
+```bash
+$ memsearch config set plugins.codex.summarize.enabled false --project
+Set plugins.codex.summarize.enabled = false in .memsearch.toml
+
+$ memsearch config set plugins.codex.project_review.enabled true --project
+Set plugins.codex.project_review.enabled = true in .memsearch.toml
+
+$ memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
+Set plugins.codex.project_review.output_file = .memsearch/PROJECT.md in .memsearch.toml
+```
+
+Supported plugin platforms are `claude-code`, `codex`, `opencode`, and
+`openclaw`. Supported plugin tasks are `summarize`, `project_review`, and
+`user_profile`.
 
 #### `memsearch config get`
 
@@ -180,7 +213,7 @@ model = ""
 
 [llm.providers.openai]
 type = "openai"
-model = "gpt-4o-mini"
+model = "gpt-5-mini"
 base_url = ""
 api_key = "env:OPENAI_API_KEY"
 
@@ -252,6 +285,8 @@ provider = "openai"
 | `plugins.openclaw.summarize.model` | string | `""` | OpenClaw native model override, or named provider model override |
 | `prompts.compact` | string | `""` | Custom prompt file for `memsearch compact` |
 | `prompts.summarize` | string | `""` | Custom prompt file for plugin session summarization |
+| `prompts.project_review` | string | `""` | Custom prompt file for plugin project maintenance |
+| `prompts.user_profile` | string | `""` | Custom prompt file for plugin user-profile maintenance |
 
 ---
 
@@ -471,9 +506,9 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 
 | Provider | Default Model |
 |----------|--------------|
-| `openai` | `gpt-4o-mini` |
-| `anthropic` | `claude-sonnet-4-5-20250929` |
-| `gemini` | `gemini-2.0-flash` |
+| `openai` | `gpt-5-mini` |
+| `anthropic` | `claude-sonnet-4-6` |
+| `gemini` | `gemini-3-flash-preview` |
 
 ### Examples
 

@@ -176,9 +176,9 @@ Use an LLM to compress indexed chunks into a summary. The summary is appended to
 
 | Provider | Default Model |
 |----------|--------------|
-| `openai` | `gpt-4o-mini` |
-| `anthropic` | `claude-sonnet-4-5-20250929` |
-| `gemini` | `gemini-2.0-flash` |
+| `openai` | `gpt-5-mini` |
+| `anthropic` | `claude-sonnet-4-6` |
+| `gemini` | `gemini-3-flash-preview` |
 
 ```python
 # Compact all memories
@@ -266,7 +266,7 @@ A complete agent loop: seed knowledge, index it, then recall it during conversat
 
         # 2. Think — call LLM with memory context
         resp = llm.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": f"You have these memories:\n{context}"},
                 {"role": "user", "content": user_input},
@@ -314,7 +314,7 @@ A complete agent loop: seed knowledge, index it, then recall it during conversat
         context = "\n".join(f"- {m['content'][:200]}" for m in memories)
 
         resp = llm.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=f"You have these memories:\n{context}",
             messages=[{"role": "user", "content": user_input}],

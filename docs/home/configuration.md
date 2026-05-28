@@ -91,13 +91,101 @@ named provider and point a plugin at it:
 
 ```bash
 memsearch config set llm.providers.openai.type openai
-memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.model gpt-5-mini
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```
 
 Set `plugins.<platform>.summarize.provider` to `native`, or leave it empty, to
 preserve the current plugin behavior.
+
+You can disable automatic capture for a single project while keeping the plugin
+installed:
+
+```bash
+memsearch config set plugins.codex.summarize.enabled false --project
+```
+
+## Advanced Plugin Maintenance
+
+Plugins can optionally maintain higher-level markdown files in the background.
+This is disabled by default.
+
+| Task | Default output | Purpose |
+|------|----------------|---------|
+| `project_review` | `.memsearch/PROJECT.md` | Durable project state: active threads, decisions, risks, next steps |
+| `user_profile` | `.memsearch/USER.md` | Reusable user preferences, working style, recurring goals, background context |
+
+Example project-level setup for Codex:
+
+```bash
+memsearch config set plugins.codex.project_review.enabled true --project
+memsearch config set plugins.codex.project_review.provider native --project
+memsearch config set plugins.codex.project_review.min_interval_hours 24 --project
+memsearch config set plugins.codex.project_review.input_dir .memsearch/memory --project
+memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
+
+memsearch config set plugins.codex.user_profile.enabled true --project
+memsearch config set plugins.codex.user_profile.provider native --project
+memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md --project
+```
+
+Equivalent TOML:
+
+```toml
+[plugins.codex.summarize]
+enabled = true
+provider = ""  # empty/native keeps the plugin-native summarizer
+model = ""
+
+[plugins.codex.project_review]
+enabled = true
+provider = "native"
+model = ""
+min_interval_hours = 24
+input_dir = ".memsearch/memory"
+output_file = ".memsearch/PROJECT.md"
+
+[plugins.codex.user_profile]
+enabled = true
+provider = "native"
+model = ""
+min_interval_hours = 24
+input_dir = ".memsearch/memory"
+output_file = ".memsearch/USER.md"
+```
+
+`input_dir` and `output_file` can be relative or absolute. Relative paths are
+resolved from the current project directory. The default input is the daily
+memory journal directory.
+
+Maintenance tasks run when the plugin wakes them and all of these are true:
+
+- the task is enabled
+- the input markdown digest changed
+- `min_interval_hours` has elapsed since the last successful run
+
+Set `provider = "native"` to reuse the agent's own non-interactive model path.
+To use a memsearch-managed API provider instead, define a named provider and
+reference it from the task:
+
+```bash
+memsearch config set llm.providers.openai.type openai
+memsearch config set llm.providers.openai.model gpt-5-mini
+memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
+memsearch config set plugins.codex.project_review.provider openai --project
+```
+
+Custom maintenance prompts are configured globally or per project:
+
+```bash
+memsearch config set prompts.project_review .memsearch/prompts/project-review.txt --project
+memsearch config set prompts.user_profile .memsearch/prompts/user-profile.txt --project
+```
+
+The plugin-installed `memory-config` skill can inspect current config, memory
+files, and index health; explain these settings; and make safe project-scoped
+changes from natural-language requests.
 
 ## Platform-Specific Config
 

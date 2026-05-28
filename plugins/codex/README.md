@@ -97,7 +97,7 @@ To use a memsearch-managed API provider instead:
 
 ```bash
 memsearch config set llm.providers.openai.type openai
-memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.model gpt-5-mini
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```

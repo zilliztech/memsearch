@@ -293,7 +293,7 @@ model = ""
 
 [llm.providers.openai]                  # optional named providers for plugin summarization
 type = "openai"                         # openai/openai-compatible/anthropic/gemini
-model = "gpt-4o-mini"
+model = "gpt-5-mini"
 base_url = ""
 api_key = "env:OPENAI_API_KEY"
 
@@ -316,6 +316,8 @@ model = ""
 [prompts]
 compact = ""                           # custom compact prompt file
 summarize = ""                         # custom summarize prompt file
+project_review = ""                    # custom PROJECT.md maintenance prompt file
+user_profile = ""                      # custom USER.md maintenance prompt file
 
 [chunking]
 max_chunk_size = 1500

@@ -25,6 +25,7 @@ htmlcov/
 .memsearch/
 CONTEXT.md
 CLAUDE.local.md
+AGENTS.local.md
 
 # IDE
 .idea/

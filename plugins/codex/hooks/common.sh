@@ -146,6 +146,16 @@ run_memsearch() {
   fi
 }
 
+run_maintenance() {
+  if command -v python3 >/dev/null 2>&1; then
+    MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
+      --platform codex \
+      --project-dir "$PROJECT_DIR" \
+      --memsearch-dir "$MEMSEARCH_DIR" \
+      >/dev/null 2>&1 || true
+  fi
+}
+
 # --- Index process cleanup ---
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"

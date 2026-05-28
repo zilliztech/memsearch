@@ -15,7 +15,7 @@ def test_build_cli_overrides_maps_only_non_none_values() -> None:
         milvus_uri="http://localhost:19530",
         milvus_token=None,
         llm_provider="gemini",
-        llm_model="gemini-2.0-flash",
+        llm_model="gemini-3-flash-preview",
         prompt_file="prompts/compact.txt",
         llm_base_url="https://llm.example.com",
         llm_api_key="env:LLM_KEY",
@@ -38,7 +38,7 @@ def test_build_cli_overrides_maps_only_non_none_values() -> None:
         },
         "compact": {
             "llm_provider": "gemini",
-            "llm_model": "gemini-2.0-flash",
+            "llm_model": "gemini-3-flash-preview",
             "prompt_file": "prompts/compact.txt",
             "base_url": "https://llm.example.com",
             "api_key": "env:LLM_KEY",

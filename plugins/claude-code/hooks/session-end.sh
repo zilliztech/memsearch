@@ -4,6 +4,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+( run_maintenance ) </dev/null &>/dev/null &
+
 stop_watch
 kill_orphaned_index
 

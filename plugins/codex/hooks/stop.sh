@@ -79,6 +79,14 @@ run_worker() {
 
   ensure_memory_dir
 
+  local SUMMARIZE_ENABLED="true"
+  if memsearch_available; then
+    SUMMARIZE_ENABLED=$(_memsearch config get plugins.codex.summarize.enabled 2>/dev/null || echo "true")
+  fi
+  if [ "$SUMMARIZE_ENABLED" = "false" ]; then
+    return 0
+  fi
+
   # Load summarization prompt: user custom (via config) > plugin built-in template
   local AGENT_NAME="Codex"
   local PROMPT_FILE=""
@@ -178,6 +186,8 @@ ${CONTENT}"
     kill_orphaned_index
     run_memsearch index "$MEMORY_DIR" >/dev/null
   fi
+
+  run_maintenance
 }
 
 if [ "${1:-}" = "--worker" ]; then

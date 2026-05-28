@@ -236,12 +236,38 @@ Advanced users can route plugin summarization through a memsearch-managed API pr
 
 ```bash
 memsearch config set llm.providers.openai.type openai
-memsearch config set llm.providers.openai.model gpt-4o-mini
+memsearch config set llm.providers.openai.model gpt-5-mini
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```
 
 Leave `plugins.<platform>.summarize.provider` empty or set it to `native` to preserve the default behavior. Plugin-specific summarize settings do not fall back to `llm.model`.
+
+You can also disable automatic capture for a project while keeping the plugin installed:
+
+```bash
+memsearch config set plugins.codex.summarize.enabled false --project
+```
+
+#### Advanced Memory Maintenance
+
+Plugins can optionally maintain higher-level project and user notes in the background. These tasks are disabled by default and run only when a plugin wakes them after a session/turn, the journal input changed, and `min_interval_hours` has elapsed.
+
+```bash
+memsearch config set plugins.codex.project_review.enabled true --project
+memsearch config set plugins.codex.project_review.provider native --project
+memsearch config set plugins.codex.project_review.min_interval_hours 24 --project
+memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
+
+memsearch config set plugins.codex.user_profile.enabled true --project
+memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md --project
+```
+
+`project_review` summarizes durable project state such as active threads, decisions, risks, and next steps. `user_profile` captures reusable user preferences, working style, recurring goals, and background context. Both read `.memsearch/memory` by default; set `input_dir` if your journal files live somewhere else.
+
+Use `provider = "native"` to reuse the current agent's own non-interactive model path, or point the task at a named `[llm.providers.<name>]` API provider. Custom prompt files can be configured with `prompts.project_review` and `prompts.user_profile`.
+
+The `memory-config` skill, installed with the plugins, can inspect the current setup, explain these options, and make safe project-scoped changes from natural-language requests.
 
 ### What can you use it for?
 
@@ -428,7 +454,7 @@ async def agent_chat(user_input: str) -> str:
 
     # 2. Think — call LLM with memory context
     resp = llm.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5-mini",
         messages=[
             {"role": "system", "content": f"You have these memories:\n{context}"},
             {"role": "user", "content": user_input},
@@ -488,7 +514,7 @@ async def agent_chat(user_input: str) -> str:
 
     # 2. Think — call Claude with memory context
     resp = llm.messages.create(
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         system=f"You have these memories:\n{context}",
         messages=[{"role": "user", "content": user_input}],

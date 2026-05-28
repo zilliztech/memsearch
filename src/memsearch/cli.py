@@ -848,9 +848,9 @@ def config_init(project: bool) -> None:
     click.echo("\n── LLM (for memsearch compact) ──")
     click.echo("  Plugin summarization uses plugins.<platform>.summarize.model.")
     _llm_defaults = {
-        "openai": "gpt-4o-mini",
-        "anthropic": "claude-haiku-4-5-20251001",
-        "gemini": "gemini-2.0-flash",
+        "openai": "gpt-5-mini",
+        "anthropic": "claude-sonnet-4-6",
+        "gemini": "gemini-3-flash-preview",
     }
     result["llm"] = {}
     result["llm"]["provider"] = click.prompt(
@@ -876,11 +876,15 @@ def config_init(project: bool) -> None:
     click.echo("\n── Plugin summarize routing ──")
     click.echo("  Leave provider empty/native to keep each plugin's current native summarizer.")
     result["plugins"] = {
-        "claude-code": {"summarize": {}},
-        "codex": {"summarize": {}},
-        "opencode": {"summarize": {}},
-        "openclaw": {"summarize": {}},
+        "claude-code": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "codex": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "opencode": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "openclaw": {"summarize": {}, "project_review": {}, "user_profile": {}},
     }
+    result["plugins"]["claude-code"]["summarize"]["enabled"] = click.confirm(
+        "  Claude Code automatic summaries enabled",
+        default=current.plugins.claude_code.summarize.enabled,
+    )
     result["plugins"]["claude-code"]["summarize"]["provider"] = click.prompt(
         "  Claude Code summarize provider",
         default=current.plugins.claude_code.summarize.provider,
@@ -888,6 +892,10 @@ def config_init(project: bool) -> None:
     result["plugins"]["claude-code"]["summarize"]["model"] = click.prompt(
         "  Claude Code summarize model",
         default=current.plugins.claude_code.summarize.model,
+    )
+    result["plugins"]["codex"]["summarize"]["enabled"] = click.confirm(
+        "  Codex automatic summaries enabled",
+        default=current.plugins.codex.summarize.enabled,
     )
     result["plugins"]["codex"]["summarize"]["provider"] = click.prompt(
         "  Codex summarize provider",
@@ -897,6 +905,10 @@ def config_init(project: bool) -> None:
         "  Codex summarize model",
         default=current.plugins.codex.summarize.model,
     )
+    result["plugins"]["opencode"]["summarize"]["enabled"] = click.confirm(
+        "  OpenCode automatic summaries enabled",
+        default=current.plugins.opencode.summarize.enabled,
+    )
     result["plugins"]["opencode"]["summarize"]["provider"] = click.prompt(
         "  OpenCode summarize provider",
         default=current.plugins.opencode.summarize.provider,
@@ -904,6 +916,10 @@ def config_init(project: bool) -> None:
     result["plugins"]["opencode"]["summarize"]["model"] = click.prompt(
         "  OpenCode summarize model",
         default=current.plugins.opencode.summarize.model,
+    )
+    result["plugins"]["openclaw"]["summarize"]["enabled"] = click.confirm(
+        "  OpenClaw automatic summaries enabled",
+        default=current.plugins.openclaw.summarize.enabled,
     )
     result["plugins"]["openclaw"]["summarize"]["provider"] = click.prompt(
         "  OpenClaw summarize provider",
@@ -913,6 +929,28 @@ def config_init(project: bool) -> None:
         "  OpenClaw summarize model",
         default=current.plugins.openclaw.summarize.model,
     )
+
+    click.echo("\n── Advanced maintenance ──")
+    click.echo("  Disabled by default. Configure provider/model if you enable these tasks.")
+    for key, label, current_platform in [
+        ("claude-code", "Claude Code", current.plugins.claude_code),
+        ("codex", "Codex", current.plugins.codex),
+        ("opencode", "OpenCode", current.plugins.opencode),
+        ("openclaw", "OpenClaw", current.plugins.openclaw),
+    ]:
+        for task_name, task_label in [("project_review", "project review"), ("user_profile", "user profile")]:
+            task = getattr(current_platform, task_name)
+            section = result["plugins"][key][task_name]
+            section["enabled"] = click.confirm(f"  {label} {task_label} enabled", default=task.enabled)
+            section["provider"] = click.prompt(f"  {label} {task_label} provider", default=task.provider)
+            section["model"] = click.prompt(f"  {label} {task_label} model", default=task.model)
+            section["min_interval_hours"] = click.prompt(
+                f"  {label} {task_label} min interval hours",
+                default=task.min_interval_hours,
+                type=int,
+            )
+            section["input_dir"] = click.prompt(f"  {label} {task_label} input dir", default=task.input_dir)
+            section["output_file"] = click.prompt(f"  {label} {task_label} output file", default=task.output_file)
 
     # Prompts
     click.echo("\n── Prompts ──")
@@ -925,6 +963,14 @@ def config_init(project: bool) -> None:
     result["prompts"]["summarize"] = click.prompt(
         "  Summarize prompt file (for plugin session notes)",
         default=current.prompts.summarize,
+    )
+    result["prompts"]["project_review"] = click.prompt(
+        "  Project review prompt file",
+        default=current.prompts.project_review,
+    )
+    result["prompts"]["user_profile"] = click.prompt(
+        "  User profile prompt file",
+        default=current.prompts.user_profile,
     )
 
     save_config(result, target)

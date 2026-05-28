@@ -34,8 +34,14 @@ def test_default_config():
     assert cfg.compact.llm_provider == "openai"
     assert cfg.llm.providers == {}
     assert cfg.plugins.claude_code.summarize.provider == ""
+    assert cfg.plugins.claude_code.summarize.enabled is True
     assert cfg.plugins.claude_code.summarize.model == ""
     assert cfg.plugins.codex.summarize.model == ""
+    assert cfg.plugins.codex.project_review.enabled is False
+    assert cfg.plugins.codex.project_review.min_interval_hours == 24
+    assert cfg.plugins.codex.project_review.input_dir == ".memsearch/memory"
+    assert cfg.plugins.codex.project_review.output_file == ".memsearch/PROJECT.md"
+    assert cfg.plugins.codex.user_profile.output_file == ".memsearch/USER.md"
 
 
 def test_load_toml_file(tmp_path: Path):
@@ -170,6 +176,32 @@ def test_plugin_summarize_provider_config_roundtrip(tmp_path: Path, monkeypatch:
 
     saved = load_config_file(cfg_path)
     assert saved["plugins"]["codex"]["summarize"]["provider"] == "openai"
+
+
+def test_plugin_maintenance_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Plugin maintenance tasks should be addressable by dotted keys."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    set_config_value("plugins.codex.project_review.enabled", "true")
+    set_config_value("plugins.codex.project_review.provider", "openai")
+    set_config_value("plugins.codex.project_review.min_interval_hours", "12")
+    set_config_value("plugins.codex.project_review.input_dir", "memory-journals")
+    set_config_value("plugins.codex.project_review.output_file", ".memsearch/AGENTS.md")
+    set_config_value("plugins.codex.user_profile.enabled", "false")
+
+    cfg = resolve_config()
+    assert cfg.plugins.codex.project_review.enabled is True
+    assert cfg.plugins.codex.project_review.provider == "openai"
+    assert cfg.plugins.codex.project_review.min_interval_hours == 12
+    assert cfg.plugins.codex.project_review.input_dir == "memory-journals"
+    assert cfg.plugins.codex.project_review.output_file == ".memsearch/AGENTS.md"
+    assert cfg.plugins.codex.user_profile.enabled is False
+
+    saved = load_config_file(cfg_path)
+    assert saved["plugins"]["codex"]["project_review"]["enabled"] is True
+    assert saved["plugins"]["codex"]["project_review"]["min_interval_hours"] == 12
 
 
 def test_named_llm_provider_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

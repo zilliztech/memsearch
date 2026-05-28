@@ -41,16 +41,18 @@ else
 fi
 echo ""
 
-# 3. Symlink skill to ~/.agents/skills/ (OpenCode-compatible)
+# 3. Symlink skills to ~/.agents/skills/ (OpenCode-compatible)
 mkdir -p "${AGENTS_SKILLS_DIR}"
-SKILL_LINK="${AGENTS_SKILLS_DIR}/memory-recall"
-if [ -L "${SKILL_LINK}" ] || [ -d "${SKILL_LINK}" ]; then
-  echo "[SKIP] Skill already exists at ${SKILL_LINK}"
-  echo "       Remove it first if you want to reinstall: rm -rf ${SKILL_LINK}"
-else
-  ln -sf "${SCRIPT_DIR}/skills/memory-recall" "${SKILL_LINK}"
-  echo "[OK] Skill symlinked: ${SKILL_LINK} -> ${SCRIPT_DIR}/skills/memory-recall"
-fi
+for skill_name in memory-recall memory-config; do
+  SKILL_LINK="${AGENTS_SKILLS_DIR}/${skill_name}"
+  if [ -L "${SKILL_LINK}" ] || [ -d "${SKILL_LINK}" ]; then
+    echo "[SKIP] Skill already exists at ${SKILL_LINK}"
+    echo "       Remove it first if you want to reinstall: rm -rf ${SKILL_LINK}"
+  else
+    ln -sf "${SCRIPT_DIR}/skills/${skill_name}" "${SKILL_LINK}"
+    echo "[OK] Skill symlinked: ${SKILL_LINK} -> ${SCRIPT_DIR}/skills/${skill_name}"
+  fi
+done
 echo ""
 
 # 4. Install plugin dependencies

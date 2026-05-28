@@ -302,6 +302,26 @@ export default {
       return r.stdout?.trim() || "";
     }
 
+    async function wakeMaintenance(): Promise<void> {
+      try {
+        const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
+        runCmd(
+          [
+            "bash", "-c",
+            `python3 '${shellEscape(runner)}' --platform openclaw ` +
+              `--project-dir '${shellEscape(projectDir)}' ` +
+              `--memsearch-dir '${shellEscape(memsearchDir)}'`,
+          ],
+          {
+            timeoutMs: 120000,
+            env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
+          }
+        ).catch(() => { /* ignore */ });
+      } catch {
+        /* ignore */
+      }
+    }
+
     // --- Lazy-cached collection name derivation ---
     let _collectionNameFor = "";
     let _collectionName = "ms_openclaw_default";
@@ -703,11 +723,21 @@ export default {
         const messages = event.messages || [];
         if (messages.length < 2) return;
 
+        let summarizeEnabled = "true";
+        try {
+          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled");
+        } catch { /* ignore */ }
+        if (summarizeEnabled === "false") {
+          wakeMaintenance().catch(() => { /* ignore */ });
+          return;
+        }
+
         const lastTurn = extractLastTurn(messages);
         if (!lastTurn || lastTurn.length < 50) return;
 
         const sessionId = event.sessionId || "";
-        writeTurnCapture(lastTurn, sessionId);
+        await writeTurnCapture(lastTurn, sessionId);
+        wakeMaintenance().catch(() => { /* ignore */ });
       });
     }
 

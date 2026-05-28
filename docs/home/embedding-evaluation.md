@@ -21,7 +21,7 @@ We built the evaluation set from real memsearch memory logs (`.memsearch/memory/
 
 1. **Collect** — Scan markdown memory files, chunk by heading using memsearch's `chunk_markdown()`.
 2. **Clean** — Remove HTML comments, drop short chunks (<50 chars), sanitize sensitive data (paths, IPs, tokens).
-3. **Annotate** with `gpt-4o-mini`:
+3. **Annotate** with `gpt-5-mini`:
     - **Simple** (1 per chunk) — straightforward factual questions.
     - **Complex** (1 per substantial chunk) — reasoning-required questions.
     - **Multi-hop** (group related chunks by project + date) — questions needing 2+ chunks to answer.
