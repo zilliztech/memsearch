@@ -150,6 +150,11 @@ function extractText(content: any): string {
     .trim();
 }
 
+function tailTruncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `...(truncated to tail)\n${text.slice(-maxChars)}`;
+}
+
 /**
  * Extract the last user+assistant turn from an array of messages.
  * Returns a formatted string or null if no valid turn found.
@@ -201,10 +206,9 @@ function extractLastTurn(messages: any[]): string | null {
       // Strip injected memory context — only capture the user's actual message
       text = stripInjectedContext(text);
       if (!text || text.length < 5) continue;
-      parts.push(`[Human]: ${text}`);
+      parts.push(`[User]: ${text}`);
     } else if (role === "assistant") {
-      // Truncate long assistant responses
-      parts.push(`[Assistant]: ${text.slice(0, 3000)}`);
+      parts.push(`[Assistant]: ${tailTruncate(text, 3000)}`);
     }
   }
 
@@ -496,7 +500,7 @@ export default {
             "Retrieve the original conversation from a past session transcript. " +
             "Use after memory_get when the expanded result contains a transcript " +
             "anchor (<!-- session:UUID transcript:PATH -->). Returns the formatted " +
-            "dialogue with [Human] and [Assistant] labels.",
+            "dialogue with [User] and [Assistant] labels.",
           parameters: {
             type: "object" as const,
             properties: {
@@ -585,8 +589,10 @@ export default {
             systemPrompt = readFileSync(builtinPath, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
           } else {
             systemPrompt =
-              "You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. " +
-              "Write in third person. Output ONLY bullet points.";
+              "You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. " +
+              "Write in third person. Mandatory language rule: write every bullet in the same primary language as the " +
+              "[User] text. If User mixes languages, use the dominant user-facing language. " +
+              "Do NOT answer User's question. Output ONLY bullet points.";
           }
         }
 
@@ -652,7 +658,7 @@ export default {
         }
 
         // 2. Fallback: return raw text (truncated)
-        return turnText.length > 1500 ? turnText.slice(0, 1500) + "\n..." : turnText;
+        return tailTruncate(turnText, 1500);
       }
 
       /** Write a turn summary to the daily memory file and re-index. */

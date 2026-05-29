@@ -24,7 +24,7 @@ Expands a specific chunk_hash to show the full markdown section with surrounding
 ### 3. memory_transcript — When you need the exact original conversation
 Parses the original session transcript to retrieve the raw dialogue.
 - Input: transcript_path from the anchor comment in memory_get results
-- Returns: formatted conversation with [Human]/[Assistant] labels and tool calls
+- Returns: formatted conversation with [User]/[Assistant] labels and tool calls
 - Use for: "What exactly did I say?", "Show me the original conversation"
 - If the anchor format is unfamiliar (e.g. `rollout:`, `turn:`, `db:` instead of `transcript:`), try reading the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
 

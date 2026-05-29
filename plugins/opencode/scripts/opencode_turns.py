@@ -17,6 +17,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _tail_truncate(text: str, max_chars: int) -> str:
+    """Keep the end of long text, where final conclusions usually appear."""
+    if len(text) <= max_chars:
+        return text
+    return "...(truncated to tail)\n" + text[-max_chars:]
+
+
 @dataclass
 class OpenCodeMessage:
     """A single meaningful OpenCode message with rendered text."""
@@ -51,10 +58,9 @@ class OpenCodeTurn:
             f"=== Turn {self.turn_index} ({self.turn_id}) ===",
         ]
         for message in self.messages:
-            label = "[Human]" if message.role == "user" else "[Assistant]"
+            label = "[User]" if message.role == "user" else "[Assistant]"
             text = message.text.strip()
-            if len(text) > max_chars:
-                text = text[:max_chars] + "\n..."
+            text = _tail_truncate(text, max_chars)
             lines.append(f"{label}: {text}")
             lines.append("")
         return "\n".join(lines).strip()
@@ -283,7 +289,6 @@ def extract_message_text(conn: sqlite3.Connection, message_id: str) -> str:
     ).fetchall()
 
     text_parts: list[str] = []
-    tool_parts: list[str] = []
 
     for part in parts:
         try:
@@ -298,36 +303,9 @@ def extract_message_text(conn: sqlite3.Connection, message_id: str) -> str:
             text = str(part_data["text"]).strip()
             if text:
                 text_parts.append(text)
-        elif part_type == "tool" and part_data.get("state"):
-            state = part_data.get("state", {})
-            status = state.get("status", "unknown")
-            tool_name = part_data.get("tool", "unknown")
-
-            if status == "completed":
-                tool_input = state.get("input", {})
-                tool_output = state.get("output", "")
-                if isinstance(tool_output, str) and len(tool_output) > 300:
-                    tool_output = tool_output[:300] + "..."
-
-                input_summary = ""
-                if isinstance(tool_input, dict):
-                    if "command" in tool_input:
-                        input_summary = f" `{tool_input['command']}`"
-                    elif "path" in tool_input:
-                        input_summary = f" {tool_input['path']}"
-                    elif "query" in tool_input:
-                        input_summary = f" '{tool_input['query']}'"
-
-                tool_parts.append(
-                    f"[Tool: {tool_name}{input_summary}] {tool_output}"
-                )
-            elif status == "error":
-                error = state.get("error", "unknown error")
-                tool_parts.append(f"[Tool: {tool_name}] Error: {error}")
+        # Skip tool parts; summaries use the readable User/Assistant text.
 
     combined = "\n".join(text_parts).strip()
-    if tool_parts:
-        combined = "\n".join([combined, "\n".join(tool_parts)]).strip()
     return combined
 
 

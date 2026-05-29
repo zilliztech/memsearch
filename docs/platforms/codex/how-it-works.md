@@ -118,6 +118,7 @@ The plugin handles both cases:
 
 - If `transcript_path` exists, it parses the rollout with `parse-rollout.sh` and keeps the richer rollout anchor for L3 drill-down.
 - If `transcript_path` is missing, it falls back to the latest matching user prompt in `~/.codex/history.jsonl` plus `last_assistant_message`.
+- For summarization input, the final user/assistant exchange is placed first. Tool calls and tool outputs from the activity log are omitted so the summary focuses on the concrete task result.
 
 This keeps memory capture working on current Codex releases, but rollout drill-down is now **best-effort** rather than guaranteed.
 
@@ -287,4 +288,4 @@ plugins/codex/
 | `user-prompt-submit.sh` | Return lightweight `systemMessage` hint about memory availability. |
 | `SKILL.md` | Memory recall skill with `__INSTALL_DIR__` placeholder (resolved at install time). Includes direct file read fallback for L2 in case `memsearch expand` hits sandbox restrictions. |
 | `install.sh` | One-click installer: checks/installs memsearch, copies the skill, installs or updates memsearch hook entries in `hooks.json`, and enables the experimental hooks feature flag. |
-| `parse-rollout.sh` | Parses Codex rollout JSONL files, extracting the last user message through EOF with role labels. |
+| `parse-rollout.sh` | Parses Codex rollout JSONL files, extracting the last user message through EOF with role labels while skipping tool calls and tool output. |

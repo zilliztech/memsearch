@@ -5,9 +5,9 @@ description: "Diagnose and configure MemSearch memory behavior for the Codex plu
 
 You are a MemSearch configuration assistant for the Codex plugin. This skill manages MemSearch settings only. It is not Codex's built-in memory configuration.
 
-Start every user-facing answer with:
-
-> This is MemSearch memory config, not Codex's own memory config.
+In diagnostic summaries or final answers, state once that this is MemSearch
+memory configuration, not Codex's own memory/config system. Do not prepend that
+sentence to every progress update or every paragraph.
 
 When this skill is triggered, inspect the user's request text. If there is no concrete request, run a diagnostic. If they ask for a specific setting or change, route the request using the flows below.
 
@@ -31,7 +31,53 @@ memsearch config list --global
 memsearch config list --project
 ```
 
+Check CLI and plugin versions before calling the setup healthy:
+
+```bash
+memsearch --version
+uv tool list --show-paths | rg -n 'memsearch|Package|Installed|path'
+curl -fsSL https://pypi.org/pypi/memsearch/json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])'
+```
+
 If `memsearch` is unavailable, try `uvx --from memsearch[onnx] memsearch --version`.
+
+MemSearch has one shared Python CLI and platform plugins that may be installed
+from different channels:
+
+- CLI latest version comes from PyPI package `memsearch`. Update with
+  `uv tool install -U "memsearch[onnx]"` or `uv tool upgrade memsearch`.
+- Codex plugin has no independent package/version file. Inspect
+  `${CODEX_HOME:-$HOME/.codex}/hooks.json` to find the hook source path, then
+  compare that repository with the latest `zilliztech/memsearch` GitHub release:
+  `git -C <memsearch-repo> describe --tags --always --dirty` and
+  `gh release view --repo zilliztech/memsearch --json tagName,publishedAt,url`.
+  Update source installs with `git pull` plus
+  `bash plugins/codex/scripts/install.sh`.
+- Claude Code plugin latest marketplace/source version is in
+  `plugins/claude-code/.claude-plugin/plugin.json` and
+  `.claude-plugin/marketplace.json` in the `zilliztech/memsearch` repo. Check
+  the latest source manifest with
+  `curl -fsSL https://raw.githubusercontent.com/zilliztech/memsearch/main/plugins/claude-code/.claude-plugin/plugin.json`.
+  For marketplace installs, use `claude plugin marketplace update memsearch-plugins`
+  then `claude plugin update memsearch`, and restart Claude Code.
+- OpenClaw plugin latest published version comes from
+  `clawhub package inspect memsearch`; the source version is
+  `plugins/openclaw/package.json`. Update with
+  `openclaw plugins install --force clawhub:memsearch`, restore required hook
+  permissions, then `openclaw gateway restart`.
+- OpenCode plugin latest published version comes from
+  `npm view @zilliz/memsearch-opencode version dist-tags --json`; the source
+  version is `plugins/opencode/package.json`. If `~/.config/opencode/opencode.json`
+  pins a version, update the pin; otherwise restart OpenCode after package
+  refresh.
+
+For more detail, fetch the update sections from the public documentation:
+
+- Codex: https://zilliztech.github.io/memsearch/platforms/codex/installation/
+- Claude Code: https://zilliztech.github.io/memsearch/platforms/claude-code/installation/
+- OpenClaw: https://zilliztech.github.io/memsearch/platforms/openclaw/installation/
+- OpenCode: https://zilliztech.github.io/memsearch/platforms/opencode/installation/
 
 Check memory files:
 
@@ -150,6 +196,6 @@ Empty prompt paths mean use the built-in MemSearch prompts. Custom prompt files 
 
 Use `memsearch config set` for changes. After changing anything, show the command, the resolved value, and whether a new session is needed.
 
-MemSearch TOML changes are read lazily by the CLI, hooks, and maintenance runner, so values such as `plugins.codex.summarize.*`, `plugins.codex.project_review.*`, `plugins.codex.user_profile.*`, `[llm.providers.*]`, `[prompts]`, `milvus.*`, and `embedding.*` usually apply on the next capture, recall, index, or maintenance invocation. A fresh Codex session is recommended after `hooks.json`, skill, plugin, or local agent-file changes, because the current session may already have loaded the old hook/skill state. After any answer, make clear that this is MemSearch memory configuration, not Codex's own memory/config system.
+MemSearch TOML changes are read lazily by the CLI, hooks, and maintenance runner, so values such as `plugins.codex.summarize.*`, `plugins.codex.project_review.*`, `plugins.codex.user_profile.*`, `[llm.providers.*]`, `[prompts]`, `milvus.*`, and `embedding.*` usually apply on the next capture, recall, index, or maintenance invocation. A fresh Codex session is recommended after `hooks.json`, skill, plugin, or local agent-file changes, because the current session may already have loaded the old hook/skill state. In final diagnostic/change summaries, make clear that this is MemSearch memory configuration, not Codex's own memory/config system.
 
 When useful, remind the user that they can either continue using this `memory-config` skill for guided configuration, or manually run `memsearch config init` for global interactive setup, `memsearch config init --project` for project interactive setup, and `memsearch config set/get/list` for direct CLI changes.

@@ -10,7 +10,7 @@ The plugin registers three tools via OpenClaw's `registerTool` factory pattern. 
 |------|-----------|-------------|
 | `memory_search` | `query` (string), `top_k` (number, optional) | Semantic search over indexed memories via `memsearch search --json-output`. Returns top-K relevant chunks with scores, dates, and content snippets. |
 | `memory_get` | `chunk_hash` (string) | Expand a chunk to full markdown section via `memsearch expand`. Shows the complete section with surrounding context and session anchors. |
-| `memory_transcript` | `transcript_path` (string) | Parse original OpenClaw JSONL transcript via `parse-transcript.sh`. Returns the formatted dialogue with `[Human]` and `[Assistant]` labels. |
+| `memory_transcript` | `transcript_path` (string) | Parse original OpenClaw JSONL transcript via `parse-transcript.sh`. Returns the formatted dialogue with `[User]` and `[Assistant]` labels. |
 
 ---
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
-from memsearch.config import LLMProviderConfig, MemSearchConfig
-from memsearch.maintenance import run_due_tasks, run_memory_command, run_task_llm
+from memsearch.config import LLMProviderConfig, MemSearchConfig, PluginMaintenanceTaskConfig
+from memsearch.maintenance import TaskContext, run_due_tasks, run_memory_command, run_task_llm
 
 
 def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monkeypatch) -> None:
@@ -31,6 +33,52 @@ def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monke
 
     assert results[0].action == "none"
     assert captured == {"model": "gemini-test", "provider_type": "gemini"}
+
+
+def test_openai_maintenance_uses_default_temperature(tmp_path: Path, monkeypatch) -> None:
+    from memsearch import maintenance as maintenance_module
+
+    captured: dict[str, object] = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            message = SimpleNamespace(content='{"action":"none","reason":"ok"}', tool_calls=None)
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+
+    result = maintenance_module._run_openai_with_tools(
+        ctx,
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    assert captured["model"] == "gpt-5-mini"
+    assert captured["tool_choice"] == "auto"
+    assert "temperature" not in captured
 
 
 def test_maintenance_replace_writes_output_and_state(tmp_path: Path) -> None:

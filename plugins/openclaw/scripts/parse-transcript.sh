@@ -6,7 +6,7 @@
 #   {"type":"message","id":"...","message":{"role":"assistant","content":[{"type":"text","text":"..."},{"type":"toolCall",...}]}}
 #
 # Usage: parse-transcript.sh <transcript.jsonl>
-# Output: formatted last turn with [Human] / [Assistant] / [Tool Call] labels
+# Output: formatted last turn with [User] / [Assistant] / [Tool Call] labels
 
 set -euo pipefail
 
@@ -106,7 +106,7 @@ def main():
         return
 
     # Format the last turn
-    print("=== Transcript of a conversation between a human and an AI assistant ===")
+    print("=== Transcript of a conversation between User and an AI assistant ===")
     for msg in messages[last_user_idx:]:
         role = msg["role"]
         text = extract_text(msg["content"])
@@ -114,7 +114,7 @@ def main():
             continue
 
         if role == "user":
-            print(f"[Human]: {text}")
+            print(f"[User]: {text}")
         elif role == "assistant":
             print(f"[Assistant]: {text}")
 

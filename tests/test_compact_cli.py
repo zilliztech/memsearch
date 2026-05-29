@@ -129,12 +129,17 @@ def test_summarize_uses_named_provider(monkeypatch, tmp_path: Path):
     result = runner.invoke(
         cli,
         ["summarize", "--plugin", "codex", "--agent-name", "Codex"],
-        input="[Human]: hello\n[Codex]: hi",
+        input="[User]: hello\n[Codex]: hi",
     )
 
     assert result.exit_code == 0
     assert result.output.strip() == "- summarized"
-    assert "Transcript:\n[Human]: hello" in captured["prompt"]
+    assert "between User and Codex" in captured["prompt"]
+    assert "third-person note-taker" in captured["prompt"]
+    assert "2-10 bullet points" in captured["prompt"]
+    assert "Do NOT answer User's question" in captured["prompt"]
+    assert "important files read or edited" in captured["prompt"]
+    assert "Transcript:\n[User]: hello" in captured["prompt"]
     assert captured["llm_provider"] == "openai"
     assert captured["model"] == "plugin-model"
     assert captured["api_key"] == "env:OPENAI_API_KEY"

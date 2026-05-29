@@ -89,6 +89,11 @@ function extractText(content) {
   }
   return raw.split("\n").filter((line) => !isNoiseLine(line)).join("\n").trim();
 }
+function tailTruncate(text, maxChars) {
+  if (text.length <= maxChars) return text;
+  return `...(truncated to tail)
+${text.slice(-maxChars)}`;
+}
 function stripInjectedContext(text) {
   let cleaned = text.replace(/Recent memories \(use memory_search for full search\):[\s\S]*?(?=\n\n(?!\s|-)|\n*$)/g, "");
   cleaned = cleaned.replace(/Conversation info \(untrusted metadata\):[\s\S]*?(?=\n\n(?!\s|")|\n*$)/g, "");
@@ -120,9 +125,9 @@ function extractLastTurn(messages) {
     if (role === "user") {
       text = stripInjectedContext(text);
       if (!text || text.length < 5) continue;
-      parts.push(`[Human]: ${text}`);
+      parts.push(`[User]: ${text}`);
     } else if (role === "assistant") {
-      parts.push(`[Assistant]: ${text.slice(0, 3e3)}`);
+      parts.push(`[Assistant]: ${tailTruncate(text, 3e3)}`);
     }
   }
   if (parts.length === 0) return null;
@@ -337,7 +342,7 @@ var index_default = {
         return {
           name: "memory_transcript",
           label: "Memory Transcript",
-          description: "Retrieve the original conversation from a past session transcript. Use after memory_get when the expanded result contains a transcript anchor (<!-- session:UUID transcript:PATH -->). Returns the formatted dialogue with [Human] and [Assistant] labels.",
+          description: "Retrieve the original conversation from a past session transcript. Use after memory_get when the expanded result contains a transcript anchor (<!-- session:UUID transcript:PATH -->). Returns the formatted dialogue with [User] and [Assistant] labels.",
           parameters: {
             type: "object",
             properties: {
@@ -400,7 +405,7 @@ var index_default = {
           if (existsSync(builtinPath)) {
             systemPrompt = readFileSync(builtinPath, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
           } else {
-            systemPrompt = "You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. Write in third person. Output ONLY bullet points.";
+            systemPrompt = "You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. Write in third person. Mandatory language rule: write every bullet in the same primary language as the [User] text. If User mixes languages, use the dominant user-facing language. Do NOT answer User's question. Output ONLY bullet points.";
           }
         }
         let summarizeModel = "";
@@ -459,7 +464,7 @@ ${turnText}`;
           }
         } catch {
         }
-        return turnText.length > 1500 ? turnText.slice(0, 1500) + "\n..." : turnText;
+        return tailTruncate(turnText, 1500);
       }
       async function writeTurnCapture(turnText, sessionId) {
         try {

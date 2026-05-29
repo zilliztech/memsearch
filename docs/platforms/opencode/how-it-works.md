@@ -71,7 +71,7 @@ sequenceDiagram
         alt New turns found
             Daemon->>Daemon: Group into turns via user message + assistant descendants
             Daemon->>LLM: Summarize turn (isolated config)
-            LLM->>Daemon: 2-6 bullet points
+            LLM->>Daemon: 2-10 bullet points
             Daemon->>File: Append with session anchor
             Daemon->>Daemon: Update turn cursor (persist to sidecar DB)
             Daemon->>Index: memsearch index (background)
@@ -83,7 +83,7 @@ Step by step:
 
 1. **Poll SQLite** -- queries the `session` and `message` tables for the current project directory, looking for messages newer than the last completed turn cursor
 2. **Group into turns** -- groups each `user` message with its assistant/tool descendants until the next `user` message
-3. **Extract text** -- reads message `parts` (text content, tool calls with names/paths) into a readable format
+3. **Extract text** -- reads message text into a readable format and skips raw tool parts
 4. **Summarize** -- calls `opencode run` with the turn text and a third-person summarization prompt
 5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID turn:ID db:PATH -->` anchors
 6. **Persist state** -- writes the completed-turn cursor and derived turn ordering to `.memsearch/opencode-turns.db`
@@ -221,7 +221,7 @@ plugins/opencode/
 | File | Purpose |
 |------|---------|
 | `index.ts` | Main plugin. Registers 3 tools, system.transform hook, daemon lifecycle management |
-| `capture-daemon.py` | Background Python daemon. Polls OpenCode's SQLite, summarizes turns via `opencode run`, writes to daily `.md`, triggers re-indexing |
+| `capture-daemon.py` | Background Python daemon. Polls OpenCode's SQLite, renders turns from User/Assistant text while skipping tool output, summarizes via `opencode run`, writes to daily `.md`, triggers re-indexing |
 | `parse-transcript.py` | SQLite session reader for L3 drill-down. Reads original messages from OpenCode's database by session ID |
 | `derive-collection.sh` | Generates deterministic per-project Milvus collection names from project paths |
 | `install.sh` | Installation script: symlinks plugin, copies skill to `~/.agents/skills/`, installs dependencies |

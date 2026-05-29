@@ -128,14 +128,14 @@ Step by step:
 
 3. **Last-turn extraction** -- `parse-transcript.sh` is a Python 3 script (no `jq` dependency) that extracts the last user question through to EOF. It outputs role-labeled text:
     ```
-    [Human] How do I fix the N+1 query in order-service?
+    [User] How do I fix the N+1 query in order-service?
     [Claude Code] Let me look at the order-service...
-    [Claude Code calls tool] Read src/order-service/db.py
-    [Tool output] (first 200 chars of file content)
     [Claude Code] The issue is in the get_orders function...
     ```
 
-4. **Haiku summarization** -- the extracted turn is piped to `claude -p --model haiku` with a system prompt instructing it to write 2-6 third-person bullet points. Set `plugins.claude-code.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.claude-code.summarize.provider` to that name. Empty or `native` keeps the Haiku default. The third-person framing ("User asked about...", "Agent implemented...") makes the summaries more useful as memory entries than first-person notes.
+    Raw tool calls, tool outputs, and transient failure details are omitted from summarization input. The assistant's textual response can still mention important files, searches, refactors, findings, and tests, and the summarizer can record those naturally.
+
+4. **Haiku summarization** -- the extracted turn is piped to `claude -p --model haiku` with a system prompt instructing it to write 2-10 third-person bullet points in the same language as the user's message. Set `plugins.claude-code.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.claude-code.summarize.provider` to that name. Empty or `native` keeps the Haiku default. The third-person framing ("User asked about...", "Agent implemented...") makes the summaries more useful as memory entries than first-person notes.
 
 5. **Append with anchors** -- the summary is written to `.memsearch/memory/YYYY-MM-DD.md` under a `### HH:MM` heading with an HTML comment anchor:
     ```markdown

@@ -81,7 +81,7 @@ sequenceDiagram
     Plugin->>Plugin: memsearch index (background)
 ```
 
-The plugin extracts the last user question and assistant response from `event.messages`, summarizes them via LLM, and appends the summary to the daily markdown file. Set `plugins.openclaw.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.openclaw.summarize.provider` to that name. Empty or `native` keeps the default OpenClaw agent model, with no fallback to `llm.model`. No debounce or noise filtering is needed — `agent_end` provides a clean, complete message history for each turn.
+The plugin extracts the last user question and assistant response from `event.messages`, summarizes them via LLM, and appends the summary to the daily markdown file. Long assistant/fallback text keeps the tail so final conclusions are not dropped. Set `plugins.openclaw.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.openclaw.summarize.provider` to that name. Empty or `native` keeps the default OpenClaw agent model, with no fallback to `llm.model`. No debounce or noise filtering is needed — `agent_end` provides a clean, complete message history for each turn.
 
 OpenClaw 2026.5+ requires third-party plugins to opt in before reading raw conversation content from `agent_end`. The installer sets `plugins.entries.memsearch.hooks.allowConversationAccess = true` for capture and `plugins.entries.memsearch.hooks.allowPromptInjection = true` for recent-memory injection.
 
@@ -97,11 +97,11 @@ Summaries are generated via `openclaw agent --local` with a third-person note-ta
 
 ```
 You are a third-person note-taker. Record what happened as factual
-third-person notes. Output 2-6 bullet points, each starting with '- '.
+third-person notes. Output 2-10 bullet points, each starting with '- '.
 Write in third person: 'User asked...', 'OpenClaw replied...'
 ```
 
-If `openclaw agent` fails (e.g., no model configured), the plugin falls back to raw truncated text.
+If `openclaw agent` fails (e.g., no model configured), the plugin falls back to tail-truncated raw text.
 
 ---
 
@@ -208,4 +208,4 @@ plugins/openclaw/
 | `install.sh` | Installation script: checks memsearch availability, registers plugin |
 | `SKILL.md` | Memory recall skill guide -- helps the LLM decide when and how to use the memory tools |
 | `derive-collection.sh` | Generates deterministic per-agent Milvus collection names |
-| `parse-transcript.sh` | Parses OpenClaw JSONL transcripts into readable `[Human]`/`[Assistant]` format |
+| `parse-transcript.sh` | Parses OpenClaw JSONL transcripts into readable `[User]`/`[Assistant]` format |

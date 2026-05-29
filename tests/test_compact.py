@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from memsearch import compact as compact_module
@@ -38,6 +41,29 @@ async def test_compact_chunks_dispatches_to_openai(monkeypatch) -> None:
         "base_url": "https://example.invalid/v1",
         "api_key": "env:OPENAI_API_KEY",
     }
+
+
+@pytest.mark.asyncio
+async def test_openai_compact_uses_default_temperature(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="summary"))])
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(AsyncOpenAI=FakeAsyncOpenAI))
+
+    result = await compact_module._compact_openai("prompt", "gpt-5-mini")
+
+    assert result == "summary"
+    assert captured["model"] == "gpt-5-mini"
+    assert "temperature" not in captured
 
 
 @pytest.mark.asyncio

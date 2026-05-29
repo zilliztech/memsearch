@@ -93,7 +93,7 @@ function getRecentMemories(
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
       const lines = content.split("\n")
-        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ") || l.startsWith("[Human]") || l.startsWith("[Assistant]"))
+        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ") || l.startsWith("[User]") || l.startsWith("[Assistant]"))
         .slice(0, maxLinesPerFile);
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
@@ -301,7 +301,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "Retrieve the original conversation from a past OpenCode session. " +
           "Use after memory_get when the expanded result contains a session anchor " +
           "(<!-- session:ID turn:ID db:PATH -->). Returns the formatted " +
-          "dialogue with [Human] and [Assistant] labels. When turn_id is present, " +
+          "dialogue with [User] and [Assistant] labels. When turn_id is present, " +
           "the tool returns the target turn plus surrounding context.",
         args: {
           session_id: tool.schema.string().describe("The session ID from the anchor comment"),

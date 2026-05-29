@@ -113,7 +113,6 @@ async def _compact_openai(prompt: str, model: str, *, base_url: str | None = Non
     resp = await client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
     )
     return resp.choices[0].message.content or ""
 

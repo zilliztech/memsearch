@@ -132,5 +132,5 @@ def test_parse_transcript_reads_from_opencode_sqlite_without_sidecar(tmp_path: P
 
     output = stdout.getvalue()
 
-    assert "[Human]: Question" in output
+    assert "[User]: Question" in output
     assert "[Assistant]: Answer" in output

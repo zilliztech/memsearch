@@ -164,7 +164,10 @@ def _load_summarize_prompt(agent_name: str, memsearch_cmd: str | None = None) ->
     # Inline fallback
     return (
         "You are a third-person note-taker. Summarize the transcript as "
-        "2-6 bullet points. Write in third person. Output ONLY bullet points."
+        "2-10 bullet points. Write in third person. Do NOT answer User's question. "
+        "Mandatory language rule: write every bullet in the same primary language as the [User] text. "
+        "If User mixes languages, use the dominant user-facing language. "
+        "Output ONLY bullet points."
     )
 
 

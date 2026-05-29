@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 # Parse a Codex CLI rollout JSONL — extract and format the LAST TURN only.
 #
-# A "turn" starts at the last task_started event and includes all subsequent
-# messages (user question, agent responses, tool calls, tool results) until EOF.
+# A "turn" starts at the last task_started event and scans all subsequent
+# messages until EOF. Tool records are recognized but skipped during formatting.
 #
 # Key rollout JSONL line types:
 #   event_msg + user_message   → user's text input
 #   event_msg + agent_message  → agent's text output
-#   response_item + function_call        → tool invocation
-#   response_item + function_call_output → tool result
+#   response_item + function_call        → tool invocation (skipped)
+#   response_item + function_call_output → tool result (skipped)
 #   response_item + message (role=user)  → user content blocks
 #   response_item + message (role=assistant) → assistant content blocks
 #   event_msg + task_started   → turn boundary
 #   event_msg + task_complete  → turn end
 #
-# Tool results are truncated to MAX_RESULT_CHARS (default 1000).
+# Tool calls and tool results are skipped so the summarizer works from a clean
+# User/Assistant transcript instead of structured execution metadata.
 #
 # Usage: bash parse-rollout.sh <rollout_path>
 
@@ -34,17 +35,8 @@ if [ "$LINE_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-MAX_RESULT_CHARS="${MEMSEARCH_MAX_RESULT_CHARS:-1000}"
-
 python3 -c '
 import json, sys
-
-MAX_RESULT_CHARS = int(sys.argv[2])
-
-def truncate(text, max_chars):
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + "...(truncated)"
 
 def find_last_turn_start(lines):
     """Find the index of the last task_started event."""
@@ -74,7 +66,7 @@ def find_last_user_message(lines):
 
 def format_turn(lines):
     """Format a turn into structured text for LLM summarization."""
-    output = ["=== Transcript of a conversation between a human and Codex CLI ==="]
+    output = ["=== Transcript of a conversation between User and Codex CLI ==="]
 
     for raw_line in lines:
         try:
@@ -91,7 +83,7 @@ def format_turn(lines):
             if msg_type == "user_message":
                 message = payload.get("message", "")
                 if message.strip():
-                    output.append(f"[Human]: {message.strip()}")
+                    output.append(f"[User]: {message.strip()}")
 
             elif msg_type == "agent_message":
                 message = payload.get("message", "")
@@ -103,34 +95,7 @@ def format_turn(lines):
         elif line_type == "response_item":
             item_type = payload.get("type", "")
 
-            if item_type == "function_call":
-                name = payload.get("name", "unknown")
-                args = payload.get("arguments", "")
-                # Parse arguments JSON for concise display
-                try:
-                    args_obj = json.loads(args) if isinstance(args, str) else args
-                    if isinstance(args_obj, dict):
-                        parts = []
-                        for k, v in args_obj.items():
-                            v_str = str(v)
-                            if len(v_str) > 120:
-                                v_str = v_str[:120] + "..."
-                            parts.append(f"{k}={v_str}")
-                        args_summary = ", ".join(parts)
-                    else:
-                        args_summary = str(args_obj)
-                except Exception:
-                    args_summary = str(args)
-                if len(args_summary) > 400:
-                    args_summary = args_summary[:400] + "..."
-                output.append(f"[Codex calls tool]: {name}({args_summary})")
-
-            elif item_type == "function_call_output":
-                result = payload.get("output", "")
-                result = truncate(str(result), MAX_RESULT_CHARS)
-                output.append(f"[Tool output]: {result}")
-
-            # Skip response_item "message" — duplicates event_msg user_message/agent_message.
+            # Skip tool calls/results and response_item "message" duplicates.
             # Skip: reasoning, session_meta, turn_context, web_search_call
 
     return "\n".join(output)
@@ -163,4 +128,4 @@ if not formatted.strip():
     sys.exit(0)
 
 print(formatted)
-' "$ROLLOUT_PATH" "$MAX_RESULT_CHARS"
+' "$ROLLOUT_PATH"

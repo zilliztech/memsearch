@@ -21,6 +21,7 @@ capture_daemon = importlib.util.module_from_spec(CAPTURE_DAEMON_SPEC)
 CAPTURE_DAEMON_SPEC.loader.exec_module(capture_daemon)
 
 from opencode_turns import (  # noqa: E402
+    OpenCodeMessage,
     OpenCodeTurn,
     TurnState,
     build_turns,
@@ -73,6 +74,7 @@ def _insert_message(
     finish: str = "stop",
     text: str = "",
     tool_output: str | None = None,
+    tool_error: str | None = None,
 ) -> None:
     payload: dict[str, object] = {
         "role": role,
@@ -132,6 +134,31 @@ def _insert_message(
             ),
         )
 
+    if tool_error is not None:
+        conn.execute(
+            """
+            INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{message_id}-tool-error",
+                message_id,
+                session_id,
+                time_created,
+                time_created,
+                json.dumps(
+                    {
+                        "type": "tool",
+                        "tool": "Bash",
+                        "state": {
+                            "status": "error",
+                            "error": tool_error,
+                        },
+                    }
+                ),
+            ),
+        )
+
 
 def test_build_turns_groups_multi_message_assistant_turns(tmp_path: Path) -> None:
     db_path = tmp_path / "opencode.db"
@@ -162,11 +189,94 @@ def test_build_turns_groups_multi_message_assistant_turns(tmp_path: Path) -> Non
     assert turns[0].assistant_message_count == 2
     assert turns[0].complete is True
     assert "Plan the change" in turns[0].render()
-    assert "[Tool: Bash" in turns[0].render()
+    assert "[Tool:" not in turns[0].render()
     assert turns[1].turn_id == "u2"
     assert turns[1].complete is True
 
     conn.close()
+
+
+def test_build_turns_omits_successful_tool_output_content(tmp_path: Path) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_tool_output"
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Check the journal")
+    _insert_message(
+        conn,
+        "a1",
+        session_id,
+        110,
+        "assistant",
+        parent_id="u1",
+        finish="stop",
+        text="Checking",
+        tool_output="stale fact from old journal: memsearch 0.4.4",
+    )
+    conn.commit()
+
+    rendered = build_turns(conn, session_id)[0].render()
+
+    assert "[Tool:" not in rendered
+    assert "output_chars" not in rendered
+    assert "stale fact" not in rendered
+    assert "0.4.4" not in rendered
+
+    conn.close()
+
+
+def test_build_turns_omits_tool_error_content(tmp_path: Path) -> None:
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_tool_error"
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Debug the failure")
+    _insert_message(
+        conn,
+        "a1",
+        session_id,
+        110,
+        "assistant",
+        parent_id="u1",
+        finish="stop",
+        text="Debugging",
+        tool_error="prefix secret failure payload final error marker",
+    )
+    conn.commit()
+
+    rendered = build_turns(conn, session_id)[0].render()
+
+    assert "[Tool:" not in rendered
+    assert "error_chars" not in rendered
+    assert "final error marker" not in rendered
+    assert "prefix secret" not in rendered
+
+    conn.close()
+
+
+def test_opencode_turn_render_keeps_tail_of_long_messages() -> None:
+    turn = OpenCodeTurn(
+        session_id="ses_tail",
+        turn_id="u1",
+        turn_index=1,
+        start_time=100,
+        end_time=110,
+        first_message_id="u1",
+        last_message_id="a1",
+        message_count=2,
+        assistant_message_count=1,
+        complete=True,
+        messages=[
+            OpenCodeMessage("u1", "user", None, 100, "stop", "Question"),
+            OpenCodeMessage("a1", "assistant", "u1", 110, "stop", "prefix " + ("x" * 200) + " final marker"),
+        ],
+    )
+
+    rendered = turn.render(max_chars=40)
+
+    assert "...(truncated to tail)" in rendered
+    assert "final marker" in rendered
+    assert "prefix " not in rendered
 
 
 def test_build_turns_keeps_assistant_descendants_in_same_turn(tmp_path: Path) -> None:

@@ -2,11 +2,11 @@
 # Parse a Claude Code JSONL transcript — extract and format the LAST TURN only.
 #
 # A "turn" = the last real user message (content is a string, not a tool_result)
-# plus all subsequent assistant responses, tool calls, and tool results until EOF.
+# plus all subsequent assistant text responses until EOF.
 #
 # Skips: progress, file-history-snapshot, system, thinking blocks.
-# Tool results are truncated to MAX_RESULT_CHARS (default 1000) to stay within
-# LLM context limits while preserving more detail than the old 500-char cutoff.
+# Tool calls and tool results are skipped so the summarizer works from a clean
+# User/Assistant transcript instead of structured execution metadata.
 #
 # Usage: bash parse-transcript.sh <transcript_path>
 
@@ -26,17 +26,8 @@ if [ "$LINE_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-MAX_RESULT_CHARS="${MEMSEARCH_MAX_RESULT_CHARS:-1000}"
-
 python3 -c '
 import json, sys
-
-MAX_RESULT_CHARS = int(sys.argv[2])
-
-def truncate(text, max_chars):
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + "...(truncated)"
 
 def find_last_turn_start(lines):
     """Find the index of the last real user message (string or array-format content)."""
@@ -57,7 +48,7 @@ def find_last_turn_start(lines):
 
 def format_turn(lines):
     """Format a turn into structured text for LLM summarization."""
-    output = ["=== Transcript of a conversation between a human and Claude Code ==="]
+    output = ["=== Transcript of a conversation between User and Claude Code ==="]
     for raw_line in lines:
         try:
             obj = json.loads(raw_line)
@@ -73,7 +64,7 @@ def format_turn(lines):
         if msg_type == "user":
             content = obj.get("message", {}).get("content")
             if isinstance(content, str) and content.strip():
-                output.append(f"[Human]: {content.strip()}")
+                output.append(f"[User]: {content.strip()}")
             elif isinstance(content, list):
                 for block in content:
                     if not isinstance(block, dict):
@@ -81,20 +72,8 @@ def format_turn(lines):
                     if block.get("type") == "text":
                         text = block.get("text", "").strip()
                         if text:
-                            output.append(f"[Human]: {text}")
-                    elif block.get("type") == "tool_result":
-                        result = block.get("content", "")
-                        if isinstance(result, list):
-                            texts = []
-                            for item in result:
-                                if isinstance(item, dict):
-                                    texts.append(item.get("text", ""))
-                            result = "\n".join(texts)
-                        result = truncate(str(result), MAX_RESULT_CHARS)
-                        is_error = block.get("is_error", False)
-                        prefix = "ERROR" if is_error else "RESULT"
-                        label = "[Tool error]" if is_error else "[Tool output]"
-                        output.append(f"{label}: {result}")
+                            output.append(f"[User]: {text}")
+                    # Skip tool_result blocks; they are structured execution metadata.
 
         elif msg_type == "assistant":
             content = obj.get("message", {}).get("content", [])
@@ -108,22 +87,7 @@ def format_turn(lines):
                     if text:
                         output.append(f"[Claude Code]: {text}")
 
-                elif block_type == "tool_use":
-                    name = block.get("name", "unknown")
-                    inp = block.get("input", {})
-                    # Show key parameters concisely
-                    parts = []
-                    for k, v in inp.items():
-                        v_str = str(v)
-                        if len(v_str) > 120:
-                            v_str = v_str[:120] + "..."
-                        parts.append(f"{k}={v_str}")
-                    input_summary = ", ".join(parts)
-                    if len(input_summary) > 400:
-                        input_summary = input_summary[:400] + "..."
-                    output.append(f"[Claude Code calls tool]: {name}({input_summary})")
-
-                # Skip thinking blocks — internal reasoning, not useful for memory
+                # Skip tool_use and thinking blocks; these are structured execution metadata.
 
     return "\n".join(output)
 
@@ -149,4 +113,4 @@ if not formatted.strip():
     sys.exit(0)
 
 print(formatted)
-' "$TRANSCRIPT_PATH" "$MAX_RESULT_CHARS"
+' "$TRANSCRIPT_PATH"

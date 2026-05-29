@@ -131,8 +131,17 @@ def _load_plugin_summarize_prompt(cfg: MemSearchConfig, agent_name: str) -> str:
         if prompt_path.is_file():
             return prompt_path.read_text(encoding="utf-8").replace("{{AGENT_NAME}}", agent_name)
     return (
-        "You are a third-person note-taker. Summarize the transcript as "
-        "2-6 bullet points. Write in third person. Output ONLY bullet points."
+        "You are a third-person note-taker. You will receive a transcript of ONE conversation turn "
+        f"between User and {agent_name}.\n\n"
+        "Record what happened as factual third-person notes. Output 2-10 bullet points, each starting with '- '. "
+        "Use 'User' for the user. First bullet: what User asked or wanted. Remaining bullets: what was done, "
+        f"found, changed, configured, tested, explained, decided, or could not be completed by {agent_name}. "
+        "Mandatory language rule: write every bullet in the same primary language as the [User] text. "
+        "If User mixes languages, use the dominant user-facing language. "
+        "Be specific when useful: mention important files read or edited, searches or research performed, "
+        "refactors, commands or tests run, key findings, and concrete outcomes. Prefer the final user-visible "
+        "outcome over low-level transcript mechanics. Do NOT answer User's question yourself. Output ONLY "
+        "bullet points."
     )
 
 

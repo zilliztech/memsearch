@@ -99,7 +99,7 @@ if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
 elif [ -f "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt" ]; then
   SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt")
 else
-  SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-6 bullet points. Write in third person. Output ONLY bullet points."
+  SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. Write in third person. Mandatory language rule: write every bullet in the same primary language as the [User] text. If User mixes languages, use the dominant user-facing language. Do NOT answer User's question. Output ONLY bullet points."
 fi
 
 # Summarize the last turn into structured bullet points.
