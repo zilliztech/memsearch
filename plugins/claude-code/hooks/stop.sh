@@ -82,8 +82,17 @@ with open(sys.argv[1]) as f:
     for line in f:
         try:
             obj = json.loads(line)
-            if obj.get('type') == 'user' and isinstance(obj.get('message', {}).get('content'), str):
+            if obj.get('type') != 'user' or obj.get('isMeta'):
+                continue
+            content = obj.get('message', {}).get('content')
+            if isinstance(content, str) and content.strip():
                 uuid = obj.get('uuid', '')
+                continue
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get('type') == 'text' and block.get('text', '').strip():
+                        uuid = obj.get('uuid', '')
+                        break
         except: pass
 print(uuid)
 " "$TRANSCRIPT_PATH" 2>/dev/null || true)
@@ -125,12 +134,18 @@ elif command -v claude &>/dev/null; then
       SUMMARIZE_MODEL="$CONFIG_MODEL"
     fi
   fi
-  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
+  # Keep the shared external-observer prompt, but pass it as the primary prompt.
+  # This avoids the stdin + --system-prompt path while preserving summary rules.
+  LLM_PROMPT="${SYSTEM_PROMPT}
+
+Transcript:
+${PARSED}"
+  SUMMARY=$(MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
     --strict-mcp-config \
     --model "$SUMMARIZE_MODEL" \
     --no-session-persistence \
     --no-chrome \
-    --system-prompt "$SYSTEM_PROMPT" \
+    "$LLM_PROMPT" \
     2>/dev/null || true)
 fi
 
