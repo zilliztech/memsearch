@@ -48,6 +48,20 @@ _load_worker_field() {
   _json_val "$work_input" "$key" ""
 }
 
+_truncate_chars() {
+  local limit="$1"
+  python3 -c "
+import sys
+limit = int(sys.argv[1])
+text = sys.stdin.read()
+sys.stdout.write(text[:limit])
+" "$limit" 2>/dev/null || true
+}
+
+_valid_utf8() {
+  iconv -f UTF-8 -t UTF-8 -c 2>/dev/null || cat
+}
+
 run_worker() {
   local work_file="${1:-}"
   if [ -z "$work_file" ] || [ ! -f "$work_file" ]; then
@@ -153,7 +167,7 @@ ${CONTENT}"
   if [ -z "$SUMMARY" ]; then
     if [ -n "$LAST_MSG" ] && [ -n "$USER_QUESTION" ]; then
       local TRUNCATED_MSG
-      TRUNCATED_MSG=$(printf '%s' "$LAST_MSG" | head -c 800)
+      TRUNCATED_MSG=$(printf '%s' "$LAST_MSG" | _truncate_chars 800)
       if [ ${#LAST_MSG} -gt 800 ]; then
         TRUNCATED_MSG="${TRUNCATED_MSG}..."
       fi
@@ -161,7 +175,7 @@ ${CONTENT}"
 - Codex: ${TRUNCATED_MSG}"
     elif [ -n "$LAST_MSG" ]; then
       local TRUNCATED_MSG
-      TRUNCATED_MSG=$(printf '%s' "$LAST_MSG" | head -c 800)
+      TRUNCATED_MSG=$(printf '%s' "$LAST_MSG" | _truncate_chars 800)
       if [ ${#LAST_MSG} -gt 800 ]; then
         TRUNCATED_MSG="${TRUNCATED_MSG}..."
       fi
@@ -176,7 +190,7 @@ ${CONTENT}"
     if [ -n "$SESSION_ID" ]; then
       echo "<!-- session:${SESSION_ID} rollout:${TRANSCRIPT_PATH} -->"
     fi
-    echo "$SUMMARY"
+    printf '%s\n' "$SUMMARY" | _valid_utf8
     echo ""
   } >> "$MEMORY_FILE"
 
@@ -249,7 +263,7 @@ LAST_MSG=$(_json_val "$INPUT" "last_assistant_message" "")
 # Unbounded transcripts risk ARG_MAX overflow on execve; the worker only
 # ever uses the first 800 chars of LAST_MSG as a fallback summary anyway.
 if [ ${#LAST_MSG} -gt 4000 ]; then
-  LAST_MSG="${LAST_MSG:0:4000}...(truncated)"
+  LAST_MSG="$(printf '%s' "$LAST_MSG" | _truncate_chars 4000)...(truncated)"
 fi
 USER_QUESTION=""
 PARSED=""
@@ -322,7 +336,7 @@ fi
 
 MAX_CONTENT_CHARS="${MEMSEARCH_SUMMARY_MAX_CHARS:-8000}"
 if [ ${#CONTENT} -gt "$MAX_CONTENT_CHARS" ]; then
-  CONTENT="${CONTENT:0:$MAX_CONTENT_CHARS}...(truncated)"
+  CONTENT="$(printf '%s' "$CONTENT" | _truncate_chars "$MAX_CONTENT_CHARS")...(truncated)"
 fi
 
 WORK_FILE="$(mktemp "${TMPDIR:-/tmp}/memsearch-stop.XXXXXX.json")"
