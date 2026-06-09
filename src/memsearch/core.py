@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from .chunker import Chunk, chunk_markdown, clean_content_for_embedding, compute_chunk_id
 from .compact import compact_chunks
 from .embeddings import EmbeddingProvider, get_provider
+from .io import read_utf8_text_replace
 from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
@@ -125,7 +126,7 @@ class MemSearch:
 
     async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
         source = str(f.path)
-        text = f.path.read_text(encoding="utf-8")
+        text = read_utf8_text_replace(f.path)
         chunks = chunk_markdown(
             text,
             source=source,

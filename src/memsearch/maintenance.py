@@ -24,6 +24,7 @@ from .config import (
     config_to_dict,
     resolve_env_ref,
 )
+from .io import read_utf8_text_replace
 
 TASKS = ("project_review", "user_profile")
 MAX_PROMPT_CHARS = 80_000
@@ -255,8 +256,8 @@ def _read_recent_journals(input_dir: Path, max_files: int = 12) -> str:
     chunks: list[str] = []
     files = sorted((p for p in input_dir.rglob("*.md") if p.is_file()), key=lambda p: p.stat().st_mtime)[-max_files:]
     for path in files:
-        with contextlib.suppress(OSError, UnicodeDecodeError):
-            chunks.append(f"\n<!-- source:{path} -->\n{path.read_text(encoding='utf-8')}")
+        with contextlib.suppress(OSError):
+            chunks.append(f"\n<!-- source:{path} -->\n{read_utf8_text_replace(path)}")
     return "\n".join(chunks)
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from memsearch.config import LLMProviderConfig, MemSearchConfig, PluginMaintenanceTaskConfig
-from memsearch.maintenance import TaskContext, run_due_tasks, run_memory_command, run_task_llm
+from memsearch.maintenance import TaskContext, _read_recent_journals, run_due_tasks, run_memory_command, run_task_llm
 
 
 def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monkeypatch) -> None:
@@ -33,6 +33,17 @@ def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monke
 
     assert results[0].action == "none"
     assert captured == {"model": "gemini-test", "provider_type": "gemini"}
+
+
+def test_read_recent_journals_replaces_invalid_utf8_bytes(tmp_path: Path) -> None:
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    (memory / "2026-06-09.md").write_bytes(b"### 10:00\n- broken \xff byte\n")
+
+    journals = _read_recent_journals(memory)
+
+    assert "<!-- source:" in journals
+    assert "broken \ufffd byte" in journals
 
 
 def test_openai_maintenance_uses_default_temperature(tmp_path: Path, monkeypatch) -> None:

@@ -77,3 +77,36 @@ def test_missing_env_var_in_real_resolve(monkeypatch) -> None:
     assert result.exit_code == 1
     assert "Configuration error:" in result.stderr
     assert "DEFINITELY_NOT_SET_MEMSEARCH_API_KEY" in result.stderr
+
+
+def test_expand_replaces_invalid_utf8_source_bytes(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "bad.md"
+    source.write_bytes(b"# Bad\n\nbroken \xff byte\n")
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            pass
+
+        def query(self, filter_expr: str):
+            assert filter_expr == 'chunk_hash == "abc123"'
+            return [
+                {
+                    "source": str(source),
+                    "start_line": 1,
+                    "end_line": 3,
+                    "heading": "Bad",
+                    "heading_level": 1,
+                }
+            ]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "resolve_config", lambda _overrides=None: MemSearchConfig())
+    monkeypatch.setattr(store_module, "MilvusStore", FakeStore)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["expand", "abc123"])
+
+    assert result.exit_code == 0
+    assert "broken \ufffd byte" in result.output

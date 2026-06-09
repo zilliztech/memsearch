@@ -21,6 +21,7 @@ from .config import (
     save_config,
     set_config_value,
 )
+from .io import read_utf8_text_replace
 
 try:
     from pymilvus.exceptions import MilvusException
@@ -373,7 +374,7 @@ def expand(
             click.echo(f"Source file not found: {source}", err=True)
             sys.exit(1)
 
-        all_lines = source_path.read_text(encoding="utf-8").splitlines()
+        all_lines = read_utf8_text_replace(source_path).splitlines()
 
         if lines is not None:
             # Show N lines before/after the chunk
