@@ -21,7 +21,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import signal
 import sqlite3
 import subprocess
@@ -57,21 +56,238 @@ def split_memsearch_cmd(memsearch_cmd: str) -> list[str]:
     return shlex.split(memsearch_cmd)
 
 
-def get_small_model() -> str:
-    """Read small_model from opencode.json config (fallback to model, then empty)."""
-    config_paths = [
-        os.path.expanduser("~/.config/opencode/opencode.json"),
-        "opencode.json",
-    ]
-    for p in config_paths:
-        if os.path.exists(p):
-            try:
-                with open(p, encoding="utf-8") as f:
-                    cfg = json.load(f)
-                return cfg.get("small_model", cfg.get("model", ""))
-            except Exception:
-                pass
-    return ""
+def _strip_jsonc(text: str) -> str:
+    """Remove JSONC comments and trailing commas while preserving string contents."""
+    out: list[str] = []
+    i = 0
+    in_string = False
+    string_quote = ""
+    escaped = False
+    while i < len(text):
+        char = text[i]
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if in_string:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == string_quote:
+                in_string = False
+            i += 1
+            continue
+        if char in {'"', "'"}:
+            in_string = True
+            string_quote = char
+            out.append(char)
+            i += 1
+            continue
+        if char == "/" and nxt == "/":
+            i += 2
+            while i < len(text) and text[i] not in "\r\n":
+                i += 1
+            continue
+        if char == "/" and nxt == "*":
+            i += 2
+            while i + 1 < len(text) and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        out.append(char)
+        i += 1
+
+    without_comments = "".join(out)
+    out = []
+    i = 0
+    in_string = False
+    string_quote = ""
+    escaped = False
+    while i < len(without_comments):
+        char = without_comments[i]
+        if in_string:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == string_quote:
+                in_string = False
+            i += 1
+            continue
+        if char in {'"', "'"}:
+            in_string = True
+            string_quote = char
+            out.append(char)
+            i += 1
+            continue
+        if char == ",":
+            j = i + 1
+            while j < len(without_comments) and without_comments[j].isspace():
+                j += 1
+            if j < len(without_comments) and without_comments[j] in "]}":
+                i += 1
+                continue
+        out.append(char)
+        i += 1
+    return "".join(out)
+
+
+def _read_jsonc_config(path: Path) -> dict:
+    try:
+        data = json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _deep_merge_config(base: dict, override: dict) -> dict:
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge_config(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _rewrite_relative_file_refs(value, config_dir: Path):
+    if isinstance(value, dict):
+        return {key: _rewrite_relative_file_refs(item, config_dir) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_rewrite_relative_file_refs(item, config_dir) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    def replace(match: re.Match[str]) -> str:
+        file_ref = match.group(1)
+        if file_ref.startswith("~/") or os.path.isabs(file_ref):
+            return match.group(0)
+        return "{file:" + str((config_dir / file_ref).resolve()) + "}"
+
+    return re.sub(r"\{file:([^}]+)\}", replace, value)
+
+
+def _load_opencode_config_file(path: Path) -> dict:
+    cfg = _read_jsonc_config(path)
+    if not cfg:
+        return {}
+    return _rewrite_relative_file_refs(cfg, path.parent)
+
+
+def _opencode_global_config_dir() -> Path:
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        return Path(xdg_config).expanduser() / "opencode"
+    return Path.home() / ".config" / "opencode"
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _opencode_project_config_files(project_dir: Path) -> list[Path]:
+    found: list[Path] = []
+    current = project_dir.resolve()
+    while True:
+        for filename in ("opencode.jsonc", "opencode.json"):
+            candidate = current / filename
+            if candidate.is_file():
+                found.append(candidate)
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return list(reversed(found))
+
+
+def _opencode_directory_config_files(project_dir: Path) -> list[Path]:
+    dirs: list[Path] = []
+    if not _env_flag_enabled("OPENCODE_DISABLE_PROJECT_CONFIG"):
+        current = project_dir.resolve()
+        while True:
+            local = current / ".opencode"
+            if local.is_dir() and local not in dirs:
+                dirs.append(local)
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
+
+    home_local = Path.home() / ".opencode"
+    if home_local.is_dir() and home_local not in dirs:
+        dirs.append(home_local)
+
+    env_dir = os.environ.get("OPENCODE_CONFIG_DIR", "").strip()
+    if env_dir:
+        config_dir = Path(env_dir).expanduser()
+        if config_dir not in dirs:
+            dirs.append(config_dir)
+
+    files: list[Path] = []
+    for directory in dirs:
+        for filename in ("opencode.json", "opencode.jsonc"):
+            candidate = directory / filename
+            if candidate.is_file():
+                files.append(candidate)
+    return files
+
+
+def _iter_opencode_config_files(project_dir: str | os.PathLike[str] | None = None) -> list[Path]:
+    project = Path(project_dir or os.getcwd()).expanduser().resolve()
+    files: list[Path] = []
+
+    global_dir = _opencode_global_config_dir()
+    for filename in ("config.json", "opencode.json", "opencode.jsonc"):
+        candidate = global_dir / filename
+        if candidate.is_file():
+            files.append(candidate)
+
+    env_config = os.environ.get("OPENCODE_CONFIG", "").strip()
+    if env_config:
+        candidate = Path(env_config).expanduser()
+        if candidate.is_file():
+            files.append(candidate)
+
+    if not _env_flag_enabled("OPENCODE_DISABLE_PROJECT_CONFIG"):
+        files.extend(_opencode_project_config_files(project))
+
+    files.extend(_opencode_directory_config_files(project))
+    return files
+
+
+def load_opencode_config(project_dir: str | os.PathLike[str] | None = None) -> dict:
+    """Load local OpenCode config sources in OpenCode-compatible precedence order."""
+    merged: dict = {}
+    for path in _iter_opencode_config_files(project_dir):
+        merged = _deep_merge_config(merged, _load_opencode_config_file(path))
+
+    content = os.environ.get("OPENCODE_CONFIG_CONTENT")
+    if content:
+        content_dir = Path(project_dir or os.getcwd()).expanduser().resolve()
+        cfg = _rewrite_relative_file_refs(_read_jsonc_config_from_text(content), content_dir)
+        merged = _deep_merge_config(merged, cfg)
+    return merged
+
+
+def _read_jsonc_config_from_text(text: str) -> dict:
+    try:
+        data = json.loads(_strip_jsonc(text))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _sanitize_opencode_config(cfg: dict) -> dict:
+    sanitized = dict(cfg)
+    for key in ("plugin", "plugins", "plugin_origins"):
+        sanitized.pop(key, None)
+    return sanitized
+
+
+def get_small_model(project_dir: str | os.PathLike[str] | None = None) -> str:
+    """Read small_model from OpenCode config, falling back to model."""
+    cfg = load_opencode_config(project_dir)
+    return str(cfg.get("small_model", cfg.get("model", "")) or "")
 
 
 def get_plugin_summarize_model(memsearch_cmd: str | None = None) -> str:
@@ -122,19 +338,19 @@ def get_plugin_summarize_enabled(memsearch_cmd: str | None = None) -> bool:
         return True
 
 
-def ensure_isolated_config() -> str:
+def ensure_isolated_config(project_dir: str | os.PathLike[str] | None = None) -> str:
     """Create isolated config dir without plugins/ to prevent recursion."""
-    isolated = os.path.expanduser("~/.codex/tmp/opencode-memsearch-summarize/opencode")
-    os.makedirs(isolated, exist_ok=True)
-    # Copy opencode.json (provider config) but NOT plugins/
-    src = os.path.expanduser("~/.config/opencode/opencode.json")
-    dst = os.path.join(isolated, "opencode.json")
-    if os.path.islink(dst) or (os.path.lexists(dst) and not os.path.isfile(dst)):
-        with contextlib.suppress(OSError):
-            os.remove(dst)
-    if os.path.exists(src) and not os.path.exists(dst):
-        shutil.copy2(src, dst)
-    return os.path.dirname(isolated)
+    root = Path.home() / ".codex" / "tmp" / "opencode-memsearch-summarize"
+    isolated = root / "opencode"
+    isolated.mkdir(parents=True, exist_ok=True)
+    for filename in ("config.json", "opencode.json", "opencode.jsonc"):
+        stale = isolated / filename
+        if stale.is_symlink() or stale.is_file():
+            stale.unlink(missing_ok=True)
+    cfg = _sanitize_opencode_config(load_opencode_config(project_dir))
+    if cfg:
+        (isolated / "opencode.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return str(root)
 
 
 def _load_summarize_prompt(agent_name: str, memsearch_cmd: str | None = None) -> str:
@@ -171,7 +387,12 @@ def _load_summarize_prompt(agent_name: str, memsearch_cmd: str | None = None) ->
     )
 
 
-def summarize_with_llm(turn_text: str, small_model: str, memsearch_cmd: str | None = None) -> str | None:
+def summarize_with_llm(
+    turn_text: str,
+    small_model: str,
+    memsearch_cmd: str | None = None,
+    project_dir: str | os.PathLike[str] | None = None,
+) -> str | None:
     """Summarize using configured provider routing."""
     if not get_plugin_summarize_enabled(memsearch_cmd):
         return None
@@ -202,7 +423,7 @@ def summarize_with_llm(turn_text: str, small_model: str, memsearch_cmd: str | No
         return None
 
     # Native path: summarize using opencode run in isolated env (no plugins -> no recursion).
-    isolated_dir = ensure_isolated_config()
+    isolated_dir = ensure_isolated_config(project_dir)
 
     summarize_model = get_plugin_summarize_model(memsearch_cmd) or small_model
     cmd = ["opencode", "run"]
@@ -215,6 +436,10 @@ def summarize_with_llm(turn_text: str, small_model: str, memsearch_cmd: str | No
             cmd,
             env={
                 **os.environ,
+                "OPENCODE_CONFIG": "",
+                "OPENCODE_CONFIG_DIR": "",
+                "OPENCODE_CONFIG_CONTENT": "",
+                "OPENCODE_DISABLE_PROJECT_CONFIG": "true",
                 "XDG_CONFIG_HOME": isolated_dir,
                 "XDG_DATA_HOME": os.path.join(isolated_dir, "data"),
                 "MEMSEARCH_NO_WATCH": "1",
@@ -491,7 +716,8 @@ def capture_session_turns(
         if not capture_exists(memory_dir, session_id, turn.turn_id):
             if not get_plugin_summarize_enabled(memsearch_cmd):
                 continue
-            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd)
+            project_dir = Path(memory_dir).resolve().parent.parent
+            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd, project_dir)
             write_capture(
                 memory_dir,
                 summary if summary else turn_text,
@@ -538,7 +764,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
 
-    small_model = get_small_model()
+    small_model = get_small_model(args.project_dir)
     turn_db = open_turn_db(args.project_dir)
     tail_turn_cache: dict[str, TailTurnObservation] = {}
 

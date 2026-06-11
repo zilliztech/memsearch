@@ -34,6 +34,114 @@ from opencode_turns import (  # noqa: E402
 )
 
 
+def test_opencode_config_resolution_uses_jsonc_and_env_dir_precedence(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    xdg_config = tmp_path / "xdg-config"
+    project = tmp_path / "repo"
+    config_dir = tmp_path / "custom-opencode"
+    home.mkdir()
+    project.mkdir()
+    (xdg_config / "opencode").mkdir(parents=True)
+    config_dir.mkdir()
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config))
+    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
+    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
+    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
+
+    (xdg_config / "opencode" / "opencode.json").write_text(
+        '{"small_model": "global-json", "username": "global"}',
+        encoding="utf-8",
+    )
+    (xdg_config / "opencode" / "opencode.jsonc").write_text(
+        '{\n  // jsonc should override json in the same directory\n  "small_model": "global-jsonc",\n}\n',
+        encoding="utf-8",
+    )
+    (project / "opencode.json").write_text(
+        '{"small_model": "project-json", "username": "project-json"}',
+        encoding="utf-8",
+    )
+    (project / "opencode.jsonc").write_text(
+        '{\n  "small_model": "project-jsonc",\n  "provider": {"openai": {"apiKey": "{file:token.txt}"}},\n}\n',
+        encoding="utf-8",
+    )
+    (config_dir / "opencode.jsonc").write_text(
+        '{"small_model": "config-dir", "plugin": ["memsearch-opencode"]}',
+        encoding="utf-8",
+    )
+
+    cfg = capture_daemon.load_opencode_config(project)
+
+    assert capture_daemon.get_small_model(project) == "config-dir"
+    assert cfg["small_model"] == "config-dir"
+    assert cfg["username"] == "project-json"
+    assert cfg["provider"]["openai"]["apiKey"] == f"{{file:{project / 'token.txt'}}}"
+
+
+def test_opencode_config_resolution_uses_opencode_config_file(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    xdg_config = tmp_path / "xdg-config"
+    project = tmp_path / "repo"
+    custom_config = tmp_path / "custom-opencode.jsonc"
+    home.mkdir()
+    project.mkdir()
+    (xdg_config / "opencode").mkdir(parents=True)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config))
+    monkeypatch.setenv("OPENCODE_CONFIG", str(custom_config))
+    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
+    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
+
+    (xdg_config / "opencode" / "opencode.jsonc").write_text(
+        '{"small_model": "global-jsonc"}',
+        encoding="utf-8",
+    )
+    custom_config.write_text(
+        '{\n  // exact env config overrides global config\n  "small_model": "env-config",\n}\n',
+        encoding="utf-8",
+    )
+
+    assert capture_daemon.get_small_model(project) == "env-config"
+
+
+def test_opencode_isolated_config_sanitizes_plugins(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    project = tmp_path / "repo"
+    config_dir = tmp_path / "custom-opencode"
+    home.mkdir()
+    project.mkdir()
+    config_dir.mkdir()
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
+    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
+    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
+    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
+
+    (project / "opencode.jsonc").write_text(
+        '{"model": "project/model", "plugin": ["project-plugin"]}',
+        encoding="utf-8",
+    )
+    (config_dir / "opencode.jsonc").write_text(
+        '{"small_model": "dir/model", "plugin": ["dir-plugin"]}',
+        encoding="utf-8",
+    )
+
+    isolated_root = Path(capture_daemon.ensure_isolated_config(project))
+    isolated_config = json.loads((isolated_root / "opencode" / "opencode.json").read_text(encoding="utf-8"))
+
+    assert isolated_root == home / ".codex" / "tmp" / "opencode-memsearch-summarize"
+    assert isolated_config["model"] == "project/model"
+    assert isolated_config["small_model"] == "dir/model"
+    assert "plugin" not in isolated_config
+    assert not (isolated_root / "opencode" / "opencode.jsonc").exists()
+
+
 def _make_opencode_db(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
