@@ -30,12 +30,23 @@ def test_codex_stop_worker_fallback_summary_preserves_utf8(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_codex = fake_bin / "codex"
+    fake_codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_codex.chmod(0o755)
+    fake_memsearch = fake_bin / "memsearch"
+    fake_memsearch.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_memsearch.chmod(0o755)
+
     env = {
         **os.environ,
+        "HOME": str(tmp_path / "home"),
         "MEMSEARCH_PROJECT_DIR": str(tmp_path),
         "MEMSEARCH_SKIP_HOOK_STDIN": "1",
-        # Keep codex/memsearch out of PATH so the worker uses fallback summary.
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        # Force the native summarizer path to return no summary so fallback
+        # formatting is exercised even on machines with codex installed.
+        "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
     }
     subprocess.run(["bash", str(SCRIPT), "--worker", str(work_file)], check=True, env=env)
 
