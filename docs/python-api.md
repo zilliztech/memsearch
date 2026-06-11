@@ -2,6 +2,11 @@
 
 memsearch provides a high-level Python API through the `MemSearch` class. Import it, point it at your markdown files, and you get semantic memory for your agent in a few lines of code.
 
+New here?
+- Use [Getting Started](getting-started.md) if you still need the fastest working setup
+- Use [Configuration](home/configuration.md) if you need to switch embedding providers or Milvus backends
+- Use [Architecture](architecture.md) if you want the underlying indexing and recall model first
+
 ```python
 from memsearch import MemSearch
 
