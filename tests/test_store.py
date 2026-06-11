@@ -46,6 +46,54 @@ def test_upsert_and_search(store: MilvusStore):
     assert results[0]["content"] == "Hello world"
 
 
+def test_remote_upsert_flushes_for_immediate_visibility():
+    """Remote Milvus needs a flush before freshly upserted chunks are searchable."""
+
+    class FakeClient:
+        def __init__(self):
+            self.flushed = []
+
+        def upsert(self, *, collection_name, data):
+            return {"upsert_count": len(data)}
+
+        def flush(self, collection_name):
+            self.flushed.append(collection_name)
+
+    fake_client = FakeClient()
+    remote_store = object.__new__(MilvusStore)
+    remote_store._client = fake_client
+    remote_store._collection = "remote_collection"
+    remote_store._is_lite = False
+
+    n = remote_store.upsert([{"chunk_hash": "h1"}])
+
+    assert n == 1
+    assert fake_client.flushed == ["remote_collection"]
+
+
+def test_local_lite_upsert_does_not_flush():
+    class FakeClient:
+        def __init__(self):
+            self.flushed = []
+
+        def upsert(self, *, collection_name, data):
+            return {"upsert_count": len(data)}
+
+        def flush(self, collection_name):
+            self.flushed.append(collection_name)
+
+    fake_client = FakeClient()
+    local_store = object.__new__(MilvusStore)
+    local_store._client = fake_client
+    local_store._collection = "local_collection"
+    local_store._is_lite = True
+
+    n = local_store.upsert([{"chunk_hash": "h1"}])
+
+    assert n == 1
+    assert fake_client.flushed == []
+
+
 def test_delete_by_source(store: MilvusStore):
     chunks = [
         {
