@@ -1,6 +1,6 @@
 ---
 name: memory-recall
-description: "Search and recall relevant memories from past sessions via memsearch. Use when the user's question could benefit from historical context, past decisions, debugging notes, previous conversations, or project knowledge -- especially questions like 'what did I decide about X', 'why did we do Y', or 'have I seen this before'. Also use when you see `[memsearch] Memory available` hints injected via SessionStart or UserPromptSubmit. Typical flow: search for 3-5 chunks, expand the most relevant, optionally deep-drill into original transcripts via the anchor format. Skip when the question is purely about current code state (use Read/Grep), ephemeral (today's task only), or the user has explicitly asked to ignore memory."
+description: "Search and recall relevant memories from past sessions via memsearch. Use at the start of every substantive task where historical context, past decisions, preferences, tool choices, production workflows, debugging notes, or previous corrections could change the answer. Especially use before live-site work, skill/config edits, tool-failure claims, and questions like 'what did I decide about X', 'why did we do Y', or 'have I seen this before'. Also use when you see `[memsearch] Memory available` hints injected via SessionStart or UserPromptSubmit. Typical flow: search for 3-5 chunks, expand the most relevant, optionally deep-drill into original transcripts via the anchor format. Skip only when the user explicitly asks to ignore memory, or when the task is truly trivial/current-state-only and memory cannot affect the outcome."
 ---
 
 You are performing memory retrieval for memsearch. Search past memories and return the most relevant context to the current conversation.
@@ -17,6 +17,19 @@ bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash __INSTALL_DIR__/scripts/deriv
 1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name from above>` to find relevant chunks.
    - If `memsearch` is not found, try `uvx memsearch` instead.
    - Choose a search query that captures the core intent of the user's question.
+   - When the user invokes memory-recall immediately after rejecting a tool-failure claim, search for the exact failure phrase and prior workaround before declaring the tool unavailable or blocked.
+   - If `memsearch` fails because the vector service is unavailable, do not treat that as "no memory". Fall back to raw markdown search across known memory roots, then say that vector search was unavailable.
+   - If the user challenges a "MemSearch unavailable" or "vector memory unavailable" claim because a drift bar or health check says it is available, distinguish global service health from this shell's vector/CLI path. Re-derive the collection and retry once; if it still fails, use the raw markdown fallback and report "the vector lookup failed in this session" rather than "memory is unavailable".
+
+Raw fallback search:
+
+```bash
+MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"
+rg -n -i "<query terms>" \
+  "$MDIR/memory" \
+  "$HOME/.memsearch/memory" \
+  2>/dev/null | head -80
+```
 
 2. **Evaluate**: Look at the search results. Skip chunks that are clearly irrelevant or too generic.
 
