@@ -16,7 +16,7 @@ print(results[0]["content"], results[0]["score"])       # content + similarity
 
 ## `MemSearch`
 
-The main entry point. Handles indexing, search, compaction, and file watching.
+The main entry point. Handles indexing, search, compaction, and file watching. For the underlying chunk model, dedup strategy, and collection layout, see [Architecture](architecture.md).
 
 ### Constructor
 
