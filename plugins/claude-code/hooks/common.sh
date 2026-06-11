@@ -183,6 +183,13 @@ kill_orphaned_index() {
 # --- Watch singleton management ---
 
 WATCH_PIDFILE="$MEMSEARCH_DIR/.watch.pid"
+WATCH_SUPERPOWERS_PIDFILE="$MEMSEARCH_DIR/.watch-superpowers.pid"
+
+# Paths to watch for superpowers collection (relative to project root)
+_SUPERPOWERS_PATHS=()
+for _sp in "docs/superpowers/specs" "docs/superpowers/plans"; do
+  [ -d "$_PROJECT_DIR/$_sp" ] && _SUPERPOWERS_PATHS+=("$_PROJECT_DIR/$_sp")
+done
 
 # Kill a process and its entire process group to avoid orphans
 _kill_tree() {
@@ -215,6 +222,35 @@ stop_watch() {
       kill "$opid" 2>/dev/null || true
     done
   fi
+}
+
+stop_watch_superpowers() {
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then return 0; fi
+  if [ -f "$WATCH_SUPERPOWERS_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$WATCH_SUPERPOWERS_PIDFILE" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      _kill_tree "$pid"
+    fi
+    rm -f "$WATCH_SUPERPOWERS_PIDFILE"
+  fi
+}
+
+start_watch_superpowers() {
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then return 0; fi
+  if [ -z "$MEMSEARCH_CMD" ]; then return 0; fi
+  if [ ${#_SUPERPOWERS_PATHS[@]} -eq 0 ]; then return 0; fi
+
+  local _uri="${MILVUS_URI:-$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")}"
+  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]]; then return 0; fi
+
+  stop_watch_superpowers
+
+  local launch_prefix="nohup"
+  command -v setsid &>/dev/null && launch_prefix="setsid"
+
+  $launch_prefix $MEMSEARCH_CMD watch "${_SUPERPOWERS_PATHS[@]}" --collection superpowers </dev/null &>/dev/null &
+  echo $! > "$WATCH_SUPERPOWERS_PIDFILE"
 }
 
 # Start memsearch watch — always stop-then-start to pick up config changes
