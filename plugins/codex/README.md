@@ -20,7 +20,7 @@ bash plugins/codex/scripts/install.sh
 ```
 
 The installer sets up everything automatically:
-- Copies the **memory-recall** skill to `~/.agents/skills/`
+- Copies the **memory-recall** skill to `~/.codex/skills/`
 - Installs or updates memsearch hook entries in `~/.codex/hooks.json`
 - Enables the `hooks` feature flag
 

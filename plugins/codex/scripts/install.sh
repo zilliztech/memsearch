@@ -187,11 +187,12 @@ fi
 
 # --- 2. Install skills ---
 echo "[2/6] Installing memsearch skills..."
-mkdir -p "$HOME/.agents/skills"
+SKILLS_DIR="$HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
 
 for skill_name in memory-recall memory-config; do
   SKILL_SRC="$INSTALL_DIR/skills/$skill_name"
-  SKILL_DST="$HOME/.agents/skills/$skill_name"
+  SKILL_DST="$SKILLS_DIR/$skill_name"
   if [ -d "$SKILL_DST" ] || [ -L "$SKILL_DST" ]; then
     echo "  ⚠ Existing $skill_name skill found — replacing"
     rm -rf "$SKILL_DST"
@@ -205,7 +206,7 @@ done
 # --- 3. Replace __INSTALL_DIR__ placeholder in SKILL.md ---
 echo "[3/6] Configuring skill paths..."
 for skill_name in memory-recall memory-config; do
-  SKILL_DST="$HOME/.agents/skills/$skill_name"
+  SKILL_DST="$SKILLS_DIR/$skill_name"
   if [ -f "$SKILL_DST/SKILL.md" ]; then
     replace_text_in_file "$SKILL_DST/SKILL.md" "__INSTALL_DIR__" "$INSTALL_DIR"
     echo "  ✓ Updated $skill_name SKILL.md with install path: $INSTALL_DIR"
@@ -251,7 +252,7 @@ echo "  • memory-config skill: diagnose and configure memsearch"
 echo ""
 echo "Memory files:   <project>/.memsearch/memory/*.md"
 echo "Hooks config:   $HOOKS_FILE"
-echo "Skill location: $HOME/.agents/skills/{memory-recall,memory-config}"
+echo "Skill location: $SKILLS_DIR/{memory-recall,memory-config}"
 echo "Feature flag:   hooks = true in $CONFIG_FILE"
 echo ""
 echo "To verify: start a new codex session and check for [memsearch] status line."
