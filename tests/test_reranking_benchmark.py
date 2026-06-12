@@ -175,6 +175,38 @@ def test_load_query_manifest_rejects_coerced_fields(tmp_path: Path) -> None:
         load_query_manifest(manifest)
 
 
+def test_load_query_manifest_rejects_empty_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "benchmark.json"
+    manifest.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="at least one query"):
+        load_query_manifest(manifest)
+
+
+def test_load_query_manifest_rejects_duplicate_ids(tmp_path: Path) -> None:
+    manifest = tmp_path / "benchmark.json"
+    manifest.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "rerank-runner",
+                    "query": "reranking benchmark runner",
+                    "expected_sources": ["memory/reranking-plan.md"],
+                },
+                {
+                    "id": "rerank-runner",
+                    "query": "reranking benchmark runner again",
+                    "expected_sources": ["memory/reranking-plan.md"],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicates id: rerank-runner"):
+        load_query_manifest(manifest)
+
+
 def test_load_query_manifest_allows_missing_notes(tmp_path: Path) -> None:
     manifest = tmp_path / "benchmark.json"
     manifest.write_text(
@@ -279,6 +311,35 @@ def test_fixture_mode_scores_and_reports_without_live_memsearch() -> None:
     assert "diff vs plain for onnx-rerank: best_rank_delta=-1" in markdown
     assert "`onnx-rerank` duplicate sources increased from 0 to 1" in markdown
     assert "regressed from rank 2 to 1" not in markdown
+
+
+def test_report_keeps_plain_when_reranking_does_not_improve_hit_at_3() -> None:
+    query = benchmark.QuerySpec(id="equal-hit-at-3", query="equal hit at 3", expected_sources=("memory/right.md",))
+    report = benchmark.build_report(
+        [query],
+        {
+            "plain": [
+                benchmark.evaluate_results(
+                    query,
+                    "plain",
+                    [{"source": "memory/right.md"}],
+                    0.1,
+                )
+            ],
+            "onnx-rerank": [
+                benchmark.evaluate_results(
+                    query,
+                    "onnx-rerank",
+                    [{"source": "memory/right.md"}],
+                    0.2,
+                )
+            ],
+        },
+        top_k=5,
+        collection="ms_memsearch_ae2d4f9b",
+    )
+
+    assert report["recommendation"] == "Keep plain retrieval as the baseline. ONNX reranking did not improve hit@3."
 
 
 def test_live_mode_records_reranker_warmup_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

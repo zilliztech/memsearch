@@ -80,8 +80,11 @@ def load_query_manifest(path: Path) -> list[QuerySpec]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("Query manifest must be a JSON list of objects.")
+    if not data:
+        raise ValueError("Query manifest must contain at least one query.")
 
     queries: list[QuerySpec] = []
+    seen_ids: set[str] = set()
     for index, item in enumerate(data):
         if not isinstance(item, dict):
             raise ValueError(f"Query manifest item {index} must be an object.")
@@ -93,6 +96,9 @@ def load_query_manifest(path: Path) -> list[QuerySpec]:
         query_id = item["id"]
         if not isinstance(query_id, str) or not query_id:
             raise ValueError(f"Query manifest item {index} id must be a non-empty string.")
+        if query_id in seen_ids:
+            raise ValueError(f"Query manifest item {index} duplicates id: {query_id}.")
+        seen_ids.add(query_id)
 
         query_text = item["query"]
         if not isinstance(query_text, str) or not query_text:
@@ -390,16 +396,18 @@ def _recommendation(
 
     plain = overall_scores.get("plain", {})
     rerank = overall_scores["onnx-rerank"]
-    if _score_tuple(rerank) >= _score_tuple(plain):
-        return "ONNX reranking is a candidate for Task 3 live validation. Basis: " + " ".join(basis)
-    return "Keep plain retrieval as the baseline. ONNX reranking did not improve aggregate hit rates."
+    rerank_hit_at_3 = float(rerank.get("hit_at_3") or 0.0)
+    plain_hit_at_3 = float(plain.get("hit_at_3") or 0.0)
+    if rerank_hit_at_3 <= plain_hit_at_3:
+        return "Keep plain retrieval as the baseline. ONNX reranking did not improve hit@3."
+    latency_basis = _latency_basis(rerank, plain)
+    return "ONNX reranking is a candidate for Task 3 live validation if latency is acceptable. " + latency_basis
 
 
-def _score_tuple(score: Mapping[str, Any]) -> tuple[float, float, float]:
+def _latency_basis(rerank: Mapping[str, Any], plain: Mapping[str, Any]) -> str:
     return (
-        float(score.get("hit_at_1") or 0.0),
-        float(score.get("hit_at_3") or 0.0),
-        float(score.get("hit_at_5") or 0.0),
+        f"p95 latency plain={_fmt_seconds(plain.get('p95_latency_seconds'))}, "
+        f"onnx-rerank={_fmt_seconds(rerank.get('p95_latency_seconds'))}."
     )
 
 
