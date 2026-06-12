@@ -1,0 +1,14 @@
+[
+  {
+    "source": "memory/reranking-plan.md",
+    "content": "Benchmark plan notes."
+  },
+  {
+    "source": "memory/source-diversity.md",
+    "content": "Source diversity should flag repeated result sources."
+  },
+  {
+    "source": "memory/scoring.md",
+    "content": "Scoring helper notes."
+  }
+]

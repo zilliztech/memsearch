@@ -1,0 +1,14 @@
+[
+  {
+    "source": "memory/source-diversity.md",
+    "content": "Source diversity should flag repeated result sources."
+  },
+  {
+    "source": "memory/source-diversity.md",
+    "content": "Repeated source chunk from the same file."
+  },
+  {
+    "source": "memory/reranking-plan.md",
+    "content": "Benchmark plan notes."
+  }
+]
