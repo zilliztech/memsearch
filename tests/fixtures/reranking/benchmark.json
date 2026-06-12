@@ -1,0 +1,14 @@
+[
+  {
+    "id": "rerank-runner",
+    "query": "reranking benchmark runner",
+    "expected_sources": ["memory/reranking-plan.md"],
+    "notes": "Find the approved reranking benchmark implementation plan."
+  },
+  {
+    "id": "duplicate-source",
+    "query": "duplicate source warning threshold",
+    "expected_sources": ["memory/source-diversity.md"],
+    "notes": "Exercise duplicate-source warning reporting."
+  }
+]

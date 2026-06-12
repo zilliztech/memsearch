@@ -195,6 +195,9 @@ collection = "memsearch_chunks"
 provider = "openai"
 model = ""
 
+[reranker]
+model = ""
+
 [chunking]
 max_chunk_size = 1500
 overlap_lines = 2
@@ -261,6 +264,7 @@ provider = "openai"
 | `embedding.batch_size` | int | `0` | Embedding batch size (0 = provider default) |
 | `embedding.base_url` | string | `""` | OpenAI-compatible API base URL (empty = SDK default) |
 | `embedding.api_key` | string | `""` | API key for embedding provider (supports `env:VAR_NAME` syntax) |
+| `reranker.model` | string | `""` | Cross-encoder reranker model for `memsearch search` (empty = disabled) |
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
 | `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
@@ -356,7 +360,7 @@ Indexed 42 chunks.
 
 ## `memsearch search`
 
-Run a semantic search query against indexed chunks. Uses [hybrid search](https://milvus.io/docs/multi-vector-search.md) (dense vector cosine similarity + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) full-text) with [RRF](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) reranking for best results.
+Run a semantic search query against indexed chunks. Uses [hybrid search](https://milvus.io/docs/multi-vector-search.md) (dense vector cosine similarity + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) full-text) with Reciprocal Rank Fusion (RRF) to combine dense and BM25 candidates.
 
 ### Options
 
@@ -371,6 +375,7 @@ Run a semantic search query against indexed chunks. Uses [hybrid search](https:/
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
+| `--reranker-model` | | `reranker.model` | Cross-encoder model for reranking; empty string disables |
 | `--json-output` | `-j` | `false` | Output results as JSON |
 
 ### Examples
@@ -422,10 +427,39 @@ Use with a different provider (must match the one used for indexing):
 $ memsearch search "database migrations" --provider google
 ```
 
+Try reranking for a single search:
+
+```bash
+$ memsearch search "database migrations" --reranker-model Alibaba-NLP/gte-reranker-modernbert-base
+```
+
+Before enabling a reranker globally, benchmark it against your indexed content:
+
+```bash
+$ uv run python scripts/benchmark_reranking.py --queries tests/fixtures/reranking/benchmark.json --collection memsearch_chunks --top-k 5 --reranker-model Alibaba-NLP/gte-reranker-modernbert-base --out outputs/reranking-benchmark.json
+```
+
+Replace `tests/fixtures/reranking/benchmark.json` with your reviewed query manifest before making a rollout decision.
+
+Enable it only when hit@3 improves and latency stays acceptable. Treat recency as a tie-break or display field, not a primary ranking signal. The benchmark runner's plain mode forces `--reranker-model ""` so global config cannot contaminate the baseline.
+
+Enable reranking globally after the benchmark passes:
+
+```bash
+$ memsearch config set reranker.model Alibaba-NLP/gte-reranker-modernbert-base
+```
+
+Rollback to plain hybrid search:
+
+```bash
+$ memsearch config set reranker.model ""
+```
+
 ### Notes
 
 - **Provider must match.** The search embedding provider and model must match whatever was used during indexing. Mixing providers will return poor results because the vector spaces are incompatible.
 - **Hybrid search.** Results are ranked using Reciprocal Rank Fusion (RRF) across both dense (cosine) and sparse (BM25) retrieval, giving you the best of semantic and keyword matching. Scores are normalized to `[0, 1]` where 1.0 means ranked #1 in all retrievers.
+- **Reranking is optional.** A configured reranker reorders the hybrid candidates after retrieval. Leave `reranker.model` empty, or pass `--reranker-model ""`, to keep plain hybrid search.
 - **Content is truncated.** In the default text output, each result's content is truncated to 500 characters. Use `--json-output` to get the full content.
 
 ---
