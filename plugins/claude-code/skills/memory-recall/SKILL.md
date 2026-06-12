@@ -11,6 +11,10 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 Collection: !`bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi; fi'`
 
+## Hermes vs MemSearch impact
+
+When explaining Hermes/MemSearch impact, distinguish runtime behaviour from infrastructure health: Hermes affects Hermes-native runs; MemSearch hooks affect Claude/Codex recall. Answer what changes in live Claude/Codex sessions, not just whether Milvus is healthy.
+
 ## Your Task
 
 Search for memories relevant to: $ARGUMENTS
