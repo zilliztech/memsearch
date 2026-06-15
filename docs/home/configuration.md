@@ -192,7 +192,8 @@ changes from natural-language requests.
 A third maintenance task, `memory_to_skill`, distills recurring workflows into
 reusable agent skills. The `enabled` flag here gates only the **background**
 mining pass (disabled by default, to avoid surprise background model calls);
-manual capture and explicit `memsearch skills distill` work regardless. It shares
+on-demand capture and mining via the `/memory-to-skill` skill work regardless
+(they run in the live agent). It shares
 the maintenance tasks' provider/model routing, prompt override
 (`prompts.memory_to_skill`), `input_dir`, and `min_interval_hours` cadence.
 

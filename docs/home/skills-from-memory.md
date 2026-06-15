@@ -45,10 +45,13 @@ skill out of what we just did"*, the **live agent you are talking to** drafts th
 no recurrence threshold (your explicit request is the signal, so even a one-off is
 fine). It persists the result with `memsearch skills add`, which only handles the
 slug, standard frontmatter, `meta.json`, and the git commit. This path is **not**
-gated by `enabled` — an explicit request is never a surprise.
+gated by `enabled` — an explicit request is never a surprise. The same skill can
+also mine *past* work on demand: it reads the journals and persists what recurs
+with `skills add`, again entirely in the agent.
 
-You can also run the model-driven mining yourself at any time with `memsearch
-skills distill` (also ungated, since it is explicit).
+The `memsearch skills distill` CLI runs the model-driven mining standalone, but it
+needs an **API provider** — the default `native` provider drives the host agent
+and only works from the background pass, not as a bare CLI call.
 
 ## Install (1 → 2, always manual)
 

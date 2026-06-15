@@ -1049,14 +1049,27 @@ def skills_group() -> None:
 @click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
 @click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
 def skills_distill(plugin: str, force: bool) -> None:
-    """Mine recent memory journals for recurring workflows (model-driven).
+    """Mine recent memory journals for recurring workflows using a configured API provider.
 
     This is an explicit invocation, so it runs regardless of the
     ``memory_to_skill.enabled`` flag (which only gates the background pass).
+    Requires an API provider: the default ``native`` provider drives the host
+    agent and only works from the background pass — for on-demand mining, use the
+    ``/memory-to-skill`` skill, which reasons over the journals directly.
     """
     from . import skills as skills_mod
 
     cfg = _safe_resolve_config()
+    task_cfg = skills_mod._get_task_config(cfg, plugin)
+    provider = ((task_cfg.provider if task_cfg else "") or "native").strip()
+    if provider == "native":
+        click.echo(
+            "Standalone 'skills distill' needs an API provider; the default 'native' provider only works "
+            "via the background pass. For on-demand mining use the /memory-to-skill skill, or configure a "
+            f"provider, e.g.: memsearch config set plugins.{plugin}.memory_to_skill.provider <name> --project",
+            err=True,
+        )
+        raise SystemExit(2)
     result = skills_mod.distill(platform=plugin, cfg=cfg, force=force, require_enabled=False)
     if result.skipped:
         click.echo(f"Skipped: {result.reason or result.action}")

@@ -56,16 +56,17 @@ If the list is **empty**, background distillation is likely off or has not run.
 Offer the user a choice: capture from recent work now (**A**), distill from
 history (**C**), or enable the background pass (**D**).
 
-## C. Distill from history (0→1, model-driven)
+## C. Mine history for recurring workflows (0→1)
 
-```bash
-memsearch skills distill --plugin openclaw --force
-```
+To pull skills out of past work (not just the current session), read the recent
+journals yourself — they live in `.memsearch/memory/*.md` — and look for
+multi-step procedures that recur across several sessions. Draft each genuinely
+reusable one and persist it with `memsearch skills add` (one call per skill), the
+same way as **A**. Use your own judgment: only propose procedures that recur and
+generalize, not one-offs from a single day.
 
-This is explicit, so it runs even if the background flag is off. It mines recent
-journals for workflows that recur at least `min_occurrences` times, writes them as
-candidates, and you then review/install via **B**. Most runs add nothing — the bar
-is intentionally high.
+The background pass does this automatically when enabled; doing it here on demand
+uses your own reasoning and needs no provider configuration.
 
 ## D. Configure
 
@@ -80,7 +81,7 @@ memsearch config set plugins.openclaw.memory_to_skill.paths '[".openclaw/skills"
 ```
 
 Note: `enabled` only gates the **background** (session-end) pass. The explicit
-commands above (`skills add`, `skills distill`, `skills install`) always work.
+commands above (`skills add`, `skills install`) always work, and you can mine history (C) directly.
 
 ## Install paths
 

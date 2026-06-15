@@ -332,3 +332,18 @@ def test_revision_prompt_includes_current_body(tmp_path: Path) -> None:
     skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, force=True, llm_runner=checking_runner)
     # The model must see the current body when revising, not just name/description.
     assert "UNIQUE-OLD-STEP" in captured["prompt"]
+
+
+def test_cli_distill_native_gives_guidance_not_crash(monkeypatch) -> None:
+    from click.testing import CliRunner
+
+    from memsearch import cli as cli_module
+    from memsearch.cli import cli
+
+    # Default config => native provider; standalone CLI distill cannot run native.
+    monkeypatch.setattr(cli_module, "resolve_config", lambda *_a, **_k: MemSearchConfig())
+    result = CliRunner().invoke(cli, ["skills", "distill", "--plugin", "codex"])
+
+    assert result.exit_code == 2
+    assert "needs an API provider" in result.stderr
+    assert "Native maintenance providers" not in (result.stderr + result.output)  # no raw traceback
