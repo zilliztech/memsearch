@@ -37,9 +37,13 @@ from .maintenance import (
     _is_due,
     _load_state,
     _read_recent_journals,
+    _resolve_task_path,
     _save_state,
     run_task_llm,
 )
+
+# Cap each existing skill body included in the revision prompt, to bound size.
+MAX_EXISTING_BODY_CHARS = 2000
 
 TASK = "memory_to_skill"
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
@@ -94,6 +98,34 @@ def _slugify(name: str) -> str:
     return slug or "skill"
 
 
+def _skill_body(skill_md: str) -> str:
+    """Return the markdown body of a SKILL.md, stripping YAML frontmatter."""
+    if skill_md.startswith("---"):
+        parts = skill_md.split("---", 2)
+        if len(parts) == 3:
+            return parts[2].strip()
+    return skill_md.strip()
+
+
+def _render_existing_block(root: Path, existing: list[dict[str, Any]]) -> str:
+    """Render existing skills with their current bodies, so revisions improve
+    the current version rather than rewriting it blindly from recent logs."""
+    if not existing:
+        return "(none)"
+    blocks: list[str] = []
+    for m in existing:
+        name = m.get("name", "")
+        desc = m.get("description", "")
+        body = ""
+        skill_md = root / str(name) / "SKILL.md"
+        if skill_md.is_file():
+            body = _skill_body(skill_md.read_text(encoding="utf-8"))
+            if len(body) > MAX_EXISTING_BODY_CHARS:
+                body = body[:MAX_EXISTING_BODY_CHARS] + "\n…[truncated]"
+        blocks.append(f"### {name}\n{desc}\n\nCurrent body:\n```markdown\n{body}\n```")
+    return "\n\n".join(blocks)
+
+
 def _load_template(cfg: MemSearchConfig | None = None) -> str:
     # User/plugin override first (same mechanism as project_review / user_profile),
     # then the packaged default.
@@ -118,7 +150,7 @@ def _build_distill_prompt(
     }.items():
         template = template.replace(marker, value)
 
-    existing_block = "\n".join(f"- {m.get('name')}: {m.get('description', '')}" for m in existing) or "(none)"
+    existing_block = _render_existing_block(skills_root(ctx.memsearch_dir), existing)
     journals = _read_recent_journals(ctx.input_dir)
     prompt = f"""{template}
 
@@ -287,21 +319,28 @@ def distill(
     memsearch_dir: str | Path | None = None,
     cfg: MemSearchConfig | None = None,
     force: bool = False,
+    require_enabled: bool = True,
     llm_runner: Callable[[TaskContext, str], str] | None = None,
 ) -> DistillResult:
-    """Distill candidate skills from recent journals if the task is due."""
+    """Distill candidate skills from recent journals if the task is due.
+
+    *require_enabled* controls whether the ``enabled`` flag gates this run. The
+    session-end background runner passes ``True`` (so disabling the task stops
+    surprise background calls); an explicit CLI invocation passes ``False``,
+    since an explicit request is never a surprise.
+    """
     if cfg is None:
         from .config import resolve_config
 
         cfg = resolve_config()
 
-    task_cfg = _get_task_config(cfg, platform)
-    if task_cfg is None or not task_cfg.enabled:
+    task_cfg = _get_task_config(cfg, platform) or PluginMemoryToSkillConfig()
+    if require_enabled and not task_cfg.enabled:
         return DistillResult(action="disabled", skipped=True)
 
     project_root, mem_root = resolve_roots(project_dir, memsearch_dir)
     mem_root.mkdir(parents=True, exist_ok=True)
-    input_dir = (mem_root / "memory").resolve()
+    input_dir = _resolve_task_path(task_cfg.input_dir or str(mem_root / "memory"), project_root, mem_root)
 
     state_path = mem_root / ".maintenance-state.json"
     state = _load_state(state_path)
@@ -366,6 +405,37 @@ def distill(
         _save_state(state_path, state)
 
     return DistillResult(action="distilled" if changed else "none", created=created, updated=updated)
+
+
+def add(
+    name: str,
+    description: str,
+    body: str,
+    *,
+    project_dir: str | Path | None = None,
+    memsearch_dir: str | Path | None = None,
+) -> str:
+    """Persist a caller-provided skill as a candidate (manual capture path).
+
+    Used when a live agent has already drafted a skill from what the user just
+    did — the agent supplies the content and this only handles slugging,
+    standard frontmatter, the meta.json schema, and the git commit, so a
+    manually captured candidate is structurally identical to a distilled one.
+    Returns the slugified candidate name. No LLM and no provider config needed.
+    """
+    if not description.strip() or not body.strip():
+        raise ValueError("a skill needs both a description and a body")
+
+    _project_root, mem_root = resolve_roots(project_dir, memsearch_dir)
+    root = skills_root(mem_root)
+    _ensure_git(root)
+    slug = _slugify(name)
+    outcome = _write_candidate(
+        root,
+        {"name": slug, "description": description.strip(), "body": body.strip(), "sources": [], "reason": "manual"},
+    )
+    _git_commit(root, f"add: {outcome} candidate skill {slug} (manual)")
+    return slug
 
 
 def install(

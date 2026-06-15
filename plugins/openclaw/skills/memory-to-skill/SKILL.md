@@ -1,109 +1,102 @@
 ---
 name: memory-to-skill
-description: "Turn recurring workflows in your MemSearch memory into reusable skills. Use when the user asks to create/extract/distill a skill from past work or memory, review skill candidates, install a distilled skill, or asks 'make a skill out of what we have been doing'. Manages MemSearch procedural-memory candidates under .memsearch/skill-candidates/, not OpenClaw own skills system."
+description: "Turn workflows from your MemSearch memory into reusable skills. Use when the user asks to make/create/extract/distill a skill from what they just did or from past work, review skill candidates, install a distilled skill, or 'turn this into a skill'. Manages MemSearch procedural-memory candidates under .memsearch/skill-candidates/, not OpenClaw's own skills system."
 ---
 
-You manage MemSearch's **procedural memory**: candidate skills distilled from the
-project's memory journals. This is the third memory layer, alongside the daily
-journals (episodic) and PROJECT.md / USER.md (semantic).
+You manage MemSearch's **procedural memory**: skills distilled from the work you
+repeat — a third layer beside the daily journals (episodic) and PROJECT.md /
+USER.md (semantic). State once that this is MemSearch skill distillation, not
+OpenClaw's built-in skills system.
 
-State once in your summary that this is MemSearch skill distillation, not OpenClaw's
-built-in skills system. Do not repeat that on every line.
-
-Two stages, and you only ever drive the second one:
-- **Distill (automatic, background):** MemSearch watches recent journals and writes
-  *candidate* skills into `.memsearch/skill-candidates/` (a git repo), and keeps
-  evolving them there over time. Every entry — even ones already installed — stays
-  a perpetually-updated draft. You never edit that store blindly; it is git-tracked.
-- **Install (this skill, human-driven):** the user reviews a candidate and you copy
-  its current version into agent skill directories. Installing is the only path that
-  makes a skill agent-visible, and re-installing is how an installed skill gets
-  updated — the store keeps evolving; install takes a fresh snapshot.
+Stages: **0** memory journals → **1** candidate (`.memsearch/skill-candidates/`,
+a git-tracked store that keeps evolving) → **2** installed (an agent skill dir).
+Candidates are never installed automatically; installing is always a human step.
 
 ## Intent routing
 
-Inspect the user's request:
-- No specific request, "what skills / review candidates" -> **List candidates**.
-- "make/extract/distill a skill now", "from what we just did" -> **Distill on demand**, then List.
-- "install / publish / turn X into a real skill / update the installed skill" -> **Install**.
+- "make/turn this into a skill", "from what we just did" → **A. Capture now**.
+- "what skills / review candidates / install X" → **B. Review & install**.
+- "mine my history / find recurring workflows" → **C. Distill from history**.
+- "enable / configure / how eager" → **D. Configure**.
+- Unclear or empty → run **B**'s `list`; if empty, offer A or C.
 
-## 1. Check the feature is enabled
+## A. Capture what you just did (0→1→2)
 
-```bash
-memsearch config get plugins.openclaw.memory_to_skill.enabled 2>/dev/null || echo "false"
-```
-
-If this is not `true`, background distillation is **off**. Tell the user, and offer
-to turn it on (do not enable it silently). On their confirmation:
-
-```bash
-memsearch config set plugins.openclaw.memory_to_skill.enabled true --project
-```
-
-Mention they can tune how eagerly skills are extracted with
-`plugins.openclaw.memory_to_skill.min_occurrences` (default 3 — how many times a
-workflow must recur before it becomes a candidate). Lower = more eager.
-
-## 2. List candidates
+You already have the context, so **draft the skill yourself** — do not call the
+background distiller for this. Write a SKILL.md **body** (markdown, no
+frontmatter): imperative numbered steps for the recurring task, concrete commands
+and paths, no secrets, self-contained. Then persist it as a candidate:
 
 ```bash
-memsearch skills list
+printf '%s' "## <title>\n\n1. ...\n2. ..." | memsearch skills add \
+  --name "<short-slug>" \
+  --description "<what it does AND when it should trigger — lead with the verbs a user types>" \
+  --body-file -
 ```
 
-Show candidate names, status (candidate / installed), how often each recurred, and
-the one-line description. Use `memsearch skills list -j` for structured detail
-(sources, installed paths).
+`add` handles slugging, standard frontmatter, meta.json, and the git commit — no
+LLM is involved. Then show it to the user and install it (see **B**). Finally,
+check whether background distillation is on; if not, offer to enable it (so
+recurring workflows get captured automatically going forward) — do not force it.
 
-## 3. Distill on demand (optional)
+## B. Review & install candidates (1→2)
 
-If the user wants to extract right now rather than wait for the background pass:
+```bash
+memsearch skills list            # add -j for sources / installed paths
+```
+
+Pick one, resolve where to install (ask if unset), then install:
+
+```bash
+memsearch config get plugins.openclaw.memory_to_skill.paths 2>/dev/null || echo "[]"
+memsearch skills install <name> --path .openclaw/skills
+```
+
+If the list is **empty**, background distillation is likely off or has not run.
+Offer the user a choice: capture from recent work now (**A**), distill from
+history (**C**), or enable the background pass (**D**).
+
+## C. Distill from history (0→1, model-driven)
 
 ```bash
 memsearch skills distill --plugin openclaw --force
 ```
 
-Then list again. Most runs add nothing — that is expected; the bar for a reusable
-skill is intentionally high.
+This is explicit, so it runs even if the background flag is off. It mines recent
+journals for workflows that recur at least `min_occurrences` times, writes them as
+candidates, and you then review/install via **B**. Most runs add nothing — the bar
+is intentionally high.
 
-## 4. Install a candidate
-
-Installing copies a candidate's current `SKILL.md` into one or more skill
-directories. Before installing you may review the candidate, inspect its history
-(`git -C .memsearch/skill-candidates log -- <name>/SKILL.md`), and — with the user's
-guidance — edit `.memsearch/skill-candidates/<name>/SKILL.md` to taste. Those edits
-are committed and then snapshotted out.
-
-First resolve **where** to install:
+## D. Configure
 
 ```bash
-memsearch config get plugins.openclaw.memory_to_skill.paths 2>/dev/null || echo "[]"
-```
-
-If this is empty (`[]`), **do not guess** — ask the user where to install, then
-persist their choice. Offer these options and explain the trade-off:
-- `.openclaw/skills` — **project-local (recommended)**: scoped to this repo; a skill
-  distilled from this project's memory is usually most relevant here.
-- `~/.openclaw/skills` — global: available across all your projects.
-- a custom path, or several paths (one skill can be installed to multiple dirs).
-
-Note for cross-agent users, each agent reads skills from its own directory:
-Claude Code `.claude/skills/`, Codex `.codex/skills/`, OpenClaw `.openclaw/skills/`,
-and the shared `.agents/skills/` standard (read by OpenCode, Cursor, etc.) — but
-**not** by Claude Code. To cover several agents, install to multiple paths.
-
-Persist the chosen paths (example for project-local), then install:
-
-```bash
+memsearch config get plugins.openclaw.memory_to_skill.enabled 2>/dev/null || echo "false"
+# enable the background pass (do not enable silently)
+memsearch config set plugins.openclaw.memory_to_skill.enabled true --project
+# how eagerly history-mining distils (default 3; lower = more eager)
+memsearch config set plugins.openclaw.memory_to_skill.min_occurrences 3 --project
+# pre-set install targets (otherwise you are asked at install time)
 memsearch config set plugins.openclaw.memory_to_skill.paths '[".openclaw/skills"]' --project
-memsearch skills install <name> --path .openclaw/skills
 ```
 
-`--path` is repeatable for multiple destinations. After installing, tell the user the
-installed location(s) and that the skill is now agent-visible.
+Note: `enabled` only gates the **background** (session-end) pass. The explicit
+commands above (`skills add`, `skills distill`, `skills install`) always work.
+
+## Install paths
+
+- `.openclaw/skills` — **project-local (recommended)**: a skill from this project's
+  memory is usually most relevant here.
+- `~/.openclaw/skills` — global: available across all your projects.
+- a custom path, or several (one skill can be installed to multiple dirs).
+
+Each agent reads skills from its own directory: Claude Code `.claude/skills/`;
+Codex and OpenCode `.agents/skills/` (the shared standard, also read by Cursor
+etc.); OpenClaw `.openclaw/skills/`. Claude Code does **not** read `.agents/skills/`.
+Install to multiple paths to cover several agents.
 
 ## Guardrails
 
-- Never enable the feature, change install paths, or install a candidate without the
-  user's go-ahead.
-- Edit candidates only under the user's guidance, and only via the git-tracked store
-  at `.memsearch/skill-candidates/`. History (and revert) is available via git there.
+- Never enable the feature, change install paths, or install a candidate without
+  the user's go-ahead.
+- Do not hand-edit the store; create candidates with `memsearch skills add` and let
+  the git-tracked store at `.memsearch/skill-candidates/` keep history.

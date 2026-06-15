@@ -254,3 +254,81 @@ def test_config_set_paths_parses_json_list(tmp_path: Path, monkeypatch) -> None:
     )
     data = load_config_file(PROJECT_CONFIG_PATH)
     assert data["plugins"]["claude-code"]["memory_to_skill"]["paths"] == [".claude/skills", "~/.codex/skills"]
+
+
+def test_add_persists_candidate_without_llm(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    project.mkdir()
+    slug = skills_mod.add(
+        "My Deploy Flow", "Deploy to staging. Use when asked to deploy.", "## Deploy\n\n1. push", project_dir=project
+    )
+
+    assert slug == "my-deploy-flow"
+    skill_dir = project / ".memsearch" / "skill-candidates" / "my-deploy-flow"
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8").startswith("---\nname: my-deploy-flow\n")
+    meta = json.loads((skill_dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["status"] == "candidate"
+    assert (project / ".memsearch" / "skill-candidates" / ".git").is_dir()
+
+
+def test_add_rejects_empty_body(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="description and a body"):
+        skills_mod.add("x", "desc", "   ", project_dir=tmp_path)
+
+
+def test_distill_runs_when_disabled_if_require_enabled_false(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()  # memory_to_skill disabled by default
+
+    result = skills_mod.distill(
+        platform="claude-code", project_dir=project, cfg=cfg, require_enabled=False, llm_runner=_one_skill_runner()
+    )
+
+    assert result.action == "distilled"
+    assert result.created == ["run-tests"]
+
+
+def test_distill_honors_custom_input_dir(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)  # default location, with different content
+    custom = tmp_path / "journals"
+    custom.mkdir()
+    (custom / "2026-06-13.md").write_text("### 11:00\n- CUSTOM-INPUT-DIR marker.\n", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    _enable(cfg)
+    cfg.plugins.claude_code.memory_to_skill.input_dir = str(custom)
+
+    captured = {}
+
+    def runner(ctx, prompt: str) -> str:
+        captured["prompt"] = prompt
+        return json.dumps({"skills": []})
+
+    skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
+    assert "CUSTOM-INPUT-DIR marker" in captured["prompt"]
+
+
+def test_revision_prompt_includes_current_body(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()
+    _enable(cfg)
+
+    skills_mod.distill(
+        platform="claude-code",
+        project_dir=project,
+        cfg=cfg,
+        llm_runner=_body_runner("## v1 body\n\n1. UNIQUE-OLD-STEP"),
+    )
+
+    captured = {}
+
+    def checking_runner(ctx, prompt: str) -> str:
+        captured["prompt"] = prompt
+        return json.dumps({"skills": []})
+
+    skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, force=True, llm_runner=checking_runner)
+    # The model must see the current body when revising, not just name/description.
+    assert "UNIQUE-OLD-STEP" in captured["prompt"]

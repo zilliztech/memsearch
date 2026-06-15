@@ -278,20 +278,19 @@ The `memory-config` skill, installed with the plugins, can inspect the current s
 
 #### Skills from Memory
 
-Beyond episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch can grow a third memory layer — **procedural memory**: reusable skills distilled from the workflows you repeat. When enabled, a background pass mines recent journals for recurring multi-step procedures and writes them as *candidate* skills under `.memsearch/skill-candidates/` (a git-tracked store that keeps evolving). Candidates are inert; turning one into an agent-visible skill is a deliberate, human step.
+Beyond episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch can grow a third memory layer — **procedural memory**: reusable skills distilled from the workflows you repeat, written as *candidate* skills under `.memsearch/skill-candidates/` (a git-tracked store that keeps evolving). Candidates are inert; turning one into an agent-visible skill is a deliberate, human step. Candidates are created two ways: a **background** pass that mines recurring workflows (off by default), or **on demand** — just ask the agent "make a skill out of what we just did" and it captures it immediately (no background needed).
 
 ```bash
-# Enable distillation (disabled by default, like the maintenance tasks above)
+# Optional: enable the background mining pass (off by default; manual capture works without it)
 memsearch config set plugins.codex.memory_to_skill.enabled true --project
-# How many times a workflow must recur before it is distilled (default 3; lower = more eager)
-memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project
+memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
 
 # Review candidates, then install one into an agent's skill directory
 memsearch skills list
 memsearch skills install <name> --path .claude/skills
 ```
 
-The `/memory-to-skill` skill (installed with the plugins) drives the review-and-install flow: it lists candidates, asks where to install, and copies the chosen skill into `.claude/skills` (Claude Code), `.codex/skills` (Codex), `.agents/skills` (OpenCode/Cursor/…), or any path you configure. Because the store keeps evolving, re-installing simply takes a fresh snapshot. The distilled `SKILL.md` follows the [Agent Skills](https://agentskills.io) open standard, so a skill distilled once is portable across agents.
+The `/memory-to-skill` skill (installed with the plugins) drives the flow from natural language — capture what you just did, review & install candidates, mine history on demand, or configure the background pass. Skills install into each agent's own directory: `.claude/skills` (Claude Code), `.agents/skills` (Codex, OpenCode, Cursor, …), `.openclaw/skills` (OpenClaw), or any path you set; `--path` is repeatable. The distilled `SKILL.md` follows the [Agent Skills](https://agentskills.io) open standard, so a skill distilled once is portable across agents.
 
 ### What can you use it for?
 

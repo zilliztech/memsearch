@@ -190,14 +190,16 @@ changes from natural-language requests.
 ## Skills from Memory (procedural memory)
 
 A third maintenance task, `memory_to_skill`, distills recurring workflows into
-reusable agent skills. It is **disabled by default** and shares the maintenance
-tasks' provider/model routing, prompt-override mechanism
-(`prompts.memory_to_skill`), and `min_interval_hours` cadence.
+reusable agent skills. The `enabled` flag here gates only the **background**
+mining pass (disabled by default, to avoid surprise background model calls);
+manual capture and explicit `memsearch skills distill` work regardless. It shares
+the maintenance tasks' provider/model routing, prompt override
+(`prompts.memory_to_skill`), `input_dir`, and `min_interval_hours` cadence.
 
 ```bash
 memsearch config set plugins.codex.memory_to_skill.enabled true --project
 memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
-memsearch config set plugins.codex.memory_to_skill.paths '[".codex/skills"]' --project   # optional; empty = asked at install
+memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]' --project   # optional; empty = asked at install
 ```
 
 | Field | Default | Meaning |

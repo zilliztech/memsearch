@@ -43,7 +43,7 @@ echo ""
 
 # 3. Symlink skills to ~/.agents/skills/ (OpenCode-compatible)
 mkdir -p "${AGENTS_SKILLS_DIR}"
-for skill_name in memory-recall memory-config; do
+for skill_name in memory-recall memory-config memory-to-skill; do
   SKILL_LINK="${AGENTS_SKILLS_DIR}/${skill_name}"
   if [ -L "${SKILL_LINK}" ] || [ -d "${SKILL_LINK}" ]; then
     echo "[SKIP] Skill already exists at ${SKILL_LINK}"

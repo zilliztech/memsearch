@@ -1042,31 +1042,56 @@ def config_list(mode: str) -> None:
 
 @cli.group("skills")
 def skills_group() -> None:
-    """Distill, list, and install candidate skills from memory (procedural memory)."""
+    """Distill, capture, list, and install candidate skills from memory (procedural memory)."""
 
 
 @skills_group.command("distill")
 @click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
 @click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
 def skills_distill(plugin: str, force: bool) -> None:
-    """Distill candidate skills from recent memory journals."""
+    """Mine recent memory journals for recurring workflows (model-driven).
+
+    This is an explicit invocation, so it runs regardless of the
+    ``memory_to_skill.enabled`` flag (which only gates the background pass).
+    """
     from . import skills as skills_mod
 
     cfg = _safe_resolve_config()
-    result = skills_mod.distill(platform=plugin, cfg=cfg, force=force)
-    if result.action == "disabled":
-        click.echo(
-            f"memory_to_skill is disabled for {plugin!r}. "
-            f"Enable with: memsearch config set plugins.{plugin}.memory_to_skill.enabled true --project"
-        )
-        return
+    result = skills_mod.distill(platform=plugin, cfg=cfg, force=force, require_enabled=False)
     if result.skipped:
         click.echo(f"Skipped: {result.reason or result.action}")
         return
-    if result.created:
-        click.echo(f"Distilled {len(result.created)} candidate skill(s): {', '.join(result.created)}")
+    changed = result.created + result.updated
+    if changed:
+        click.echo(f"Distilled {len(changed)} candidate skill(s): {', '.join(changed)}")
     else:
         click.echo("No new candidate skills.")
+
+
+@skills_group.command("add")
+@click.option("--name", required=True, help="Skill name (slugified to the command and directory name).")
+@click.option("--description", required=True, help="One line: what the skill does and when it should trigger.")
+@click.option(
+    "--body-file",
+    required=True,
+    type=click.File("r"),
+    help="File containing the SKILL.md body (markdown, no frontmatter). Use - for stdin.",
+)
+def skills_add(name: str, description: str, body_file) -> None:
+    """Persist an agent-drafted skill as a candidate (manual capture path).
+
+    The agent supplies the content; this writes a structurally-correct candidate
+    (frontmatter, meta.json, git commit) without any LLM call.
+    """
+    from . import skills as skills_mod
+
+    try:
+        slug = skills_mod.add(name, description, body_file.read())
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
+    click.echo(f"Added candidate skill: {slug}")
+    click.echo(f"Install it with: memsearch skills install {slug} --path <dir>")
 
 
 @skills_group.command("list")
