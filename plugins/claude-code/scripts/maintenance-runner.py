@@ -363,7 +363,7 @@ def ensure_memsearch_importable() -> None:
 def apply_plugin_prompt_defaults(cfg) -> None:
     plugin_dir = Path(__file__).resolve().parent.parent
     prompts_dir = plugin_dir / "prompts"
-    for task in ("project_review", "user_profile"):
+    for task in ("project_review", "user_profile", "memory_to_skill"):
         if getattr(cfg.prompts, task, ""):
             continue
         prompt_file = prompts_dir / f"{task}.txt"
@@ -388,7 +388,9 @@ def run_native_provider(ctx, prompt: str) -> str:
         return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
 
     if ctx.platform == "codex":
-        with tempfile.NamedTemporaryFile(prefix="memsearch-codex-maintenance-", suffix=".txt", delete=False) as output_file:
+        with tempfile.NamedTemporaryFile(
+            prefix="memsearch-codex-maintenance-", suffix=".txt", delete=False
+        ) as output_file:
             output_path = Path(output_file.name)
         cmd = [
             "codex",
@@ -476,6 +478,20 @@ def main() -> int:
             force=args.force,
             llm_runner=llm_runner,
         )
+
+        # Distill recurring workflows into candidate skills (procedural memory).
+        # Same session-end trigger, due-state, and llm_runner as the tasks above;
+        # this only ever touches the candidate store, never an agent's skills dir.
+        from memsearch.skills import distill as distill_skills
+
+        skill_result = distill_skills(
+            platform=args.platform,
+            project_dir=project_dir,
+            memsearch_dir=args.memsearch_dir,
+            cfg=cfg,
+            force=args.force,
+            llm_runner=llm_runner,
+        )
     except (KeyError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         sys.stderr.write(f"Maintenance error: {exc}\n")
         return 1
@@ -484,12 +500,15 @@ def main() -> int:
             os.chdir(old_cwd)
 
     payload = [result.__dict__ for result in results]
+    payload.append({"task": "memory_to_skill", **skill_result.__dict__})
     if args.json_output:
         sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     else:
         for result in results:
             detail = f": {result.reason}" if result.reason else ""
             sys.stdout.write(f"{result.task}: {result.action}{detail}\n")
+        skill_detail = f": {skill_result.reason}" if skill_result.reason else ""
+        sys.stdout.write(f"memory_to_skill: {skill_result.action}{skill_detail}\n")
     return 0
 
 

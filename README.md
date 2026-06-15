@@ -27,6 +27,13 @@
   <img src="https://github.com/user-attachments/assets/427b7152-bc16-408c-a8b0-59a2b05fd1e0" alt="memsearch demo" width="800">
 </p>
 
+## 📰 What's New
+
+- **Skills from memory** — MemSearch now distills the workflows you repeat into reusable, installable agent skills (a third "procedural memory" layer) and keeps them up to date in the background. See [Skills from Memory](#skills-from-memory).
+- **Advanced memory maintenance** — optional background tasks keep durable `PROJECT.md` and `USER.md` notes current across sessions. See [Advanced Memory Maintenance](#advanced-memory-maintenance).
+
+---
+
 ### Why memsearch?
 
 - 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [Codex CLI](plugins/codex/README.md). A conversation in one agent becomes searchable context in all others — no extra setup
@@ -268,6 +275,23 @@ memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md -
 Use `provider = "native"` to reuse the current agent's own non-interactive model path, or point the task at a named `[llm.providers.<name>]` API provider. Custom prompt files can be configured with `prompts.project_review` and `prompts.user_profile`.
 
 The `memory-config` skill, installed with the plugins, can inspect the current setup, explain these options, and make safe project-scoped changes from natural-language requests.
+
+#### Skills from Memory
+
+Beyond episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch can grow a third memory layer — **procedural memory**: reusable skills distilled from the workflows you repeat. When enabled, a background pass mines recent journals for recurring multi-step procedures and writes them as *candidate* skills under `.memsearch/skill-candidates/` (a git-tracked store that keeps evolving). Candidates are inert; turning one into an agent-visible skill is a deliberate, human step.
+
+```bash
+# Enable distillation (disabled by default, like the maintenance tasks above)
+memsearch config set plugins.codex.memory_to_skill.enabled true --project
+# How many times a workflow must recur before it is distilled (default 3; lower = more eager)
+memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project
+
+# Review candidates, then install one into an agent's skill directory
+memsearch skills list
+memsearch skills install <name> --path .claude/skills
+```
+
+The `/memory-to-skill` skill (installed with the plugins) drives the review-and-install flow: it lists candidates, asks where to install, and copies the chosen skill into `.claude/skills` (Claude Code), `.codex/skills` (Codex), `.agents/skills` (OpenCode/Cursor/…), or any path you configure. Because the store keeps evolving, re-installing simply takes a fresh snapshot. The distilled `SKILL.md` follows the [Agent Skills](https://agentskills.io) open standard, so a skill distilled once is portable across agents.
 
 ### What can you use it for?
 

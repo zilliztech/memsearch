@@ -26,8 +26,9 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours"}
+_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
 _BOOL_FIELDS = {"enabled"}
+_LIST_FIELDS = {"paths"}
 
 
 @dataclass
@@ -107,6 +108,7 @@ class PromptsConfig:
     summarize: str = ""  # custom prompt file for plugin session summarization
     project_review: str = ""  # custom prompt file for project maintenance
     user_profile: str = ""  # custom prompt file for user profile maintenance
+    memory_to_skill: str = ""  # custom prompt file for skill distillation
 
 
 @dataclass
@@ -131,6 +133,26 @@ class PluginMaintenanceTaskConfig:
 
 
 @dataclass
+class PluginMemoryToSkillConfig:
+    """Settings for the memory-to-skill distillation task.
+
+    Distills recurring multi-step workflows from recent memory journals into
+    candidate skills under ``.memsearch/skill-candidates/``.  Installing a
+    candidate into an agent-visible skill is a separate, human-driven step (the
+    ``/memory-to-skill`` skill), so this task never writes into an agent's
+    skills directory on its own.
+    """
+
+    enabled: bool = False
+    provider: str = "native"
+    model: str = ""
+    min_interval_hours: int = 24
+    input_dir: str = ".memsearch/memory"
+    min_occurrences: int = 3  # how many times a workflow must recur before it is distilled
+    paths: list[str] = field(default_factory=list)  # where installed skills are copied; empty = ask the user
+
+
+@dataclass
 class PluginPlatformConfig:
     """Settings for one platform plugin."""
 
@@ -141,6 +163,7 @@ class PluginPlatformConfig:
     user_profile: PluginMaintenanceTaskConfig = field(
         default_factory=lambda: PluginMaintenanceTaskConfig(output_file=".memsearch/USER.md")
     )
+    memory_to_skill: PluginMemoryToSkillConfig = field(default_factory=PluginMemoryToSkillConfig)
 
 
 @dataclass
@@ -265,6 +288,7 @@ def _dict_to_plugins_config(section_data: dict[str, Any]) -> PluginsConfig:
         "summarize": PluginSummarizeConfig,
         "project_review": PluginMaintenanceTaskConfig,
         "user_profile": PluginMaintenanceTaskConfig,
+        "memory_to_skill": PluginMemoryToSkillConfig,
     }
 
     for raw_platform, raw_platform_data in section_data.items():
@@ -425,6 +449,7 @@ def _validate_dotted_key(parts: list[str]) -> str:
             "summarize": PluginSummarizeConfig,
             "project_review": PluginMaintenanceTaskConfig,
             "user_profile": PluginMaintenanceTaskConfig,
+            "memory_to_skill": PluginMemoryToSkillConfig,
         }
         task_cls = task_classes.get(subsection)
         if task_cls is None:
@@ -501,6 +526,21 @@ def set_config_value(key: str, value: Any, *, project: bool = False) -> None:
             value = False
         else:
             raise ValueError(f"Boolean field {field_name!r} must be true or false")
+    # Parse list fields from a JSON array string, or a comma-separated fallback.
+    if field_name in _LIST_FIELDS and isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            import json as _json
+
+            try:
+                parsed = _json.loads(text)
+            except ValueError as e:
+                raise ValueError(f"List field {field_name!r} must be a JSON array: {e}") from None
+            if not isinstance(parsed, list):
+                raise ValueError(f"List field {field_name!r} must be a JSON array")
+            value = [str(v) for v in parsed]
+        else:
+            value = [part.strip() for part in text.split(",") if part.strip()]
 
     current: dict[str, Any] = existing
     for part in parts[:-1]:

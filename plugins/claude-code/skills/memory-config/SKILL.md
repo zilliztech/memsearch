@@ -21,6 +21,7 @@ When this skill is triggered, inspect the user's request text. If there is no co
 - "Not capturing/search empty/no memory": troubleshoot files, config, and index health.
 - "Use OpenAI/Gemini/Anthropic/native/model": configure provider routing.
 - "PROJECT.md/USER.md/profile/review": configure advanced maintenance.
+- "skill/distill/extract a skill/memory-to-skill": procedural-memory distillation — enable or tune it here, or use the dedicated `/memory-to-skill` skill to review and install candidates.
 - "Prompt": explain or configure prompt overrides.
 
 Ask the user before enabling external or paid providers, changing output paths, re-indexing, deleting state, or broadening what gets indexed.
@@ -145,6 +146,11 @@ model = ""
 min_interval_hours = 24
 input_dir = ".memsearch/memory"
 output_file = ".memsearch/USER.md"
+
+[plugins.claude-code.memory_to_skill]
+enabled = false
+min_occurrences = 3   # how many times a workflow must recur before it is distilled
+paths = []            # where installed skills are copied; empty = ask the user
 ```
 
 Provider rules:
@@ -192,6 +198,7 @@ Prompt overrides:
 summarize = ""
 project_review = ""
 user_profile = ""
+memory_to_skill = ""
 ```
 
 Empty prompt paths mean use the built-in MemSearch prompts. Custom prompt files may use `{{AGENT_NAME}}`, `{{TASK_NAME}}`, `{{PROJECT_DIR}}`, `{{INPUT_DIR}}`, and `{{OUTPUT_FILE}}`; the runner appends existing output, recent journals, and digest automatically.

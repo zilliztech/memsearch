@@ -1038,3 +1038,73 @@ def config_list(mode: str) -> None:
         click.echo(tomli_w.dumps(data))
     else:
         click.echo("(empty)")
+
+
+@cli.group("skills")
+def skills_group() -> None:
+    """Distill, list, and install candidate skills from memory (procedural memory)."""
+
+
+@skills_group.command("distill")
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
+def skills_distill(plugin: str, force: bool) -> None:
+    """Distill candidate skills from recent memory journals."""
+    from . import skills as skills_mod
+
+    cfg = _safe_resolve_config()
+    result = skills_mod.distill(platform=plugin, cfg=cfg, force=force)
+    if result.action == "disabled":
+        click.echo(
+            f"memory_to_skill is disabled for {plugin!r}. "
+            f"Enable with: memsearch config set plugins.{plugin}.memory_to_skill.enabled true --project"
+        )
+        return
+    if result.skipped:
+        click.echo(f"Skipped: {result.reason or result.action}")
+        return
+    if result.created:
+        click.echo(f"Distilled {len(result.created)} candidate skill(s): {', '.join(result.created)}")
+    else:
+        click.echo("No new candidate skills.")
+
+
+@skills_group.command("list")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+def skills_list(json_output: bool) -> None:
+    """List candidate and installed skills in the store."""
+    from . import skills as skills_mod
+
+    _project_root, mem_root = skills_mod.resolve_roots(None, None)
+    candidates = skills_mod.list_candidates(mem_root)
+    if json_output:
+        click.echo(json.dumps(candidates, indent=2, ensure_ascii=False))
+        return
+    if not candidates:
+        click.echo("No skills in the store yet.")
+        return
+    for meta in candidates:
+        occ = meta.get("occurrences")
+        occ_text = f", seen {occ}x" if isinstance(occ, int) else ""
+        click.echo(
+            f"- {meta.get('name')} [{meta.get('status', 'candidate')}{occ_text}] — {meta.get('description', '')}"
+        )
+
+
+@skills_group.command("install")
+@click.argument("name")
+@click.option("--path", "paths", multiple=True, help="Install destination (repeatable). E.g. .claude/skills")
+def skills_install(name: str, paths: tuple[str, ...]) -> None:
+    """Install a candidate skill into one or more agent skill directories."""
+    from . import skills as skills_mod
+
+    if not paths:
+        click.echo("Error: no --path given. Specify where to install, e.g. --path .claude/skills", err=True)
+        raise SystemExit(2)
+    try:
+        installed = skills_mod.install(name, list(paths))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
+    for dest in installed:
+        click.echo(f"Installed: {dest}")

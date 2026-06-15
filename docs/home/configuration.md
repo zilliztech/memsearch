@@ -187,6 +187,30 @@ The plugin-installed `memory-config` skill can inspect current config, memory
 files, and index health; explain these settings; and make safe project-scoped
 changes from natural-language requests.
 
+## Skills from Memory (procedural memory)
+
+A third maintenance task, `memory_to_skill`, distills recurring workflows into
+reusable agent skills. It is **disabled by default** and shares the maintenance
+tasks' provider/model routing, prompt-override mechanism
+(`prompts.memory_to_skill`), and `min_interval_hours` cadence.
+
+```bash
+memsearch config set plugins.codex.memory_to_skill.enabled true --project
+memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
+memsearch config set plugins.codex.memory_to_skill.paths '[".codex/skills"]' --project   # optional; empty = asked at install
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Turn background distillation on |
+| `min_occurrences` | `3` | How many times a workflow must recur before it is distilled |
+| `min_interval_hours` | `24` | Minimum gap between background runs |
+| `provider` / `model` | `native` | Same routing as the maintenance tasks |
+| `paths` | _(empty)_ | Where installed skills are copied; empty = asked at install time |
+
+See **[Skills from Memory](skills-from-memory.md)** for the full guide: how
+distillation and the candidate store work, and how to review and install skills.
+
 ## Platform-Specific Config
 
 Each plugin may have additional configuration. See:
