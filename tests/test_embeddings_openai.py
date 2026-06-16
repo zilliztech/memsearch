@@ -43,8 +43,9 @@ async def test_embed_deterministic(provider):
     text = "Deterministic embedding test"
     r1 = await provider.embed([text])
     r2 = await provider.embed([text])
-    # OpenAI embeddings should be deterministic
-    assert r1[0][:5] == r2[0][:5]
+    # External providers can return tiny float-level differences while still
+    # being effectively deterministic for indexing and search.
+    assert r1[0][:5] == pytest.approx(r2[0][:5], abs=1e-4)
 
 
 def test_model_name(provider):

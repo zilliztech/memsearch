@@ -37,6 +37,7 @@ from .maintenance import (
     _is_due,
     _load_state,
     _read_recent_journals,
+    _record_failure_state,
     _resolve_task_path,
     _save_state,
     run_task_llm,
@@ -368,41 +369,52 @@ def distill(
             output_file=root,
             input_digest=digest,
         )
-        prompt = _build_distill_prompt(
-            ctx, min_occurrences=task_cfg.min_occurrences, existing=list_candidates(mem_root), cfg=cfg
-        )
-        raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
-        candidates = _parse_distill_response(raw)
+        try:
+            prompt = _build_distill_prompt(
+                ctx, min_occurrences=task_cfg.min_occurrences, existing=list_candidates(mem_root), cfg=cfg
+            )
+            raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
+            candidates = _parse_distill_response(raw)
 
-        created: list[str] = []
-        updated: list[str] = []
-        for skill in candidates:
-            outcome = _write_candidate(root, skill)
-            if outcome == "created":
-                created.append(skill["name"])
-            elif outcome == "updated":
-                updated.append(skill["name"])
+            created: list[str] = []
+            updated: list[str] = []
+            for skill in candidates:
+                outcome = _write_candidate(root, skill)
+                if outcome == "created":
+                    created.append(skill["name"])
+                elif outcome == "updated":
+                    updated.append(skill["name"])
 
-        changed = bool(created or updated)
-        if changed:
-            parts = []
-            if created:
-                parts.append(f"add {len(created)}")
-            if updated:
-                parts.append(f"evolve {len(updated)}")
-            _git_commit(root, f"distill: {', '.join(parts)} candidate skill(s) [{platform}]")
-        else:
-            _git_commit(root, f"distill: refresh candidate metadata [{platform}]")
+            changed = bool(created or updated)
+            if changed:
+                parts = []
+                if created:
+                    parts.append(f"add {len(created)}")
+                if updated:
+                    parts.append(f"evolve {len(updated)}")
+                _git_commit(root, f"distill: {', '.join(parts)} candidate skill(s) [{platform}]")
+            else:
+                _git_commit(root, f"distill: refresh candidate metadata [{platform}]")
 
-        now = _now()
-        state[state_key] = {
-            "last_checked_at": now,
-            "last_success_at": now,
-            "last_input_digest": digest,
-            "last_action": "distilled" if changed else "none",
-            "output_file": str(root),
-        }
-        _save_state(state_path, state)
+            now = _now()
+            state[state_key] = {
+                "last_checked_at": now,
+                "last_success_at": now,
+                "last_input_digest": digest,
+                "last_action": "distilled" if changed else "none",
+                "output_file": str(root),
+            }
+            _save_state(state_path, state)
+        except Exception as exc:
+            _record_failure_state(
+                state,
+                state_path,
+                state_key,
+                input_digest=digest,
+                output_file=root,
+                error=exc,
+            )
+            raise
 
     return DistillResult(action="distilled" if changed else "none", created=created, updated=updated)
 

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 
 def _load_runner():
@@ -202,3 +205,34 @@ def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, m
     assert isolated_config["username"] == "from-content"
     assert isolated_config["provider"]["openai"]["apiKey"] == f"{{file:{config_dir / 'token.txt'}}}"
     assert "plugin" not in isolated_config
+
+
+def test_run_command_raises_with_exit_details(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+
+    def fake_run(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            args=["tool"], returncode=2, stdout="partial output", stderr="bad credentials"
+        )
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runner.run_command(["tool", "run", "x" * 200], env={}, cwd=tmp_path, timeout=1)
+
+    message = str(exc_info.value)
+    assert "Command failed (2): tool run '<arg:200 chars>'" in message
+    assert "partial output" in message
+    assert "bad credentials" in message
+    assert "x" * 120 not in message
+
+
+def test_run_command_success_prefers_stdout(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+
+    def fake_run(*_args, **_kwargs):
+        return subprocess.CompletedProcess(args=["tool"], returncode=0, stdout='{"ok": true}', stderr="warning")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_command(["tool"], env={}, cwd=tmp_path, timeout=1) == '{"ok": true}'

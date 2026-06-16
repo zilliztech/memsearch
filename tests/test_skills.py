@@ -116,6 +116,36 @@ def test_distill_disabled_by_default(tmp_path: Path) -> None:
     assert result.skipped is True
 
 
+def test_distill_failure_records_state(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()
+    _enable(cfg)
+
+    calls = 0
+
+    def runner(ctx, prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("native runner failed")
+        return json.dumps({"skills": []})
+
+    with pytest.raises(RuntimeError, match="native runner failed"):
+        skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
+
+    state = json.loads((project / ".memsearch" / ".maintenance-state.json").read_text(encoding="utf-8"))
+    task_state = state["claude-code.memory_to_skill"]
+    assert task_state["last_action"] == "error"
+    assert task_state["last_failed_at"]
+    assert task_state["failed_input_digest"].startswith("sha256:")
+    assert "native runner failed" in task_state["last_error"]
+
+    retry = skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
+    assert retry.action == "none"
+    assert calls == 2
+
+
 def test_install_copies_to_paths_and_updates_meta(tmp_path: Path) -> None:
     project = tmp_path / "repo"
     _seed_memory(project)

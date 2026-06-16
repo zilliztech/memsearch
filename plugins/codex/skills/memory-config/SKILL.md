@@ -187,6 +187,10 @@ Model guidance:
 
 Advanced maintenance runs after the plugin wakes it, only when enabled, journal input changed, and `min_interval_hours` elapsed. `PROJECT.md` and `USER.md` are maintenance artifacts by default and are not automatically indexed.
 
+If advanced maintenance or `memory_to_skill` seems silent, check
+`.memsearch/.maintenance-state.json` for `<plugin>.<task>.last_error` and
+`last_failed_at`; background hook errors may not surface in the chat.
+
 Before enabling advanced maintenance, ask which provider to use, whether the default 24-hour interval is acceptable, and whether `.memsearch/PROJECT.md` / `.memsearch/USER.md` are acceptable output files.
 
 Prompt overrides:

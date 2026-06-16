@@ -113,36 +113,47 @@ def run_due_tasks(
                 output_file=output_file,
                 input_digest=digest,
             )
-            prompt = _build_prompt(ctx, cfg)
-            raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
-            parsed = _parse_task_response(raw)
-            now = _now()
+            try:
+                prompt = _build_prompt(ctx, cfg)
+                raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
+                parsed = _parse_task_response(raw)
+                now = _now()
 
-            if parsed["action"] == "replace":
-                content = str(parsed.get("content") or "").strip()
-                if not content:
-                    raise RuntimeError(f"{task_name} returned replace without content")
-                output_file.write_text(content.rstrip() + "\n", encoding="utf-8")
-                action = "replace"
-            else:
-                action = "none"
+                if parsed["action"] == "replace":
+                    content = str(parsed.get("content") or "").strip()
+                    if not content:
+                        raise RuntimeError(f"{task_name} returned replace without content")
+                    output_file.write_text(content.rstrip() + "\n", encoding="utf-8")
+                    action = "replace"
+                else:
+                    action = "none"
 
-            state[state_key] = {
-                "last_checked_at": now,
-                "last_success_at": now,
-                "last_input_digest": digest,
-                "last_action": action,
-                "output_file": str(output_file),
-            }
-            _save_state(state_path, state)
-            results.append(
-                MaintenanceResult(
-                    task=task_name,
-                    action=action,
-                    reason=str(parsed.get("reason") or ""),
-                    output_file=str(output_file),
+                state[state_key] = {
+                    "last_checked_at": now,
+                    "last_success_at": now,
+                    "last_input_digest": digest,
+                    "last_action": action,
+                    "output_file": str(output_file),
+                }
+                _save_state(state_path, state)
+                results.append(
+                    MaintenanceResult(
+                        task=task_name,
+                        action=action,
+                        reason=str(parsed.get("reason") or ""),
+                        output_file=str(output_file),
+                    )
                 )
-            )
+            except Exception as exc:
+                _record_failure_state(
+                    state,
+                    state_path,
+                    state_key,
+                    input_digest=digest,
+                    output_file=output_file,
+                    error=exc,
+                )
+                raise
 
     return results
 
@@ -559,6 +570,39 @@ def _load_state(path: Path) -> dict[str, Any]:
 
 def _save_state(path: Path, state: dict[str, Any]) -> None:
     path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _format_error(error: BaseException, limit: int = 2000) -> str:
+    message = f"{type(error).__name__}: {error}"
+    if len(message) > limit:
+        return message[: limit - len("... [truncated]")] + "... [truncated]"
+    return message
+
+
+def _record_failure_state(
+    state: dict[str, Any],
+    state_path: Path,
+    state_key: str,
+    *,
+    input_digest: str,
+    output_file: Path,
+    error: BaseException,
+) -> None:
+    now = _now()
+    previous = state.get(state_key, {})
+    entry = dict(previous) if isinstance(previous, dict) else {}
+    entry.update(
+        {
+            "last_checked_at": now,
+            "last_failed_at": now,
+            "failed_input_digest": input_digest,
+            "last_action": "error",
+            "last_error": _format_error(error),
+            "output_file": str(output_file),
+        }
+    )
+    state[state_key] = entry
+    _save_state(state_path, state)
 
 
 @contextlib.contextmanager

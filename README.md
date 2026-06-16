@@ -262,6 +262,8 @@ Your agent can keep two higher-level notes current in the background: **`PROJECT
 
 Turn them on by asking your agent — *"enable MemSearch's PROJECT.md and USER.md maintenance"* — and it configures them through the `memory-config` skill, which can also choose the model/provider, the interval, and custom prompts, or diagnose the current setup. Prefer editing files? The settings live under `[plugins.<agent>.project_review]` and `[plugins.<agent>.user_profile]` in your MemSearch config (both read `.memsearch/memory` and write `.memsearch/PROJECT.md` / `.memsearch/USER.md` by default).
 
+If a background maintenance task seems silent, check `.memsearch/.maintenance-state.json` or ask the `memory-config` skill to inspect it; failed runs record `last_error` and retry on the next due run because failed input digests are not marked successful.
+
 #### Skills from Memory
 
 Beyond the episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch grows a third memory layer — **procedural memory**: your agent turns the workflows you repeat into reusable, installable skills. You drive it entirely through your agent, in natural language — nothing to memorize:

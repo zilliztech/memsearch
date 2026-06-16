@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from memsearch.config import LLMProviderConfig, MemSearchConfig, PluginMaintenanceTaskConfig
 from memsearch.maintenance import TaskContext, _read_recent_journals, run_due_tasks, run_memory_command, run_task_llm
 
@@ -119,6 +121,40 @@ def test_maintenance_replace_writes_output_and_state(tmp_path: Path) -> None:
     state = json.loads((project / ".memsearch" / ".maintenance-state.json").read_text(encoding="utf-8"))
     assert state["codex.project_review"]["last_action"] == "replace"
     assert state["codex.project_review"]["last_input_digest"].startswith("sha256:")
+
+
+def test_maintenance_failure_records_state(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-05-27.md").write_text("### 10:00\n- User discussed maintenance runner.\n", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+    cfg.plugins.codex.project_review.provider = "openai"
+
+    calls = 0
+
+    def runner(ctx, prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("provider timeout")
+        return json.dumps({"action": "none", "reason": "retry succeeded"})
+
+    with pytest.raises(RuntimeError, match="provider timeout"):
+        run_due_tasks(platform="codex", project_dir=project, cfg=cfg, llm_runner=runner)
+
+    state = json.loads((project / ".memsearch" / ".maintenance-state.json").read_text(encoding="utf-8"))
+    task_state = state["codex.project_review"]
+    assert task_state["last_action"] == "error"
+    assert task_state["last_failed_at"]
+    assert task_state["failed_input_digest"].startswith("sha256:")
+    assert "provider timeout" in task_state["last_error"]
+
+    retry = run_due_tasks(platform="codex", project_dir=project, cfg=cfg, llm_runner=runner)
+    assert retry[0].action == "none"
+    assert calls == 2
 
 
 def test_maintenance_skips_unchanged_input(tmp_path: Path) -> None:

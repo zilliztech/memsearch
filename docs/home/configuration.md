@@ -165,6 +165,12 @@ Maintenance tasks run when the plugin wakes them and all of these are true:
 - the input markdown digest changed
 - `min_interval_hours` has elapsed since the last successful run
 
+Maintenance state is stored in `.memsearch/.maintenance-state.json`. If a
+background task fails, the matching `<platform>.<task>` entry records
+`last_action = "error"`, `last_failed_at`, `last_error`, and
+`failed_input_digest`. Failed input is not marked as the last successful digest,
+so the task can retry on the next due run instead of going permanently quiet.
+
 Set `provider = "native"` to reuse the agent's own non-interactive model path.
 To use a memsearch-managed API provider instead, define a named provider and
 reference it from the task:
@@ -214,6 +220,10 @@ memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]' --
 | `min_interval_hours` | `24` | Minimum gap between background runs |
 | `provider` / `model` | `native` | Same routing as the maintenance tasks |
 | `paths` | _(empty)_ | Where installed skills are copied; empty = asked at install time |
+
+The same maintenance state file records `memory_to_skill` failures under
+`<platform>.memory_to_skill.last_error`, which is the first place to check if
+background distillation is enabled but no candidates appear.
 
 ## Platform-Specific Config
 

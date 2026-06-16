@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -264,7 +265,26 @@ def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int)
         timeout=timeout,
         check=False,
     )
-    return (result.stdout or result.stderr or "").strip()
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    if result.returncode != 0:
+        detail = "\n".join(part for part in (stdout, stderr) if part)
+        if len(detail) > 2000:
+            detail = detail[:1975] + "... [truncated]"
+        command = " ".join(shlex.quote(_describe_arg(part)) for part in cmd)
+        if len(command) > 300:
+            command = command[:275] + "... [truncated]"
+        message = f"Command failed ({result.returncode}): {command}"
+        if detail:
+            message = f"{message}\n{detail}"
+        raise RuntimeError(message)
+    return stdout or stderr
+
+
+def _describe_arg(arg: str, limit: int = 120) -> str:
+    if len(arg) <= limit:
+        return arg
+    return f"<arg:{len(arg)} chars>"
 
 
 def extract_task_json_output(output: str) -> str:

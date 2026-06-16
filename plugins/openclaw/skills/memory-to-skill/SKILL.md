@@ -11,6 +11,8 @@ OpenClaw's built-in skills system.
 Stages: **0** memory journals → **1** candidate (`.memsearch/skill-candidates/`,
 a git-tracked store that keeps evolving) → **2** installed (an agent skill dir).
 Candidates are never installed automatically; installing is always a human step.
+User requests may stop at candidate creation/review, or continue to installation
+in the same turn after explicit approval; match the requested stage.
 
 ## Intent routing
 
@@ -37,24 +39,35 @@ printf '%s' "## <title>\n\n1. ...\n2. ..." | memsearch skills add \
 ```
 
 `add` handles slugging, standard frontmatter, meta.json, and the git commit — no
-LLM is involved. Then show it to the user and install it (see **B**). Finally,
-check whether background distillation is on; if not, offer to enable it (so
-recurring workflows get captured automatically going forward) — do not force it.
+LLM is involved. Then show it to the user; install it only if the user asked for
+that or explicitly approves (see **B**). Finally, check whether background
+distillation is on; if not, offer to enable it (so recurring workflows get
+captured automatically going forward) — do not force it.
 
 ## B. Review & install candidates (1→2)
 
 ```bash
 memsearch skills list            # add -j for sources / installed paths
+git -C .memsearch/skill-candidates log --oneline -5 2>/dev/null || true
 ```
 
 Before recommending or installing, skim the candidate's body: if a step looks uncertain or loosely summarized, re-check it against the source (open the transcript if needed) or flag it to the user and let them decide — installing copies the candidate as-is, so this is the last chance to catch a wrong step.
+When showing candidates, mention the store's recent git history when it helps
+explain whether a candidate is new, evolved, removed, or re-created.
 
-Pick one, resolve where to install (ask if unset), then install:
+Treat installation as an interactive checkpoint. Show the candidate, apply any
+requested tweaks before installing, and confirm the install destination with the
+user. Resolve install targets from config first: if `paths` is a non-empty
+list, present those paths as the proposed destinations and pass each entry as a
+`--path` after confirmation. If it is empty, ask the user where to install; do
+not silently fall back to a default path.
 
 ```bash
 memsearch config get plugins.openclaw.memory_to_skill.paths 2>/dev/null || echo "[]"
-memsearch skills install <name> --path .openclaw/skills
+memsearch skills install <name> --path <configured-or-user-approved-path>
 ```
+After installation, remind the user to start a fresh agent session or reopen the
+conversation so the newly installed skill is loaded.
 
 If the list is **empty**, background distillation is likely off or has not run.
 Offer the user a choice: capture from recent work now (**A**), distill from
@@ -71,7 +84,7 @@ generalize, not one-offs from a single day.
 
 **Drill into the original before drafting.** The journal bullets are a lossy summary; the exact commands, flags, and paths live in the original transcript. Each journal entry has an anchor naming the transcript file (`session:<id>` and `transcript:<path>`). Run `memsearch transcript <file>` (add `--turn <id>` when the anchor has one) to get the original turns **with their tool calls** — it auto-detects the format and includes the executed commands and output. Write the skill from that. If the shown excerpt feels incomplete, skim nearby turns in the same original source before committing to exact commands or paths. Only if that command fails (unknown format) fall back to reading the JSONL directly. If you cannot confirm a detail, keep the step general or omit it — never fabricate.
 
-The background pass mines automatically when enabled, but it can only see the summaries; doing it here on demand lets you read the original transcripts, so the result is more accurate.
+The background pass mines automatically when enabled, starting from the summaries; doing it here on demand lets you inspect the original transcripts more deliberately, so the result can be more accurate.
 
 ## D. Configure
 
