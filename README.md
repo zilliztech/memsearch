@@ -258,39 +258,20 @@ memsearch config set plugins.codex.summarize.enabled false --project
 
 #### Advanced Memory Maintenance
 
-Plugins can optionally maintain higher-level project and user notes in the background. These tasks are disabled by default and run only when a plugin wakes them after a session/turn, the journal input changed, and `min_interval_hours` has elapsed.
+Your agent can keep two higher-level notes current in the background: **`PROJECT.md`** — durable project state (active threads, decisions, risks, next steps) — and **`USER.md`** — your reusable preferences, working style, and recurring goals. They refresh after a session only when the journals changed and a minimum interval has passed, and they are **off by default**.
 
-```bash
-memsearch config set plugins.codex.project_review.enabled true --project
-memsearch config set plugins.codex.project_review.provider native --project
-memsearch config set plugins.codex.project_review.min_interval_hours 24 --project
-memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
-
-memsearch config set plugins.codex.user_profile.enabled true --project
-memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md --project
-```
-
-`project_review` summarizes durable project state such as active threads, decisions, risks, and next steps. `user_profile` captures reusable user preferences, working style, recurring goals, and background context. Both read `.memsearch/memory` by default; set `input_dir` if your journal files live somewhere else.
-
-Use `provider = "native"` to reuse the current agent's own non-interactive model path, or point the task at a named `[llm.providers.<name>]` API provider. Custom prompt files can be configured with `prompts.project_review` and `prompts.user_profile`.
-
-The `memory-config` skill, installed with the plugins, can inspect the current setup, explain these options, and make safe project-scoped changes from natural-language requests.
+Turn them on by asking your agent — *"enable MemSearch's PROJECT.md and USER.md maintenance"* — and it configures them through the `memory-config` skill, which can also choose the model/provider, the interval, and custom prompts, or diagnose the current setup. Prefer editing files? The settings live under `[plugins.<agent>.project_review]` and `[plugins.<agent>.user_profile]` in your MemSearch config (both read `.memsearch/memory` and write `.memsearch/PROJECT.md` / `.memsearch/USER.md` by default).
 
 #### Skills from Memory
 
-Beyond episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch can grow a third memory layer — **procedural memory**: reusable skills distilled from the workflows you repeat, written as *candidate* skills under `.memsearch/skill-candidates/` (a git-tracked store that keeps evolving). Candidates are inert; turning one into an agent-visible skill is a deliberate, human step. Candidates are created two ways: a **background** pass that mines recurring workflows (off by default), or **on demand** — just ask the agent "make a skill out of what we just did" and it captures it immediately (no background needed).
+Beyond the episodic journals and the semantic `PROJECT.md` / `USER.md` notes, MemSearch grows a third memory layer — **procedural memory**: your agent turns the workflows you repeat into reusable, installable skills. You drive it entirely through your agent, in natural language — nothing to memorize:
 
-```bash
-# Optional: enable the background mining pass (off by default; manual capture works without it)
-memsearch config set plugins.codex.memory_to_skill.enabled true --project
-memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
+- *"Make a skill out of what we just did."* — the agent drafts a skill from the session (reading the original transcript so the steps are exact, not guessed), saves it as a candidate, and offers to install it.
+- *"What skill candidates do I have? Install the deploy one."* — the agent lists candidates and installs the one you pick into its own skill directory, where it becomes a real `/`-command.
 
-# Review candidates, then install one into an agent's skill directory
-memsearch skills list
-memsearch skills install <name> --path .claude/skills
-```
+Under the hood, candidates live in a git-tracked `.memsearch/skill-candidates/` store — diffable and revertible, and **inert until you install one** (that step is always yours). An optional background pass can also mine recurring workflows from your history on its own. Distilled skills follow the [Agent Skills](https://agentskills.io) open standard, so one capture is portable across Claude Code, Codex, OpenCode, and others.
 
-The `/memory-to-skill` skill (installed with the plugins) drives the flow from natural language — capture what you just did, review & install candidates, mine history on demand, or configure the background pass. Skills install into each agent's own directory: `.claude/skills` (Claude Code), `.agents/skills` (Codex, OpenCode, Cursor, …), `.openclaw/skills` (OpenClaw), or any path you set; `--path` is repeatable. The distilled `SKILL.md` follows the [Agent Skills](https://agentskills.io) open standard, so a skill distilled once is portable across agents.
+**Turning it on is also just a sentence:** ask your agent *"enable MemSearch skill distillation"* (or *"make it more eager"*) and it configures things through the `memory-config` skill — it's off by default. Prefer editing files? The same settings live under `[plugins.<agent>.memory_to_skill]` in your MemSearch config. Full guide: **[Skills from Memory](https://zilliztech.github.io/memsearch/home/skills-from-memory/)**.
 
 ### What can you use it for?
 
