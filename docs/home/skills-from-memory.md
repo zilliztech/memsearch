@@ -39,6 +39,11 @@ candidates. It is deliberately conservative — most runs distil nothing — bec
 it is unattended. This path is gated by `enabled` (off by default) to avoid
 surprise background model calls.
 
+The background pass only sees the journals, which are **lossy summaries**, and it
+is sandboxed away from the original transcripts — so it is told to capture only
+what the summaries state and not to invent exact commands. For higher-fidelity
+skills, prefer on-demand capture below, which can read the originals.
+
 **2. Manual capture (on demand, agent-driven).** When you tell the agent *"make a
 skill out of what we just did"*, the **live agent you are talking to** drafts the
 `SKILL.md` from its own context — no separate model call, no provider config, and
@@ -46,8 +51,10 @@ no recurrence threshold (your explicit request is the signal, so even a one-off 
 fine). It persists the result with `memsearch skills add`, which only handles the
 slug, standard frontmatter, `meta.json`, and the git commit. This path is **not**
 gated by `enabled` — an explicit request is never a surprise. The same skill can
-also mine *past* work on demand: it reads the journals and persists what recurs
-with `skills add`, again entirely in the agent.
+also mine *past* work on demand: it reads the journals, **opens the original
+transcripts** referenced by each journal anchor to confirm the exact commands and
+paths (avoiding the hallucinated detail the summary-only background pass can
+produce), and persists what recurs with `skills add` — all in the agent.
 
 The `memsearch skills distill` CLI runs the model-driven mining standalone, but it
 needs an **API provider** — the default `native` provider drives the host agent

@@ -53,6 +53,17 @@ How to write a good skill body (this is what makes the skill usable):
 - The "description" is the trigger signal — if it does not name the situation and
   the verbs a user would type, the skill will never fire. Spend care on it.
 
+Accuracy — do not hallucinate:
+- The journal entries are LOSSY SUMMARIES of the original conversations, not the
+  full detail. You are working from summaries only.
+- Capture only commands, flags, paths, and steps that the summaries actually state.
+  Do NOT invent or guess specifics that are not present — a plausible-but-wrong
+  command is worse than none.
+- When a detail is not in the journals, keep that step general (describe the intent)
+  or leave it out, rather than fabricating an exact command.
+- Prefer fewer, correct steps over a complete-looking but partly-invented procedure.
+  If a workflow cannot be captured accurately from the summaries, omit it.
+
 JSON examples:
 {"skills":[]}
 

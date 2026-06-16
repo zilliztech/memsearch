@@ -25,7 +25,9 @@ Candidates are never installed automatically; installing is always a human step.
 You already have the context, so **draft the skill yourself** — do not call the
 background distiller for this. Write a SKILL.md **body** (markdown, no
 frontmatter): imperative numbered steps for the recurring task, concrete commands
-and paths, no secrets, self-contained. Then persist it as a candidate:
+and paths, no secrets, self-contained.
+
+**Be exact — do not guess.** You have the live session for what you just did, so use the real commands, paths, and output, not approximations. If a detail is uncertain, verify it (re-read the relevant files or the transcript) or keep that step general — a wrong command is worse than a vague one. Then persist it as a candidate:
 
 ```bash
 printf '%s' "## <title>\n\n1. ...\n2. ..." | memsearch skills add \
@@ -44,6 +46,8 @@ recurring workflows get captured automatically going forward) — do not force i
 ```bash
 memsearch skills list            # add -j for sources / installed paths
 ```
+
+Before recommending or installing, skim the candidate's body: if a step looks uncertain or loosely summarized, re-check it against the source (open the transcript if needed) or flag it to the user and let them decide — installing copies the candidate as-is, so this is the last chance to catch a wrong step.
 
 Pick one, resolve where to install (ask if unset), then install:
 
@@ -65,8 +69,9 @@ reusable one and persist it with `memsearch skills add` (one call per skill), th
 same way as **A**. Use your own judgment: only propose procedures that recur and
 generalize, not one-offs from a single day.
 
-The background pass does this automatically when enabled; doing it here on demand
-uses your own reasoning and needs no provider configuration.
+**Drill into the original transcript before drafting.** The journal bullets are a lossy summary — writing a skill from them alone produces plausible-but-wrong steps. Each journal entry carries an anchor comment `<!-- session:<id> turn:<id> transcript:<file> -->` (the file may be named `rollout:` or `db:` on some agents). For each workflow you pick, open that file and read the turns around the `turn:` id to recover the exact commands, flags, paths, and outputs, then write the skill from that. If you cannot open it or confirm a detail, keep that step general or omit it — never fabricate.
+
+The background pass mines automatically when enabled, but it can only see the summaries; doing it here on demand lets you read the original transcripts, so the result is more accurate.
 
 ## D. Configure
 
