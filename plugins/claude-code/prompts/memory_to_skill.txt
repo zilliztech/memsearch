@@ -57,10 +57,12 @@ Accuracy — confirm from the original, do not hallucinate:
 - The journal entries are LOSSY SUMMARIES; they drop the exact commands, flags,
   and paths. Do not reconstruct those from the summary alone.
 - Before writing a step's exact command, confirm it from the original transcript.
-  Each journal entry has an anchor comment naming the transcript file, e.g.
-  `<!-- session:<id> turn:<id> transcript:<file> -->`. Run
+  Each journal entry has an anchor comment naming the original conversation; the
+  key differs by agent — `transcript:<file>` (Claude Code), `rollout:<file>`
+  (Codex), or `db:`/a `session:` id (OpenCode). For a file-based transcript, run
   `memsearch transcript <file>` (optionally `--turn <id>`) to read the original
   turns WITH their tool calls — that is where the real commands and output live.
+  For a session/db anchor (OpenCode), use that platform's transcript script.
 - If you cannot read the transcript or confirm a detail, capture only what the
   summary clearly states; keep the step general or omit it — a plausible-but-wrong
   command is worse than none. Never invent specifics.

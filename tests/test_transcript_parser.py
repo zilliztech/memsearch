@@ -132,3 +132,30 @@ def test_select_turns_by_id(tmp_path: Path) -> None:
     turns = tr.parse_transcript(p)
     sel = tr.select_turns(turns, "bbbb2222", context=0)
     assert [t.text for t in sel] == ["two"]
+
+
+def test_tool_output_is_clipped(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path / "c.jsonl",
+        [
+            {"type": "user", "uuid": "u1", "message": {"content": "go"}},
+            {
+                "type": "assistant",
+                "uuid": "a1",
+                "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "x"}}]},
+            },
+            {
+                "type": "user",
+                "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "Z" * 5000}]},
+            },
+        ],
+    )
+    turns = tr.parse_transcript(p)
+    assert len(turns[1].tools[0].output) <= tr.MAX_OUTPUT_CHARS + 20  # clipped, not the full 5000
+
+
+def test_render_is_capped(tmp_path: Path) -> None:
+    rows = [{"type": "user", "uuid": f"u{i}", "message": {"content": "x" * 60}} for i in range(2000)]
+    out = tr.format_turns(tr.parse_transcript(_write(tmp_path / "big.jsonl", rows)))
+    assert len(out) <= tr.MAX_RENDER_CHARS + 80
+    assert "truncated" in out

@@ -23,7 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-MAX_OUTPUT_CHARS = 800  # per tool-call output, to keep drilled context bounded
+# Truncation strategy: commands are the point, so they are kept in full; tool
+# output is secondary (kept short), and the whole rendering is capped. One budget,
+# applied the same way on every path.
+MAX_OUTPUT_CHARS = 200  # per tool-call output (keep just the key first lines)
+MAX_RENDER_CHARS = 12_000  # total rendered transcript, head-truncated past this
 
 
 class UnknownTranscriptFormat(Exception):
@@ -256,4 +260,7 @@ def format_turns(turns: list[Turn]) -> str:
             if tc.output:
                 lines.append(f"  → {tc.output}")
         lines.append("")
-    return "\n".join(lines).strip() + "\n"
+    rendered = "\n".join(lines).strip() + "\n"
+    if len(rendered) > MAX_RENDER_CHARS:
+        rendered = rendered[:MAX_RENDER_CHARS] + "\n…[transcript truncated]\n"
+    return rendered
