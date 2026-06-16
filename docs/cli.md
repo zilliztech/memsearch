@@ -642,7 +642,7 @@ $ memsearch expand a1b2c3d4e5f6 --json-output
 
 > 🔌 **Plugin command.** This command is part of the [platform plugins](platforms/index.md)' three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
 
-Parse a JSONL transcript file (e.g., from Claude Code) and display conversation turns. This is "progressive disclosure level 3" -- drill all the way down from a memory chunk to the original conversation that generated it.
+Parse a session transcript and display its conversation turns **with the tool calls** — the exact commands and their output. Auto-detects Claude Code, Codex (rollout), and OpenClaw JSONL formats. This is "progressive disclosure level 3" -- drilling from a memory chunk down to the original conversation, where the detail the journal summary drops (precise commands, flags, paths) still lives.
 
 ### Options
 
@@ -655,57 +655,47 @@ Parse a JSONL transcript file (e.g., from Claude Code) and display conversation 
 
 ### Examples
 
-List all turns in a transcript:
+View a transcript, including the commands that were run:
 
 ```bash
 $ memsearch transcript ./transcripts/session-abc123.jsonl
-All turns (12):
+### User
+Add TTL support to the cache
 
-  a1b2c3d4e5f6  14:23:05  Show me the Redis configuration code
-  d4e5f6a1b2c3  14:23:42  Can you add TTL support to the cache?
-  f6a1b2c3d4e5  14:25:10  Write tests for the cache module
-  ...
+### Assistant
+I'll add TTL and run the tests.
+- $ [Edit] src/cache.py
+- $ [Bash] pytest tests/cache_test.py -x
+  → 5 passed in 0.4s
 ```
 
-Show context around a specific turn (prefix match on UUID):
+Show context around a specific turn (UUID prefix match):
 
 ```bash
-$ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6
-Showing 5 turns around d4e5f6a1b2c3:
-
-[14:22:30] a1b2c3d4
-Show me the Redis configuration code
-
-**Assistant**: Here is the current Redis configuration...
-
->>> [14:23:42] d4e5f6a1
-Can you add TTL support to the cache?
-
-**Assistant**: I'll add TTL support. Here are the changes...
-  Tools: Edit(/src/cache.py), Bash(pytest tests/)
-
-[14:25:10] f6a1b2c3
-Write tests for the cache module
+$ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6 --context 2
 ```
 
-Output as JSON:
+Output as JSON (each turn has its role, text, and structured tool calls):
 
 ```bash
-$ memsearch transcript ./transcripts/session-abc123.jsonl --turn d4e5f6 --json-output
+$ memsearch transcript ./transcripts/session-abc123.jsonl --json-output
 [
   {
+    "role": "assistant",
     "uuid": "a1b2c3d4-...",
-    "timestamp": "2026-02-10T14:22:30Z",
-    "content": "Show me the Redis configuration code\n\n**Assistant**: ...",
-    "tool_calls": []
+    "text": "I'll add TTL and run the tests.",
+    "tools": [
+      {"name": "Bash", "command": "pytest tests/cache_test.py -x", "output": "5 passed in 0.4s"}
+    ]
   }
 ]
 ```
 
 ### Notes
 
-- **UUID prefix matching.** You do not need to provide the full UUID. The first 6-8 characters are usually enough to uniquely identify a turn.
-- **The `>>>` marker** in text output highlights the target turn when using `--turn`.
+- **Tool calls are the point.** Unlike the journal summaries, this includes the exact command for each tool call and (truncated) output — which is what makes a distilled skill accurate. See [Skills from Memory](home/skills-from-memory.md).
+- **UUID prefix matching.** The first 6-8 characters of a turn id are usually enough; some formats (e.g. Codex rollouts) have no per-turn id, in which case all turns are returned.
+- **Unknown formats** exit with a non-zero status and a message, so a caller can fall back to reading the file directly.
 - **Three-level progressive disclosure workflow:** `search` (L1: chunk snippet) -> `expand` (L2: full section) -> `transcript` (L3: original conversation).
 
 ---

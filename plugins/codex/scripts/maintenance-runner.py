@@ -376,7 +376,14 @@ def run_native_provider(ctx, prompt: str) -> str:
     env = {**os.environ, "MEMSEARCH_NO_WATCH": "1"}
 
     if ctx.platform == "claude-code":
-        cmd = ["claude", "-p", "--strict-mcp-config", "--tools", "", "--no-session-persistence", "--no-chrome"]
+        cmd = ["claude", "-p", "--strict-mcp-config", "--no-session-persistence", "--no-chrome"]
+        # Skill distillation needs to read original transcripts for exact commands.
+        # Open a narrow hole — Bash limited to the two read-only memsearch drill
+        # commands — only for that task; other maintenance keeps all tools off.
+        if getattr(ctx, "task", "") == "memory_to_skill":
+            cmd += ["--tools", "Bash", "--allowed-tools", "Bash(memsearch transcript:*) Bash(memsearch expand:*)"]
+        else:
+            cmd += ["--tools", ""]
         if model:
             cmd += ["--model", model]
         cmd += [

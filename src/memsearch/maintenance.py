@@ -467,6 +467,12 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     if executable == "memsearch":
         if len(argv) < 2 or argv[1] not in {"expand", "transcript"}:
             return "Error: only memsearch expand/transcript are allowed"
+        # `transcript` is a bounded, read-only formatter — it only reads a session
+        # transcript and prints its turns. The original transcript lives outside the
+        # memory roots (e.g. ~/.claude/projects), so the path check is skipped here;
+        # the command itself is the boundary.
+        if argv[1] == "transcript":
+            return _run_restricted(argv, ctx.project_dir)
         checked = _validate_paths_in_args(argv[2:], allowed_roots, cwd=ctx.project_dir, allow_hash=True)
         if checked:
             return checked

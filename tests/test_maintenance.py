@@ -186,3 +186,26 @@ def test_native_provider_requires_plugin_runner(tmp_path: Path) -> None:
         assert "plugin runner" in str(e)
     else:
         raise AssertionError("native maintenance provider should require plugin runner")
+
+
+def test_run_memory_command_allows_transcript_outside_roots(tmp_path: Path) -> None:
+    # `memsearch transcript` is a bounded read-only formatter, so it may target a
+    # transcript outside the memory roots (originals live in ~/.<agent>/...).
+    project = tmp_path / "repo"
+    (project / ".memsearch" / "memory").mkdir(parents=True)
+    ctx = TaskContext(
+        platform="claude-code",
+        task="memory_to_skill",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=project / ".memsearch" / "memory",
+        output_file=project / ".memsearch" / "skill-candidates",
+        input_digest="sha256:test",
+    )
+    out = run_memory_command(f"memsearch transcript {tmp_path}/outside.jsonl", ctx)
+    assert "outside allowed memory roots" not in out  # not rejected by the path sandbox
+
+    # A non-transcript command pointed outside the roots is still rejected.
+    rejected = run_memory_command(f"grep foo {tmp_path}/outside.txt", ctx)
+    assert "outside allowed memory roots" in rejected

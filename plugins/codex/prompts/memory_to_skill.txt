@@ -53,16 +53,18 @@ How to write a good skill body (this is what makes the skill usable):
 - The "description" is the trigger signal — if it does not name the situation and
   the verbs a user would type, the skill will never fire. Spend care on it.
 
-Accuracy — do not hallucinate:
-- The journal entries are LOSSY SUMMARIES of the original conversations, not the
-  full detail. You are working from summaries only.
-- Capture only commands, flags, paths, and steps that the summaries actually state.
-  Do NOT invent or guess specifics that are not present — a plausible-but-wrong
-  command is worse than none.
-- When a detail is not in the journals, keep that step general (describe the intent)
-  or leave it out, rather than fabricating an exact command.
-- Prefer fewer, correct steps over a complete-looking but partly-invented procedure.
-  If a workflow cannot be captured accurately from the summaries, omit it.
+Accuracy — confirm from the original, do not hallucinate:
+- The journal entries are LOSSY SUMMARIES; they drop the exact commands, flags,
+  and paths. Do not reconstruct those from the summary alone.
+- Before writing a step's exact command, confirm it from the original transcript.
+  Each journal entry has an anchor comment naming the transcript file, e.g.
+  `<!-- session:<id> turn:<id> transcript:<file> -->`. Run
+  `memsearch transcript <file>` (optionally `--turn <id>`) to read the original
+  turns WITH their tool calls — that is where the real commands and output live.
+- If you cannot read the transcript or confirm a detail, capture only what the
+  summary clearly states; keep the step general or omit it — a plausible-but-wrong
+  command is worse than none. Never invent specifics.
+- Prefer fewer, verified steps over a complete-looking but partly-guessed procedure.
 
 JSON examples:
 {"skills":[]}

@@ -1146,3 +1146,44 @@ def skills_install(name: str, paths: tuple[str, ...]) -> None:
         raise SystemExit(1) from None
     for dest in installed:
         click.echo(f"Installed: {dest}")
+
+
+@cli.command("transcript")
+@click.argument("path", type=click.Path())
+@click.option("--turn", "-t", default=None, help="Target turn/session id (prefix match); shows surrounding context.")
+@click.option("--context", "-c", default=3, type=int, help="Turns of context to show before/after --turn.")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool) -> None:
+    """Show original conversation turns, with tool calls, from a session transcript.
+
+    L3 of progressive recall (search -> expand -> transcript): pass the transcript
+    path from a journal anchor to recover the exact commands, flags, and paths the
+    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw formats.
+    """
+    from . import transcript as transcript_mod
+
+    try:
+        turns = transcript_mod.parse_transcript(path)
+    except transcript_mod.UnknownTranscriptFormat:
+        click.echo(
+            "Unrecognized transcript format. Read the file directly to locate the relevant turns.",
+            err=True,
+        )
+        raise SystemExit(3) from None
+    except (FileNotFoundError, OSError) as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
+    turns = transcript_mod.select_turns(turns, turn, context)
+    if json_output:
+        payload = [
+            {
+                "role": t.role,
+                "uuid": t.uuid,
+                "text": t.text,
+                "tools": [{"name": tc.name, "command": tc.command, "output": tc.output} for tc in t.tools],
+            }
+            for t in turns
+        ]
+        click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        click.echo(transcript_mod.format_turns(turns))

@@ -62,14 +62,15 @@ skill be produced by a background model, by the live agent, or even hand-written
 and stay structurally identical.
 
 **Fidelity comes from the original, not the summary.** The journals are *lossy
-summaries*. A skill written from a summary alone tends to be plausible but wrong.
-The agent you're talking to can open the original transcripts and recover the
-exact commands and paths — so on-demand capture is the high-fidelity path. The
-unattended background pass is sandboxed away from those transcripts, so it is held
-to a humbler standard: capture only what the summaries clearly state, and never
-invent detail. We'd rather it produce a vaguer-but-correct skill than a
-confident-but-wrong one — and we tell you to prefer on-demand capture when fidelity
-matters.
+summaries* — a skill written from a summary alone tends to be plausible but wrong.
+So both paths recover the real commands the same way: a single bounded
+`memsearch transcript` command reads the original session transcript and returns
+its turns **with the tool calls** (the exact commands and output). On-demand, the
+agent calls it directly; in the background, it reaches the originals through a
+narrow, read-only allowance for just that command. The format-specific parsing
+lives in that one command, not re-derived from raw JSONL each time. And when the
+original genuinely can't be read, neither path guesses — it keeps the step general
+rather than producing a confident-but-wrong command.
 
 **Off by default.** Procedural memory that's wrong is worse than none, so the
 background pass starts disabled and stays conservative. You opt in.
