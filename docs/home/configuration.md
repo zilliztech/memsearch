@@ -190,11 +190,15 @@ changes from natural-language requests.
 ## Skills from Memory (procedural memory)
 
 A third maintenance task, `memory_to_skill`, distills recurring workflows into
-reusable agent skills. The `enabled` flag here gates only the **background**
-mining pass (disabled by default, to avoid surprise background model calls);
-on-demand capture and mining via the `/memory-to-skill` skill work regardless
-(they run in the live agent). It shares
-the maintenance tasks' provider/model routing, prompt override
+reusable agent skills. See **[Skills from Memory](skills-from-memory.md)** for
+what it does and the design behind it; this is the configuration reference.
+
+You normally turn it on by asking your agent (it edits the config via the
+`memory-config` skill). The keys below are for reference and for editing the file
+directly. The `enabled` flag gates only the **background** mining pass (disabled by
+default, to avoid surprise background model calls) — on-demand capture and mining
+via the `/memory-to-skill` skill run in the live agent and work regardless. It
+shares the maintenance tasks' provider/model routing, prompt override
 (`prompts.memory_to_skill`), `input_dir`, and `min_interval_hours` cadence.
 
 ```bash
@@ -210,9 +214,6 @@ memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]' --
 | `min_interval_hours` | `24` | Minimum gap between background runs |
 | `provider` / `model` | `native` | Same routing as the maintenance tasks |
 | `paths` | _(empty)_ | Where installed skills are copied; empty = asked at install time |
-
-See **[Skills from Memory](skills-from-memory.md)** for the full guide: how
-distillation and the candidate store work, and how to review and install skills.
 
 ## Platform-Specific Config
 

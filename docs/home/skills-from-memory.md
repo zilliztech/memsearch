@@ -1,121 +1,107 @@
 # Skills from Memory
 
-MemSearch can grow a third memory layer on top of your journals: **procedural
-memory** — reusable *skills* distilled from the workflows you repeat.
+Most memory systems remember **what happened**. MemSearch goes one step further:
+it notices **how you work**, and offers to turn that into capability.
 
-| Layer | Where | What it holds |
+This is the third layer of memory:
+
+| Layer | Question it answers | Where it lives |
 | --- | --- | --- |
-| Episodic | `.memsearch/memory/*.md` | What happened (raw conversation journals) |
-| Semantic | `.memsearch/PROJECT.md`, `.memsearch/USER.md` | What is true (durable project state, user profile) |
-| **Procedural** | `.memsearch/skill-candidates/` | **How you do recurring tasks** (candidate skills) |
+| Episodic | *What happened?* | `.memsearch/memory/*.md` — raw conversation journals |
+| Semantic | *What is true?* | `.memsearch/PROJECT.md`, `.memsearch/USER.md` — durable facts |
+| **Procedural** | ***How do I do this?*** | `.memsearch/skill-candidates/` — reusable skills |
 
-A skill is an [Agent Skills](https://agentskills.io)-standard `SKILL.md`: a short,
-reusable procedure (how to run the app, deploy, debug a class of error) that an
-agent can load and follow. Because it follows the open standard, a skill distilled
-once is portable across Claude Code, Codex, OpenCode, and other agents.
+A *skill* is just an [Agent Skills](https://agentskills.io)-standard `SKILL.md`: a
+short, reusable procedure — how to run the app, how to deploy, how to debug a
+class of error. The interesting part isn't the file format; it's where the
+procedure comes from. **It comes from your own memory.** A workflow you keep
+repeating is, by definition, procedural knowledge you already have — MemSearch
+just makes it explicit, reusable, and portable across your agents.
 
-## Stages
+## How you use it
 
-**0** memory journals → **1** candidate (`.memsearch/skill-candidates/`) → **2**
-installed (an agent's skill directory). The candidate store is a self-contained
-**git repository**, so every edit is a commit you can `git log`, `git diff`, or
-`git revert`. Candidates keep evolving there — including ones you have already
-installed; the store is the perpetually-updated source, and installing only ever
-takes a snapshot out. Candidates are **never** written into an agent's skill
-directory automatically.
+You don't run commands. You talk to your agent:
 
-## Two ways a candidate gets created (0 → 1)
+- *"Make a skill out of what we just did."* — it drafts the procedure (reading the
+  original transcript so the steps are exact), saves it as a candidate, and offers
+  to install it.
+- *"What skill candidates do I have? Install the deploy one."* — it shows what has
+  been collected and installs the one you choose, which becomes a real
+  `/`-command in that agent.
 
-Skill *content* can be generated two ways. Generating content needs a model;
-**only this step uses one**. Persisting (`add`) and installing are plain
-file/git operations.
+Enabling and tuning are the same: *"turn on MemSearch skill distillation"* and the
+agent configures it for you. The whole surface is a conversation; the CLI exists
+underneath, but it's plumbing the agent drives, not something you memorize.
 
-**1. Background distillation (automatic, model-driven).** Like the
-[advanced maintenance](configuration.md#advanced-plugin-maintenance) tasks, a
-`memory_to_skill` task runs on the session-end / `min_interval_hours` cadence,
-using the configured provider (default `native`). It mines recent journals for
-workflows that **recur at least `min_occurrences` times** and writes them as
-candidates. It is deliberately conservative — most runs distil nothing — because
-it is unattended. This path is gated by `enabled` (off by default) to avoid
-surprise background model calls.
+## Design philosophy
 
-The background pass only sees the journals, which are **lossy summaries**, and it
-is sandboxed away from the original transcripts — so it is told to capture only
-what the summaries state and not to invent exact commands. For higher-fidelity
-skills, prefer on-demand capture below, which can read the originals.
+A few deliberate stances shape how this behaves — they matter more than any flag.
 
-**2. Manual capture (on demand, agent-driven).** When you tell the agent *"make a
-skill out of what we just did"*, the **live agent you are talking to** drafts the
-`SKILL.md` from its own context — no separate model call, no provider config, and
-no recurrence threshold (your explicit request is the signal, so even a one-off is
-fine). It persists the result with `memsearch skills add`, which only handles the
-slug, standard frontmatter, `meta.json`, and the git commit. This path is **not**
-gated by `enabled` — an explicit request is never a surprise. The same skill can
-also mine *past* work on demand: it reads the journals, **opens the original
-transcripts** referenced by each journal anchor to confirm the exact commands and
-paths (avoiding the hallucinated detail the summary-only background pass can
-produce), and persists what recurs with `skills add` — all in the agent.
+**Repetition is the signal.** A one-off doesn't deserve to be a skill; a workflow
+earns skill-hood by *recurring*. The unattended background pass waits for several
+recurrences before it proposes anything. When *you* explicitly ask, your request
+*is* the signal — so on-demand capture will gladly make a skill from a single
+session.
 
-The `memsearch skills distill` CLI runs the model-driven mining standalone, but it
-needs an **API provider** — the default `native` provider drives the host agent
-and only works from the background pass, not as a bare CLI call.
+**Humans decide what becomes real.** Distillation only ever produces *candidates*
+— inert drafts in a store no agent reads. Nothing turns into a live, auto-loading
+skill until a person installs it. A wrong note is harmless; a wrong skill that
+fires on its own is actively harmful, so activation is always a human act:
+the machine proposes, you dispose.
 
-## Install (1 → 2, always manual)
+**Markdown + git is the source of truth.** The candidate store is a real git
+repository. Every distillation and revision is a commit you can diff and revert;
+the store keeps evolving (even for skills you've already installed), and
+installing simply takes a snapshot out. Because history is never lost, the system
+can be aggressive about improving candidates without being dangerous.
 
-Review a candidate — optionally inspect its history and edit it — then copy its
-current version into an agent's skill directory. Installing is the only thing that
-makes a skill agent-visible; re-installing takes a fresh snapshot of the evolved
-source.
+**Only generation needs a model.** Turning raw history into a procedure takes
+judgment — that single step uses an LLM. Saving a candidate and installing it are
+plain file-and-git operations. Keeping that boundary sharp is what lets the same
+skill be produced by a background model, by the live agent, or even hand-written,
+and stay structurally identical.
 
-```bash
-memsearch skills list                                   # review candidates (-j for detail)
-memsearch skills install <name> --path .claude/skills   # snapshot into a skills directory
-```
+**Fidelity comes from the original, not the summary.** The journals are *lossy
+summaries*. A skill written from a summary alone tends to be plausible but wrong.
+The agent you're talking to can open the original transcripts and recover the
+exact commands and paths — so on-demand capture is the high-fidelity path. The
+unattended background pass is sandboxed away from those transcripts, so it is held
+to a humbler standard: capture only what the summaries clearly state, and never
+invent detail. We'd rather it produce a vaguer-but-correct skill than a
+confident-but-wrong one — and we tell you to prefer on-demand capture when fidelity
+matters.
 
-Each agent reads skills from its own directory:
+**Off by default.** Procedural memory that's wrong is worse than none, so the
+background pass starts disabled and stays conservative. You opt in.
 
-| Agent | Project dir | Global dir |
-| --- | --- | --- |
-| Claude Code | `.claude/skills/` | `~/.claude/skills/` |
-| Codex | `.agents/skills/` | `~/.agents/skills/` |
-| OpenCode | `.agents/skills/` | `~/.agents/skills/` |
-| OpenClaw | `.openclaw/skills/` | `~/.openclaw/skills/` |
+## Under the hood
 
-`.agents/skills/` is the shared standard read by Codex, OpenCode, Cursor, and
-others — but **not** by Claude Code. `--path` is repeatable, so one skill can be
-installed to several agents at once.
+Stages: **0** journals → **1** candidate → **2** installed. Candidates are created
+two ways — the **background** pass mines recurring workflows on the session-end
+cadence (model-driven, opt-in), and **on-demand** capture has the live agent draft
+from the originals (no provider config, no recurrence threshold). Installing is
+always manual and just copies the candidate's current `SKILL.md` into the agent's
+skill directory:
 
-## Enable and tune the background pass
+| Agent | Skill directory |
+| --- | --- |
+| Claude Code | `.claude/skills/` (or `~/.claude/skills/`) |
+| Codex / OpenCode / Cursor … | `.agents/skills/` (the shared standard; **not** read by Claude Code) |
+| OpenClaw | `.openclaw/skills/` |
 
-Disabled by default, like the maintenance tasks. (Manual capture and explicit
-`distill` work whether or not this is enabled.)
+A skill can be installed to several directories at once to cover multiple agents.
 
-```bash
-memsearch config set plugins.codex.memory_to_skill.enabled true --project
-memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
-memsearch config set plugins.codex.memory_to_skill.provider native --project
-# Optional: pre-set install targets (otherwise the skill asks you)
-memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]' --project
-# Optional: custom distillation prompt
-memsearch config set prompts.memory_to_skill .memsearch/prompts/memory-to-skill.txt --project
-```
+## Configuration
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `enabled` | `false` | Turn the **background** pass on (manual paths ignore this) |
-| `min_occurrences` | `3` | How many times a workflow must recur before background mining distils it |
-| `min_interval_hours` | `24` | Minimum gap between background runs |
-| `input_dir` | `.memsearch/memory` | Which journals to read |
-| `provider` / `model` | `native` | Same routing as the maintenance tasks |
-| `paths` | _(empty)_ | Where installed skills are copied; empty = you are asked at install time |
+You normally configure this by asking your agent (it uses the `memory-config`
+skill). If you prefer editing files, the settings live under
+`[plugins.<agent>.memory_to_skill]` — `enabled` (off by default), `min_occurrences`
+(how many recurrences the background pass needs, default 3), `paths` (install
+targets), plus the shared `provider` / `model` / `min_interval_hours` / `input_dir`
+and a `prompts.memory_to_skill` override. See
+[Configuration](configuration.md#skills-from-memory-procedural-memory) for the
+exact keys; they mirror the [maintenance tasks](configuration.md#advanced-plugin-maintenance).
 
-See [Configuration](configuration.md) for how provider/model routing and prompt
-overrides work — they are shared with the maintenance tasks.
-
-## The `/memory-to-skill` skill
-
-The plugins install a `/memory-to-skill` skill that drives the whole flow from
-natural language and routes by intent: **capture** what you just did (draft → add →
-install), **review & install** existing candidates, **distill** from history on
-demand, or **configure** the background pass. It never enables the feature, changes
-install paths, or installs a candidate without your go-ahead.
+The plugin-installed `/memory-to-skill` skill drives the whole flow from natural
+language and never enables anything, changes install paths, or installs a
+candidate without your go-ahead.
