@@ -154,6 +154,8 @@ class MilvusStore:
             collection_name=self._collection,
             data=chunks,
         )
+        if not self._is_lite:
+            self._client.flush(self._collection)
         return result.get("upsert_count", len(chunks)) if isinstance(result, dict) else len(chunks)
 
     def search(
