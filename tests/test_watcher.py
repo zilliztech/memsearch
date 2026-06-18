@@ -8,7 +8,6 @@ from watchdog.events import FileSystemEvent
 
 from memsearch.watcher import DEFAULT_DEBOUNCE_MS, FileWatcher, _MarkdownHandler
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -230,9 +229,7 @@ class TestFileWatcher:
             w = FileWatcher([target], callback)
             w.start()
 
-            observer_instance.schedule.assert_called_once_with(
-                w._handler, str(target.resolve()), recursive=True
-            )
+            observer_instance.schedule.assert_called_once_with(w._handler, str(target.resolve()), recursive=True)
             observer_instance.start.assert_called_once()
 
     def test_stop_calls_cancel_all_and_observer_stop(self, tmp_path: Path):
@@ -265,7 +262,9 @@ class TestFileWatcher:
     def test_callback_received_via_watchdog_integration(self, tmp_path: Path):
         """Integration-style: use a real Observer + Handler to verify end-to-end."""
         received = []
-        callback = lambda ev_type, path: received.append((ev_type, path))
+
+        def callback(ev_type, path):
+            received.append((ev_type, path))
 
         w = FileWatcher([tmp_path], callback, debounce_ms=50)
         w.start()
@@ -275,6 +274,7 @@ class TestFileWatcher:
             md_file = tmp_path / "hello.md"
             md_file.write_text("# Hello")
             import time
+
             time.sleep(0.3)  # let watchdog detect + debounce fire
         finally:
             w.stop()
