@@ -23,24 +23,66 @@ memsearch config set milvus.uri http://localhost:19530
 
 | Provider | Install | API Key | Notes |
 |----------|---------|---------|-------|
-| **onnx** (default) | `pip install memsearch[onnx]` | No | Local, free, ~100MB model download |
-| openai | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
-| google | `pip install memsearch[google]` | `GOOGLE_API_KEY` | Gemini embeddings |
-| voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | High quality |
-| jina | `pip install memsearch[jina]` | `JINA_API_KEY` | jina-embeddings-v4, multilingual, long context |
-| mistral | `pip install memsearch[mistral]` | `MISTRAL_API_KEY` | EU-based, GDPR-friendly |
-| ollama | `pip install memsearch[ollama]` | No | Local, any model |
+| **onnx** (plugin default) | `pip install "memsearch[onnx]"` | No | Local, free, ~100MB model download |
+| openai | `pip install "memsearch[openai]"` | `OPENAI_API_KEY` | Best quality |
+| google | `pip install "memsearch[google]"` | `GOOGLE_API_KEY` | Gemini embeddings |
+| voyage | `pip install "memsearch[voyage]"` | `VOYAGE_API_KEY` | High quality |
+| jina | `pip install "memsearch[jina]"` | `JINA_API_KEY` | jina-embeddings-v4, multilingual, long context |
+| mistral | `pip install "memsearch[mistral]"` | `MISTRAL_API_KEY` | EU-based, GDPR-friendly |
+| ollama | `pip install "memsearch[ollama]"` | No | Local, any model |
 
 ```bash
 # Switch provider
 memsearch config set embedding.provider openai
-memsearch index --force   # re-index with new provider
+memsearch index ./memory/ --force   # re-index with new provider
+```
+
+## Reranker
+
+Search reranking is disabled by default:
+
+```toml
+[reranker]
+model = ""
+```
+
+Try a cross-encoder model for one search after hybrid retrieval:
+
+```bash
+memsearch search "database migrations" --reranker-model Alibaba-NLP/gte-reranker-modernbert-base
+```
+
+Use a Hugging Face cross-encoder model ID. Reranking needs `memsearch[onnx]`
+for ONNX Runtime or `memsearch[local]` for sentence-transformers.
+
+Benchmark before enabling reranking globally:
+
+```bash
+uv run python scripts/benchmark_reranking.py --queries tests/fixtures/reranking/benchmark.json --collection memsearch_chunks --top-k 5 --reranker-model Alibaba-NLP/gte-reranker-modernbert-base --out outputs/reranking-benchmark.json
+```
+
+Replace `tests/fixtures/reranking/benchmark.json` with your reviewed query
+manifest before making a rollout decision.
+
+Enable only when hit@3 improves and latency stays acceptable. Recency should be
+used as a tie-break or display field, not a primary ranking signal. The plain
+benchmark mode forces `--reranker-model ""` so global config cannot contaminate
+the baseline.
+
+Enable globally after the benchmark passes:
+
+```bash
+memsearch config set reranker.model Alibaba-NLP/gte-reranker-modernbert-base
+```
+
+Rollback to plain hybrid search:
+
+```bash
+memsearch config set reranker.model ""
 ```
 
 ## Milvus Backend
 
-| Backend | Config | Notes |
-|---------|--------|-------|
 **Milvus Lite** (default) — zero config, single file. Great for getting started:
 
 ```bash

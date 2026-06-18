@@ -1,0 +1,19 @@
+[
+  {
+    "source": "memory/reranking-plan.md",
+    "score": 0.91,
+    "heading": "Approved implementation plan",
+    "chunk_hash": "onnx-rerank-runner-001",
+    "start_line": 12,
+    "end_line": 24,
+    "content": "Approved implementation plan for the reranking benchmark runner."
+  },
+  {
+    "source": "memory/unrelated.md",
+    "content": "General benchmark notes."
+  },
+  {
+    "source": "memory/output-format.md",
+    "content": "Report output expectations."
+  }
+]

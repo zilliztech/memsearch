@@ -1,0 +1,19 @@
+[
+  {
+    "source": "memory/unrelated.md",
+    "score": 0.42,
+    "heading": "Benchmark notes",
+    "chunk_hash": "plain-rerank-runner-001",
+    "start_line": 3,
+    "end_line": 9,
+    "content": "General benchmark notes."
+  },
+  {
+    "source": "memory/reranking-plan.md",
+    "content": "Approved implementation plan for the reranking benchmark runner."
+  },
+  {
+    "source": "memory/output-format.md",
+    "content": "Report output expectations."
+  }
+]
