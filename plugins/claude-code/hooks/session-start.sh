@@ -124,6 +124,7 @@ fi
 # Start memsearch watch (Server mode) or do one-time index (Lite mode).
 # start_watch() skips watch for Lite — file lock prevents concurrent access.
 start_watch
+start_watch_superpowers
 
 # Lite mode: one-time index since watch is not running.
 # Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
@@ -141,6 +142,10 @@ if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
       [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
       $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
       $MEMSEARCH_CMD index "${_index_args[@]}" 2>/dev/null || true
+    fi
+    # Index superpowers paths if present (Lite mode only)
+    if [ ${#_SUPERPOWERS_PATHS[@]} -gt 0 ]; then
+      $MEMSEARCH_CMD index "${_SUPERPOWERS_PATHS[@]}" --collection superpowers 2>/dev/null || true
     fi
   ) >/dev/null 2>&1 &
   echo $! > "$INDEX_PIDFILE"
