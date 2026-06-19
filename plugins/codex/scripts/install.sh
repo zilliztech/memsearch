@@ -67,16 +67,19 @@ PY
 install_or_update_hooks_file() {
   local hooks_file="$1"
   local install_dir="$2"
+  local memsearch_dir="${3:-}"
 
-  python3 - "$hooks_file" "$install_dir" <<'PY'
+  python3 - "$hooks_file" "$install_dir" "$memsearch_dir" <<'PY'
 from pathlib import Path
 import json
 import math
 import os
+import shlex
 import sys
 
 hooks_file = Path(sys.argv[1])
 install_dir = sys.argv[2]
+memsearch_dir = sys.argv[3]
 
 spec = {
     "SessionStart": {"script": "session-start.sh", "timeout": 30},
@@ -140,6 +143,13 @@ def strip_old_memsearch(entries, script_name):
 data = load_existing()
 hooks = data.setdefault("hooks", {})
 
+def hook_command(script_name):
+    command = f"bash {install_dir}/hooks/{script_name}"
+    if memsearch_dir:
+        return f"MEMSEARCH_DIR={shlex.quote(memsearch_dir)} {command}"
+    return command
+
+
 for event, details in spec.items():
     script = details["script"]
     cleaned = strip_old_memsearch(hooks.get(event, []), script)
@@ -149,7 +159,7 @@ for event, details in spec.items():
             "hooks": [
                 {
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/{script}",
+                    "command": hook_command(script),
                     "timeout": details["timeout"],
                 }
             ],
@@ -222,7 +232,7 @@ if [ -f "$HOOKS_FILE" ]; then
   echo "  ⚠ Existing hooks.json found — backing up to hooks.json.bak"
   cp "$HOOKS_FILE" "${HOOKS_FILE}.bak"
 fi
-install_or_update_hooks_file "$HOOKS_FILE" "$INSTALL_DIR"
+install_or_update_hooks_file "$HOOKS_FILE" "$INSTALL_DIR" "${MEMSEARCH_DIR:-}"
 echo "  ✓ Installed memsearch hooks in $HOOKS_FILE"
 
 # --- 5. Enable hooks feature flag ---
