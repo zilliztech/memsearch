@@ -2,6 +2,8 @@
 
 memsearch uses a layered TOML config system. Most users don't need to configure anything — the defaults work out of the box.
 
+> **Just getting started?** Follow [Getting Started](../getting-started.md) first. Looking for plugin-specific setup? See [For Agent Users](for-users.md) and the [Platform Comparison](../platforms/index.md).
+
 ## Config Locations (priority low → high)
 
 1. `~/.memsearch/config.toml` — global defaults
