@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -164,35 +164,16 @@ class MemSearch:
             return 0
 
         model = self._embedder.model_name
-        # Clean content for embedding: strip HTML comments and metadata noise
-        # so the embedding vector captures semantics, not UUIDs/paths.
-        # The original content is preserved in the Milvus record below.
-        contents = [clean_content_for_embedding(c.content) for c in chunks]
-        embeddings = await self._embedder.embed(contents)
+        total = 0
+        for batch in _chunk_batches(chunks, self._embedder.batch_size):
+            # Clean content for embedding: strip HTML comments and metadata noise
+            # so the embedding vector captures semantics, not UUIDs/paths.
+            # The original content is preserved in the Milvus record below.
+            contents = [clean_content_for_embedding(c.content) for c in batch]
+            embeddings = await self._embedder.embed(contents)
+            total += self._store.upsert(_records_for_chunks(batch, embeddings, model))
 
-        records: list[dict[str, Any]] = []
-        for i, chunk in enumerate(chunks):
-            chunk_id = compute_chunk_id(
-                chunk.source,
-                chunk.start_line,
-                chunk.end_line,
-                chunk.content_hash,
-                model,
-            )
-            records.append(
-                {
-                    "chunk_hash": chunk_id,
-                    "embedding": embeddings[i],
-                    "content": chunk.content,
-                    "source": chunk.source,
-                    "heading": chunk.heading,
-                    "heading_level": chunk.heading_level,
-                    "start_line": chunk.start_line,
-                    "end_line": chunk.end_line,
-                }
-            )
-
-        return self._store.upsert(records)
+        return total
 
     # ------------------------------------------------------------------
     # Search
@@ -412,3 +393,35 @@ class MemSearch:
 
     def __exit__(self, *exc: object) -> None:
         self.close()
+
+
+def _chunk_batches(chunks: list[Chunk], batch_size: int) -> Iterator[list[Chunk]]:
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+    for i in range(0, len(chunks), batch_size):
+        yield chunks[i : i + batch_size]
+
+
+def _records_for_chunks(chunks: list[Chunk], embeddings: list[list[float]], model: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
+        chunk_id = compute_chunk_id(
+            chunk.source,
+            chunk.start_line,
+            chunk.end_line,
+            chunk.content_hash,
+            model,
+        )
+        records.append(
+            {
+                "chunk_hash": chunk_id,
+                "embedding": embedding,
+                "content": chunk.content,
+                "source": chunk.source,
+                "heading": chunk.heading,
+                "heading_level": chunk.heading_level,
+                "start_line": chunk.start_line,
+                "end_line": chunk.end_line,
+            }
+        )
+    return records

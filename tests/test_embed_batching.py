@@ -7,6 +7,7 @@ split into batches that respect the provider's batch_size limit.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -89,6 +90,10 @@ class FakeEmbedder:
     def dimension(self) -> int:
         return self._dim
 
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         from memsearch.embeddings.utils import batched_embed
 
@@ -113,6 +118,33 @@ def mem_with_fake(tmp_path: Path):
     ms.close()
 
 
+class RecordingStore:
+    """Records upsert batch sizes without opening a real Milvus connection."""
+
+    def __init__(self) -> None:
+        self.call_sizes: list[int] = []
+        self.records: list[dict[str, Any]] = []
+
+    def upsert(self, records: list[dict[str, Any]]) -> int:
+        self.call_sizes.append(len(records))
+        self.records.extend(records)
+        return len(records)
+
+
+@pytest.fixture
+def mem_with_recording_store():
+    """MemSearch instance wired to fake embedding and fake storage."""
+    fake = FakeEmbedder(batch_size=4, dim=4)
+    store = RecordingStore()
+    ms = MemSearch.__new__(MemSearch)
+    ms._paths = []
+    ms._max_chunk_size = 1500
+    ms._overlap_lines = 2
+    ms._embedder = fake
+    ms._store = store
+    return ms, fake, store
+
+
 def _make_chunks(n: int) -> list[Chunk]:
     return [
         Chunk(
@@ -135,6 +167,17 @@ async def test_embed_and_store_batching(mem_with_fake):
     assert n == 10
     # Should have been split into 3 batches: 4 + 4 + 2
     assert fake.call_sizes == [4, 4, 2]
+
+
+@pytest.mark.asyncio
+async def test_embed_and_store_upserts_by_embedding_batch(mem_with_recording_store):
+    ms, fake, store = mem_with_recording_store
+    chunks = _make_chunks(10)  # 10 chunks, batch size 4
+    n = await ms._embed_and_store(chunks)
+    assert n == 10
+    assert fake.call_sizes == [4, 4, 2]
+    assert store.call_sizes == [4, 4, 2]
+    assert len(store.records) == 10
 
 
 @pytest.mark.asyncio

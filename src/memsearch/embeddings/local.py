@@ -63,6 +63,10 @@ class LocalEmbedding:
     def dimension(self) -> int:
         return self._dimension
 
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         from .utils import batched_embed
 

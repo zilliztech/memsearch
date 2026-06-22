@@ -17,6 +17,10 @@ class FakeEmbedder:
     def dimension(self) -> int:
         return 4
 
+    @property
+    def batch_size(self) -> int:
+        return 32
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         return [[0.0] * self.dimension for _ in texts]
 
