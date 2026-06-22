@@ -1,7 +1,7 @@
 """Configuration system for memsearch.
 
 Priority chain (lowest to highest):
-  dataclass defaults → ~/.memsearch/config.toml → .memsearch.toml → CLI flags
+  dataclass defaults → ~/.memsearch/config.toml → restricted .memsearch.toml → CLI flags
 """
 
 from __future__ import annotations
@@ -29,6 +29,18 @@ PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 _INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
 _BOOL_FIELDS = {"enabled"}
 _LIST_FIELDS = {"paths"}
+
+# Project-local config is loaded from the repository being opened, so it must
+# not be able to redirect network endpoints, credentials, LLM routing, prompt
+# files, plugin automation, or remote model downloads. Keep this layer limited
+# to low-risk local indexing knobs.
+_PROJECT_CONFIG_ALLOWED_PATHS = {
+    ("milvus", "collection"),
+    ("embedding", "batch_size"),
+    ("chunking", "max_chunk_size"),
+    ("chunking", "overlap_lines"),
+    ("watch", "debounce_ms"),
+}
 
 
 @dataclass
@@ -354,6 +366,28 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+def _filter_project_config(d: dict[str, Any]) -> dict[str, Any]:
+    """Return only project-local config keys that are safe to trust."""
+
+    def keep(path: tuple[str, ...], value: Any) -> Any:
+        if isinstance(value, dict):
+            children = {}
+            for child_key, child_value in value.items():
+                child = keep((*path, child_key), child_value)
+                if child is not None:
+                    children[child_key] = child
+            return children or None
+        return value if path in _PROJECT_CONFIG_ALLOWED_PATHS else None
+
+    filtered = keep((), d)
+    return filtered if isinstance(filtered, dict) else {}
+
+
+def _project_config_key_allowed(parts: list[str]) -> bool:
+    """Return whether a dotted key may be persisted in project config."""
+    return tuple(parts) in _PROJECT_CONFIG_ALLOWED_PATHS
+
+
 def _dict_to_config(d: dict[str, Any]) -> MemSearchConfig:
     """Convert a nested dict to a MemSearchConfig, ignoring unknown keys."""
     kwargs: dict[str, Any] = {}
@@ -388,7 +422,7 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
     global_cfg = load_config_file(GLOBAL_CONFIG_PATH)
     project_cfg = load_config_file(PROJECT_CONFIG_PATH)
     result = deep_merge(result, global_cfg)
-    result = deep_merge(result, project_cfg)
+    result = deep_merge(result, _filter_project_config(project_cfg))
     if cli_overrides:
         result = deep_merge(result, cli_overrides)
     result = _resolve_env_refs_in_dict(result)
@@ -514,6 +548,10 @@ def set_config_value(key: str, value: Any, *, project: bool = False) -> None:
 
     parts = key.split(".")
     field_name = _validate_dotted_key(parts)
+    if project and not _project_config_key_allowed(parts):
+        raise ValueError(
+            f"Project config cannot set trusted key {key!r}; use global config or an explicit CLI flag instead"
+        )
 
     # Auto-convert int fields
     if field_name in _INT_FIELDS and isinstance(value, str):

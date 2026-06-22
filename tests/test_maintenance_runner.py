@@ -27,15 +27,19 @@ def test_plugin_maintenance_runner_copies_match_shared() -> None:
         assert copied == shared
 
 
-def test_plugin_maintenance_runner_uses_project_config(tmp_path: Path, monkeypatch) -> None:
+def test_plugin_maintenance_runner_uses_global_config(tmp_path: Path, monkeypatch) -> None:
     runner = _load_runner()
     project = tmp_path / "repo"
     memory = project / ".memsearch" / "memory"
     memory.mkdir(parents=True)
     (memory / "2026-05-28.md").write_text("- Project decision: test shared runner.\n", encoding="utf-8")
-    (project / ".memsearch.toml").write_text(
-        '[plugins.codex.project_review]\nenabled = true\nprovider = "native"\n',
-        encoding="utf-8",
+    from memsearch import config as config_module
+
+    global_cfg = tmp_path / "global.toml"
+    monkeypatch.setattr(config_module, "GLOBAL_CONFIG_PATH", global_cfg)
+    config_module.save_config(
+        {"plugins": {"codex": {"project_review": {"enabled": True, "provider": "native"}}}},
+        global_cfg,
     )
 
     def fake_native(ctx, prompt: str) -> str:

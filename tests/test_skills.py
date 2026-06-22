@@ -274,15 +274,14 @@ def test_load_template_respects_custom_prompt(tmp_path: Path) -> None:
 
 
 def test_config_set_paths_parses_json_list(tmp_path: Path, monkeypatch) -> None:
-    from memsearch.config import PROJECT_CONFIG_PATH, load_config_file, set_config_value
+    from memsearch.config import GLOBAL_CONFIG_PATH, load_config_file, set_config_value
 
     monkeypatch.chdir(tmp_path)
     set_config_value(
         "plugins.claude-code.memory_to_skill.paths",
         '[".claude/skills", "~/.codex/skills"]',
-        project=True,
     )
-    data = load_config_file(PROJECT_CONFIG_PATH)
+    data = load_config_file(GLOBAL_CONFIG_PATH)
     assert data["plugins"]["claude-code"]["memory_to_skill"]["paths"] == [".claude/skills", "~/.codex/skills"]
 
 
