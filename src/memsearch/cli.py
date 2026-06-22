@@ -335,7 +335,7 @@ def expand(
 
     Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
-    from .store import MilvusStore
+    from .store import MilvusStore, _escape_filter_value
 
     cfg = _safe_resolve_config(
         _build_cli_overrides(
@@ -357,7 +357,7 @@ def expand(
             collection=cfg.milvus.collection,
             dimension=None,
         )
-        chunks = store.query(filter_expr=f'chunk_hash == "{chunk_hash}"')
+        chunks = store.query(filter_expr=f'chunk_hash == "{_escape_filter_value(chunk_hash)}"')
         if not chunks:
             click.echo(f"Chunk not found: {chunk_hash}", err=True)
             sys.exit(1)

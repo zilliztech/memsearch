@@ -378,6 +378,61 @@ def _has_legacy_compact(global_cfg: dict[str, Any], project_cfg: dict[str, Any])
     return "compact" in global_cfg or "compact" in project_cfg
 
 
+# Fields that a project-local ``.memsearch.toml`` is NOT permitted to set.
+#
+# ``.memsearch.toml`` travels with a repository, so it is untrusted input the
+# moment a user clones/opens someone else's project.  These fields select
+# *where* requests go and *which* credential is attached, so honoring them from
+# project config lets a malicious repo redirect the ambient API key / indexed
+# content / conversation summaries to an attacker endpoint (key + data
+# exfiltration), point Milvus at an attacker store (exfil + memory poisoning),
+# or read arbitrary files via a custom prompt path.  They must come only from
+# the global ``~/.memsearch/config.toml`` or explicit CLI flags.
+#
+# Maps section name -> set of field names, or ``True`` for "strip the whole
+# section".
+_PROJECT_FORBIDDEN_FIELDS: dict[str, Any] = {
+    "embedding": {"provider", "base_url", "api_key"},
+    "llm": {"provider", "base_url", "api_key", "providers"},
+    "compact": {"llm_provider", "base_url", "api_key"},
+    "milvus": {"uri", "token"},
+    "reranker": {"model"},  # selects a remote model to download + execute
+    "prompts": True,  # custom prompt file paths => arbitrary file read
+}
+
+
+def _strip_untrusted_project_fields(project_cfg: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Remove security-sensitive fields from a project-local config dict.
+
+    Returns ``(cleaned_copy, removed_dotted_keys)``.  The input is not mutated.
+    """
+    if not project_cfg:
+        return project_cfg, []
+
+    cleaned = {k: (dict(v) if isinstance(v, dict) else v) for k, v in project_cfg.items()}
+    removed: list[str] = []
+
+    for section, forbidden in _PROJECT_FORBIDDEN_FIELDS.items():
+        if section not in cleaned:
+            continue
+        if forbidden is True:
+            if cleaned.get(section):
+                removed.append(section)
+            cleaned.pop(section, None)
+            continue
+        section_data = cleaned.get(section)
+        if not isinstance(section_data, dict):
+            continue
+        for field_name in forbidden:
+            if field_name in section_data:
+                removed.append(f"{section}.{field_name}")
+                section_data.pop(field_name, None)
+        if not section_data:
+            cleaned.pop(section, None)
+
+    return cleaned, sorted(removed)
+
+
 def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConfig:
     """Layer all config sources and return the final MemSearchConfig.
 
@@ -387,6 +442,24 @@ def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConf
     result = _default_dict()
     global_cfg = load_config_file(GLOBAL_CONFIG_PATH)
     project_cfg = load_config_file(PROJECT_CONFIG_PATH)
+
+    # Trust boundary: .memsearch.toml ships inside repositories and is therefore
+    # untrusted.  Strip endpoint/credential/prompt-path fields before merging so
+    # a malicious repo cannot redirect the ambient API key, indexed content, or
+    # conversation summaries to an attacker endpoint.  Global config and CLI
+    # flags are trusted and unaffected.
+    project_cfg, _stripped = _strip_untrusted_project_fields(project_cfg)
+    if _stripped:
+        import warnings
+
+        warnings.warn(
+            f"Ignored security-sensitive fields from project-local {PROJECT_CONFIG_PATH} "
+            f"({', '.join(_stripped)}). These may only be set in the global config "
+            f"(~/.memsearch/config.toml) or via CLI flags.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     result = deep_merge(result, global_cfg)
     result = deep_merge(result, project_cfg)
     if cli_overrides:

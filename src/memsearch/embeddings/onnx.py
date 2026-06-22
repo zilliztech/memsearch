@@ -11,6 +11,21 @@ import asyncio
 from functools import partial
 
 
+def _split_revision(model_name: str) -> tuple[str, str | None]:
+    """Split a ``repo@revision`` model id into ``(repo_id, revision)``.
+
+    The optional ``@<revision>`` suffix (commit SHA, tag, or branch) lets users
+    pin the exact remote weights downloaded and executed, mitigating a
+    compromised/MITM'd HuggingFace repo serving malicious model files
+    (security issue #594, CWE-367). A bare/trailing ``@`` means "unpinned".
+    """
+    repo_id, sep, revision = model_name.rpartition("@")
+    if sep and repo_id:
+        # A trailing "@" (empty revision) is treated as unpinned.
+        return repo_id, (revision or None)
+    return model_name, None
+
+
 class OnnxEmbedding:
     """ONNX Runtime embedding provider.
 
@@ -64,17 +79,24 @@ class OnnxEmbedding:
     def _download_model_files(model, hf_hub_download, list_repo_files):
         """Download tokenizer + ONNX model, preferring local cache (offline).
 
+        Accepts an optional ``@<revision>`` suffix on *model* to pin the exact
+        remote weights (commit SHA / tag / branch), defending against a
+        compromised HuggingFace repo serving a malicious ONNX file
+        (security issue #594, CWE-367).
+
         Returns (tok_path, model_path).
         """
+        repo_id, revision = _split_revision(model)
+
         # --- Attempt 1: offline from cache (no network at all) ---
         try:
-            tok_path = hf_hub_download(model, "tokenizer.json", local_files_only=True)
+            tok_path = hf_hub_download(repo_id, "tokenizer.json", revision=revision, local_files_only=True)
             # Try well-known ONNX filenames to avoid list_repo_files() network call
             model_path = None
             onnx_file = None
             for candidate in ("model_quantized.onnx", "model.onnx"):
                 try:
-                    model_path = hf_hub_download(model, candidate, local_files_only=True)
+                    model_path = hf_hub_download(repo_id, candidate, revision=revision, local_files_only=True)
                     onnx_file = candidate
                     break
                 except Exception:
@@ -85,17 +107,17 @@ class OnnxEmbedding:
             import contextlib
 
             with contextlib.suppress(Exception):
-                hf_hub_download(model, onnx_file + "_data", local_files_only=True)
+                hf_hub_download(repo_id, onnx_file + "_data", revision=revision, local_files_only=True)
             return tok_path, model_path
         except Exception:
             pass
 
         # --- Attempt 2: online download (first run or cache evicted) ---
-        tok_path = hf_hub_download(model, "tokenizer.json")
-        repo_files = list_repo_files(model)
+        tok_path = hf_hub_download(repo_id, "tokenizer.json", revision=revision)
+        repo_files = list_repo_files(repo_id, revision=revision)
         onnx_files = [f for f in repo_files if f.endswith(".onnx")]
         if not onnx_files:
-            raise ValueError(f"No .onnx files found in {model}")
+            raise ValueError(f"No .onnx files found in {repo_id}")
         # Prefer model_quantized.onnx > model.onnx > first .onnx file
         if "model_quantized.onnx" in onnx_files:
             onnx_file = "model_quantized.onnx"
@@ -106,8 +128,8 @@ class OnnxEmbedding:
         # Also download external data file if present
         data_file = onnx_file + "_data"
         if data_file in repo_files:
-            hf_hub_download(model, data_file)
-        model_path = hf_hub_download(model, onnx_file)
+            hf_hub_download(repo_id, data_file, revision=revision)
+        model_path = hf_hub_download(repo_id, onnx_file, revision=revision)
         return tok_path, model_path
 
     @property

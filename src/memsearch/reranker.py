@@ -101,6 +101,21 @@ def _find_onnx_file(repo_id: str, repo_files: list[str]) -> str:
     return onnx_files[0]
 
 
+def _split_revision(model_name: str) -> tuple[str, str | None]:
+    """Split a ``repo@revision`` model id into ``(repo_id, revision)``.
+
+    The optional ``@<revision>`` suffix (commit SHA, tag, or branch) lets users
+    pin the exact remote weights downloaded and executed, mitigating a
+    compromised/MITM'd HuggingFace repo serving a malicious ONNX model
+    (security issue #594, CWE-367). A bare/trailing ``@`` means "unpinned".
+    """
+    repo_id, sep, revision = model_name.rpartition("@")
+    if sep and repo_id:
+        # A trailing "@" (empty revision) is treated as unpinned.
+        return repo_id, (revision or None)
+    return model_name, None
+
+
 def _load_onnx_model(model_name: str) -> _OnnxCachedModel:
     """Download (if needed) and load an ONNX cross-encoder model."""
     with _onnx_cache_lock:
@@ -110,22 +125,22 @@ def _load_onnx_model(model_name: str) -> _OnnxCachedModel:
     from huggingface_hub import hf_hub_download, list_repo_files
     from tokenizers import Tokenizer
 
-    repo_id = model_name
+    repo_id, revision = _split_revision(model_name)
     onnx_file = None
-    if model_name in _KNOWN_ONNX_MODELS:
-        repo_id, onnx_file = _KNOWN_ONNX_MODELS[model_name]
+    if repo_id in _KNOWN_ONNX_MODELS:
+        repo_id, onnx_file = _KNOWN_ONNX_MODELS[repo_id]
 
-    repo_files = list(list_repo_files(repo_id))
+    repo_files = list(list_repo_files(repo_id, revision=revision))
     if onnx_file is None:
         onnx_file = _find_onnx_file(repo_id, repo_files)
 
     # Download external data file if present (e.g. model.onnx_data)
     data_file = onnx_file + "_data"
     if data_file in repo_files:
-        hf_hub_download(repo_id, data_file)
-    model_path = hf_hub_download(repo_id, onnx_file)
+        hf_hub_download(repo_id, data_file, revision=revision)
+    model_path = hf_hub_download(repo_id, onnx_file, revision=revision)
 
-    tok_path = hf_hub_download(repo_id, "tokenizer.json")
+    tok_path = hf_hub_download(repo_id, "tokenizer.json", revision=revision)
     tokenizer = Tokenizer.from_file(tok_path)
     tokenizer.enable_truncation(max_length=_MAX_RERANK_TOKENS)
     tokenizer.no_padding()
@@ -206,8 +221,9 @@ def _load_torch_model(model_name: str) -> Any:
 
     from sentence_transformers import CrossEncoder
 
-    model = CrossEncoder(model_name, max_length=_MAX_RERANK_TOKENS)
-    logger.info("Loaded PyTorch cross-encoder reranker: %s", model_name)
+    repo_id, revision = _split_revision(model_name)
+    model = CrossEncoder(repo_id, max_length=_MAX_RERANK_TOKENS, revision=revision)
+    logger.info("Loaded PyTorch cross-encoder reranker: %s (revision=%s)", repo_id, revision or "latest")
 
     with _torch_cache_lock:
         if model_name not in _torch_cache:

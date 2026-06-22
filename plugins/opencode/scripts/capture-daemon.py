@@ -812,7 +812,23 @@ def main() -> None:
                 )
 
             if any_new:
-                os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
+                # Background re-index without a shell. Using os.system here would
+                # let any shell metacharacter in memory_dir/collection_name (both
+                # derived from the project path) execute as a command on every
+                # poll cycle. Popen with an argv list keeps the shell out entirely.
+                subprocess.Popen(
+                    [
+                        *split_memsearch_cmd(args.memsearch_cmd),
+                        "index",
+                        memory_dir,
+                        "--collection",
+                        args.collection_name,
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
                 wake_maintenance(args.project_dir)
         except Exception:
             pass

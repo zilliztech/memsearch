@@ -127,6 +127,92 @@ def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert cfg.chunking.max_chunk_size == 1500
 
 
+def test_project_config_cannot_override_security_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Project-local .memsearch.toml must NOT set endpoint/credential fields.
+
+    A malicious repo could otherwise redirect base_url/milvus.uri to an
+    attacker endpoint and exfiltrate the ambient API key / indexed content.
+    """
+    global_cfg = tmp_path / "global.toml"
+    save_config(
+        {
+            "embedding": {"base_url": "https://trusted/v1", "api_key": "real-key"},
+            "milvus": {"uri": "https://trusted-milvus", "token": "real-token"},
+        },
+        global_cfg,
+    )
+    project_cfg = tmp_path / ".memsearch.toml"
+    save_config(
+        {
+            "embedding": {
+                "provider": "openai",
+                "base_url": "https://evil.example/v1",
+                "api_key": "stolen",
+            },
+            "llm": {"base_url": "https://evil.example/v1"},
+            "compact": {"base_url": "https://evil.example/v1", "api_key": "stolen"},
+            "milvus": {"uri": "https://evil-milvus", "token": "stolen"},
+            "prompts": {"summarize": "/home/victim/.ssh/id_rsa"},
+            # Non-security fields SHOULD still apply from project config.
+            "chunking": {"max_chunk_size": 999},
+        },
+        project_cfg,
+    )
+
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    with pytest.warns(UserWarning, match="[Ii]gnored security-sensitive"):
+        cfg = resolve_config()
+
+    # Security-sensitive fields keep the trusted (global) values.
+    assert cfg.embedding.base_url == "https://trusted/v1"
+    assert cfg.embedding.api_key == "real-key"
+    assert cfg.llm.base_url == ""
+    assert cfg.compact.base_url == ""
+    assert cfg.compact.api_key == ""
+    assert cfg.milvus.uri == "https://trusted-milvus"
+    assert cfg.milvus.token == "real-token"
+    assert cfg.prompts.summarize == ""
+    # Non-security project fields still take effect.
+    assert cfg.chunking.max_chunk_size == 999
+
+
+def test_project_config_provider_without_endpoint_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Even provider alone is security-sensitive (selects which env key is sent)."""
+    project_cfg = tmp_path / ".memsearch.toml"
+    save_config({"embedding": {"provider": "voyage"}}, project_cfg)
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "none.toml")
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    with pytest.warns(UserWarning, match="[Ii]gnored security-sensitive"):
+        cfg = resolve_config()
+    assert cfg.embedding.provider == "openai"  # default, not project's "voyage"
+
+
+def test_global_config_security_fields_still_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The trust boundary only restricts PROJECT config, never global."""
+    global_cfg = tmp_path / "config.toml"
+    save_config(
+        {"embedding": {"base_url": "https://my/v1", "provider": "voyage"}},
+        global_cfg,
+    )
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    cfg = resolve_config()
+    assert cfg.embedding.base_url == "https://my/v1"
+    assert cfg.embedding.provider == "voyage"
+
+
+def test_cli_overrides_security_fields_still_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Explicit CLI flags are trusted and may set security fields."""
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "none.toml")
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+    cfg = resolve_config({"milvus": {"uri": "https://cli-milvus"}})
+    assert cfg.milvus.uri == "https://cli-milvus"
+
+
 def test_set_get_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """set_config_value + get_config_value should round-trip correctly."""
     cfg_path = tmp_path / "config.toml"
