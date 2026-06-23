@@ -44,6 +44,16 @@ uv run ruff check src/ tests/      # lint
 uv run ruff format src/ tests/     # format
 ```
 
+### Pre-commit Hooks (Recommended)
+
+Install pre-commit hooks to automatically run Ruff checks before each commit:
+
+```bash
+uv run pre-commit install
+```
+
+This ensures your code passes linting before committing, avoiding CI failures.
+
 - Python 3.10+ with `from __future__ import annotations` for type hints.
 - Code and comments in English.
 - Line length limit: 120 characters.
