@@ -159,6 +159,22 @@ run_maintenance() {
 # --- Index process cleanup ---
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
+INDEX_LOCKDIR="$MEMSEARCH_DIR/.index.lock"
+
+index_is_running() {
+  if [ -f "$INDEX_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$INDEX_PIDFILE" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    rm -f "$INDEX_PIDFILE"
+  fi
+
+  local orphans
+  orphans=$(pgrep -f "memsearch index $MEMORY_DIR" 2>/dev/null || true)
+  [ -n "$orphans" ]
+}
 
 # Kill any previously spawned background index processes for this project.
 # Also sweeps orphaned milvus_lite processes.
@@ -199,6 +215,51 @@ kill_orphaned_index() {
 # --- Watch singleton management ---
 
 WATCH_PIDFILE="$MEMSEARCH_DIR/.watch.pid"
+
+watch_is_running() {
+  if [ -f "$WATCH_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$WATCH_PIDFILE" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    rm -f "$WATCH_PIDFILE"
+  fi
+
+  local orphans
+  orphans=$(pgrep -f "memsearch watch $MEMORY_DIR" 2>/dev/null || true)
+  [ -n "$orphans" ]
+}
+
+start_background_index() {
+  if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
+    return 0
+  fi
+  if ! memsearch_available; then
+    return 0
+  fi
+  ensure_memory_dir
+
+  # The watch process is responsible for indexing new stop-hook memories.
+  # Only fall back to a one-at-a-time background index when no watch is alive.
+  if watch_is_running; then
+    return 0
+  fi
+  if index_is_running; then
+    return 0
+  fi
+
+  if [ -d "$INDEX_LOCKDIR" ]; then
+    rmdir "$INDEX_LOCKDIR" 2>/dev/null || return 0
+  fi
+  mkdir "$INDEX_LOCKDIR" 2>/dev/null || return 0
+
+  (
+    trap 'rm -rf "$INDEX_LOCKDIR" "$INDEX_PIDFILE" 2>/dev/null || true' EXIT
+    run_memsearch index "$MEMORY_DIR" >/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  echo $! > "$INDEX_PIDFILE"
+}
 
 # Kill a process and its entire process group to avoid orphans
 _kill_tree() {
