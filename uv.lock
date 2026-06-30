@@ -1463,7 +1463,7 @@ wheels = [
 
 [[package]]
 name = "memsearch"
-version = "0.4.11"
+version = "0.4.12"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
