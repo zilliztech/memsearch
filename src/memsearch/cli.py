@@ -770,7 +770,7 @@ def config_group() -> None:
 
 
 @config_group.command("init")
-@click.option("--project", is_flag=True, help="Write to .memsearch.toml (project-level) instead of global.")
+@click.option("--project", is_flag=True, help="Write allowlisted local indexing keys to .memsearch.toml.")
 def config_init(project: bool) -> None:
     """Interactive configuration wizard."""
 
@@ -782,6 +782,46 @@ def config_init(project: bool) -> None:
 
     click.echo("memsearch configuration wizard")
     click.echo(f"Writing to: {target}\n")
+
+    if project:
+        click.echo("Project config is limited to low-risk local indexing keys.")
+        result["milvus"] = {}
+        result["milvus"]["collection"] = click.prompt(
+            "  Collection name",
+            default=current.milvus.collection,
+        )
+
+        result["embedding"] = {}
+        result["embedding"]["batch_size"] = click.prompt(
+            "  Embedding batch size (0 = provider default)",
+            default=current.embedding.batch_size,
+            type=int,
+        )
+
+        click.echo("\n── Chunking ──")
+        result["chunking"] = {}
+        result["chunking"]["max_chunk_size"] = click.prompt(
+            "  Max chunk size (chars)",
+            default=current.chunking.max_chunk_size,
+            type=int,
+        )
+        result["chunking"]["overlap_lines"] = click.prompt(
+            "  Overlap lines",
+            default=current.chunking.overlap_lines,
+            type=int,
+        )
+
+        click.echo("\n── Watch ──")
+        result["watch"] = {}
+        result["watch"]["debounce_ms"] = click.prompt(
+            "  Debounce (ms)",
+            default=current.watch.debounce_ms,
+            type=int,
+        )
+
+        save_config(result, target)
+        click.echo(f"\nConfig saved to {target}")
+        return
 
     # Milvus
     click.echo("── Milvus ──")
@@ -1066,7 +1106,7 @@ def skills_distill(plugin: str, force: bool) -> None:
         click.echo(
             "Standalone 'skills distill' needs an API provider; the default 'native' provider only works "
             "via the background pass. For on-demand mining use the /memory-to-skill skill, or configure a "
-            f"provider, e.g.: memsearch config set plugins.{plugin}.memory_to_skill.provider <name> --project",
+            f"provider, e.g.: memsearch config set plugins.{plugin}.memory_to_skill.provider <name>",
             err=True,
         )
         raise SystemExit(2)

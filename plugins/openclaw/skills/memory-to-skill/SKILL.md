@@ -90,13 +90,18 @@ The background pass mines automatically when enabled, starting from the summarie
 
 ```bash
 memsearch config get plugins.openclaw.memory_to_skill.enabled 2>/dev/null || echo "false"
-# enable the background pass (do not enable silently)
-memsearch config set plugins.openclaw.memory_to_skill.enabled true --project
+# enable the background pass globally (do not enable silently)
+memsearch config set plugins.openclaw.memory_to_skill.enabled true
 # how eagerly history-mining distils (default 3; lower = more eager)
-memsearch config set plugins.openclaw.memory_to_skill.min_occurrences 3 --project
+memsearch config set plugins.openclaw.memory_to_skill.min_occurrences 3
 # pre-set install targets (otherwise you are asked at install time)
-memsearch config set plugins.openclaw.memory_to_skill.paths '[".openclaw/skills"]' --project
+memsearch config set plugins.openclaw.memory_to_skill.paths '[".openclaw/skills"]'
 ```
+
+Since v0.4.11, project-local `.memsearch.toml` accepts only allowlisted local
+indexing keys. Do not use `--project` for `plugins.*` settings such as
+`memory_to_skill.enabled`, `min_occurrences`, or `paths`; put them in global
+config instead.
 
 Note: `enabled` only gates the **background** (session-end) pass. The explicit
 commands above (`skills add`, `skills install`) always work, and you can mine history (C) directly.

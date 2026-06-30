@@ -15,7 +15,7 @@ When this skill is triggered, inspect the user's request text. If there is no co
 
 - Empty request or "check": diagnose current MemSearch setup.
 - "Show/get setting": read the requested resolved/global/project value.
-- "Set/enable/disable/change": make a safe project-scoped change after confirming ambiguous choices.
+- "Set/enable/disable/change": choose global vs project scope explicitly; use global config for trusted plugin automation/provider/prompt/endpoint settings and project config only for allowlisted local indexing knobs.
 - "Not capturing/search empty/no memory": troubleshoot files, config, and index health.
 - "Use OpenAI/Gemini/Anthropic/native/model": configure provider routing.
 - "PROJECT.md/USER.md/profile/review": configure advanced maintenance.
@@ -112,14 +112,33 @@ Config is resolved from built-in defaults, global config, project config, env re
 
 Use `memsearch config list --resolved` for effective behavior, `--global` for global overrides, and `--project` for workspace-specific overrides.
 
+Since v0.4.11, project-local `.memsearch.toml` is restricted before it is merged.
+Only these low-risk local indexing keys are honored from project config:
+
+- `milvus.collection`
+- `embedding.batch_size`
+- `chunking.max_chunk_size`
+- `chunking.overlap_lines`
+- `watch.debounce_ms`
+
+Trusted settings are ignored or rejected in project config. Put these in global
+config (`~/.memsearch/config.toml`) or pass explicit CLI flags instead:
+
+- provider/model/API endpoint/API key settings
+- `[llm]` and `[llm.providers.*]`
+- `[prompts]`
+- plugin automation such as `plugins.openclaw.project_review.enabled`,
+  `plugins.openclaw.user_profile.enabled`, and
+  `plugins.openclaw.memory_to_skill.enabled`
+
 Default recommendation:
 
 - Put reusable defaults in global config so users do not repeat setup in every project.
-- Put only project-specific overrides in project config.
-- Use global config for named LLM providers, common model choices, normal input/output defaults, and shared prompt defaults.
-- Use project config for one workspace's enable/disable switches, unusual output files, special intervals, or workspace-specific providers.
+- Put only allowlisted local indexing overrides in project config.
+- Use global config for named LLM providers, common model choices, plugin enable/disable switches, task intervals, install paths, and shared prompt defaults.
+- If the user wants advanced maintenance enabled for all projects, set the plugin keys globally. The default relative `input_dir` / `output_file` values still resolve inside each current workspace/project.
 
-Maintenance `input_dir` and `output_file` may be relative even when configured globally. They are resolved from the current workspace/project directory at runtime. For custom prompt paths, prefer absolute paths in global config and relative paths in project config.
+Maintenance `input_dir` and `output_file` may be relative even when configured globally. They are resolved from the current workspace/project directory at runtime, so a global `output_file = ".memsearch/PROJECT.md"` writes to each workspace/project's own `.memsearch/PROJECT.md`. For custom prompt paths, prefer absolute paths in global config; project prompt paths are not trusted.
 
 OpenClaw plugin keys:
 
@@ -191,7 +210,7 @@ If advanced maintenance or `memory_to_skill` seems silent, check
 `.memsearch/.maintenance-state.json` for `<plugin>.<task>.last_error` and
 `last_failed_at`; background hook errors may not surface in the chat.
 
-Before enabling advanced maintenance, ask which provider to use, whether the default 24-hour interval is acceptable, and whether `.memsearch/PROJECT.md` / `.memsearch/USER.md` are acceptable output files.
+Before enabling advanced maintenance, ask which provider to use, whether the default 24-hour interval is acceptable, whether `.memsearch/PROJECT.md` / `.memsearch/USER.md` are acceptable output files, and whether the user wants the enablement global. Do not write plugin automation keys with `--project`; v0.4.11+ project config ignores or rejects them.
 
 Prompt overrides:
 
@@ -205,8 +224,8 @@ memory_to_skill = ""
 
 Empty prompt paths mean use the built-in MemSearch prompts. Custom prompt files may use `{{AGENT_NAME}}`, `{{TASK_NAME}}`, `{{PROJECT_DIR}}`, `{{INPUT_DIR}}`, and `{{OUTPUT_FILE}}`; the runner appends existing output, recent journals, and digest automatically.
 
-Use `memsearch config set` for changes. After changing anything, show the command, the resolved value, and whether a new session is needed.
+Use `memsearch config set` for changes. For trusted keys such as `plugins.*`, `[llm.providers.*]`, `[prompts]`, `embedding.provider`, or `milvus.uri`, set global config by omitting `--project`. Use `--project` only for allowlisted local indexing keys. After changing anything, show the command, the resolved value, and whether a new session is needed.
 
 MemSearch TOML changes are read lazily by the CLI, OpenClaw plugin hooks/tools, and maintenance runner, so values such as `plugins.openclaw.summarize.*`, `plugins.openclaw.project_review.*`, `plugins.openclaw.user_profile.*`, `[llm.providers.*]`, `[prompts]`, `milvus.*`, and `embedding.*` usually apply on the next capture, recall, index, or maintenance invocation. Run `openclaw gateway restart` after plugin install/update or hook permission changes, because the gateway may already have loaded the old plugin state. In final diagnostic/change summaries, make clear that this is MemSearch memory configuration, not OpenClaw's own memory/config system.
 
-When useful, remind the user that they can either continue using this `memory-config` skill for guided configuration, or manually run `memsearch config init` for global interactive setup, `memsearch config init --project` for project interactive setup, and `memsearch config set/get/list` for direct CLI changes.
+When useful, remind the user that they can either continue using this `memory-config` skill for guided configuration, or manually run `memsearch config init` for global interactive setup, `memsearch config init --project` for allowlisted project indexing setup, and `memsearch config set/get/list` for direct CLI changes.

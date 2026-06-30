@@ -118,7 +118,7 @@ The previous Claude Code plugin default was OpenAI `text-embedding-3-small`, whi
   memsearch index .memsearch/memory/ --force
   ```
 
-- **Users with an explicit `embedding.provider` in `.memsearch.toml` or `~/.memsearch/config.toml` are unaffected** — your config still wins.
+- **Users with an explicit `embedding.provider` in `~/.memsearch/config.toml` are unaffected** — your global config still wins.
 
 To pre-download the ONNX model instead of waiting for the first-use download:
 

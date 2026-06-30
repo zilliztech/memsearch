@@ -59,11 +59,13 @@ Higher-priority sources override lower-priority ones.
 
 #### `memsearch config init`
 
-Launch an interactive wizard that walks through all configuration sections and writes a TOML config file.
+Launch an interactive wizard and write a TOML config file. Global mode walks
+through all configuration sections. Project mode writes only allowlisted local
+indexing keys to `.memsearch.toml`.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--project` | `false` | Write to `.memsearch.toml` (project-level) instead of the global config |
+| `--project` | `false` | Write allowlisted local indexing keys to `.memsearch.toml` |
 
 ```bash
 $ memsearch config init
@@ -116,6 +118,7 @@ Create a project-level config:
 $ memsearch config init --project
 memsearch configuration wizard
 Writing to: .memsearch.toml
+Project config is limited to low-risk local indexing keys.
 ...
 ```
 
@@ -127,35 +130,42 @@ Set a single configuration value by dotted key. Keys follow the `section.field` 
 |------|---------|-------------|
 | `KEY` | *(required)* | Dotted config key (e.g., `milvus.uri`) |
 | `VALUE` | *(required)* | Value to set |
-| `--project` | `false` | Write to `.memsearch.toml` instead of global config |
+| `--project` | `false` | Write an allowlisted local indexing key to `.memsearch.toml` instead of global config |
 
 ```bash
 $ memsearch config set milvus.uri http://localhost:19530
 Set milvus.uri = http://localhost:19530 in /home/user/.memsearch/config.toml
 
-$ memsearch config set embedding.provider google --project
-Set embedding.provider = google in .memsearch.toml
+$ memsearch config set embedding.batch_size 32 --project
+Set embedding.batch_size = 32 in .memsearch.toml
 
-$ memsearch config set chunking.max_chunk_size 2000
-Set chunking.max_chunk_size = 2000 in /home/user/.memsearch/config.toml
+$ memsearch config set chunking.max_chunk_size 2000 --project
+Set chunking.max_chunk_size = 2000 in .memsearch.toml
 ```
 
-Plugin config keys use `plugins.<platform>.<task>.<field>`:
+Project config is restricted before it is merged. Use `--project` only for
+allowlisted local indexing keys such as `milvus.collection`,
+`embedding.batch_size`, `chunking.max_chunk_size`, `chunking.overlap_lines`, and
+`watch.debounce_ms`. Trusted settings such as provider routing, endpoints, API
+keys, prompt files, and plugin automation must go in global config or explicit
+CLI flags.
+
+Plugin config keys use `plugins.<platform>.<task>.<field>` and are global:
 
 ```bash
-$ memsearch config set plugins.codex.summarize.enabled false --project
-Set plugins.codex.summarize.enabled = false in .memsearch.toml
+$ memsearch config set plugins.codex.summarize.enabled false
+Set plugins.codex.summarize.enabled = false in /home/user/.memsearch/config.toml
 
-$ memsearch config set plugins.codex.project_review.enabled true --project
-Set plugins.codex.project_review.enabled = true in .memsearch.toml
+$ memsearch config set plugins.codex.project_review.enabled true
+Set plugins.codex.project_review.enabled = true in /home/user/.memsearch/config.toml
 
-$ memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
-Set plugins.codex.project_review.output_file = .memsearch/PROJECT.md in .memsearch.toml
+$ memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md
+Set plugins.codex.project_review.output_file = .memsearch/PROJECT.md in /home/user/.memsearch/config.toml
 ```
 
 Supported plugin platforms are `claude-code`, `codex`, `opencode`, and
-`openclaw`. Supported plugin tasks are `summarize`, `project_review`, and
-`user_profile`.
+`openclaw`. Supported plugin tasks are `summarize`, `project_review`,
+`user_profile`, and `memory_to_skill`.
 
 #### `memsearch config get`
 

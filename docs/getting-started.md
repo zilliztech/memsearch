@@ -524,7 +524,8 @@ Writing to: /home/user/.memsearch/config.toml
 Config saved to /home/user/.memsearch/config.toml
 ```
 
-Use `--project` to write to `.memsearch.toml` in the current directory instead:
+Use `--project` to write allowlisted local indexing overrides to
+`.memsearch.toml` in the current directory:
 
 ```bash
 $ memsearch config init --project
@@ -535,7 +536,7 @@ $ memsearch config init --project
 | Scope | Path | Use case |
 |-------|------|----------|
 | Global | `~/.memsearch/config.toml` | Machine-wide defaults (Milvus URI, preferred provider) |
-| Project | `.memsearch.toml` | Per-project overrides (collection name, custom model) |
+| Project | `.memsearch.toml` | Low-risk local indexing overrides (collection name, batch size, chunking, watch debounce) |
 
 Both files use TOML format:
 
@@ -629,7 +630,7 @@ api_key = "env:AZURE_OPENAI_API_KEY"
 ```
 
 ```toml
-# .memsearch.toml — local vLLM example
+# ~/.memsearch/config.toml — local vLLM example
 [embedding]
 provider = "openai"
 model = "BAAI/bge-small-en-v1.5"
@@ -637,7 +638,9 @@ base_url = "http://localhost:8000/v1"
 api_key = "dummy"
 ```
 
-These settings can also be passed via CLI flags (`--base-url`, `--api-key`) or the Python API (`embedding_base_url`, `embedding_api_key`).
+These trusted settings belong in global config. They can also be passed via CLI
+flags (`--base-url`, `--api-key`) or the Python API (`embedding_base_url`,
+`embedding_api_key`).
 
 ### Get and set individual values
 
@@ -648,8 +651,8 @@ Set milvus.uri = http://localhost:19530 in /home/user/.memsearch/config.toml
 $ memsearch config get milvus.uri
 http://localhost:19530
 
-$ memsearch config set embedding.provider ollama --project
-Set embedding.provider = ollama in .memsearch.toml
+$ memsearch config set embedding.batch_size 32 --project
+Set embedding.batch_size = 32 in .memsearch.toml
 ```
 
 ### View resolved configuration

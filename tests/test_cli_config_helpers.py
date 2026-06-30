@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from click.testing import CliRunner
+
 from memsearch import cli as cli_module
-from memsearch.config import MemSearchConfig
+from memsearch.cli import cli
+from memsearch.config import MemSearchConfig, load_config_file
 
 
 def test_build_cli_overrides_maps_only_non_none_values() -> None:
@@ -84,4 +87,31 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "max_chunk_size": 1800,
         "overlap_lines": 4,
         "reranker_model": "",
+    }
+
+
+def test_config_init_project_writes_only_allowlisted_keys(monkeypatch) -> None:
+    cfg = MemSearchConfig()
+    cfg.milvus.collection = "notes"
+    cfg.embedding.batch_size = 16
+    cfg.chunking.max_chunk_size = 2048
+    cfg.chunking.overlap_lines = 4
+    cfg.watch.debounce_ms = 300
+    cfg.plugins.codex.project_review.enabled = True
+    cfg.prompts.project_review = "/tmp/project-review.txt"
+
+    monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["config", "init", "--project"], input="\n\n\n\n\n")
+
+        assert result.exit_code == 0
+        data = load_config_file(".memsearch.toml")
+
+    assert data == {
+        "milvus": {"collection": "notes"},
+        "embedding": {"batch_size": 16},
+        "chunking": {"max_chunk_size": 2048, "overlap_lines": 4},
+        "watch": {"debounce_ms": 300},
     }

@@ -8,6 +8,13 @@ memsearch uses a layered TOML config system. Most users don't need to configure 
 2. `<project>/.memsearch.toml` — project-level overrides
 3. CLI flags — highest priority
 
+Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
+before it is merged. It can only set low-risk local indexing keys:
+`milvus.collection`, `embedding.batch_size`, `chunking.max_chunk_size`,
+`chunking.overlap_lines`, and `watch.debounce_ms`. Put trusted settings such as
+provider routing, API endpoints, API keys, prompt files, and `plugins.*`
+automation in global config or pass them as explicit CLI flags.
+
 ## Quick Setup
 
 ```bash
@@ -99,11 +106,11 @@ memsearch config set plugins.codex.summarize.provider openai
 Set `plugins.<platform>.summarize.provider` to `native`, or leave it empty, to
 preserve the current plugin behavior.
 
-You can disable automatic capture for a single project while keeping the plugin
-installed:
+You can disable automatic capture for a platform globally while keeping the
+plugin installed:
 
 ```bash
-memsearch config set plugins.codex.summarize.enabled false --project
+memsearch config set plugins.codex.summarize.enabled false
 ```
 
 ## Advanced Plugin Maintenance
@@ -116,21 +123,21 @@ This is disabled by default.
 | `project_review` | `.memsearch/PROJECT.md` | Durable project state: active threads, decisions, risks, next steps |
 | `user_profile` | `.memsearch/USER.md` | Reusable user preferences, working style, recurring goals, background context |
 
-Example project-level setup for Codex:
+Example global setup for Codex:
 
 ```bash
-memsearch config set plugins.codex.project_review.enabled true --project
-memsearch config set plugins.codex.project_review.provider native --project
-memsearch config set plugins.codex.project_review.min_interval_hours 24 --project
-memsearch config set plugins.codex.project_review.input_dir .memsearch/memory --project
-memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md --project
+memsearch config set plugins.codex.project_review.enabled true
+memsearch config set plugins.codex.project_review.provider native
+memsearch config set plugins.codex.project_review.min_interval_hours 24
+memsearch config set plugins.codex.project_review.input_dir .memsearch/memory
+memsearch config set plugins.codex.project_review.output_file .memsearch/PROJECT.md
 
-memsearch config set plugins.codex.user_profile.enabled true --project
-memsearch config set plugins.codex.user_profile.provider native --project
-memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md --project
+memsearch config set plugins.codex.user_profile.enabled true
+memsearch config set plugins.codex.user_profile.provider native
+memsearch config set plugins.codex.user_profile.output_file .memsearch/USER.md
 ```
 
-Equivalent TOML:
+Equivalent TOML in `~/.memsearch/config.toml`:
 
 ```toml
 [plugins.codex.summarize]
@@ -179,19 +186,20 @@ reference it from the task:
 memsearch config set llm.providers.openai.type openai
 memsearch config set llm.providers.openai.model gpt-5-mini
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
-memsearch config set plugins.codex.project_review.provider openai --project
+memsearch config set plugins.codex.project_review.provider openai
 ```
 
-Custom maintenance prompts are configured globally or per project:
+Custom maintenance prompts are configured globally. Prefer absolute paths for
+shared prompt files:
 
 ```bash
-memsearch config set prompts.project_review .memsearch/prompts/project-review.txt --project
-memsearch config set prompts.user_profile .memsearch/prompts/user-profile.txt --project
+memsearch config set prompts.project_review /path/to/project-review.txt
+memsearch config set prompts.user_profile /path/to/user-profile.txt
 ```
 
 The plugin-installed `memory-config` skill can inspect current config, memory
-files, and index health; explain these settings; and make safe project-scoped
-changes from natural-language requests.
+files, and index health; explain these settings; and choose global vs project
+scope from natural-language requests.
 
 ## Skills from Memory (procedural memory)
 
@@ -208,10 +216,14 @@ shares the maintenance tasks' provider/model routing, prompt override
 (`prompts.memory_to_skill`), `input_dir`, and `min_interval_hours` cadence.
 
 ```bash
-memsearch config set plugins.codex.memory_to_skill.enabled true --project
-memsearch config set plugins.codex.memory_to_skill.min_occurrences 3 --project   # default 3; lower = more eager
-memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]' --project   # optional; empty = asked at install
+memsearch config set plugins.codex.memory_to_skill.enabled true
+memsearch config set plugins.codex.memory_to_skill.min_occurrences 3   # default 3; lower = more eager
+memsearch config set plugins.codex.memory_to_skill.paths '[".agents/skills"]'   # optional; empty = asked at install
 ```
+
+Since v0.4.11, project-local `.memsearch.toml` accepts only allowlisted local
+indexing keys. Keep `plugins.*` settings such as `memory_to_skill.*` in global
+config; do not set them with `--project`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
