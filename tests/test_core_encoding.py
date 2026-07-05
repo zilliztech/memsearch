@@ -45,6 +45,7 @@ def make_memsearch() -> tuple[MemSearch, RecordingStore]:
     ms._paths = []
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._min_chunk_size = 0
     ms._embedder = FakeEmbedder()
     store = RecordingStore()
     ms._store = store

@@ -60,11 +60,13 @@ class MemSearch:
         description: str = "",
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
+        min_chunk_size: int = 0,
         reranker_model: str = "",
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
         self._overlap_lines = overlap_lines
+        self._min_chunk_size = min_chunk_size
         self._embedder: EmbeddingProvider = get_provider(
             embedding_provider,
             model=embedding_model,
@@ -132,6 +134,7 @@ class MemSearch:
             source=source,
             max_chunk_size=self._max_chunk_size,
             overlap_lines=self._overlap_lines,
+            min_chunk_size=self._min_chunk_size,
         )
         model = self._embedder.model_name
 

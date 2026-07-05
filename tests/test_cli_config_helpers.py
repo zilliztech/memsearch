@@ -71,6 +71,7 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
     cfg.milvus.collection = "team_notes"
     cfg.chunking.max_chunk_size = 1800
     cfg.chunking.overlap_lines = 4
+    cfg.chunking.min_chunk_size = 200
     cfg.reranker.model = ""
 
     kwargs = cli_module._cfg_to_memsearch_kwargs(cfg)
@@ -86,6 +87,7 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "collection": "team_notes",
         "max_chunk_size": 1800,
         "overlap_lines": 4,
+        "min_chunk_size": 200,
         "reranker_model": "",
     }
 

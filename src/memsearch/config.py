@@ -26,7 +26,15 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
+_INT_FIELDS = {
+    "max_chunk_size",
+    "overlap_lines",
+    "min_chunk_size",
+    "debounce_ms",
+    "batch_size",
+    "min_interval_hours",
+    "min_occurrences",
+}
 _BOOL_FIELDS = {"enabled"}
 _LIST_FIELDS = {"paths"}
 
@@ -39,6 +47,7 @@ _PROJECT_CONFIG_ALLOWED_PATHS = {
     ("embedding", "batch_size"),
     ("chunking", "max_chunk_size"),
     ("chunking", "overlap_lines"),
+    ("chunking", "min_chunk_size"),
     ("watch", "debounce_ms"),
 }
 
@@ -72,6 +81,7 @@ class CompactConfig:
 class ChunkingConfig:
     max_chunk_size: int = 1500
     overlap_lines: int = 2
+    min_chunk_size: int = 0  # 0 = one chunk per heading section (no merging)
 
 
 @dataclass

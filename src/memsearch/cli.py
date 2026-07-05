@@ -60,6 +60,7 @@ _PARAM_MAP = {
     "llm_api_key": "compact.api_key",
     "max_chunk_size": "chunking.max_chunk_size",
     "overlap_lines": "chunking.overlap_lines",
+    "min_chunk_size": "chunking.min_chunk_size",
     "debounce_ms": "watch.debounce_ms",
     "reranker_model": "reranker.model",
 }
@@ -93,6 +94,7 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
         "collection": cfg.milvus.collection,
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
+        "min_chunk_size": cfg.chunking.min_chunk_size,
         "reranker_model": cfg.reranker.model,
     }
 
