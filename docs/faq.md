@@ -1,5 +1,13 @@
 # FAQ
 
+## Why is my first index slow, when re-indexing is instant?
+
+That asymmetry is by design. Chunk IDs are content-addressable, so a re-index only embeds sections that are new or changed -- on an unchanged knowledge base it embeds nothing. A **cold** index (new machine, wiped collection, or an embedding model change) embeds everything, and with a local provider that cost is dominated by model compute: chunk count x model size.
+
+If a cold index projects to hours, pick a smaller model for that collection, raise `embedding.batch_size`, or accept it as a one-time migration cost. Note that changing `embedding.model` later re-triggers the full cost: the model name is part of every chunk ID.
+
+See [Architecture — Indexing Cost Model](architecture.md#indexing-cost-model) for the full breakdown.
+
 ## Does memsearch work on Windows?
 
 Yes, but **Milvus Lite** (the default local `.db` backend) does not provide Windows binaries.
