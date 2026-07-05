@@ -15,8 +15,11 @@ SLOWER than plain CPU. Remote providers (e.g. Azure) are never auto-selected.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from functools import partial
+
+logger = logging.getLogger(__name__)
 
 # Local accelerator providers we are willing to auto-select, in preference
 # order. Deliberately an allowlist: get_available_providers() can include
@@ -41,6 +44,14 @@ def _select_providers(
     """
     if requested:
         selected = [p for p in requested if p in available]
+        dropped = [p for p in requested if p not in available]
+        if dropped:
+            logger.warning(
+                "Requested ONNX execution providers not available in this "
+                "onnxruntime build, ignoring: %s (available: %s)",
+                dropped,
+                list(available),
+            )
     else:
         selected = [p for p in _PREFERRED_ACCELERATORS if p in available]
     if _CPU_PROVIDER not in selected:
@@ -91,11 +102,16 @@ class OnnxEmbedding:
         selected = _select_providers(ort.get_available_providers(), providers)
         try:
             self._session = ort.InferenceSession(model_path, providers=selected)
-        except Exception:
+        except Exception as exc:
             if selected == [_CPU_PROVIDER]:
                 raise
             # Accelerator session creation can fail for models the provider
             # cannot place; retry CPU-only rather than surfacing a hard error.
+            logger.warning(
+                "ONNX session creation failed with providers %s (%s); retrying CPU-only",
+                selected,
+                exc,
+            )
             self._session = ort.InferenceSession(model_path, providers=[_CPU_PROVIDER])
         self._output_names = [o.name for o in self._session.get_outputs()]
         self._has_dense_vecs = "dense_vecs" in self._output_names

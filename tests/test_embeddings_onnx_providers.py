@@ -52,3 +52,17 @@ def test_cpu_always_appended_to_explicit_request() -> None:
     # session creation would hard-fail on models the provider cannot place.
     selected = _select_providers(_CUDA_BUILD, ["CUDAExecutionProvider"])
     assert selected[-1] == _CPU_PROVIDER
+
+
+def test_dropped_requested_providers_warn(caplog) -> None:
+    # A user who explicitly requests an unavailable provider should get a
+    # signal that they are not running on it, not a silent CPU fallback.
+    with caplog.at_level("WARNING", logger="memsearch.embeddings.onnx"):
+        _select_providers(_CPU_ONLY, ["CUDAExecutionProvider"])
+    assert any("CUDAExecutionProvider" in r.message for r in caplog.records)
+
+
+def test_no_warning_when_requested_providers_available(caplog) -> None:
+    with caplog.at_level("WARNING", logger="memsearch.embeddings.onnx"):
+        _select_providers(_CUDA_BUILD, ["CUDAExecutionProvider"])
+    assert not caplog.records
