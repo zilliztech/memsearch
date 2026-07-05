@@ -1,14 +1,51 @@
-"""ONNX embedding via onnxruntime (runs on CPU, no GPU required).
+"""ONNX embedding via onnxruntime (CPU by default, accelerators when available).
 
 Requires: ``pip install 'memsearch[onnx]'`` or ``uv add 'memsearch[onnx]'``
 No API key needed. Used as the default provider by the Claude Code plugin for zero-config
 memory search. Default model is a pre-quantized int8 bge-m3 ONNX export.
+
+Execution providers are auto-selected from what the installed onnxruntime
+exposes: CUDA is preferred when present, and CPU is always kept as the final
+fallback. CoreML is opt-in only (``providers=`` argument): on the default
+int8 bge-m3 export CoreML places just 1490 of 2384 graph nodes across 220
+partitions, and the resulting CPU<->CoreML copy overhead measured ~60x
+SLOWER than plain CPU. Remote providers (e.g. Azure) are never auto-selected.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from functools import partial
+
+# Local accelerator providers we are willing to auto-select, in preference
+# order. Deliberately an allowlist: get_available_providers() can include
+# remote providers (e.g. AzureExecutionProvider) that must never be picked
+# implicitly for a local, zero-config embedding path. CoreML is deliberately
+# NOT auto-selected — see the module docstring for the measurement.
+_PREFERRED_ACCELERATORS = ("CUDAExecutionProvider",)
+
+_CPU_PROVIDER = "CPUExecutionProvider"
+
+
+def _select_providers(
+    available: Sequence[str],
+    requested: Sequence[str] | None = None,
+) -> list[str]:
+    """Pick the execution-provider list for an ONNX inference session.
+
+    With *requested*, keeps its order filtered to *available*; otherwise takes
+    known local accelerators from *available* in preference order. CPU is
+    always appended as the final fallback so session creation cannot fail on
+    an accelerator-only list.
+    """
+    if requested:
+        selected = [p for p in requested if p in available]
+    else:
+        selected = [p for p in _PREFERRED_ACCELERATORS if p in available]
+    if _CPU_PROVIDER not in selected:
+        selected.append(_CPU_PROVIDER)
+    return selected
 
 
 class OnnxEmbedding:
@@ -26,6 +63,7 @@ class OnnxEmbedding:
         model: str = "gpahal/bge-m3-onnx-int8",
         *,
         batch_size: int = 0,
+        providers: Sequence[str] | None = None,
     ) -> None:
         try:
             import onnxruntime as ort
@@ -50,7 +88,15 @@ class OnnxEmbedding:
         self._tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
         self._tokenizer.enable_truncation(max_length=8192)
 
-        self._session = ort.InferenceSession(model_path)
+        selected = _select_providers(ort.get_available_providers(), providers)
+        try:
+            self._session = ort.InferenceSession(model_path, providers=selected)
+        except Exception:
+            if selected == [_CPU_PROVIDER]:
+                raise
+            # Accelerator session creation can fail for models the provider
+            # cannot place; retry CPU-only rather than surfacing a hard error.
+            self._session = ort.InferenceSession(model_path, providers=[_CPU_PROVIDER])
         self._output_names = [o.name for o in self._session.get_outputs()]
         self._has_dense_vecs = "dense_vecs" in self._output_names
         self._model = model
