@@ -19,7 +19,11 @@ class OnnxEmbedding:
     - Models with ``last_hidden_state`` output — CLS pooling + L2 normalize applied
     """
 
-    _DEFAULT_BATCH_SIZE = 32
+    # 64 measured ~11% faster than 32 on the default int8 bge-m3 model
+    # (CPU, Apple M-series; 128 texts: 13.2s @ 32 -> 11.7s @ 64 -> 10.6s @ 128).
+    # 128 is not the default because worst-case padded batches (8192-token
+    # inputs) materialize multi-GB activation tensors; 64 keeps that bounded.
+    _DEFAULT_BATCH_SIZE = 64
 
     def __init__(
         self,
