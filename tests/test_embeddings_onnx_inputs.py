@@ -10,13 +10,15 @@ import numpy as np
 from memsearch.embeddings.onnx import OnnxEmbedding
 
 
+class _StubEncoding:
+    def __init__(self) -> None:
+        self.ids = [1, 2, 3]
+        self.attention_mask = [1, 1, 0]
+
+
 class _StubTokenizer:
     def encode_batch(self, texts):
-        class E:
-            ids = [1, 2, 3]
-            attention_mask = [1, 1, 0]
-
-        return [E() for _ in texts]
+        return [_StubEncoding() for _ in texts]
 
 
 class _StubSession:
