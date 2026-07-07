@@ -349,9 +349,16 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
             try {
               const context = getRecentMemories(memoryDir);
               if (context) {
-                output.system.push(
-                  `[memsearch] Memory available. You have access to memory_search, memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`
-                );
+                // Merge into the existing system entry instead of pushing a new
+                // one — some backends (litellm/vllm serving e.g. Qwen models)
+                // require a single system message and reject a multi-entry
+                // output.system array with "system message must be first".
+                const memoryText = `[memsearch] Memory available. You have access to memory_search, memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`;
+                if (Array.isArray(output.system) && output.system.length > 0) {
+                  output.system[0] = `${output.system[0]}\n\n${memoryText}`;
+                } else {
+                  output.system = [memoryText];
+                }
               }
             } catch { /* ignore */ }
           },
