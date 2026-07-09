@@ -113,6 +113,34 @@ function shellEscape(s: string): string {
   return s.replace(/'/g, "'\\''");
 }
 
+/** Marks the start of memsearch's injected block within a system message. */
+export const MEMSEARCH_SYSTEM_MARKER = "[memsearch] Memory available.";
+
+/**
+ * Merge memsearch's memory context into an `output.system` array without
+ * growing it. Some backends (litellm/vllm serving e.g. Qwen models) reject a
+ * multi-entry `output.system` array with "system message must be first", so
+ * the memory block is folded into the first entry instead of pushed as a new
+ * one. If a memsearch block from a previous transform call is already present
+ * (identified by MEMSEARCH_SYSTEM_MARKER), it is replaced in place rather than
+ * appended again, so repeated calls against the same output stay idempotent.
+ */
+export function mergeSystemMemoryContext(
+  system: string[] | undefined,
+  memoryText: string
+): string[] {
+  if (!Array.isArray(system) || system.length === 0) {
+    return [memoryText];
+  }
+  const result = [...system];
+  const existing = result[0];
+  const markerIndex = existing.indexOf(MEMSEARCH_SYSTEM_MARKER);
+  const base =
+    markerIndex === -1 ? existing : existing.slice(0, markerIndex).replace(/\n+$/, "");
+  result[0] = base ? `${base}\n\n${memoryText}` : memoryText;
+  return result;
+}
+
 /**
  * Start the capture daemon as a background process.
  * The daemon polls OpenCode's SQLite for completed turns and writes to daily .md files.
@@ -349,16 +377,10 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
             try {
               const context = getRecentMemories(memoryDir);
               if (context) {
-                // Merge into the existing system entry instead of pushing a new
-                // one — some backends (litellm/vllm serving e.g. Qwen models)
-                // require a single system message and reject a multi-entry
-                // output.system array with "system message must be first".
-                const memoryText = `[memsearch] Memory available. You have access to memory_search, memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`;
-                if (Array.isArray(output.system) && output.system.length > 0) {
-                  output.system[0] = `${output.system[0]}\n\n${memoryText}`;
-                } else {
-                  output.system = [memoryText];
-                }
+                const memoryText =
+                  `${MEMSEARCH_SYSTEM_MARKER} You have access to memory_search, ` +
+                  `memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`;
+                output.system = mergeSystemMemoryContext(output.system, memoryText);
               }
             } catch { /* ignore */ }
           },

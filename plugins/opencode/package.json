@@ -23,6 +23,9 @@
     "semantic-search",
     "milvus"
   ],
+  "scripts": {
+    "test": "node --test"
+  },
   "author": "memsearch contributors",
   "license": "MIT",
   "peerDependencies": {
