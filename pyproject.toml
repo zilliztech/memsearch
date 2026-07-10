@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "memsearch"
-version = "0.4.12"
+version = "0.4.13"
 description = "Semantic memory search for markdown knowledge bases"
 readme = "README.md"
 license = "MIT"
