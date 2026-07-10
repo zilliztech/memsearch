@@ -45,10 +45,43 @@ function ensureDir(dir: string): string {
 
 /**
  * Summarize the N most recent daily .md files for cold-start context.
- * Extracts headings (## Session, ### turns) and bullet content so the
- * agent sees the structure of past days rather than just the tail of
- * whichever file happened to be newest.
+ * Extracts recent non-empty session sections so empty SessionStart headings
+ * do not crowd out useful context.
  */
+function recentMemoryPreviewLines(content: string, maxLines: number): string[] {
+  const sections: string[][] = [];
+  let current: string[] = [];
+  let hasBody = false;
+
+  const flush = () => {
+    if (current.length > 0 && hasBody) {
+      sections.push(current);
+    }
+    current = [];
+    hasBody = false;
+  };
+
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (/^##\s/.test(line)) {
+      flush();
+      current = [line];
+      continue;
+    }
+    if (/^#{3,4}\s/.test(line)) {
+      current.push(line);
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      current.push(line);
+      hasBody = true;
+    }
+  }
+
+  flush();
+  return sections.flat().slice(-maxLines);
+}
+
 function getRecentMemories(
   memDir: string,
   count = 2,
@@ -67,9 +100,7 @@ function getRecentMemories(
   for (const file of files) {
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n")
-        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- "))
-        .slice(0, maxLinesPerFile);
+      const lines = recentMemoryPreviewLines(content, maxLinesPerFile);
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
       }

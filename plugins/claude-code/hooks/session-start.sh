@@ -105,6 +105,43 @@ fi
 PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
+_recent_memory_preview() {
+  local file="$1" max_lines="${2:-40}"
+  awk '
+    function flush_section() {
+      if (section_len > 0 && has_body) {
+        for (i = 1; i <= section_len; i++) {
+          print section[i]
+        }
+      }
+      delete section
+      section_len = 0
+      has_body = 0
+    }
+
+    /^##[[:space:]]/ {
+      flush_section()
+      section[++section_len] = $0
+      next
+    }
+
+    /^#{3,4}[[:space:]]/ {
+      section[++section_len] = $0
+      next
+    }
+
+    /^-[[:space:]]/ {
+      section[++section_len] = $0
+      has_body = 1
+      next
+    }
+
+    END {
+      flush_section()
+    }
+  ' "$file" 2>/dev/null | tail -n "$max_lines" || true
+}
+
 # Write session heading to today's memory file
 ensure_memory_dir
 TODAY=$(date +%Y-%m-%d)
@@ -165,11 +202,9 @@ if [ -n "$recent_files" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
-    # Extract headings (## Session, ### turn timestamps) and bullet content —
-    # higher signal density than a raw tail, so Claude can see the structure
-    # of past days (what sessions existed, what topics came up) rather than
-    # just the last 30 lines of whichever file happened to be newest.
-    content=$(grep -E '^(#{2,4} |- )' "$f" 2>/dev/null | head -40 || true)
+    # Extract recent non-empty session sections. Empty SessionStart headings are
+    # common after short sessions, but they do not carry useful context.
+    content=$(_recent_memory_preview "$f" 40)
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"
     fi

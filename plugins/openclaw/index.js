@@ -22,6 +22,36 @@ function ensureDir(dir) {
   }
   return dir;
 }
+function recentMemoryPreviewLines(content, maxLines) {
+  const sections = [];
+  let current = [];
+  let hasBody = false;
+  const flush = () => {
+    if (current.length > 0 && hasBody) {
+      sections.push(current);
+    }
+    current = [];
+    hasBody = false;
+  };
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (/^##\s/.test(line)) {
+      flush();
+      current = [line];
+      continue;
+    }
+    if (/^#{3,4}\s/.test(line)) {
+      current.push(line);
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      current.push(line);
+      hasBody = true;
+    }
+  }
+  flush();
+  return sections.flat().slice(-maxLines);
+}
 function getRecentMemories(memDir, count = 2, maxLinesPerFile = 30) {
   if (!existsSync(memDir)) return "";
   const files = readdirSync(memDir).filter((f) => f.endsWith(".md")).sort().slice(-count);
@@ -30,7 +60,7 @@ function getRecentMemories(memDir, count = 2, maxLinesPerFile = 30) {
   for (const file of files) {
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n").filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ")).slice(0, maxLinesPerFile);
+      const lines = recentMemoryPreviewLines(content, maxLinesPerFile);
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
       }
