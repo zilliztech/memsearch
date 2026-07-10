@@ -83,7 +83,7 @@ Scan all configured paths and index every markdown file (`.md`, `.markdown`) int
 **Behavior:**
 
 - **Incremental by default.** Only new or changed chunks are embedded. Unchanged chunks are skipped via content-hash dedup.
-- **Stale cleanup.** Chunks from deleted files are automatically removed.
+- **Stale cleanup.** Chunks from deleted files under configured directory paths are automatically removed. Explicit file paths are partial updates and do not prune other indexed sources.
 - **Deleted content.** If a section is removed from a file, its old chunks are cleaned up on the next `index()` call.
 
 ```python

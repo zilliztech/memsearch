@@ -302,7 +302,7 @@ provider = "openai"
 
 ## `memsearch index`
 
-Scan one or more directories (or files) and index all markdown files (`.md`, `.markdown`) into the Milvus vector store. Only new or changed chunks are embedded by default -- unchanged chunks are skipped. Chunks belonging to deleted files are automatically removed from the index.
+Scan one or more directories (or files) and index all markdown files (`.md`, `.markdown`) into the Milvus vector store. Only new or changed chunks are embedded by default -- unchanged chunks are skipped. Chunks belonging to deleted files under the indexed directory paths are automatically removed from the index.
 
 ### Options
 
@@ -359,7 +359,7 @@ Indexed 42 chunks.
 ### Notes
 
 - **Incremental by default.** Each chunk is identified by a composite hash of its source file, line range, content hash, and embedding model. Only chunks with new IDs are embedded and stored.
-- **Stale cleanup.** If a file that was previously indexed no longer exists on disk, its chunks are automatically deleted from the index during the next `index` run.
+- **Stale cleanup.** If a file under an indexed directory path no longer exists on disk, its chunks are automatically deleted from the index during the next `index` run. Explicit file paths are treated as partial updates and do not prune other indexed sources.
 - **`--force` re-embeds everything.** Use this when you switch embedding providers or models, since the same content will produce different vectors with a different model.
 
 ---

@@ -104,12 +104,16 @@ class MemSearch:
                 failed += 1
                 logger.exception("Failed to index %s, skipping", f.path)
 
-        # Clean up chunks for files that no longer exist
-        indexed_sources = self._store.indexed_sources()
-        for source in indexed_sources:
-            if source not in active_sources:
-                self._store.delete_by_source(source)
-                logger.info("Removed stale chunks for deleted file: %s", source)
+        # Clean up deleted files only inside directory roots from this run.
+        # Explicit file paths are partial updates and must not prune unrelated
+        # sources from the collection.
+        cleanup_roots = _cleanup_roots_for_paths(self._paths)
+        if cleanup_roots:
+            indexed_sources = self._store.indexed_sources()
+            for source in indexed_sources:
+                if source not in active_sources and _source_under_any_root(source, cleanup_roots):
+                    self._store.delete_by_source(source)
+                    logger.info("Removed stale chunks for deleted file: %s", source)
 
         if failed:
             logger.warning("Indexed %d chunks from %d files (%d files failed)", total, len(files) - failed, failed)
@@ -400,6 +404,26 @@ def _chunk_batches(chunks: list[Chunk], batch_size: int) -> Iterator[list[Chunk]
         raise ValueError(f"batch_size must be >= 1, got {batch_size}")
     for i in range(0, len(chunks), batch_size):
         yield chunks[i : i + batch_size]
+
+
+def _cleanup_roots_for_paths(paths: list[str | Path]) -> list[Path]:
+    roots: list[Path] = []
+    for raw_path in paths:
+        path = Path(raw_path).expanduser().resolve()
+        if path.is_dir():
+            roots.append(path)
+    return roots
+
+
+def _source_under_any_root(source: str, roots: list[Path]) -> bool:
+    source_path = Path(source).expanduser().resolve()
+    for root in roots:
+        try:
+            source_path.relative_to(root)
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def _records_for_chunks(chunks: list[Chunk], embeddings: list[list[float]], model: str) -> list[dict[str, Any]]:

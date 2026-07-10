@@ -54,7 +54,7 @@ graph LR
 
 ### Ingest Flow
 
-Markdown files are scanned, chunked by headings, and deduplicated using SHA-256 content hashes. Only new or changed chunks are sent to the embedding API and upserted into Milvus. Chunks from deleted files are automatically cleaned up.
+Markdown files are scanned, chunked by headings, and deduplicated using SHA-256 content hashes. Only new or changed chunks are sent to the embedding API and upserted into Milvus. Chunks from deleted files under indexed directory paths are automatically cleaned up.
 
 ```mermaid
 graph LR
