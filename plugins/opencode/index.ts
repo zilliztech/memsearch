@@ -13,13 +13,15 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { execSync, exec, spawnSync } from "node:child_process";
+import { execSync, exec, spawn, spawnSync } from "node:child_process";
 import {
   readFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   realpathSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,6 +155,7 @@ function startCaptureDaemon(
   collectionName: string,
   memsearchCmd: string
 ): void {
+  const stateDir = join(projectDir, ".memsearch");
   const pidFile = join(projectDir, ".memsearch", ".capture.pid");
   const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
 
@@ -167,21 +170,40 @@ function startCaptureDaemon(
           return; // Already running
         } catch {
           // Process is dead, clean up stale PID file
+          try { unlinkSync(pidFile); } catch { /* ignore */ }
         }
       }
     } catch { /* ignore */ }
   }
 
-  // Start daemon in background
-  exec(
-    `python3 "${daemonScript}" "${projectDir}" "${collectionName}" ` +
-      `--memsearch-cmd "${shellEscape(memsearchCmd)}" --poll-interval 10 &`,
-    {
-      timeout: 5000,
-      env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
-    },
-    () => { /* ignore */ }
-  );
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    const child = spawn(
+      "python3",
+      [
+        daemonScript,
+        projectDir,
+        collectionName,
+        "--memsearch-cmd",
+        memsearchCmd,
+        "--poll-interval",
+        "10",
+        "--parent-pid",
+        String(process.pid),
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
+      }
+    );
+    child.unref();
+    if (child.pid) {
+      try { writeFileSync(pidFile, String(child.pid), "utf-8"); } catch { /* ignore */ }
+    }
+  } catch {
+    // Capture is best-effort; tools still work without the background daemon.
+  }
 }
 
 /**
