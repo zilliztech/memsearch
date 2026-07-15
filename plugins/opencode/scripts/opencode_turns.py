@@ -76,30 +76,30 @@ class TurnState:
     last_completed_turn_id: str
 
 
-def get_db_path() -> str:
+def get_db_path() -> Path:
     """Find the OpenCode SQLite database."""
     default = Path("~/.local/share/opencode/opencode.db").expanduser()
     if default.exists():
-        return default.as_posix()
+        return default
 
     xdg_data = os.environ.get("XDG_DATA_HOME", "")
     if xdg_data:
         alt = Path(xdg_data) / "opencode" / "opencode.db"
         if alt.exists():
-            return alt.as_posix()
+            return alt
 
-    return default.as_posix()
+    return default
 
 
-def get_turn_db_path(memsearch_dir: str) -> str:
+def get_turn_db_path(memsearch_dir: Path) -> Path:
     """Return the sidecar database path inside the resolved memsearch storage dir."""
-    return (Path(memsearch_dir) / "opencode-turns.db").as_posix()
+    return memsearch_dir / "opencode-turns.db"
 
 
-def open_turn_db(memsearch_dir: str) -> sqlite3.Connection:
+def open_turn_db(memsearch_dir: Path) -> sqlite3.Connection:
     """Open the sidecar turn database and ensure its schema exists."""
     turn_db_path = get_turn_db_path(memsearch_dir)
-    Path(memsearch_dir).mkdir(parents=True, exist_ok=True)
+    memsearch_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(turn_db_path, timeout=5)
     conn.row_factory = sqlite3.Row
     ensure_turn_schema(conn)

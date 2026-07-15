@@ -463,7 +463,7 @@ def summarize_with_llm(
     return None
 
 
-def wake_maintenance(project_dir: str, memsearch_dir: str) -> None:
+def wake_maintenance(project_dir: str, memsearch_dir: Path) -> None:
     """Start maintenance in a hook-disabled child environment."""
     runner = Path(__file__).resolve().parent / "maintenance-runner.py"
     subprocess.Popen(
@@ -475,7 +475,7 @@ def wake_maintenance(project_dir: str, memsearch_dir: str) -> None:
             "--project-dir",
             project_dir,
             "--memsearch-dir",
-            memsearch_dir,
+            memsearch_dir.as_posix(),
         ],
         env={**os.environ, "MEMSEARCH_NO_WATCH": "1", "MEMSEARCH_DISABLE": "1"},
         stdin=subprocess.DEVNULL,
@@ -528,9 +528,9 @@ def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     return [row[0] for row in sessions]
 
 
-def _load_legacy_last_msg_time(memsearch_dir: str) -> int:
+def _load_legacy_last_msg_time(memsearch_dir: Path) -> int:
     """Read the pre-sidecar capture checkpoint for upgrade compatibility."""
-    path = Path(memsearch_dir) / ".last_msg_time"
+    path = memsearch_dir / ".last_msg_time"
     try:
         value = int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -542,21 +542,18 @@ def _make_capture_anchor_key(session_id: str, turn_id: str) -> tuple[str, str]:
     return (session_id, turn_id)
 
 
-def load_capture_anchor_cache(memory_dir: str) -> set[tuple[str, str]]:
-    if not os.path.isdir(memory_dir):
+def load_capture_anchor_cache(memory_dir: Path) -> set[tuple[str, str]]:
+    if not memory_dir.is_dir():
         return set()
 
     anchor_cache: set[tuple[str, str]] = set()
-    for name in os.listdir(memory_dir):
-        if not name.endswith(".md"):
+    for path in memory_dir.iterdir():
+        if not path.name.endswith(".md"):
             continue
-
-        path = os.path.join(memory_dir, name)
         try:
-            text = Path(path).read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-
         for session_id, turn_id in _ANCHOR_RE.findall(text):
             anchor_cache.add(_make_capture_anchor_key(session_id, turn_id))
 
@@ -564,28 +561,27 @@ def load_capture_anchor_cache(memory_dir: str) -> set[tuple[str, str]]:
 
 
 def write_capture(
-    memory_dir: str,
+    memory_dir: Path,
     turn_text: str,
     session_id: str,
     turn_id: str,
     db_path: str = "",
     anchor_cache: set[tuple[str, str]] | None = None,
-) -> str:
+) -> Path:
     """Write a captured turn to the daily memory file."""
-    os.makedirs(memory_dir, exist_ok=True)
+    memory_dir.mkdir(parents=True, exist_ok=True)
 
     today = datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%H:%M")
-    memory_file = os.path.join(memory_dir, f"{today}.md")
+    memory_file = memory_dir / f"{today}.md"
 
-    if not os.path.exists(memory_file):
-        with open(memory_file, "w", encoding="utf-8") as f:
-            f.write(f"# {today}\n\n## Session {now}\n\n")
+    if not memory_file.exists():
+        memory_file.write_text(f"# {today}\n\n## Session {now}\n\n", encoding="utf-8")
 
     anchor = f"<!-- session:{session_id} turn:{turn_id} db:{db_path} -->\n" if session_id else ""
     entry = f"### {now}\n{anchor}{turn_text}\n\n"
 
-    with open(memory_file, "a", encoding="utf-8") as f:
+    with memory_file.open("a", encoding="utf-8") as f:
         f.write(entry)
 
     if session_id and anchor_cache is not None:
@@ -594,19 +590,17 @@ def write_capture(
     return memory_file
 
 
-def capture_exists(memory_dir: str, session_id: str, turn_id: str) -> bool:
+def capture_exists(memory_dir: Path, session_id: str, turn_id: str) -> bool:
     """Check whether a turn anchor was already written to memory markdown."""
-    if not os.path.isdir(memory_dir):
+    if not memory_dir.is_dir():
         return False
 
     anchor = f"<!-- session:{session_id} turn:{turn_id} "
-    for name in os.listdir(memory_dir):
-        if not name.endswith(".md"):
+    for path in memory_dir.iterdir():
+        if not path.name.endswith(".md"):
             continue
-
-        path = os.path.join(memory_dir, name)
         try:
-            with open(path, encoding="utf-8") as handle:
+            with path.open(encoding="utf-8") as handle:
                 if anchor in handle.read():
                     return True
         except OSError:
@@ -709,7 +703,7 @@ def _turn_ready_for_capture(
 def capture_session_turns(
     conn: sqlite3.Connection,
     turn_db: sqlite3.Connection,
-    memory_dir: str,
+    memory_dir: Path,
     session_id: str,
     small_model: str,
     memsearch_cmd: str,
@@ -725,11 +719,11 @@ def capture_session_turns(
         tail_turn_cache = {}
 
     # The memsearch storage dir holds the memory/ folder and the legacy checkpoint.
-    memsearch_dir = Path(memory_dir).resolve().parent
+    memsearch_dir = memory_dir.resolve().parent
 
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
-        legacy_after_time = _load_legacy_last_msg_time(memsearch_dir.as_posix())
+        legacy_after_time = _load_legacy_last_msg_time(memsearch_dir)
         if legacy_after_time > 0:
             after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None
@@ -797,25 +791,24 @@ def main() -> None:
     parser.add_argument("--parent-pid", type=int, default=0, help="Exit when this parent process is gone")
     args = parser.parse_args()
 
-    db_path = get_db_path()
-    if not os.path.exists(db_path):
-        sys.stderr.write(f"OpenCode database not found at {db_path}\n")
+    _db_path = get_db_path()
+    if not _db_path.exists():
+        sys.stderr.write(f"OpenCode database not found at {_db_path}\n")
         sys.exit(1)
+    db_path = _db_path.as_posix()
 
     # Storage keys off memsearch_dir (honoring MEMSEARCH_DIR global scope);
     # OpenCode session/config lookups still key off the real project_dir.
-    _memsearch_path = Path(args.memsearch_dir) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
-    memsearch_dir = _memsearch_path.as_posix()
-    memory_dir = (_memsearch_path / "memory").as_posix()
-    pid_file = (_memsearch_path / ".capture.pid").as_posix()
+    memsearch_dir = Path(args.memsearch_dir) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
+    memory_dir = memsearch_dir / "memory"
+    pid_file = memsearch_dir / ".capture.pid"
 
-    _memsearch_path.mkdir(parents=True, exist_ok=True)
-    with open(pid_file, "w", encoding="utf-8") as f:
-        f.write(str(os.getpid()))
+    memsearch_dir.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(os.getpid()), encoding="utf-8")
 
     def cleanup(signum=None, frame=None) -> None:
         with contextlib.suppress(OSError):
-            os.remove(pid_file)
+            pid_file.unlink()
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, cleanup)
@@ -851,7 +844,7 @@ def main() -> None:
                 )
 
             if any_new:
-                os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
+                os.system(f"{args.memsearch_cmd} index '{memory_dir.as_posix()}' --collection {args.collection_name} &")
                 wake_maintenance(args.project_dir, memsearch_dir)
         except Exception:
             pass

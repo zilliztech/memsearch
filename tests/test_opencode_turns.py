@@ -164,12 +164,12 @@ def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeyp
     monkeypatch.setenv("MEMSEARCH_NO_WATCH", "0")
     monkeypatch.delenv("MEMSEARCH_DISABLE", raising=False)
 
-    memsearch_dir = (project / ".memsearch").as_posix()
+    memsearch_dir = project / ".memsearch"
     capture_daemon.wake_maintenance(project.as_posix(), memsearch_dir)
 
     assert captured["cmd"][:4] == ["python3", str(SCRIPT_DIR / "maintenance-runner.py"), "--platform", "opencode"]
     assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == project.as_posix()
-    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == memsearch_dir
+    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == memsearch_dir.as_posix()
     assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
     assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["stdin"] == capture_daemon.subprocess.DEVNULL
@@ -530,7 +530,7 @@ def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     turn = OpenCodeTurn(
         session_id="ses_1",
         turn_id="u1",
@@ -559,7 +559,7 @@ def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
     rows = load_session_turn_rows(turn_db, "ses_1")
     state = load_turn_state(turn_db, "ses_1")
 
-    assert get_turn_db_path((project_dir / ".memsearch").as_posix()).endswith(".memsearch/opencode-turns.db")
+    assert get_turn_db_path(project_dir / ".memsearch") == project_dir / ".memsearch" / "opencode-turns.db"
     assert len(rows) == 1
     assert rows[0]["turn_id"] == "u1"
     assert state.last_completed_turn_id == "u1"
@@ -574,11 +574,12 @@ def test_turn_db_path_honors_explicit_memsearch_dir(tmp_path: Path) -> None:
 
     # With MEMSEARCH_DIR (global scope), the sidecar lives in the shared dir,
     # not under the project directory.
-    path = get_turn_db_path(shared_dir.as_posix())
-    assert path == (shared_dir / "opencode-turns.db").as_posix()
-    assert project_dir.as_posix() not in path
+    path = get_turn_db_path(shared_dir)
+    assert path == shared_dir / "opencode-turns.db"
+    assert shared_dir in path.parents or path.parent == shared_dir
+    assert project_dir not in path.parents
 
-    turn_db = open_turn_db(shared_dir.as_posix())
+    turn_db = open_turn_db(shared_dir)
     try:
         assert (shared_dir / "opencode-turns.db").exists()
         assert not (project_dir / ".memsearch").exists()
@@ -601,7 +602,7 @@ def test_wake_maintenance_passes_explicit_memsearch_dir(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(capture_daemon.subprocess, "Popen", fake_popen)
 
-    capture_daemon.wake_maintenance(project.as_posix(), shared.as_posix())
+    capture_daemon.wake_maintenance(project.as_posix(), shared)
 
     assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == project.as_posix()
     assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == shared.as_posix()
@@ -635,11 +636,11 @@ def test_capture_session_turns_uses_explicit_project_dir_for_summarizer(
     _insert_message(conn, "u2", session_id, 300, "user", text="Next question")
     conn.commit()
 
-    turn_db = open_turn_db(shared_memsearch.as_posix())
+    turn_db = open_turn_db(shared_memsearch)
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -674,11 +675,11 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
     conn.commit()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -694,7 +695,7 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -710,7 +711,7 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -752,14 +753,14 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
             raise RuntimeError("simulated crash before cursor persisted")
         return original_save_turn_state(*args, **kwargs)
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     monkeypatch.setattr(capture_daemon, "save_turn_state", flaky_save_turn_state)
 
     with suppress(RuntimeError):
         capture_daemon.capture_session_turns(
             conn,
             turn_db,
-            memory_dir.as_posix(),
+            memory_dir,
             session_id,
             "",
             "memsearch",
@@ -770,7 +771,7 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -809,11 +810,11 @@ def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
     conn.commit()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -826,7 +827,7 @@ def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -839,7 +840,7 @@ def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -874,11 +875,11 @@ def test_capture_session_turns_resets_tail_stability_when_content_changes(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Draft answer")
     conn.commit()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -894,7 +895,7 @@ def test_capture_session_turns_resets_tail_stability_when_content_changes(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -907,7 +908,7 @@ def test_capture_session_turns_resets_tail_stability_when_content_changes(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -920,7 +921,7 @@ def test_capture_session_turns_resets_tail_stability_when_content_changes(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -955,11 +956,11 @@ def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
     conn.commit()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -975,7 +976,7 @@ def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -1024,11 +1025,11 @@ def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
 
     monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -1074,13 +1075,13 @@ def test_capture_session_turns_does_not_advance_sidecar_when_markdown_write_fail
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
 
     with suppress(OSError):
         capture_daemon.capture_session_turns(
             conn,
             turn_db,
-            memory_dir.as_posix(),
+            memory_dir,
             session_id,
             "",
             "memsearch",
@@ -1124,11 +1125,11 @@ def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
     _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
     conn.commit()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
@@ -1141,11 +1142,11 @@ def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
 
     turn_db.close()
 
-    turn_db = open_turn_db((project_dir / ".memsearch").as_posix())
+    turn_db = open_turn_db(project_dir / ".memsearch")
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
-        memory_dir.as_posix(),
+        memory_dir,
         session_id,
         "",
         "memsearch",
