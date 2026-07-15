@@ -13,17 +13,17 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { execSync, exec, spawn, spawnSync } from "node:child_process";
+import { exec, execSync, spawn, spawnSync } from "node:child_process";
 import {
-  readFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_DIR = dirname(realpathSync(fileURLToPath(import.meta.url)));
@@ -42,7 +42,9 @@ function detectMemsearchCmd(): string {
   try {
     const r = spawnSync("which", ["memsearch"], { stdio: "pipe" });
     if (r.status === 0) return "memsearch";
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   const uvxPath = join(home, ".local", "bin", "uvx");
   if (existsSync(uvxPath)) {
@@ -52,7 +54,9 @@ function detectMemsearchCmd(): string {
   try {
     const r = spawnSync("which", ["uvx"], { stdio: "pipe" });
     if (r.status === 0) return "uvx --from 'memsearch[onnx]' memsearch";
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   return "memsearch";
 }
@@ -131,7 +135,11 @@ function recentMemoryPreviewLines(content: string, maxLines: number): string[] {
       current.push(line);
       continue;
     }
-    if (line.startsWith("- ") || line.startsWith("[User]") || line.startsWith("[Assistant]")) {
+    if (
+      line.startsWith("- ") ||
+      line.startsWith("[User]") ||
+      line.startsWith("[Assistant]")
+    ) {
       current.push(line);
       hasBody = true;
     }
@@ -148,7 +156,7 @@ export function isDailyJournalFile(file: string): boolean {
 export function getRecentMemories(
   memDir: string,
   count = 2,
-  maxLinesPerFile = 30
+  maxLinesPerFile = 30,
 ): string {
   if (!existsSync(memDir)) return "";
 
@@ -167,7 +175,9 @@ export function getRecentMemories(
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   if (summary.length === 0) {
@@ -196,7 +206,7 @@ export const MEMSEARCH_SYSTEM_MARKER = "[memsearch] Memory available.";
  */
 export function mergeSystemMemoryContext(
   system: string[] | undefined,
-  memoryText: string
+  memoryText: string,
 ): string[] {
   if (!Array.isArray(system) || system.length === 0) {
     return [memoryText];
@@ -205,7 +215,9 @@ export function mergeSystemMemoryContext(
   const existing = result[0];
   const markerIndex = existing.indexOf(MEMSEARCH_SYSTEM_MARKER);
   const base =
-    markerIndex === -1 ? existing : existing.slice(0, markerIndex).replace(/\n+$/, "");
+    markerIndex === -1
+      ? existing
+      : existing.slice(0, markerIndex).replace(/\n+$/, "");
   result[0] = base ? `${base}\n\n${memoryText}` : memoryText;
   return result;
 }
@@ -218,7 +230,7 @@ function startCaptureDaemon(
   projectDir: string,
   collectionName: string,
   memsearchCmd: string,
-  memsearchDir: string
+  memsearchDir: string,
 ): void {
   // PID file is per-project so each project has its own daemon even when sharing memsearchDir.
   const pidFile = join(projectDir, ".memsearch", ".capture.pid");
@@ -235,10 +247,16 @@ function startCaptureDaemon(
           return; // Already running
         } catch {
           // Process is dead, clean up stale PID file
-          try { unlinkSync(pidFile); } catch { /* ignore */ }
+          try {
+            unlinkSync(pidFile);
+          } catch {
+            /* ignore */
+          }
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   try {
@@ -263,11 +281,15 @@ function startCaptureDaemon(
         detached: true,
         stdio: "ignore",
         env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
-      }
+      },
     );
     child.unref();
     if (child.pid) {
-      try { writeFileSync(pidFile, String(child.pid), "utf-8"); } catch { /* ignore */ }
+      try {
+        writeFileSync(pidFile, String(child.pid), "utf-8");
+      } catch {
+        /* ignore */
+      }
     }
   } catch {
     // Capture is best-effort; tools still work without the background daemon.
@@ -283,9 +305,15 @@ function stopCaptureDaemon(projectDir: string): void {
     try {
       const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
       if (pid > 0) {
-        try { process.kill(pid, "SIGTERM"); } catch { /* ignore */ }
+        try {
+          process.kill(pid, "SIGTERM");
+        } catch {
+          /* ignore */
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -298,7 +326,9 @@ function wakeMaintenance(projectDir: string, memsearchDir: string): void {
       timeout: 5000,
       env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
     },
-    () => { /* ignore */ }
+    () => {
+      /* ignore */
+    },
   );
 }
 
@@ -308,10 +338,15 @@ function wakeMaintenance(projectDir: string, memsearchDir: string): void {
 
 const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   // worktree can be "/" for global projects — use directory instead
-  const projectDir = (worktree && worktree !== "/") ? worktree : (directory || process.cwd());
+  const projectDir =
+    worktree && worktree !== "/" ? worktree : directory || process.cwd();
   const memsearchCmd = detectMemsearchCmd();
   // Honor MEMSEARCH_DIR (shared/global scope) when set, else per-project scope.
-  const { memsearchDir, memoryDir, collection: collectionName } = resolveScope(projectDir);
+  const {
+    memsearchDir,
+    memoryDir,
+    collection: collectionName,
+  } = resolveScope(projectDir);
   const home = process.env.HOME || "~";
 
   // Skip capture/recall in child processes to prevent recursion
@@ -329,9 +364,13 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           timeout: 5000,
           stdio: "ignore",
         });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Run initial index in background
   if (existsSync(memoryDir)) {
@@ -339,7 +378,9 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
       `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
         `--collection ${collectionName}`,
       { timeout: 120000 },
-      () => { /* ignore */ }
+      () => {
+        /* ignore */
+      },
     );
   }
 
@@ -359,18 +400,25 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "topics discussed, and code referenced. Powered by Milvus hybrid " +
           "search (BM25 + dense vectors + RRF reranking).",
         args: {
-          query: tool.schema.string().describe("Search query — describe what you want to find"),
-          top_k: tool.schema.number().optional().describe("Number of results to return (default: 5)"),
+          query: tool.schema
+            .string()
+            .describe("Search query — describe what you want to find"),
+          top_k: tool.schema
+            .number()
+            .optional()
+            .describe("Number of results to return (default: 5)"),
         },
         async execute(args, context) {
           // Use context.directory for the actual session directory (may differ from init)
           const dir = context?.directory || projectDir;
-          const scope = dir !== projectDir
-            ? resolveScope(dir)
-            : { memsearchDir, memoryDir, collection: collectionName };
+          const scope =
+            dir !== projectDir
+              ? resolveScope(dir)
+              : { memsearchDir, memoryDir, collection: collectionName };
           const col = scope.collection;
           // Ensure daemon is running for current directory
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
+          if (autoCapture)
+            startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           const topK = args.top_k || 5;
           try {
             const result = spawnSync(
@@ -380,7 +428,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
                 `${memsearchCmd} search '${shellEscape(args.query)}' ` +
                   `--top-k ${topK} --json-output --collection ${col}`,
               ],
-              { encoding: "utf-8", timeout: 30000 }
+              { encoding: "utf-8", timeout: 30000 },
             );
             return result.stdout || result.stderr || "No results found.";
           } catch (e: any) {
@@ -395,15 +443,19 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "surrounding context. Use after memory_search to get details " +
           "about a specific result.",
         args: {
-          chunk_hash: tool.schema.string().describe("The chunk_hash from a search result to expand"),
+          chunk_hash: tool.schema
+            .string()
+            .describe("The chunk_hash from a search result to expand"),
         },
         async execute(args, context) {
           const dir = context?.directory || projectDir;
-          const scope = dir !== projectDir
-            ? resolveScope(dir)
-            : { memsearchDir, memoryDir, collection: collectionName };
+          const scope =
+            dir !== projectDir
+              ? resolveScope(dir)
+              : { memsearchDir, memoryDir, collection: collectionName };
           const col = scope.collection;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
+          if (autoCapture)
+            startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           try {
             const result = spawnSync(
               "bash",
@@ -412,7 +464,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
                 `${memsearchCmd} expand '${shellEscape(args.chunk_hash)}' ` +
                   `--collection ${col}`,
               ],
-              { encoding: "utf-8", timeout: 15000 }
+              { encoding: "utf-8", timeout: 15000 },
             );
             return result.stdout || result.stderr || "No content found.";
           } catch (e: any) {
@@ -429,20 +481,39 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "dialogue with [User] and [Assistant] labels. When turn_id is present, " +
           "the tool returns the target turn plus surrounding context.",
         args: {
-          session_id: tool.schema.string().describe("The session ID from the anchor comment"),
-          turn_id: tool.schema.string().optional().describe("Optional turn ID from the anchor comment"),
-          context: tool.schema.number().optional().describe("Turns before/after the target turn (default: 3)"),
-          limit: tool.schema.number().optional().describe("Max number of turns to return when no turn_id is provided (default: 20)"),
+          session_id: tool.schema
+            .string()
+            .describe("The session ID from the anchor comment"),
+          turn_id: tool.schema
+            .string()
+            .optional()
+            .describe("Optional turn ID from the anchor comment"),
+          context: tool.schema
+            .number()
+            .optional()
+            .describe("Turns before/after the target turn (default: 3)"),
+          limit: tool.schema
+            .number()
+            .optional()
+            .describe(
+              "Max number of turns to return when no turn_id is provided (default: 20)",
+            ),
         },
         async execute(args, context) {
           const dir = context?.directory || projectDir;
-          const scope = dir !== projectDir
-            ? resolveScope(dir)
-            : { memsearchDir, memoryDir, collection: collectionName };
+          const scope =
+            dir !== projectDir
+              ? resolveScope(dir)
+              : { memsearchDir, memoryDir, collection: collectionName };
           const col = scope.collection;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
+          if (autoCapture)
+            startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           try {
-            const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.py");
+            const scriptPath = join(
+              PLUGIN_DIR,
+              "scripts",
+              "parse-transcript.py",
+            );
             const scriptArgs = [
               scriptPath,
               args.session_id,
@@ -462,7 +533,11 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
               encoding: "utf-8",
               timeout: 15000,
             });
-            return result.stdout?.trim() || result.stderr || "No transcript content found.";
+            return (
+              result.stdout?.trim() ||
+              result.stderr ||
+              "No transcript content found."
+            );
           } catch (e: any) {
             return `Transcript parse failed: ${e.message}`;
           }
@@ -473,16 +548,24 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
     // ----- Hook: system prompt transform — inject recent memories -----
     ...(autoRecall
       ? {
-          "experimental.chat.system.transform": async (_input: any, output: any) => {
+          "experimental.chat.system.transform": async (
+            _input: any,
+            output: any,
+          ) => {
             try {
               const context = getRecentMemories(memoryDir);
               if (context) {
                 const memoryText =
                   `${MEMSEARCH_SYSTEM_MARKER} You have access to memory_search, ` +
                   `memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`;
-                output.system = mergeSystemMemoryContext(output.system, memoryText);
+                output.system = mergeSystemMemoryContext(
+                  output.system,
+                  memoryText,
+                );
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           },
         }
       : {}),
