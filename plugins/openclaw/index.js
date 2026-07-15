@@ -1,21 +1,19 @@
 import {
-  readFileSync,
   appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
-  writeFileSync,
-  unlinkSync
+  readFileSync,
+  unlinkSync,
+  writeFileSync
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
-function getMemsearchDir(projectDir) {
-  const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit || join(projectDir, ".memsearch");
-}
 function getMemoryDir(projectDir) {
-  return join(getMemsearchDir(projectDir), "memory");
+  let memsearchDir2 = process.env.MEMSEARCH_DIR?.trim();
+  memsearchDir2 = memsearchDir2 || join(projectDir, ".memsearch");
+  return join(memsearchDir2, "memory");
 }
 function getCollectionScopeDir(projectDir) {
   return process.env.MEMSEARCH_DIR?.trim() || projectDir;
@@ -129,8 +127,14 @@ function tailTruncate(text, maxChars) {
 ${text.slice(-maxChars)}`;
 }
 function stripInjectedContext(text) {
-  let cleaned = text.replace(/Recent memories \(use memory_search for full search\):[\s\S]*?(?=\n\n(?!\s|-)|\n*$)/g, "");
-  cleaned = cleaned.replace(/Conversation info \(untrusted metadata\):[\s\S]*?(?=\n\n(?!\s|")|\n*$)/g, "");
+  let cleaned = text.replace(
+    /Recent memories \(use memory_search for full search\):[\s\S]*?(?=\n\n(?!\s|-)|\n*$)/g,
+    ""
+  );
+  cleaned = cleaned.replace(
+    /Conversation info \(untrusted metadata\):[\s\S]*?(?=\n\n(?!\s|")|\n*$)/g,
+    ""
+  );
   cleaned = cleaned.replace(/\[message_id:.*?\]\n/g, "");
   return cleaned.trim();
 }
@@ -236,7 +240,10 @@ var index_default = {
           ],
           {
             timeoutMs: 12e4,
-            env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
+            env: envWithOverrides({
+              MEMSEARCH_NO_WATCH: "1",
+              MEMSEARCH_DISABLE: "1"
+            })
           }
         ).catch(() => {
         });
@@ -264,16 +271,14 @@ var index_default = {
     }
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");
-    let memsearchDir = getMemsearchDir(projectDir);
-    let memoryDir = join(memsearchDir, "memory");
+    let memoryDir = getMemoryDir(projectDir);
     function updateAgentContext(ctx) {
       const newId = ctx?.agentId;
       const newWorkspace = ctx?.workspaceDir;
       if (newId && (newId !== agentId || newWorkspace && newWorkspace !== projectDir)) {
         agentId = newId;
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
-        memsearchDir = getMemsearchDir(projectDir);
-        memoryDir = join(memsearchDir, "memory");
+        memoryDir = getMemoryDir(projectDir);
         _collectionNameFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
@@ -319,7 +324,10 @@ var index_default = {
             } catch (e) {
               return {
                 content: [
-                  { type: "text", text: `Search failed: ${e.message}` }
+                  {
+                    type: "text",
+                    text: `Search failed: ${e.message}`
+                  }
                 ]
               };
             }
@@ -362,7 +370,10 @@ var index_default = {
             } catch (e) {
               return {
                 content: [
-                  { type: "text", text: `Expand failed: ${e.message}` }
+                  {
+                    type: "text",
+                    text: `Expand failed: ${e.message}`
+                  }
                 ]
               };
             }
@@ -390,7 +401,11 @@ var index_default = {
           },
           async execute(_toolCallId, params) {
             try {
-              const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.sh");
+              const scriptPath = join(
+                PLUGIN_DIR,
+                "scripts",
+                "parse-transcript.sh"
+              );
               const result = await runCmd(
                 ["bash", scriptPath, params.transcript_path],
                 { timeoutMs: 15e3 }
@@ -400,7 +415,10 @@ var index_default = {
             } catch (e) {
               return {
                 content: [
-                  { type: "text", text: `Transcript parse failed: ${e.message}` }
+                  {
+                    type: "text",
+                    text: `Transcript parse failed: ${e.message}`
+                  }
                 ]
               };
             }
@@ -417,9 +435,7 @@ var index_default = {
             return { prependContext: context };
           }
         } catch (e) {
-          logger?.warn?.(
-            `[memsearch] Failed to inject memories: ${e.message}`
-          );
+          logger?.warn?.(`[memsearch] Failed to inject memories: ${e.message}`);
         }
         return {};
       });
@@ -434,23 +450,33 @@ var index_default = {
         } catch {
         }
         if (customPromptFile && existsSync(customPromptFile)) {
-          systemPrompt = readFileSync(customPromptFile, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
+          systemPrompt = readFileSync(customPromptFile, "utf-8").replace(
+            /\{\{AGENT_NAME\}\}/g,
+            agentName
+          );
         } else {
           const builtinPath = join(PLUGIN_DIR, "prompts", "summarize.txt");
           if (existsSync(builtinPath)) {
-            systemPrompt = readFileSync(builtinPath, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
+            systemPrompt = readFileSync(builtinPath, "utf-8").replace(
+              /\{\{AGENT_NAME\}\}/g,
+              agentName
+            );
           } else {
             systemPrompt = "You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. Write in third person. Mandatory language rule: write every bullet in the same primary language as the [User] text. If User mixes languages, use the dominant user-facing language. Do NOT answer User's question. Output ONLY bullet points.";
           }
         }
         let summarizeModel = "";
         try {
-          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model");
+          summarizeModel = await getMemsearchConfigValue(
+            "plugins.openclaw.summarize.model"
+          );
         } catch {
         }
         let summarizeProvider = "";
         try {
-          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider");
+          summarizeProvider = await getMemsearchConfigValue(
+            "plugins.openclaw.summarize.provider"
+          );
         } catch {
         }
         if (summarizeProvider && summarizeProvider !== "native") {
@@ -461,7 +487,10 @@ var index_default = {
             const shellCmd = `cat ${JSON.stringify(tmpInput)} | ${cmd} summarize --plugin openclaw --agent-name OpenClaw`;
             const result = await runCmd(["bash", "-c", shellCmd], {
               timeoutMs: 6e4,
-              env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
+              env: envWithOverrides({
+                MEMSEARCH_NO_WATCH: "1",
+                MEMSEARCH_DISABLE: "1"
+              })
             });
             try {
               unlinkSync(tmpInput);
@@ -484,7 +513,10 @@ ${turnText}`;
           const shellCmd = `openclaw agent --local --session-id memsearch-summarize${modelArg} -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
           await runCmd(["bash", "-c", shellCmd], {
             timeoutMs: 6e4,
-            env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
+            env: envWithOverrides({
+              MEMSEARCH_NO_WATCH: "1",
+              MEMSEARCH_DISABLE: "1"
+            })
           });
           if (existsSync(tmpFile)) {
             const raw = readFileSync(tmpFile, "utf-8");
@@ -492,7 +524,9 @@ ${turnText}`;
               unlinkSync(tmpFile);
             } catch {
             }
-            const output = raw.split("\n").filter((line) => !line.startsWith("[plugins]") && !line.startsWith("[agents]")).join("\n").trim();
+            const output = raw.split("\n").filter(
+              (line) => !line.startsWith("[plugins]") && !line.startsWith("[agents]")
+            ).join("\n").trim();
             if (output && output.includes("- ")) {
               return output;
             }
@@ -560,7 +594,9 @@ ${anchor}${cleanSummary}
         if (messages.length < 2) return;
         let summarizeEnabled = "true";
         try {
-          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled");
+          summarizeEnabled = await getMemsearchConfigValue(
+            "plugins.openclaw.summarize.enabled"
+          );
         } catch {
         }
         if (summarizeEnabled === "false") {
@@ -600,81 +636,86 @@ ${anchor}${cleanSummary}
             ],
             { timeoutMs: 12e4 }
           ).catch((err) => {
-            logger?.warn?.(
-              `[memsearch] Initial index failed: ${err.message}`
-            );
+            logger?.warn?.(`[memsearch] Initial index failed: ${err.message}`);
           });
         }
       } catch (e) {
         logger?.warn?.(`[memsearch] session_start failed: ${e.message}`);
       }
     });
-    api.registerCli(({ program }) => {
-      const cmd = program.command("memsearch").description("Semantic memory search and management");
-      cmd.command("search <query>").description("Search past memories").option("-k, --top-k <n>", "Number of results", "5").action(async (query, opts) => {
-        try {
+    api.registerCli(
+      ({ program }) => {
+        const cmd = program.command("memsearch").description("Semantic memory search and management");
+        cmd.command("search <query>").description("Search past memories").option("-k, --top-k <n>", "Number of results", "5").action(async (query, opts) => {
+          try {
+            const memsearch = await getMemsearchCmd();
+            const collection = await getCollectionName();
+            const result = await runCmd(
+              [
+                "bash",
+                "-c",
+                `${memsearch} search '${shellEscape(query)}' --top-k ${opts.topK || 5} --collection ${collection}`
+              ],
+              { timeoutMs: 3e4 }
+            );
+            if (result.stdout) process.stdout.write(result.stdout);
+            if (result.stderr) process.stderr.write(result.stderr);
+          } catch (e) {
+            console.error(`Search failed: ${e.message}`);
+          }
+        });
+        cmd.command("index [directory]").description("Index memory files").action(async (directory) => {
+          const dir = directory || memoryDir;
+          try {
+            const memsearch = await getMemsearchCmd();
+            const collection = await getCollectionName();
+            const result = await runCmd(
+              [
+                "bash",
+                "-c",
+                `${memsearch} index '${shellEscape(dir)}' --collection ${collection}`
+              ],
+              { timeoutMs: 12e4 }
+            );
+            if (result.stdout) process.stdout.write(result.stdout);
+            if (result.stderr) process.stderr.write(result.stderr);
+          } catch (e) {
+            console.error(`Index failed: ${e.message}`);
+          }
+        });
+        cmd.command("status").description("Show memsearch status").action(async () => {
           const memsearch = await getMemsearchCmd();
           const collection = await getCollectionName();
-          const result = await runCmd(
-            [
-              "bash",
-              "-c",
-              `${memsearch} search '${shellEscape(query)}' --top-k ${opts.topK || 5} --collection ${collection}`
-            ],
-            { timeoutMs: 3e4 }
-          );
-          if (result.stdout) process.stdout.write(result.stdout);
-          if (result.stderr) process.stderr.write(result.stderr);
-        } catch (e) {
-          console.error(`Search failed: ${e.message}`);
-        }
-      });
-      cmd.command("index [directory]").description("Index memory files").action(async (directory) => {
-        const dir = directory || memoryDir;
-        try {
-          const memsearch = await getMemsearchCmd();
-          const collection = await getCollectionName();
-          const result = await runCmd(
-            [
-              "bash",
-              "-c",
-              `${memsearch} index '${shellEscape(dir)}' --collection ${collection}`
-            ],
-            { timeoutMs: 12e4 }
-          );
-          if (result.stdout) process.stdout.write(result.stdout);
-          if (result.stderr) process.stderr.write(result.stderr);
-        } catch (e) {
-          console.error(`Index failed: ${e.message}`);
-        }
-      });
-      cmd.command("status").description("Show memsearch status").action(async () => {
-        const memsearch = await getMemsearchCmd();
-        const collection = await getCollectionName();
-        console.log(`Agent:       ${agentId}`);
-        console.log(`Collection:  ${collection}`);
-        console.log(`Memory dir:  ${memoryDir}`);
-        console.log(`Provider:    ${pluginConfig.provider || "onnx"}`);
-        console.log(`CLI:         ${memsearch}`);
-        console.log(`AutoCapture: ${autoCapture}`);
-        console.log(`AutoRecall:  ${autoRecall}`);
-        try {
-          const result = await runCmd(
-            ["bash", "-c", `${memsearch} stats --collection ${collection}`],
-            { timeoutMs: 1e4 }
-          );
-          if (result.stdout) process.stdout.write(result.stdout);
-        } catch {
-          console.log("Stats: (unavailable \u2014 collection may not exist yet)");
-        }
-      });
-    }, {
-      descriptors: [{
-        name: "memsearch",
-        description: "Semantic memory search and management",
-        hasSubcommands: true
-      }]
-    });
+          console.log(`Agent:       ${agentId}`);
+          console.log(`Collection:  ${collection}`);
+          console.log(`Memory dir:  ${memoryDir}`);
+          console.log(`Provider:    ${pluginConfig.provider || "onnx"}`);
+          console.log(`CLI:         ${memsearch}`);
+          console.log(`AutoCapture: ${autoCapture}`);
+          console.log(`AutoRecall:  ${autoRecall}`);
+          try {
+            const result = await runCmd(
+              ["bash", "-c", `${memsearch} stats --collection ${collection}`],
+              { timeoutMs: 1e4 }
+            );
+            if (result.stdout) process.stdout.write(result.stdout);
+          } catch {
+            console.log(
+              "Stats: (unavailable \u2014 collection may not exist yet)"
+            );
+          }
+        });
+      },
+      {
+        descriptors: [
+          {
+            name: "memsearch",
+            description: "Semantic memory search and management",
+            hasSubcommands: true
+          }
+        ]
+      }
+    );
     getCollectionName().then((name) => {
       logger?.info?.(
         `[memsearch] Plugin loaded. Collection: ${name}, autoCapture: ${autoCapture}, autoRecall: ${autoRecall}`
