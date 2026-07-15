@@ -361,14 +361,14 @@ export default {
     async function wakeMaintenance(): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
-        const wakeMemsearchDir = getMemsearchDir(projectDir);
+        const memsearchDir = getMemsearchDir(projectDir);
         runCmd(
           [
             "bash",
             "-c",
             `python3 '${shellEscape(runner)}' --platform openclaw ` +
               `--project-dir '${shellEscape(projectDir)}' ` +
-              `--memsearch-dir '${shellEscape(wakeMemsearchDir)}'`,
+              `--memsearch-dir '${shellEscape(memsearchDir)}'`,
           ],
           {
             timeoutMs: 120000,
