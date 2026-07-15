@@ -858,7 +858,13 @@ def main() -> None:
 
             if any_new:
                 subprocess.Popen(
-                    [*split_memsearch_cmd(args.memsearch_cmd), "index", memory_dir.as_posix(), "--collection", args.collection_name],
+                    [
+                        *split_memsearch_cmd(args.memsearch_cmd),
+                        "index",
+                        memory_dir.as_posix(),
+                        "--collection",
+                        args.collection_name,
+                    ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
