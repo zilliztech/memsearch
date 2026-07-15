@@ -729,7 +729,7 @@ def capture_session_turns(
 
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
-        legacy_after_time = _load_legacy_last_msg_time(str(memsearch_dir))
+        legacy_after_time = _load_legacy_last_msg_time(memsearch_dir.as_posix())
         if legacy_after_time > 0:
             after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None
@@ -804,11 +804,12 @@ def main() -> None:
 
     # Storage keys off memsearch_dir (honoring MEMSEARCH_DIR global scope);
     # OpenCode session/config lookups still key off the real project_dir.
-    memsearch_dir = args.memsearch_dir or os.path.join(args.project_dir, ".memsearch")
-    memory_dir = os.path.join(memsearch_dir, "memory")
-    pid_file = os.path.join(memsearch_dir, ".capture.pid")
+    _memsearch_path = Path(args.memsearch_dir) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
+    memsearch_dir = _memsearch_path.as_posix()
+    memory_dir = (_memsearch_path / "memory").as_posix()
+    pid_file = (_memsearch_path / ".capture.pid").as_posix()
 
-    os.makedirs(os.path.dirname(pid_file), exist_ok=True)
+    _memsearch_path.mkdir(parents=True, exist_ok=True)
     with open(pid_file, "w", encoding="utf-8") as f:
         f.write(str(os.getpid()))
 
@@ -821,7 +822,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, cleanup)
 
     small_model = get_small_model(args.project_dir)
-    turn_db = open_turn_db(args.project_dir, memsearch_dir)
+    turn_db = open_turn_db(memsearch_dir)
     tail_turn_cache: dict[str, TailTurnObservation] = {}
 
     while True:

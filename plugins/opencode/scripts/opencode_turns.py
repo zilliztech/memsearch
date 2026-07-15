@@ -78,33 +78,28 @@ class TurnState:
 
 def get_db_path() -> str:
     """Find the OpenCode SQLite database."""
-    default = os.path.expanduser("~/.local/share/opencode/opencode.db")
-    if os.path.exists(default):
-        return default
+    default = Path("~/.local/share/opencode/opencode.db").expanduser()
+    if default.exists():
+        return default.as_posix()
 
     xdg_data = os.environ.get("XDG_DATA_HOME", "")
     if xdg_data:
-        alt = os.path.join(xdg_data, "opencode", "opencode.db")
-        if os.path.exists(alt):
-            return alt
+        alt = Path(xdg_data) / "opencode" / "opencode.db"
+        if alt.exists():
+            return alt.as_posix()
 
-    return default
-
-
-def get_turn_db_path(project_dir: str, memsearch_dir: str | None = None) -> str:
-    """Return the derived turn metadata database path for a project.
-
-    When ``memsearch_dir`` is given (honoring MEMSEARCH_DIR global scope), the
-    sidecar lives there; otherwise it defaults to ``<project_dir>/.memsearch``.
-    """
-    base = memsearch_dir or os.path.join(project_dir, ".memsearch")
-    return os.path.join(base, "opencode-turns.db")
+    return default.as_posix()
 
 
-def open_turn_db(project_dir: str, memsearch_dir: str | None = None) -> sqlite3.Connection:
+def get_turn_db_path(memsearch_dir: str) -> str:
+    """Return the sidecar database path inside the resolved memsearch storage dir."""
+    return (Path(memsearch_dir) / "opencode-turns.db").as_posix()
+
+
+def open_turn_db(memsearch_dir: str) -> sqlite3.Connection:
     """Open the sidecar turn database and ensure its schema exists."""
-    turn_db_path = get_turn_db_path(project_dir, memsearch_dir)
-    Path(turn_db_path).parent.mkdir(parents=True, exist_ok=True)
+    turn_db_path = get_turn_db_path(memsearch_dir)
+    Path(memsearch_dir).mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(turn_db_path, timeout=5)
     conn.row_factory = sqlite3.Row
     ensure_turn_schema(conn)
