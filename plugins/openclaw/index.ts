@@ -29,11 +29,22 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 function getMemsearchDir(projectDir: string): string {
-  return join(projectDir, ".memsearch");
+  // Honor MEMSEARCH_DIR for shared/global scope — matches claude-code/codex behavior.
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit || join(projectDir, ".memsearch");
 }
 
 function getMemoryDir(projectDir: string): string {
   return join(getMemsearchDir(projectDir), "memory");
+}
+
+/**
+ * When MEMSEARCH_DIR is set, the collection derives from that shared dir
+ * (global scope); otherwise it derives from the project dir (per-project).
+ */
+function getCollectionScopeDir(projectDir: string): string {
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit || projectDir;
 }
 
 function ensureDir(dir: string): string {
@@ -362,10 +373,11 @@ export default {
     let _collectionName = "ms_openclaw_default";
 
     async function getCollectionName(): Promise<string> {
-      if (_collectionNameFor === projectDir) return _collectionName;
+      const scopeDir = getCollectionScopeDir(projectDir);
+      if (_collectionNameFor === scopeDir) return _collectionName;
       const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
       try {
-        const r = await runCmd(["bash", script, projectDir], { timeoutMs: 5000 });
+        const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5000 });
         if (r.code === 0 && r.stdout?.trim()) {
           _collectionName = r.stdout.trim();
         } else {
@@ -374,7 +386,7 @@ export default {
       } catch {
         _collectionName = "ms_openclaw_default";
       }
-      _collectionNameFor = projectDir;
+      _collectionNameFor = scopeDir;
       return _collectionName;
     }
 
@@ -386,7 +398,7 @@ export default {
     // same project directory.
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");  // default main workspace
-    let memsearchDir = join(projectDir, ".memsearch");
+    let memsearchDir = getMemsearchDir(projectDir);
     let memoryDir = join(memsearchDir, "memory");
 
     /** Update agent context from tool factory ctx. Called on each tool invocation. */
@@ -396,7 +408,7 @@ export default {
       if (newId && (newId !== agentId || (newWorkspace && newWorkspace !== projectDir))) {
         agentId = newId;
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
-        memsearchDir = join(projectDir, ".memsearch");
+        memsearchDir = getMemsearchDir(projectDir);
         memoryDir = join(memsearchDir, "memory");
         // Invalidate cached collection name — will be re-derived on next getCollectionName()
         _collectionNameFor = "";
