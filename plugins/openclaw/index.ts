@@ -39,16 +39,13 @@ function getMemoryDir(projectDir: string): string {
 }
 
 /**
- * When MEMSEARCH_DIR is set, collection derives from that shared dir (global scope).
- * Otherwise collection derives from projectDir (per-project isolation).
- * Uses getMemsearchDir so both paths always share the same root.
+ * Directory to derive the collection name from.
+ * When MEMSEARCH_DIR is set, collection keys off that shared dir (global scope).
+ * Otherwise collection keys off projectDir (per-project isolation).
+ * Matches claude-code/codex common.sh behavior exactly.
  */
 function getCollectionScopeDir(projectDir: string): string {
-  const memsearchDir = getMemsearchDir(projectDir);
-  // When MEMSEARCH_DIR is set, memsearchDir IS that value; use it as the collection key.
-  // Otherwise memsearchDir is <projectDir>/.memsearch — collection still keys off projectDir.
-  const isGlobalScope = memsearchDir !== join(projectDir, ".memsearch");
-  return isGlobalScope ? memsearchDir : projectDir;
+  return process.env.MEMSEARCH_DIR?.trim() || projectDir;
 }
 
 function ensureDir(dir: string): string {

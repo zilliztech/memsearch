@@ -543,9 +543,11 @@ def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     return [row[0] for row in sessions]
 
 
-def _load_legacy_last_msg_time(memsearch_dir: Path) -> int:
+def _load_legacy_last_msg_time(project_dir: Path) -> int:
     """Read the pre-sidecar capture checkpoint for upgrade compatibility."""
-    path = memsearch_dir / ".last_msg_time"
+    # Always reads from project_dir/.memsearch regardless of MEMSEARCH_DIR so
+    # existing checkpoints are found after users migrate to a shared storage dir.
+    path = project_dir / ".memsearch" / ".last_msg_time"
     try:
         value = int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -735,7 +737,7 @@ def capture_session_turns(
 
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
-        legacy_after_time = _load_legacy_last_msg_time(memory_dir.resolve().parent)
+        legacy_after_time = _load_legacy_last_msg_time(Path(project_dir).resolve())
         if legacy_after_time > 0:
             after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None

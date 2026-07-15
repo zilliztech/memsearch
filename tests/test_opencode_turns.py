@@ -1034,6 +1034,7 @@ def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
         "",
         "memsearch",
         db_path.as_posix(),
+        project_dir=project_dir,
     )
 
     rows = load_session_turn_rows(turn_db, session_id)
