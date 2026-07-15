@@ -718,12 +718,9 @@ def capture_session_turns(
     if tail_turn_cache is None:
         tail_turn_cache = {}
 
-    # The memsearch storage dir holds the memory/ folder and the legacy checkpoint.
-    memsearch_dir = memory_dir.resolve().parent
-
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
-        legacy_after_time = _load_legacy_last_msg_time(memsearch_dir)
+        legacy_after_time = _load_legacy_last_msg_time(memory_dir.resolve().parent)
         if legacy_after_time > 0:
             after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None
