@@ -10,10 +10,12 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
-function getMemoryDir(projectDir) {
+function getMemsearchDir(projectDir) {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  const memsearchDir = explicit ? resolve(explicit) : join(projectDir, ".memsearch");
-  return join(memsearchDir, "memory");
+  return explicit ? resolve(explicit) : join(projectDir, ".memsearch");
+}
+function getMemoryDir(projectDir) {
+  return join(getMemsearchDir(projectDir), "memory");
 }
 function getCollectionScopeDir(projectDir) {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
@@ -233,7 +235,7 @@ var index_default = {
     async function wakeMaintenance() {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
-        const wakeMemsearchDir = process.env.MEMSEARCH_DIR?.trim() ? resolve(process.env.MEMSEARCH_DIR.trim()) : join(projectDir, ".memsearch");
+        const wakeMemsearchDir = getMemsearchDir(projectDir);
         runCmd(
           [
             "bash",

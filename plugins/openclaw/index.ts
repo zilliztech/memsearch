@@ -28,11 +28,14 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 // Helpers (no external process calls — those live inside register())
 // ---------------------------------------------------------------------------
 
-function getMemoryDir(projectDir: string): string {
-  // Honor MEMSEARCH_DIR for shared/global scope
+function getMemsearchDir(projectDir: string): string {
+  // Honor MEMSEARCH_DIR for shared/global scope — matches claude-code/codex behavior.
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  const memsearchDir = explicit ? resolve(explicit) : join(projectDir, ".memsearch");
-  return join(memsearchDir, "memory");
+  return explicit ? resolve(explicit) : join(projectDir, ".memsearch");
+}
+
+function getMemoryDir(projectDir: string): string {
+  return join(getMemsearchDir(projectDir), "memory");
 }
 
 /**
@@ -358,9 +361,7 @@ export default {
     async function wakeMaintenance(): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
-        const wakeMemsearchDir = process.env.MEMSEARCH_DIR?.trim()
-          ? resolve(process.env.MEMSEARCH_DIR.trim())
-          : join(projectDir, ".memsearch");
+        const wakeMemsearchDir = getMemsearchDir(projectDir);
         runCmd(
           [
             "bash",
