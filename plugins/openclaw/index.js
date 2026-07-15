@@ -19,8 +19,8 @@ function getMemoryDir(projectDir) {
 }
 function getCollectionScopeDir(projectDir) {
   const memsearchDir = getMemsearchDir(projectDir);
-  const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? memsearchDir : projectDir;
+  const isGlobalScope = memsearchDir !== join(projectDir, ".memsearch");
+  return isGlobalScope ? memsearchDir : projectDir;
 }
 function ensureDir(dir) {
   if (!existsSync(dir)) {

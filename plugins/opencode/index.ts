@@ -70,11 +70,6 @@ function deriveCollectionName(projectDir: string): string {
   }
 }
 
-/** True when MEMSEARCH_DIR is explicitly set (global/shared scope). */
-function memsearchDirExplicit(): boolean {
-  return !!(process.env.MEMSEARCH_DIR && process.env.MEMSEARCH_DIR.trim());
-}
-
 /**
  * Resolve the memsearch storage scope for a working directory.
  *
@@ -89,12 +84,12 @@ export function resolveScope(dir: string): {
   memoryDir: string;
   collection: string;
 } {
-  if (memsearchDirExplicit()) {
-    const memsearchDir = process.env.MEMSEARCH_DIR as string;
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  if (explicit) {
     return {
-      memsearchDir,
-      memoryDir: join(memsearchDir, "memory"),
-      collection: deriveCollectionName(memsearchDir),
+      memsearchDir: explicit,
+      memoryDir: join(explicit, "memory"),
+      collection: deriveCollectionName(explicit),
     };
   }
   const memsearchDir = join(dir, ".memsearch");

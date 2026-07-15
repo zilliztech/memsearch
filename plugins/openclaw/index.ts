@@ -39,16 +39,16 @@ function getMemoryDir(projectDir: string): string {
 }
 
 /**
- * When MEMSEARCH_DIR is set, the collection derives from that shared dir
- * (global scope); otherwise it derives from the project dir (per-project).
- * Derives from getMemsearchDir to guarantee they always share the same root.
+ * When MEMSEARCH_DIR is set, collection derives from that shared dir (global scope).
+ * Otherwise collection derives from projectDir (per-project isolation).
+ * Uses getMemsearchDir so both paths always share the same root.
  */
 function getCollectionScopeDir(projectDir: string): string {
   const memsearchDir = getMemsearchDir(projectDir);
-  // MEMSEARCH_DIR set → storage is memsearchDir itself (e.g. /shared/.memsearch)
-  // Per-project → storage is <projectDir>/.memsearch, but collection keys off projectDir
-  const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? memsearchDir : projectDir;
+  // When MEMSEARCH_DIR is set, memsearchDir IS that value; use it as the collection key.
+  // Otherwise memsearchDir is <projectDir>/.memsearch — collection still keys off projectDir.
+  const isGlobalScope = memsearchDir !== join(projectDir, ".memsearch");
+  return isGlobalScope ? memsearchDir : projectDir;
 }
 
 function ensureDir(dir: string): string {
