@@ -3,13 +3,17 @@
 
 Usage:
   capture-daemon.py <project_dir> <collection_name> [--memsearch-cmd CMD]
+                    [--memsearch-dir DIR]
 
 The daemon polls the OpenCode SQLite database for completed turns, extracts
 the latest completed turn, summarizes it as bullet points, and writes to
-<project_dir>/.memsearch/memory/YYYY-MM-DD.md.
+<memsearch_dir>/memory/YYYY-MM-DD.md.
 
-It also persists derived turn metadata in <project_dir>/.memsearch/opencode-turns.db
-and triggers memsearch indexing after writing.
+It also persists derived turn metadata in <memsearch_dir>/opencode-turns.db
+and triggers memsearch indexing after writing. <memsearch_dir> defaults to
+<project_dir>/.memsearch but honors MEMSEARCH_DIR (shared/global scope) when
+the plugin passes --memsearch-dir. OpenCode session and config lookups still
+key off the real <project_dir>.
 """
 
 from __future__ import annotations
@@ -459,9 +463,10 @@ def summarize_with_llm(
     return None
 
 
-def wake_maintenance(project_dir: str) -> None:
+def wake_maintenance(project_dir: str, memsearch_dir: str | None = None) -> None:
     """Start maintenance in a hook-disabled child environment."""
     runner = Path(__file__).resolve().parent / "maintenance-runner.py"
+    resolved_memsearch_dir = memsearch_dir or os.path.join(project_dir, ".memsearch")
     subprocess.Popen(
         [
             "python3",
@@ -471,7 +476,7 @@ def wake_maintenance(project_dir: str) -> None:
             "--project-dir",
             project_dir,
             "--memsearch-dir",
-            os.path.join(project_dir, ".memsearch"),
+            resolved_memsearch_dir,
         ],
         env={**os.environ, "MEMSEARCH_NO_WATCH": "1", "MEMSEARCH_DISABLE": "1"},
         stdin=subprocess.DEVNULL,
@@ -524,9 +529,9 @@ def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     return [row[0] for row in sessions]
 
 
-def _load_legacy_last_msg_time(project_dir: str) -> int:
+def _load_legacy_last_msg_time(memsearch_dir: str) -> int:
     """Read the pre-sidecar capture checkpoint for upgrade compatibility."""
-    path = Path(project_dir) / ".memsearch" / ".last_msg_time"
+    path = Path(memsearch_dir) / ".last_msg_time"
     try:
         value = int(path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -711,6 +716,7 @@ def capture_session_turns(
     memsearch_cmd: str,
     db_path: str,
     tail_turn_cache: dict[str, TailTurnObservation] | None = None,
+    project_dir: str | os.PathLike[str] | None = None,
 ) -> bool:
     """Capture all newly completed turns for a single session."""
     state = load_turn_state(turn_db, session_id)
@@ -719,9 +725,12 @@ def capture_session_turns(
     if tail_turn_cache is None:
         tail_turn_cache = {}
 
+    # The memsearch storage dir holds the memory/ folder and the legacy checkpoint.
+    memsearch_dir = Path(memory_dir).resolve().parent
+
     after_time = state.last_completed_time if state.last_completed_time > 0 else None
     if after_time is None:
-        legacy_after_time = _load_legacy_last_msg_time(str(Path(memory_dir).resolve().parent.parent))
+        legacy_after_time = _load_legacy_last_msg_time(str(memsearch_dir))
         if legacy_after_time > 0:
             after_time = legacy_after_time
     after_message_id = state.last_completed_message_id or None
@@ -753,8 +762,14 @@ def capture_session_turns(
         if not capture_exists(memory_dir, session_id, turn.turn_id):
             if not get_plugin_summarize_enabled(memsearch_cmd):
                 continue
-            project_dir = Path(memory_dir).resolve().parent.parent
-            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd, project_dir)
+            # OpenCode config/isolation keys off the real project dir; only fall
+            # back to the memsearch-dir-derived path when no project_dir is given.
+            summarize_project_dir = (
+                project_dir if project_dir is not None else memsearch_dir.parent
+            )
+            summary = summarize_with_llm(
+                turn_text, small_model, memsearch_cmd, summarize_project_dir
+            )
             write_capture(
                 memory_dir,
                 summary if summary else turn_text,
@@ -778,6 +793,11 @@ def main() -> None:
     parser.add_argument("project_dir", help="Project directory")
     parser.add_argument("collection_name", help="Milvus collection name")
     parser.add_argument("--memsearch-cmd", default="memsearch", help="memsearch command")
+    parser.add_argument(
+        "--memsearch-dir",
+        default=None,
+        help="MemSearch storage dir (defaults to <project_dir>/.memsearch)",
+    )
     parser.add_argument("--poll-interval", type=int, default=10, help="Poll interval in seconds")
     parser.add_argument("--parent-pid", type=int, default=0, help="Exit when this parent process is gone")
     args = parser.parse_args()
@@ -787,8 +807,11 @@ def main() -> None:
         sys.stderr.write(f"OpenCode database not found at {db_path}\n")
         sys.exit(1)
 
-    memory_dir = os.path.join(args.project_dir, ".memsearch", "memory")
-    pid_file = os.path.join(args.project_dir, ".memsearch", ".capture.pid")
+    # Storage keys off memsearch_dir (honoring MEMSEARCH_DIR global scope);
+    # OpenCode session/config lookups still key off the real project_dir.
+    memsearch_dir = args.memsearch_dir or os.path.join(args.project_dir, ".memsearch")
+    memory_dir = os.path.join(memsearch_dir, "memory")
+    pid_file = os.path.join(memsearch_dir, ".capture.pid")
 
     os.makedirs(os.path.dirname(pid_file), exist_ok=True)
     with open(pid_file, "w", encoding="utf-8") as f:
@@ -803,7 +826,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, cleanup)
 
     small_model = get_small_model(args.project_dir)
-    turn_db = open_turn_db(args.project_dir)
+    turn_db = open_turn_db(args.project_dir, memsearch_dir)
     tail_turn_cache: dict[str, TailTurnObservation] = {}
 
     while True:
@@ -826,13 +849,14 @@ def main() -> None:
                         args.memsearch_cmd,
                         db_path,
                         tail_turn_cache,
+                        args.project_dir,
                     )
                     or any_new
                 )
 
             if any_new:
                 os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
-                wake_maintenance(args.project_dir)
+                wake_maintenance(args.project_dir, memsearch_dir)
         except Exception:
             pass
         finally:

@@ -70,6 +70,40 @@ function deriveCollectionName(projectDir: string): string {
   }
 }
 
+/** True when MEMSEARCH_DIR is explicitly set (global/shared scope). */
+function memsearchDirExplicit(): boolean {
+  return !!(process.env.MEMSEARCH_DIR && process.env.MEMSEARCH_DIR.trim());
+}
+
+/**
+ * Resolve the memsearch storage scope for a working directory.
+ *
+ * When MEMSEARCH_DIR is set, use it as the shared storage dir and derive the
+ * collection from it (global scope, shared across projects) — matching the
+ * claude-code/codex `common.sh` behavior. Otherwise fall back to per-project
+ * isolation under `<projectDir>/.memsearch`.
+ */
+export function resolveScope(dir: string): {
+  memsearchDir: string;
+  memoryDir: string;
+  collection: string;
+} {
+  if (memsearchDirExplicit()) {
+    const memsearchDir = process.env.MEMSEARCH_DIR as string;
+    return {
+      memsearchDir,
+      memoryDir: join(memsearchDir, "memory"),
+      collection: deriveCollectionName(memsearchDir),
+    };
+  }
+  const memsearchDir = join(dir, ".memsearch");
+  return {
+    memsearchDir,
+    memoryDir: join(memsearchDir, "memory"),
+    collection: deriveCollectionName(dir),
+  };
+}
+
 /**
  * Summarize the N most recent daily .md files for cold-start context.
  * Extracts recent non-empty session sections so empty SessionStart headings
@@ -185,10 +219,11 @@ export function mergeSystemMemoryContext(
 function startCaptureDaemon(
   projectDir: string,
   collectionName: string,
-  memsearchCmd: string
+  memsearchCmd: string,
+  memsearchDir: string
 ): void {
-  const stateDir = join(projectDir, ".memsearch");
-  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
+  const stateDir = memsearchDir;
+  const pidFile = join(memsearchDir, ".capture.pid");
   const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
 
   // Check if daemon is already running
@@ -218,6 +253,8 @@ function startCaptureDaemon(
         collectionName,
         "--memsearch-cmd",
         memsearchCmd,
+        "--memsearch-dir",
+        memsearchDir,
         "--poll-interval",
         "10",
         "--parent-pid",
@@ -241,8 +278,8 @@ function startCaptureDaemon(
 /**
  * Stop the capture daemon.
  */
-function stopCaptureDaemon(projectDir: string): void {
-  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
+function stopCaptureDaemon(memsearchDir: string): void {
+  const pidFile = join(memsearchDir, ".capture.pid");
   if (existsSync(pidFile)) {
     try {
       const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
@@ -274,9 +311,8 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   // worktree can be "/" for global projects — use directory instead
   const projectDir = (worktree && worktree !== "/") ? worktree : (directory || process.cwd());
   const memsearchCmd = detectMemsearchCmd();
-  const collectionName = deriveCollectionName(projectDir);
-  const memsearchDir = join(projectDir, ".memsearch");
-  const memoryDir = join(memsearchDir, "memory");
+  // Honor MEMSEARCH_DIR (shared/global scope) when set, else per-project scope.
+  const { memsearchDir, memoryDir, collection: collectionName } = resolveScope(projectDir);
   const home = process.env.HOME || "~";
 
   // Skip capture/recall in child processes to prevent recursion
@@ -310,7 +346,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
 
   // Start capture daemon for auto-capture
   if (autoCapture) {
-    startCaptureDaemon(projectDir, collectionName, memsearchCmd);
+    startCaptureDaemon(projectDir, collectionName, memsearchCmd, memsearchDir);
     wakeMaintenance(projectDir, memsearchDir);
   }
 
@@ -330,10 +366,12 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
         async execute(args, context) {
           // Use context.directory for the actual session directory (may differ from init)
           const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          const memDir = join(dir, ".memsearch", "memory");
+          const scope = dir !== projectDir
+            ? resolveScope(dir)
+            : { memsearchDir, memoryDir, collection: collectionName };
+          const col = scope.collection;
           // Ensure daemon is running for current directory
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
+          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           const topK = args.top_k || 5;
           try {
             const result = spawnSync(
@@ -362,8 +400,11 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
         },
         async execute(args, context) {
           const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
+          const scope = dir !== projectDir
+            ? resolveScope(dir)
+            : { memsearchDir, memoryDir, collection: collectionName };
+          const col = scope.collection;
+          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           try {
             const result = spawnSync(
               "bash",
@@ -396,8 +437,11 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
         },
         async execute(args, context) {
           const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
+          const scope = dir !== projectDir
+            ? resolveScope(dir)
+            : { memsearchDir, memoryDir, collection: collectionName };
+          const col = scope.collection;
+          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd, scope.memsearchDir);
           try {
             const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.py");
             const scriptArgs = [

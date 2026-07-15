@@ -8,6 +8,7 @@ import {
   getRecentMemories,
   isDailyJournalFile,
   mergeSystemMemoryContext,
+  resolveScope,
   MEMSEARCH_SYSTEM_MARKER,
 } from "./index.ts";
 
@@ -57,6 +58,41 @@ test("does not disturb additional system entries beyond the first", () => {
   assert.equal(second.length, 2);
   assert.equal(second[1], "Second unrelated system entry.");
   assert.ok(!second[0].includes("ctx-a"));
+});
+
+test("resolveScope defaults to per-project isolation when MEMSEARCH_DIR is unset", () => {
+  const prev = process.env.MEMSEARCH_DIR;
+  delete process.env.MEMSEARCH_DIR;
+  try {
+    const scope = resolveScope("/tmp/my-project");
+    assert.equal(scope.memsearchDir, join("/tmp/my-project", ".memsearch"));
+    assert.equal(scope.memoryDir, join("/tmp/my-project", ".memsearch", "memory"));
+    // Collection derives from the project dir in per-project scope.
+    assert.match(scope.collection, /^ms_.+_[0-9a-f]{8}$/);
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR;
+    else process.env.MEMSEARCH_DIR = prev;
+  }
+});
+
+test("resolveScope honors MEMSEARCH_DIR for shared/global scope", () => {
+  const prev = process.env.MEMSEARCH_DIR;
+  const shared = mkdtempSync(join(tmpdir(), "memsearch-shared-"));
+  process.env.MEMSEARCH_DIR = shared;
+  try {
+    const a = resolveScope("/tmp/project-a");
+    const b = resolveScope("/tmp/project-b");
+    // Shared storage dir regardless of the working directory.
+    assert.equal(a.memsearchDir, shared);
+    assert.equal(b.memsearchDir, shared);
+    assert.equal(a.memoryDir, join(shared, "memory"));
+    // Same collection across projects — global scope is shared.
+    assert.equal(a.collection, b.collection);
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR;
+    else process.env.MEMSEARCH_DIR = prev;
+    rmSync(shared, { recursive: true, force: true });
+  }
 });
 
 test("recent memories only use dated daily journals", () => {

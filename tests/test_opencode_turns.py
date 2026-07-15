@@ -567,6 +567,45 @@ def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
     turn_db.close()
 
 
+def test_turn_db_path_honors_explicit_memsearch_dir(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    shared_dir = tmp_path / "shared" / ".memsearch"
+
+    # With MEMSEARCH_DIR (global scope), the sidecar lives in the shared dir,
+    # not under the project directory.
+    path = get_turn_db_path(str(project_dir), str(shared_dir))
+    assert path == str(shared_dir / "opencode-turns.db")
+    assert str(project_dir) not in path
+
+    turn_db = open_turn_db(str(project_dir), str(shared_dir))
+    try:
+        assert (shared_dir / "opencode-turns.db").exists()
+        assert not (project_dir / ".memsearch").exists()
+    finally:
+        turn_db.close()
+
+
+def test_wake_maintenance_passes_explicit_memsearch_dir(tmp_path: Path, monkeypatch) -> None:
+    project = tmp_path / "repo"
+    shared = tmp_path / "shared" / ".memsearch"
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+
+        class Process:
+            pass
+
+        return Process()
+
+    monkeypatch.setattr(capture_daemon.subprocess, "Popen", fake_popen)
+
+    capture_daemon.wake_maintenance(str(project), str(shared))
+
+    assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
+    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(shared)
+
+
 def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     tmp_path: Path,
     monkeypatch,
