@@ -83,6 +83,7 @@ function memsearchDirExplicit(): boolean {
  * claude-code/codex `common.sh` behavior. Otherwise fall back to per-project
  * isolation under `<projectDir>/.memsearch`.
  */
+// exported for unit-testing only
 export function resolveScope(dir: string): {
   memsearchDir: string;
   memoryDir: string;

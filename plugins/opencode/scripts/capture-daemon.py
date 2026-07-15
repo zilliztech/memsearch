@@ -463,10 +463,9 @@ def summarize_with_llm(
     return None
 
 
-def wake_maintenance(project_dir: str, memsearch_dir: str | None = None) -> None:
+def wake_maintenance(project_dir: str, memsearch_dir: str) -> None:
     """Start maintenance in a hook-disabled child environment."""
     runner = Path(__file__).resolve().parent / "maintenance-runner.py"
-    resolved_memsearch_dir = memsearch_dir or os.path.join(project_dir, ".memsearch")
     subprocess.Popen(
         [
             "python3",
@@ -476,7 +475,7 @@ def wake_maintenance(project_dir: str, memsearch_dir: str | None = None) -> None
             "--project-dir",
             project_dir,
             "--memsearch-dir",
-            resolved_memsearch_dir,
+            memsearch_dir,
         ],
         env={**os.environ, "MEMSEARCH_NO_WATCH": "1", "MEMSEARCH_DISABLE": "1"},
         stdin=subprocess.DEVNULL,

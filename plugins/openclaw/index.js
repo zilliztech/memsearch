@@ -18,8 +18,9 @@ function getMemoryDir(projectDir) {
   return join(getMemsearchDir(projectDir), "memory");
 }
 function getCollectionScopeDir(projectDir) {
+  const memsearchDir = getMemsearchDir(projectDir);
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit || projectDir;
+  return explicit ? memsearchDir : projectDir;
 }
 function ensureDir(dir) {
   if (!existsSync(dir)) {

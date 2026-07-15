@@ -164,11 +164,12 @@ def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeyp
     monkeypatch.setenv("MEMSEARCH_NO_WATCH", "0")
     monkeypatch.delenv("MEMSEARCH_DISABLE", raising=False)
 
-    capture_daemon.wake_maintenance(str(project))
+    memsearch_dir = str(project / ".memsearch")
+    capture_daemon.wake_maintenance(str(project), memsearch_dir)
 
     assert captured["cmd"][:4] == ["python3", str(SCRIPT_DIR / "maintenance-runner.py"), "--platform", "opencode"]
     assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
-    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(project / ".memsearch")
+    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == memsearch_dir
     assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
     assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["stdin"] == capture_daemon.subprocess.DEVNULL
@@ -604,6 +605,54 @@ def test_wake_maintenance_passes_explicit_memsearch_dir(tmp_path: Path, monkeypa
 
     assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
     assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(shared)
+
+
+def test_capture_session_turns_uses_explicit_project_dir_for_summarizer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """project_dir kwarg is forwarded to summarize_with_llm (not derived from memory_dir)."""
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_explicit_proj"
+    project_dir = tmp_path / "real-project"
+    shared_memsearch = tmp_path / "shared" / ".memsearch"
+    memory_dir = shared_memsearch / "memory"
+    memory_dir.mkdir(parents=True)
+    project_dir.mkdir()
+
+    received_project_dir: list = []
+
+    def fake_summarize(turn_text, small_model, memsearch_cmd, proj_dir):
+        received_project_dir.append(proj_dir)
+        return None
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", fake_summarize)
+    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda _: True)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 200, "assistant", parent_id="u1", finish="stop", text="Answer")
+    _insert_message(conn, "u2", session_id, 300, "user", text="Next question")
+    conn.commit()
+
+    turn_db = open_turn_db(str(project_dir), str(shared_memsearch))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        None,
+        project_dir,
+    )
+
+    assert len(received_project_dir) == 1
+    assert received_project_dir[0] == project_dir
+
+    turn_db.close()
+    conn.close()
 
 
 def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
