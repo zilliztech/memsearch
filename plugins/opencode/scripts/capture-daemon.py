@@ -763,12 +763,8 @@ def capture_session_turns(
                 continue
             # OpenCode config/isolation keys off the real project dir; only fall
             # back to the memsearch-dir-derived path when no project_dir is given.
-            summarize_project_dir = (
-                project_dir if project_dir is not None else memsearch_dir.parent
-            )
-            summary = summarize_with_llm(
-                turn_text, small_model, memsearch_cmd, summarize_project_dir
-            )
+            summarize_project_dir = project_dir if project_dir is not None else memsearch_dir.parent
+            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd, summarize_project_dir)
             write_capture(
                 memory_dir,
                 summary if summary else turn_text,
