@@ -709,7 +709,7 @@ def capture_session_turns(
     memsearch_cmd: str,
     db_path: str,
     tail_turn_cache: dict[str, TailTurnObservation] | None = None,
-    project_dir: str | os.PathLike[str] | None = None,
+    project_dir: str | os.PathLike[str] = "",
 ) -> bool:
     """Capture all newly completed turns for a single session."""
     state = load_turn_state(turn_db, session_id)
@@ -755,10 +755,7 @@ def capture_session_turns(
         if not capture_exists(memory_dir, session_id, turn.turn_id):
             if not get_plugin_summarize_enabled(memsearch_cmd):
                 continue
-            # OpenCode config/isolation keys off the real project dir; only fall
-            # back to the memsearch-dir-derived path when no project_dir is given.
-            summarize_project_dir = project_dir if project_dir is not None else memsearch_dir.parent
-            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd, summarize_project_dir)
+            summary = summarize_with_llm(turn_text, small_model, memsearch_cmd, project_dir)
             write_capture(
                 memory_dir,
                 summary if summary else turn_text,

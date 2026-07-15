@@ -645,7 +645,7 @@ def test_capture_session_turns_uses_explicit_project_dir_for_summarizer(
         "",
         "memsearch",
         db_path.as_posix(),
-        None,
+        None,  # tail_turn_cache
         project_dir,
     )
 
