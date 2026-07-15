@@ -220,7 +220,8 @@ function startCaptureDaemon(
   memsearchCmd: string,
   memsearchDir: string
 ): void {
-  const pidFile = join(memsearchDir, ".capture.pid");
+  // PID file is per-project so each project has its own daemon even when sharing memsearchDir.
+  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
   const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
 
   // Check if daemon is already running
@@ -242,6 +243,7 @@ function startCaptureDaemon(
 
   try {
     mkdirSync(memsearchDir, { recursive: true });
+    mkdirSync(join(projectDir, ".memsearch"), { recursive: true });
     const child = spawn(
       "python3",
       [
@@ -275,8 +277,8 @@ function startCaptureDaemon(
 /**
  * Stop the capture daemon.
  */
-function stopCaptureDaemon(memsearchDir: string): void {
-  const pidFile = join(memsearchDir, ".capture.pid");
+function stopCaptureDaemon(projectDir: string): void {
+  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
   if (existsSync(pidFile)) {
     try {
       const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);

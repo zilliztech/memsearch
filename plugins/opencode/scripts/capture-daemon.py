@@ -810,9 +810,11 @@ def main() -> None:
     # OpenCode session/config lookups still key off the real project_dir.
     memsearch_dir = Path(args.memsearch_dir) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
     memory_dir = memsearch_dir / "memory"
-    pid_file = memsearch_dir / ".capture.pid"
+    # PID file is per-project so each project has its own daemon even when sharing memsearch_dir.
+    pid_file = Path(args.project_dir) / ".memsearch" / ".capture.pid"
 
     memsearch_dir.mkdir(parents=True, exist_ok=True)
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(str(os.getpid()), encoding="utf-8")
 
     def cleanup(signum=None, frame=None) -> None:
