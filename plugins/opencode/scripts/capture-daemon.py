@@ -810,7 +810,9 @@ def main() -> None:
 
     # Storage keys off memsearch_dir (honoring MEMSEARCH_DIR global scope);
     # OpenCode session/config lookups still key off the real project_dir.
-    memsearch_dir = Path(os.path.abspath(args.memsearch_dir)) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
+    memsearch_dir = (
+        Path(os.path.abspath(args.memsearch_dir)) if args.memsearch_dir else Path(args.project_dir) / ".memsearch"
+    )
     memory_dir = memsearch_dir / "memory"
     # PID file is per-project so each project has its own daemon even when sharing memsearch_dir.
     pid_file = Path(args.project_dir) / ".memsearch" / ".capture.pid"
