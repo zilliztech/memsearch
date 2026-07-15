@@ -65,10 +65,12 @@ function detectMemsearchCmd(): string {
 function deriveCollectionName(projectDir: string): string {
   const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
   try {
-    return execSync(`bash "${script}" "${projectDir}"`, {
+    const r = spawnSync("bash", [script, projectDir], {
       encoding: "utf-8",
       timeout: 5000,
-    }).trim();
+    });
+    if (r.status === 0 && r.stdout?.trim()) return r.stdout.trim();
+    return "ms_opencode_default";
   } catch {
     return "ms_opencode_default";
   }

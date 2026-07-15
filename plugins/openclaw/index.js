@@ -7,16 +7,17 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 function getMemoryDir(projectDir) {
-  let memsearchDir2 = process.env.MEMSEARCH_DIR?.trim();
-  memsearchDir2 = memsearchDir2 || join(projectDir, ".memsearch");
-  return join(memsearchDir2, "memory");
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  const memsearchDir = explicit ? resolve(explicit) : join(projectDir, ".memsearch");
+  return join(memsearchDir, "memory");
 }
 function getCollectionScopeDir(projectDir) {
-  return process.env.MEMSEARCH_DIR?.trim() || projectDir;
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? resolve(explicit) : projectDir;
 }
 function ensureDir(dir) {
   if (!existsSync(dir)) {
@@ -232,11 +233,12 @@ var index_default = {
     async function wakeMaintenance() {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
+        const wakeMemsearchDir = process.env.MEMSEARCH_DIR?.trim() ? resolve(process.env.MEMSEARCH_DIR.trim()) : join(projectDir, ".memsearch");
         runCmd(
           [
             "bash",
             "-c",
-            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(memsearchDir)}'`
+            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(wakeMemsearchDir)}'`
           ],
           {
             timeoutMs: 12e4,

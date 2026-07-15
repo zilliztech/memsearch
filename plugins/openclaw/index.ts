@@ -19,7 +19,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
@@ -30,8 +30,8 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 
 function getMemoryDir(projectDir: string): string {
   // Honor MEMSEARCH_DIR for shared/global scope
-  let memsearchDir = process.env.MEMSEARCH_DIR?.trim();
-  memsearchDir = memsearchDir || join(projectDir, ".memsearch");
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  const memsearchDir = explicit ? resolve(explicit) : join(projectDir, ".memsearch");
   return join(memsearchDir, "memory");
 }
 
@@ -42,7 +42,8 @@ function getMemoryDir(projectDir: string): string {
  * Matches claude-code/codex common.sh behavior exactly.
  */
 function getCollectionScopeDir(projectDir: string): string {
-  return process.env.MEMSEARCH_DIR?.trim() || projectDir;
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? resolve(explicit) : projectDir;
 }
 
 function ensureDir(dir: string): string {
@@ -357,13 +358,16 @@ export default {
     async function wakeMaintenance(): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
+        const wakeMemsearchDir = process.env.MEMSEARCH_DIR?.trim()
+          ? resolve(process.env.MEMSEARCH_DIR.trim())
+          : join(projectDir, ".memsearch");
         runCmd(
           [
             "bash",
             "-c",
             `python3 '${shellEscape(runner)}' --platform openclaw ` +
               `--project-dir '${shellEscape(projectDir)}' ` +
-              `--memsearch-dir '${shellEscape(memsearchDir)}'`,
+              `--memsearch-dir '${shellEscape(wakeMemsearchDir)}'`,
           ],
           {
             timeoutMs: 120000,
