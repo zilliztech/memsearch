@@ -23,7 +23,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_DIR = dirname(realpathSync(fileURLToPath(import.meta.url)));
@@ -86,10 +86,12 @@ export function resolveScope(dir: string): {
 } {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
   if (explicit) {
+    // Resolve to absolute path so relative values behave consistently regardless of cwd.
+    const memsearchDir = resolve(explicit);
     return {
-      memsearchDir: explicit,
-      memoryDir: join(explicit, "memory"),
-      collection: deriveCollectionName(explicit),
+      memsearchDir,
+      memoryDir: join(memsearchDir, "memory"),
+      collection: deriveCollectionName(memsearchDir),
     };
   }
   const memsearchDir = join(dir, ".memsearch");
@@ -218,7 +220,6 @@ function startCaptureDaemon(
   memsearchCmd: string,
   memsearchDir: string
 ): void {
-  const stateDir = memsearchDir;
   const pidFile = join(memsearchDir, ".capture.pid");
   const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
 
@@ -240,7 +241,7 @@ function startCaptureDaemon(
   }
 
   try {
-    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(memsearchDir, { recursive: true });
     const child = spawn(
       "python3",
       [

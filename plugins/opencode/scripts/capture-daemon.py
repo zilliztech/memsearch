@@ -47,9 +47,12 @@ _TAIL_TURN_QUIET_PERIOD_MS = int(os.environ.get("MEMSEARCH_OPENCODE_TAIL_QUIET_M
 
 
 class TailTurnObservation:
+    """Track when the tail turn of a session last changed content."""
+
     __slots__ = ("fingerprint", "stable_since_ms", "turn_id")
 
     def __init__(self, turn_id: str, fingerprint: str, stable_since_ms: int) -> None:
+        """Initialize with the turn ID, content fingerprint, and observation timestamp."""
         self.turn_id = turn_id
         self.fingerprint = fingerprint
         self.stable_since_ms = stable_since_ms
@@ -137,6 +140,7 @@ def _strip_jsonc(text: str) -> str:
 
 
 def _read_jsonc_config(path: Path) -> dict:
+    """Parse a JSONC file, returning an empty dict on any error."""
     try:
         data = json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
     except Exception:
@@ -145,6 +149,7 @@ def _read_jsonc_config(path: Path) -> dict:
 
 
 def _deep_merge_config(base: dict, override: dict) -> dict:
+    """Recursively merge override into base, deep-merging nested dicts."""
     result = dict(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
@@ -155,6 +160,7 @@ def _deep_merge_config(base: dict, override: dict) -> dict:
 
 
 def _rewrite_relative_file_refs(value, config_dir: Path):
+    """Resolve relative {file:...} references in config values to absolute paths."""
     if isinstance(value, dict):
         return {key: _rewrite_relative_file_refs(item, config_dir) for key, item in value.items()}
     if isinstance(value, list):
@@ -163,6 +169,7 @@ def _rewrite_relative_file_refs(value, config_dir: Path):
         return value
 
     def replace(match: re.Match[str]) -> str:
+        """Resolve one {file:...} match to an absolute path."""
         file_ref = match.group(1)
         if file_ref.startswith("~/") or os.path.isabs(file_ref):
             return match.group(0)
@@ -172,6 +179,7 @@ def _rewrite_relative_file_refs(value, config_dir: Path):
 
 
 def _load_opencode_config_file(path: Path) -> dict:
+    """Load a single OpenCode config file and resolve relative file references."""
     cfg = _read_jsonc_config(path)
     if not cfg:
         return {}
@@ -179,6 +187,7 @@ def _load_opencode_config_file(path: Path) -> dict:
 
 
 def _opencode_global_config_dir() -> Path:
+    """Return the OpenCode global config directory, respecting XDG_CONFIG_HOME."""
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
     if xdg_config:
         return Path(xdg_config).expanduser() / "opencode"
@@ -186,10 +195,12 @@ def _opencode_global_config_dir() -> Path:
 
 
 def _env_flag_enabled(name: str) -> bool:
+    """Return True if the named environment variable is set to a truthy value."""
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 
 
 def _opencode_project_config_files(project_dir: Path) -> list[Path]:
+    """Walk ancestors of project_dir to collect opencode config files (nearest last)."""
     found: list[Path] = []
     current = project_dir.resolve()
     while True:
@@ -205,6 +216,7 @@ def _opencode_project_config_files(project_dir: Path) -> list[Path]:
 
 
 def _opencode_directory_config_files(project_dir: Path) -> list[Path]:
+    """Collect config files from .opencode dirs, home, and OPENCODE_CONFIG_DIR."""
     dirs: list[Path] = []
     if not _env_flag_enabled("OPENCODE_DISABLE_PROJECT_CONFIG"):
         current = project_dir.resolve()
@@ -237,6 +249,7 @@ def _opencode_directory_config_files(project_dir: Path) -> list[Path]:
 
 
 def _iter_opencode_config_files(project_dir: str | os.PathLike[str] | None = None) -> list[Path]:
+    """Return all OpenCode config files in load order (global → env → project → local)."""
     project = Path(project_dir or os.getcwd()).expanduser().resolve()
     files: list[Path] = []
 
@@ -274,6 +287,7 @@ def load_opencode_config(project_dir: str | os.PathLike[str] | None = None) -> d
 
 
 def _read_jsonc_config_from_text(text: str) -> dict:
+    """Parse a JSONC string, returning an empty dict on any error."""
     try:
         data = json.loads(_strip_jsonc(text))
     except Exception:
@@ -282,6 +296,7 @@ def _read_jsonc_config_from_text(text: str) -> dict:
 
 
 def _sanitize_opencode_config(cfg: dict) -> dict:
+    """Strip plugin keys from a config dict to prevent recursion during summarization."""
     sanitized = dict(cfg)
     for key in ("plugin", "plugins", "plugin_origins"):
         sanitized.pop(key, None)
@@ -838,7 +853,11 @@ def main() -> None:
                 )
 
             if any_new:
-                os.system(f"{args.memsearch_cmd} index '{memory_dir.as_posix()}' --collection {args.collection_name} &")
+                subprocess.Popen(
+                    [*split_memsearch_cmd(args.memsearch_cmd), "index", memory_dir.as_posix(), "--collection", args.collection_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
                 wake_maintenance(args.project_dir, memsearch_dir)
         except Exception:
             pass
