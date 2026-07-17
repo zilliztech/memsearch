@@ -123,13 +123,35 @@ ensure_memory_dir() {
 # Collection description (set by session-start.sh, empty by default)
 COLLECTION_DESC=""
 
-# Helper: run memsearch with arguments, silently fail if not available
+# Helper: run memsearch with arguments. If memsearch is available, preserve its
+# stderr and exit status so callers can report failures instead of hiding them.
 run_memsearch() {
   if [ -n "$MEMSEARCH_CMD" ] && [ -n "$COLLECTION_NAME" ]; then
-    $MEMSEARCH_CMD "$@" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
+    $MEMSEARCH_CMD "$@" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
   elif [ -n "$MEMSEARCH_CMD" ]; then
-    $MEMSEARCH_CMD "$@" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
+    $MEMSEARCH_CMD "$@" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
   fi
+}
+
+# Print the first zero-byte parquet segment in a local Milvus Lite directory.
+# Remote Milvus URIs do not expose local segment files and are skipped.
+find_zero_byte_segment() {
+  local milvus_uri="${1:-}"
+  case "$milvus_uri" in
+    ""|http://*|https://*|tcp://*) return 1 ;;
+  esac
+
+  local resolved_uri
+  resolved_uri=$(python3 - "$milvus_uri" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser())
+PY
+  ) || return 1
+
+  [ -d "$resolved_uri" ] || return 1
+  find "$resolved_uri" -type f -name '*.parquet' -size 0 -print -quit 2>/dev/null
 }
 
 run_maintenance() {

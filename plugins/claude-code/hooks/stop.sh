@@ -175,6 +175,35 @@ fi
 kill_orphaned_index
 
 # Index immediately — don't rely on watch (which may be killed by SessionEnd before debounce fires)
-run_memsearch index "$MEMORY_DIR"
+INDEX_MILVUS_URI=""
+if [ -n "$MEMSEARCH_CMD" ]; then
+  INDEX_MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || true)
+fi
+
+INDEX_OUTPUT=""
+INDEX_STATUS=0
+INDEX_OUTPUT=$(run_memsearch index "$MEMORY_DIR" 2>&1) || INDEX_STATUS=$?
+
+# A successful command is not sufficient evidence that the local Lite store is
+# healthy. Detect a truncated segment created by this or an overlapping index.
+ZERO_BYTE_SEGMENT=$(find_zero_byte_segment "$INDEX_MILVUS_URI" || true)
+
+if [ "$INDEX_STATUS" -ne 0 ] || [ -n "$ZERO_BYTE_SEGMENT" ]; then
+  INDEX_MESSAGE="[memsearch] Stop-hook indexing failed. Markdown memory was saved, but search may be stale."
+  if [ "$INDEX_STATUS" -ne 0 ]; then
+    INDEX_MESSAGE+=" Index exited with status $INDEX_STATUS."
+    INDEX_DETAIL=$(printf '%s\n' "$INDEX_OUTPUT" | sed '/^[[:space:]]*$/d' | tail -n 1 | cut -c1-500)
+    if [ -n "$INDEX_DETAIL" ]; then
+      INDEX_MESSAGE+=" $INDEX_DETAIL"
+    fi
+  fi
+  if [ -n "$ZERO_BYTE_SEGMENT" ]; then
+    INDEX_MESSAGE+=" Zero-byte Milvus segment detected: $ZERO_BYTE_SEGMENT."
+  fi
+  INDEX_MESSAGE+=" Repair or rebuild the derived index before relying on memory search."
+  JSON_INDEX_MESSAGE=$(_json_encode_str "$INDEX_MESSAGE")
+  echo "{\"systemMessage\": $JSON_INDEX_MESSAGE}"
+  exit 0
+fi
 
 echo '{}'
