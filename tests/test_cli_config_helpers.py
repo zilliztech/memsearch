@@ -115,3 +115,13 @@ def test_config_init_project_writes_only_allowlisted_keys(monkeypatch) -> None:
         "chunking": {"max_chunk_size": 2048, "overlap_lines": 4},
         "watch": {"debounce_ms": 300},
     }
+
+
+def test_config_get_prints_lowercase_booleans(monkeypatch) -> None:
+    monkeypatch.setattr(cli_module, "get_config_value", lambda _key: False)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "get", "plugins.claude-code.summarize.enabled"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "false"
