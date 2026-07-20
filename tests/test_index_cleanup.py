@@ -69,6 +69,7 @@ def make_memsearch(paths: list[str | Path]) -> tuple[MemSearch, InMemoryStore]:
     store = InMemoryStore()
     ms._store = store
     ms._reranker_model = ""
+    ms._flush_on_index = False
     return ms, store
 
 

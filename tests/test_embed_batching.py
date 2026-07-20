@@ -114,6 +114,7 @@ def mem_with_fake(tmp_path: Path):
     ms._overlap_lines = 2
     ms._embedder = fake
     ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
+    ms._flush_on_index = False
     yield ms, fake
     ms.close()
 
@@ -142,6 +143,7 @@ def mem_with_recording_store():
     ms._overlap_lines = 2
     ms._embedder = fake
     ms._store = store
+    ms._flush_on_index = False
     return ms, fake, store
 
 
@@ -216,6 +218,7 @@ async def test_index_continues_after_file_failure(tmp_path: Path):
     ms._overlap_lines = 2
     ms._embedder = fake
     ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
+    ms._flush_on_index = False
 
     # Patch _index_file to fail on the bad file
     original_index_file = ms._index_file

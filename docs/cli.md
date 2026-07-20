@@ -266,6 +266,7 @@ provider = "openai"
 | `milvus.uri` | string | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `milvus.token` | string | `""` | Auth token for Milvus Server / Zilliz Cloud |
 | `milvus.collection` | string | `memsearch_chunks` | Collection name |
+| `milvus.flush_on_index` | bool | `false` | Flush the collection once at the end of each indexing run so writes are immediately visible to other readers (useful for remote Milvus and hook-driven pipelines) |
 | `embedding.provider` | string | `openai` | Embedding provider name |
 | `embedding.model` | string | `""` | Override embedding model (empty = provider default) |
 | `embedding.batch_size` | int | `0` | Embedding batch size (0 = provider default) |

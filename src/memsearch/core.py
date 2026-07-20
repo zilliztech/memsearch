@@ -44,6 +44,11 @@ class MemSearch:
     collection:
         Milvus collection name.  Use different names to isolate
         agents sharing the same Milvus server.
+    flush_on_index:
+        Flush the collection once at the end of each indexing run so
+        writes are immediately visible to readers in other processes.
+        Off by default: remote Milvus reads usually catch up on their
+        own, and frequent flushes create many small sealed segments.
     """
 
     def __init__(
@@ -58,6 +63,7 @@ class MemSearch:
         milvus_uri: str = "~/.memsearch/milvus.db",
         milvus_token: str | None = None,
         collection: str = "memsearch_chunks",
+        flush_on_index: bool = False,
         description: str = "",
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
@@ -81,6 +87,7 @@ class MemSearch:
             description=description,
         )
         self._reranker_model = reranker_model
+        self._flush_on_index = flush_on_index
 
     # ------------------------------------------------------------------
     # Indexing
@@ -120,6 +127,9 @@ class MemSearch:
                 if source not in active_sources and _source_under_any_root(source, cleanup_roots):
                     self._store.delete_by_source(source)
                     logger.info("Removed stale chunks for deleted file: %s", source)
+
+        if total and self._flush_on_index:
+            self._store.flush()
 
         if failed_files:
             logger.warning(
