@@ -96,6 +96,11 @@ status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | mil
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
   status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
+else
+  INDEX_WARNING=$(index_state_warning || true)
+  if [ -n "$INDEX_WARNING" ]; then
+    status+=" | ${INDEX_WARNING}"
+  fi
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"

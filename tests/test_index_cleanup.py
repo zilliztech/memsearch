@@ -145,3 +145,30 @@ async def test_directory_cleanup_uses_path_boundaries_not_string_prefixes(tmp_pa
     assert str(doc) in store.indexed_sources()
     assert str(similar_prefix_doc) in store.indexed_sources()
     assert store.deleted_sources == []
+
+
+@pytest.mark.asyncio
+async def test_index_with_report_captures_file_failures(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    good = write_note(docs / "good.md", "# Good\n\nalpha\n")
+    bad = write_note(docs / "bad.md", "# Bad\n\nbravo\n")
+
+    ms, store = make_memsearch([docs])
+    original_index_file = ms._index_file
+
+    async def fail_bad_file(f, *, force=False):
+        if f.path == bad:
+            raise RuntimeError("embedding provider failed")
+        return await original_index_file(f, force=force)
+
+    ms._index_file = fail_bad_file
+
+    report = await ms.index_with_report()
+
+    assert report.status == "degraded"
+    assert report.total_files == 2
+    assert report.indexed_files == 1
+    assert len(report.failed_files) == 1
+    assert report.failed_files[0].path == str(bad)
+    assert "RuntimeError: embedding provider failed" in report.failed_files[0].error
+    assert str(good) in store.indexed_sources()

@@ -115,6 +115,37 @@ _json_encode_str() {
   return 0
 }
 
+# Return a concise user-facing warning when the persisted index state says
+# search may be stale. Detailed diagnosis stays in the memory-config skill.
+index_state_warning() {
+  local state_path="$MEMSEARCH_DIR/.index-state.json"
+  [ -f "$state_path" ] || return 0
+  python3 - "$state_path" <<'PY' 2>/dev/null || true
+import json
+import sys
+from datetime import datetime, timezone
+
+try:
+    state = json.loads(open(sys.argv[1], encoding="utf-8").read())
+except Exception:
+    raise SystemExit(0)
+
+status = state.get("status")
+if status in {"error", "degraded"}:
+    print("WARNING: memory index may be stale; run the memory-config skill to diagnose")
+    raise SystemExit(0)
+
+if status == "running":
+    raw_started = state.get("last_started_at")
+    try:
+        started = datetime.fromisoformat(str(raw_started).replace("Z", "+00:00"))
+    except Exception:
+        raise SystemExit(0)
+    if datetime.now(timezone.utc).timestamp() - started.timestamp() > 3600:
+        print("WARNING: memory index has been running for over 1h; run the memory-config skill to diagnose")
+PY
+}
+
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
   mkdir -p "$MEMORY_DIR"

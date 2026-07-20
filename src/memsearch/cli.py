@@ -21,6 +21,13 @@ from .config import (
     save_config,
     set_config_value,
 )
+from .index_report import IndexFailure, format_error
+from .index_state import (
+    record_index_error,
+    record_index_report,
+    record_index_started,
+    resolve_index_state_path,
+)
 from .io import read_utf8_text_replace
 
 try:
@@ -193,6 +200,7 @@ def index(
     """Index markdown files from PATHS."""
     from .core import MemSearch
 
+    state_path = resolve_index_state_path(paths)
     cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
@@ -208,12 +216,45 @@ def index(
     )
     ms = None
     try:
+        record_index_started(
+            state_path,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
-        n = _run(ms.index(force=force))
-        click.echo(f"Indexed {n} chunks.")
+        report = _run(ms.index_with_report(force=force))
+        record_index_report(
+            state_path,
+            report,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        click.echo(f"Indexed {report.indexed_chunks} chunks.")
     except MilvusException as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
+    except Exception as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        raise
     finally:
         if ms is not None:
             ms.close()
@@ -495,6 +536,7 @@ def watch(
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
 
+    state_path = resolve_index_state_path(paths)
     cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
@@ -512,18 +554,45 @@ def watch(
     ms = None
     watcher = None
     try:
+        record_index_started(
+            state_path,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
 
         # Initial index: ensure existing files are indexed before watching
-        n = _run(ms.index())
-        if n:
-            click.echo(f"Indexed {n} chunks.")
+        report = _run(ms.index_with_report())
+        record_index_report(
+            state_path,
+            report,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        if report.indexed_chunks:
+            click.echo(f"Indexed {report.indexed_chunks} chunks.")
 
         def _on_event(event_type: str, summary: str, file_path) -> None:
             click.echo(summary)
 
+        def _on_error(event_type: str, error: BaseException, file_path) -> None:
+            record_index_error(
+                state_path,
+                error,
+                operation=f"watch:{event_type}",
+                paths=(str(file_path),),
+                collection=cfg.milvus.collection,
+                milvus_uri=cfg.milvus.uri,
+                status="degraded",
+                failed_files=(IndexFailure(path=str(file_path), error=format_error(error)),),
+            )
+
         click.echo(f"Watching {len(paths)} path(s) for changes... (Ctrl+C to stop)")
-        watcher = ms.watch(on_event=_on_event, debounce_ms=cfg.watch.debounce_ms)
+        watcher = ms.watch(on_event=_on_event, on_error=_on_error, debounce_ms=cfg.watch.debounce_ms)
         while True:
             import time
 
@@ -531,8 +600,26 @@ def watch(
     except KeyboardInterrupt:
         click.echo("\nStopping watcher.")
     except MilvusException as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
+    except Exception as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        raise
     finally:
         if watcher is not None:
             watcher.stop()

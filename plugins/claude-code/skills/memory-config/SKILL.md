@@ -95,6 +95,8 @@ Check index health:
 
 ```bash
 memsearch stats
+STATE_DIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"
+test -f "$STATE_DIR/.index-state.json" && cat "$STATE_DIR/.index-state.json"
 ```
 
 ## Background and Compatibility
@@ -207,6 +209,11 @@ Model guidance:
 - If quality matters more than cost for maintenance, set `plugins.claude-code.project_review.model` and `plugins.claude-code.user_profile.model` explicitly.
 
 Advanced maintenance runs after the plugin wakes it, only when enabled, journal input changed, and `min_interval_hours` elapsed. `PROJECT.md` and `USER.md` are maintenance artifacts by default and are not automatically indexed.
+
+If indexing seems silent or search looks stale, check `.memsearch/.index-state.json`
+for `status`, `last_error`, and `failed_files`. `status: degraded` means the
+scan completed but one or more files failed; `status: error` means the index run
+did not complete.
 
 If advanced maintenance or `memory_to_skill` seems silent, check
 `.memsearch/.maintenance-state.json` for `<plugin>.<task>.last_error` and
