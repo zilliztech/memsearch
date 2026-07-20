@@ -337,6 +337,23 @@ export default {
       return r.stdout?.trim() || "";
     }
 
+    async function getSkillCandidateHint(): Promise<string> {
+      try {
+        const cmd = await getMemsearchCmd();
+        const r = await runCmd(
+          [
+            "bash", "-c",
+            `MEMSEARCH_DIR='${shellEscape(memsearchDir)}' ${cmd} skills status --hint`,
+          ],
+          { timeoutMs: 5000 }
+        );
+        if (r.code !== 0) return "";
+        return r.stdout?.trim().split("\n")[0] || "";
+      } catch {
+        return "";
+      }
+    }
+
     async function wakeMaintenance(): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
@@ -572,8 +589,10 @@ export default {
       api.on("before_agent_start", async () => {
         try {
           const context = getRecentMemories(memoryDir);
-          if (context) {
-            return { prependContext: context };
+          const skillHint = await getSkillCandidateHint();
+          const blocks = [context, skillHint].filter(Boolean);
+          if (blocks.length > 0) {
+            return { prependContext: blocks.join("\n\n") };
           }
         } catch (e: any) {
           logger?.warn?.(

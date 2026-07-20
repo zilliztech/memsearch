@@ -150,6 +150,23 @@ function shellEscape(s: string): string {
   return s.replace(/'/g, "'\\''");
 }
 
+export function getSkillCandidateHint(memsearchDir: string, memsearchCmd: string): string {
+  try {
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `MEMSEARCH_DIR='${shellEscape(memsearchDir)}' ${memsearchCmd} skills status --hint`,
+      ],
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    if (result.status !== 0) return "";
+    return (result.stdout || "").trim().split("\n")[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 /** Marks the start of memsearch's injected block within a system message. */
 export const MEMSEARCH_SYSTEM_MARKER = "[memsearch] Memory available.";
 
@@ -277,6 +294,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   const collectionName = deriveCollectionName(projectDir);
   const memsearchDir = join(projectDir, ".memsearch");
   const memoryDir = join(memsearchDir, "memory");
+  const skillCandidateHint = getSkillCandidateHint(memsearchDir, memsearchCmd);
   const home = process.env.HOME || "~";
 
   // Skip capture/recall in child processes to prevent recursion
@@ -433,10 +451,12 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "experimental.chat.system.transform": async (_input: any, output: any) => {
             try {
               const context = getRecentMemories(memoryDir);
-              if (context) {
+              if (context || skillCandidateHint) {
                 const memoryText =
                   `${MEMSEARCH_SYSTEM_MARKER} You have access to memory_search, ` +
-                  `memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`;
+                  `memory_get, and memory_transcript tools for recalling past sessions.` +
+                  `${skillCandidateHint ? `\n${skillCandidateHint}` : ""}` +
+                  `${context ? `\n\n${context}` : ""}`;
                 output.system = mergeSystemMemoryContext(output.system, memoryText);
               }
             } catch { /* ignore */ }

@@ -102,6 +102,10 @@ else
     status+=" | ${INDEX_WARNING}"
   fi
 fi
+SKILL_HINT=$(skill_candidate_hint || true)
+if [ -n "$SKILL_HINT" ]; then
+  status+=" | ${SKILL_HINT}"
+fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"
 PROJECT_BASENAME=$(basename "$PROJECT_DIR")

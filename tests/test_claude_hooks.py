@@ -281,6 +281,73 @@ exit 0
         assert "memory-config skill" in status
 
 
+def test_session_start_shows_skill_candidate_hint(tmp_path: Path) -> None:
+    hint = "SKILLS: 2 candidate skill version(s) pending install - run the memory-to-skill skill to review and install."
+    for name, script in (
+        ("claude", Path("plugins/claude-code/hooks/session-start.sh")),
+        ("codex", Path("plugins/codex/hooks/session-start.sh")),
+    ):
+        project = tmp_path / name
+        home = project / "home"
+        fake_bin = project / "bin"
+        memsearch_dir = project / ".memsearch"
+        home.mkdir(parents=True)
+        fake_bin.mkdir()
+        memsearch_dir.mkdir()
+
+        fake_memsearch = fake_bin / "memsearch"
+        fake_memsearch.write_text(
+            f"""#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    embedding.model) echo "" ;;
+    milvus.uri) echo "http://localhost:19530" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "skills" ] && [ "$2" = "status" ] && [ "$3" = "--hint" ]; then
+  echo "{hint}"
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.4.14"
+  exit 0
+fi
+exit 0
+""",
+            encoding="utf-8",
+        )
+        fake_memsearch.chmod(0o755)
+
+        fake_curl = fake_bin / "curl"
+        fake_curl.write_text("""#!/usr/bin/env bash\necho '{"info":{"version":"0.4.14"}}'\n""", encoding="utf-8")
+        fake_curl.chmod(0o755)
+
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "CLAUDE_PROJECT_DIR": str(project),
+            "MEMSEARCH_PROJECT_DIR": str(project),
+            "MEMSEARCH_DIR": str(memsearch_dir),
+            "MEMSEARCH_NO_WATCH": "1",
+        }
+
+        result = subprocess.run(
+            ["bash", str(script)],
+            input=json.dumps({"cwd": str(project)}),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        )
+
+        status = json.loads(result.stdout)["systemMessage"]
+        assert hint in status
+
+
 def test_claude_stop_hook_writes_summary_without_safe_mode_flag(tmp_path: Path) -> None:
     script = Path("plugins/claude-code/hooks/stop.sh")
     plugin_root = Path("plugins/claude-code").resolve()

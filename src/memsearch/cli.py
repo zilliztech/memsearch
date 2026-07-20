@@ -1251,9 +1251,40 @@ def skills_list(json_output: bool) -> None:
     for meta in candidates:
         occ = meta.get("occurrences")
         occ_text = f", seen {occ}x" if isinstance(occ, int) else ""
+        pending_reason = meta.get("pending_reason")
+        pending_text = ""
+        if pending_reason == "new":
+            pending_text = ", install ready"
+        elif pending_reason == "updated":
+            pending_text = ", update ready"
         click.echo(
-            f"- {meta.get('name')} [{meta.get('status', 'candidate')}{occ_text}] — {meta.get('description', '')}"
+            f"- {meta.get('name')} [{meta.get('status', 'candidate')}{occ_text}{pending_text}] "
+            f"- {meta.get('description', '')}"
         )
+
+
+@skills_group.command("status")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+@click.option("--hint", is_flag=True, help="Print only the startup hint when candidate skill versions are pending.")
+def skills_status(json_output: bool, hint: bool) -> None:
+    """Show whether candidate skills need review and installation."""
+    from . import skills as skills_mod
+
+    _project_root, mem_root = skills_mod.resolve_roots(None, None)
+    summary = skills_mod.candidate_review_summary(mem_root)
+    if json_output:
+        click.echo(json.dumps(summary, indent=2, ensure_ascii=False))
+        return
+    if hint:
+        rendered = skills_mod.format_candidate_hint(summary)
+        if rendered:
+            click.echo(rendered)
+        return
+    if summary["pending_count"] == 0:
+        click.echo("No candidate skill versions pending install.")
+        return
+    click.echo(skills_mod.format_candidate_hint(summary))
+    click.echo(f"New: {summary['new_count']}; updated: {summary['updated_count']}.")
 
 
 @skills_group.command("install")

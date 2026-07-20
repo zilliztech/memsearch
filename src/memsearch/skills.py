@@ -24,6 +24,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from hashlib import sha1
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,7 @@ MAX_EXISTING_BODY_CHARS = 2000
 
 TASK = "memory_to_skill"
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
+_GIT_BLOB_HASH_PREFIX = "gitblob:"
 
 
 @dataclass
@@ -245,6 +247,47 @@ def _git_commit(root: Path, message: str) -> None:
     _git(root, "commit", "-q", "-m", message)
 
 
+def _git_blob_hash(content: str | bytes) -> str:
+    """Return Git's SHA-1 blob hash for content.
+
+    The candidate store is a Git repo, but this local calculation lets us hash
+    a rendered SKILL.md before it is committed and without shelling out.
+    """
+    data = content.encode("utf-8") if isinstance(content, str) else content
+    header = f"blob {len(data)}\0".encode()
+    return f"{_GIT_BLOB_HASH_PREFIX}{sha1(header + data).hexdigest()}"
+
+
+def _skill_file_hash(path: Path) -> str:
+    try:
+        return _git_blob_hash(path.read_bytes())
+    except OSError:
+        return ""
+
+
+def _pending_reason(meta: dict[str, Any], content_hash: str) -> str:
+    installed_hash = str(meta.get("installed_hash") or "")
+    if not content_hash or installed_hash == content_hash:
+        return ""
+    if installed_hash or meta.get("status") == "installed" or meta.get("installed_paths"):
+        return "updated"
+    return "new"
+
+
+def _enrich_candidate_meta(skill_dir: Path, meta: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(meta)
+    content_hash = _skill_file_hash(skill_dir / "SKILL.md")
+    if content_hash:
+        enriched["content_hash"] = content_hash
+    reason = _pending_reason(enriched, content_hash)
+    enriched["pending_install"] = bool(reason)
+    if reason:
+        enriched["pending_reason"] = reason
+    else:
+        enriched.pop("pending_reason", None)
+    return enriched
+
+
 def list_candidates(mem_root: Path) -> list[dict[str, Any]]:
     """Return metadata for every skill in the candidate store."""
     root = skills_root(mem_root)
@@ -259,8 +302,35 @@ def list_candidates(mem_root: Path) -> list[dict[str, Any]]:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        out.append(meta)
+        out.append(_enrich_candidate_meta(child, meta))
     return out
+
+
+def candidate_review_summary(mem_root: Path) -> dict[str, Any]:
+    """Return a lightweight summary of candidate skills needing install."""
+    candidates = list_candidates(mem_root)
+    pending = [meta for meta in candidates if meta.get("pending_install")]
+    new_count = sum(1 for meta in pending if meta.get("pending_reason") == "new")
+    updated_count = sum(1 for meta in pending if meta.get("pending_reason") == "updated")
+    return {
+        "root": str(skills_root(mem_root)),
+        "candidate_count": len(candidates),
+        "pending_count": len(pending),
+        "new_count": new_count,
+        "updated_count": updated_count,
+        "pending_names": [str(meta.get("name", "")) for meta in pending if meta.get("name")],
+    }
+
+
+def format_candidate_hint(summary: dict[str, Any]) -> str:
+    """Render the short startup hint for pending candidate skill versions."""
+    pending_count = int(summary.get("pending_count") or 0)
+    if pending_count <= 0:
+        return ""
+    return (
+        f"SKILLS: {pending_count} candidate skill version(s) pending install - "
+        "run the memory-to-skill skill to review and install."
+    )
 
 
 def _write_candidate(root: Path, skill: dict[str, Any]) -> str:
@@ -284,24 +354,26 @@ def _write_candidate(root: Path, skill: dict[str, Any]) -> str:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             meta = {}
+        skill_md = _render_skill_md(name, skill["description"], skill["body"])
         meta["sources"] = sorted(set(meta.get("sources", [])) | set(sources))
         if isinstance(skill.get("occurrences"), int):
             meta["occurrences"] = max(int(meta.get("occurrences", 0) or 0), skill["occurrences"])
         meta["description"] = skill["description"]
+        meta["content_hash"] = _git_blob_hash(skill_md)
         meta["updated_at"] = _now()
-        (skill_dir / "SKILL.md").write_text(
-            _render_skill_md(name, skill["description"], skill["body"]), encoding="utf-8"
-        )
+        (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return "updated"
 
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(_render_skill_md(name, skill["description"], skill["body"]), encoding="utf-8")
+    skill_md = _render_skill_md(name, skill["description"], skill["body"])
+    (skill_dir / "SKILL.md").write_text(skill_md, encoding="utf-8")
     now = _now()
     meta = {
         "name": name,
         "status": "candidate",
         "description": skill["description"],
+        "content_hash": _git_blob_hash(skill_md),
         "occurrences": skill.get("occurrences"),
         "sources": sources,
         "reason": skill.get("reason", ""),
@@ -492,9 +564,14 @@ def install(
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             meta = {}
+        content_hash = _git_blob_hash(skill_md)
         meta["status"] = "installed"
+        meta["content_hash"] = content_hash
+        meta["installed_hash"] = content_hash
         meta["installed_paths"] = sorted(set(meta.get("installed_paths", [])) | set(installed))
-        meta["updated_at"] = _now()
+        now = _now()
+        meta["installed_at"] = now
+        meta["updated_at"] = now
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         _git_commit(root, f"install: {skill_dir.name} -> {len(installed)} path(s)")
 

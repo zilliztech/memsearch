@@ -103,6 +103,11 @@ if status == "running":
 PY
 }
 
+skill_candidate_hint() {
+  memsearch_available || return 0
+  MEMSEARCH_DIR="$MEMSEARCH_DIR" "${MEMSEARCH_CMD[@]}" skills status --hint 2>/dev/null || true
+}
+
 # --- Project directory ---
 #
 # Prefer the git root so hooks and the memory-recall skill converge on the

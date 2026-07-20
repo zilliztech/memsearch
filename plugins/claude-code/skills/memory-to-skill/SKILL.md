@@ -49,9 +49,15 @@ captured automatically going forward) — do not force it.
 ## B. Review & install candidates (1→2)
 
 ```bash
+memsearch skills status          # pending candidate versions needing install
 memsearch skills list            # add -j for sources / installed paths
 git -C .memsearch/skill-candidates log --oneline -5 2>/dev/null || true
 ```
+
+`skills status` compares each candidate's current `SKILL.md` content hash with
+the hash recorded by the last `skills install`. It does not inspect live agent
+skill directories. A pending installed skill means the candidate source evolved
+after the last deliberate install; reinstall only after reviewing the candidate.
 
 Before recommending or installing, skim the candidate's body: if a step looks uncertain or loosely summarized, re-check it against the source (open the transcript if needed) or flag it to the user and let them decide — installing copies the candidate as-is, so this is the last chance to catch a wrong step.
 When showing candidates, mention the store's recent git history when it helps

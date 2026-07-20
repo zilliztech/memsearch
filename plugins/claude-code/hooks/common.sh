@@ -146,6 +146,11 @@ if status == "running":
 PY
 }
 
+skill_candidate_hint() {
+  [ -n "$MEMSEARCH_CMD" ] || return 0
+  MEMSEARCH_DIR="$MEMSEARCH_DIR" $MEMSEARCH_CMD skills status --hint 2>/dev/null || true
+}
+
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
   mkdir -p "$MEMORY_DIR"
