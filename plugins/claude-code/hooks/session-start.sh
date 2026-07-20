@@ -164,14 +164,12 @@ _recent_memory_preview() {
   ' "$file" 2>/dev/null | tail -n "$max_lines" || true
 }
 
-# Write session heading to today's memory file
+# The session heading is written lazily by stop.sh on the first
+# content-bearing Stop. Writing it eagerly here left header-only stub
+# journals (bare "## Session HH:MM" files) for every session in which the
+# Stop hook never appended a summary, and those stubs occupied one of the
+# two recent-memory injection slots below.
 ensure_memory_dir
-TODAY=$(date +%Y-%m-%d)
-NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
-  echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
-fi
 
 # If API key is missing, show status and exit early (watch/search would fail)
 if [ "$KEY_MISSING" = true ]; then
@@ -208,7 +206,7 @@ fi
 # Always include status in systemMessage
 json_status=$(_json_encode_str "$status")
 
-# If memory dir has no .md files (other than the one we just created), nothing to inject
+# If memory dir has no .md files, nothing to inject
 if [ ! -d "$MEMORY_DIR" ] || ! ls "$MEMORY_DIR"/*.md &>/dev/null; then
   echo "{\"systemMessage\": $json_status}"
   exit 0

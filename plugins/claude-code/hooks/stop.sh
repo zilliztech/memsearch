@@ -160,9 +160,14 @@ if [ -z "$SUMMARY" ]; then
   SUMMARY="$PARSED"
 fi
 
-# Append as a sub-heading under the session heading written by SessionStart
-# Include HTML comment anchor for progressive disclosure (L3 transcript lookup)
+# Append under a session heading, writing the heading lazily on the first
+# content-bearing Stop of this session (SessionStart no longer writes it
+# eagerly, so sessions without summaries leave no stub journals). The
+# progressive-disclosure anchor comment doubles as the heading-written marker.
 {
+  if [ -z "$SESSION_ID" ] || ! grep -qF "session:${SESSION_ID}" "$MEMORY_FILE" 2>/dev/null; then
+    echo -e "\n## Session $NOW\n"
+  fi
   echo "### $NOW"
   if [ -n "$SESSION_ID" ]; then
     echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
