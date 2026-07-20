@@ -62,7 +62,12 @@ class OnnxEmbedding:
         # Detect dimension from a probe embedding
         probe = self._encode(["hello"])
         self._dimension = len(probe[0])
-        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
+        self._batch_size = self._resolve_batch_size(batch_size)
+
+    @classmethod
+    def _resolve_batch_size(cls, batch_size: int) -> int:
+        """An explicit positive ``batch_size`` wins; 0 means provider default."""
+        return batch_size if batch_size > 0 else cls._DEFAULT_BATCH_SIZE
 
     @staticmethod
     def _download_model_files(model, hf_hub_download, list_repo_files):
