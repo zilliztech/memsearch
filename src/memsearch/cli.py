@@ -1135,7 +1135,9 @@ def config_get(key: str) -> None:
     """Get a resolved config value (e.g. memsearch config get milvus.uri)."""
     try:
         val = get_config_value(key)
-        click.echo(val)
+        # Lowercase booleans so shell consumers (e.g. hooks comparing against
+        # "false") don't trip over Python's "True"/"False" repr.
+        click.echo(str(val).lower() if isinstance(val, bool) else val)
     except KeyError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
