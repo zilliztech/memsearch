@@ -250,10 +250,10 @@ memsearch config set plugins.codex.summarize.provider openai
 
 Leave `plugins.<platform>.summarize.provider` empty or set it to `native` to preserve the default behavior. Plugin-specific summarize settings do not fall back to `llm.model`.
 
-You can also disable automatic capture for a project while keeping the plugin installed:
+You can also disable automatic capture globally for a platform while keeping the plugin installed:
 
 ```bash
-memsearch config set plugins.codex.summarize.enabled false --project
+memsearch config set plugins.codex.summarize.enabled false
 ```
 
 #### Advanced Memory Maintenance
