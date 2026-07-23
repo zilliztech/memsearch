@@ -66,6 +66,10 @@ def test_claude_session_start_recent_memory_skips_empty_sessions(tmp_path: Path)
     fake_memsearch = fake_bin / "memsearch"
     fake_memsearch.write_text(
         """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"","api_key":""},"milvus":{"uri":"~/.memsearch/milvus.db"}}'
+  exit 0
+fi
 if [ "$1" = "config" ] && [ "$2" = "get" ]; then
   case "$3" in
     embedding.provider) echo "onnx" ;;
@@ -131,6 +135,10 @@ def test_claude_session_start_uv_tool_upgrade_hint_preserves_extras(tmp_path: Pa
     fake_memsearch = uv_tool_bin / "memsearch"
     fake_memsearch.write_text(
         """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"voyage","model":"voyage-3-lite","api_key":""},"milvus":{"uri":"http://localhost:19530"}}'
+  exit 0
+fi
 if [ "$1" = "config" ] && [ "$2" = "get" ]; then
   case "$3" in
     embedding.provider) echo "voyage" ;;
@@ -184,6 +192,140 @@ echo '{"info":{"version":"0.4.13"}}'
     assert "uv tool install -U 'memsearch[onnx]'" not in status
 
 
+def test_claude_session_start_reads_resolved_config_once(tmp_path: Path) -> None:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    call_log = tmp_path / "memsearch-calls.txt"
+    home.mkdir()
+    fake_bin.mkdir()
+    memsearch_dir.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+
+    fake_memsearch = fake_bin / "memsearch"
+    fake_memsearch.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"voyage","model":"voyage-3-lite","api_key":"configured-key"},"milvus":{"uri":"http://localhost:19530"}}'
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.4.15"
+  exit 0
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_memsearch.chmod(0o755)
+
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text("""#!/usr/bin/env bash\necho '{"info":{"version":"0.4.15"}}'\n""", encoding="utf-8")
+    fake_curl.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "VOYAGE_API_KEY": "",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "embedding: voyage/voyage-3-lite" in status
+    assert "ERROR: VOYAGE_API_KEY not set" not in status
+    assert calls.count("config list --resolved --json-output") == 1
+    assert not any(call.startswith("config get ") for call in calls)
+    assert not any(call.startswith("skills status ") for call in calls)
+
+
+def test_claude_session_start_falls_back_for_older_cli(tmp_path: Path) -> None:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    call_log = tmp_path / "memsearch-calls.txt"
+    home.mkdir()
+    fake_bin.mkdir()
+    memsearch_dir.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+
+    fake_memsearch = fake_bin / "memsearch"
+    fake_memsearch.write_text(
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  exit 2
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "voyage" ;;
+    embedding.model) echo "voyage-3-lite" ;;
+    embedding.api_key) echo "configured-key" ;;
+    milvus.uri) echo "http://localhost:19530" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.4.14"
+  exit 0
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_memsearch.chmod(0o755)
+
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text("""#!/usr/bin/env bash\necho '{"info":{"version":"0.4.14"}}'\n""", encoding="utf-8")
+    fake_curl.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "VOYAGE_API_KEY": "",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "embedding: voyage/voyage-3-lite" in status
+    assert "ERROR: VOYAGE_API_KEY not set" not in status
+    assert calls.count("config list --resolved --json-output") == 1
+    assert "config get embedding.provider" in calls
+    assert "config get embedding.model" in calls
+    assert "config get milvus.uri" in calls
+    assert "config get embedding.api_key" in calls
+
+
 def test_session_start_upgrade_hints_do_not_clobber_extras() -> None:
     for script in (
         Path("plugins/claude-code/hooks/session-start.sh"),
@@ -234,6 +376,10 @@ def test_session_start_warns_when_index_state_is_unhealthy(tmp_path: Path) -> No
         fake_memsearch = fake_bin / "memsearch"
         fake_memsearch.write_text(
             """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"","api_key":""},"milvus":{"uri":"http://localhost:19530"}}'
+  exit 0
+fi
 if [ "$1" = "config" ] && [ "$2" = "get" ]; then
   case "$3" in
     embedding.provider) echo "onnx" ;;
@@ -294,10 +440,15 @@ def test_session_start_shows_skill_candidate_hint(tmp_path: Path) -> None:
         home.mkdir(parents=True)
         fake_bin.mkdir()
         memsearch_dir.mkdir()
+        (memsearch_dir / "skill-candidates").mkdir()
 
         fake_memsearch = fake_bin / "memsearch"
         fake_memsearch.write_text(
             f"""#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{{"embedding":{{"provider":"onnx","model":"","api_key":""}},"milvus":{{"uri":"http://localhost:19530"}}}}'
+  exit 0
+fi
 if [ "$1" = "config" ] && [ "$2" = "get" ]; then
   case "$3" in
     embedding.provider) echo "onnx" ;;

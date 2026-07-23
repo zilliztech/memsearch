@@ -31,12 +31,24 @@ if [ -n "$MEMSEARCH_CMD" ]; then
   fi
 fi
 
-# Read resolved config and version for status display
-PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
+# Read resolved config in one CLI call. Older CLI versions do not support
+# --json-output, so keep the existing per-key reads as a compatibility fallback.
+PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; CONFIG_API_KEY=""; VERSION=""
+CONFIG_SNAPSHOT_LOADED=false
 if [ -n "$MEMSEARCH_CMD" ]; then
-  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
-  MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
-  MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  CONFIG_JSON=$($MEMSEARCH_CMD config list --resolved --json-output 2>/dev/null || true)
+  SNAPSHOT_PROVIDER=$(_json_val "$CONFIG_JSON" "embedding.provider" "")
+  if [ -n "$SNAPSHOT_PROVIDER" ]; then
+    PROVIDER="$SNAPSHOT_PROVIDER"
+    MODEL=$(_json_val "$CONFIG_JSON" "embedding.model" "")
+    MILVUS_URI=$(_json_val "$CONFIG_JSON" "milvus.uri" "")
+    CONFIG_API_KEY=$(_json_val "$CONFIG_JSON" "embedding.api_key" "")
+    CONFIG_SNAPSHOT_LOADED=true
+  else
+    PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
+    MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
+    MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  fi
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
@@ -57,8 +69,7 @@ REQUIRED_KEY=$(_required_env_var "$PROVIDER")
 KEY_MISSING=false
 if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   # Env var not set — check if API key is configured in memsearch config file
-  CONFIG_API_KEY=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
+  if [ "$CONFIG_SNAPSHOT_LOADED" != true ] && [ -n "$MEMSEARCH_CMD" ]; then
     CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
   fi
   if [ -z "$CONFIG_API_KEY" ]; then

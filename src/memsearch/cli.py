@@ -1212,10 +1212,9 @@ def config_get(key: str) -> None:
 @click.option("--resolved", "mode", flag_value="resolved", default=True, help="Show fully resolved config (default).")
 @click.option("--global", "mode", flag_value="global", help="Show global config file only.")
 @click.option("--project", "mode", flag_value="project", help="Show project config file only.")
-def config_list(mode: str) -> None:
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+def config_list(mode: str, json_output: bool) -> None:
     """Show configuration."""
-    import tomli_w
-
     if mode == "global":
         data = load_config_file(GLOBAL_CONFIG_PATH)
         label = f"Global ({GLOBAL_CONFIG_PATH})"
@@ -1226,6 +1225,12 @@ def config_list(mode: str) -> None:
         cfg = resolve_config()
         data = config_to_dict(cfg)
         label = "Resolved (all sources merged)"
+
+    if json_output:
+        click.echo(json.dumps(data, ensure_ascii=False))
+        return
+
+    import tomli_w
 
     click.echo(f"# {label}\n")
     if data:

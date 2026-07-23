@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from click.testing import CliRunner
 
 from memsearch import cli as cli_module
@@ -149,3 +151,21 @@ def test_config_get_prints_lowercase_booleans(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert result.output.strip() == "false"
+
+
+def test_config_list_json_output_preserves_config_types(monkeypatch) -> None:
+    cfg = MemSearchConfig()
+    cfg.embedding.provider = "onnx"
+    cfg.embedding.batch_size = 32
+    cfg.indexing.ignore_files = [".gitignore"]
+    cfg.plugins.claude_code.summarize.enabled = False
+    monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
+
+    result = CliRunner().invoke(cli, ["config", "list", "--resolved", "--json-output"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["embedding"]["provider"] == "onnx"
+    assert data["embedding"]["batch_size"] == 32
+    assert data["indexing"]["ignore_files"] == [".gitignore"]
+    assert data["plugins"]["claude-code"]["summarize"]["enabled"] is False

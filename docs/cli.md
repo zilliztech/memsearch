@@ -186,13 +186,14 @@ $ memsearch config get chunking.max_chunk_size
 
 #### `memsearch config list`
 
-Display configuration in TOML format.
+Display configuration in TOML format by default, or JSON for scripting.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--resolved` | *(default)* | Show the fully merged configuration from all sources |
 | `--global` | | Show only the global config file (`~/.memsearch/config.toml`) |
 | `--project` | | Show only the project config file (`.memsearch.toml`) |
+| `--json-output`, `-j` | `false` | Output the selected configuration as JSON |
 
 ```bash
 $ memsearch config list --resolved
@@ -248,6 +249,13 @@ model = ""
 [prompts]
 compact = ""
 summarize = ""
+```
+
+Use JSON when another process needs several resolved values without launching
+the CLI once per key:
+
+```bash
+$ memsearch config list --resolved --json-output > resolved-config.json
 ```
 
 ```bash

@@ -76,12 +76,12 @@ _json_val() {
     # Build jq filter from dotted key: "info.version" → ".info.version"
     result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
   else
-    result=$(python3 -c "
+    result=$(printf '%s' "$json" | python3 -c "
 import json, sys
 try:
-    obj = json.loads(sys.argv[1])
+    obj = json.load(sys.stdin)
     val = obj
-    for k in sys.argv[2].split('.'):
+    for k in sys.argv[1].split('.'):
         val = val[k]
     if val is None:
         print('')
@@ -91,7 +91,7 @@ try:
         print(val)
 except Exception:
     print('')
-" "$json" "$key" 2>/dev/null) || true
+" "$key" 2>/dev/null) || true
   fi
 
   if [ -z "$result" ]; then
@@ -148,6 +148,7 @@ PY
 
 skill_candidate_hint() {
   [ -n "$MEMSEARCH_CMD" ] || return 0
+  [ -d "$MEMSEARCH_DIR/skill-candidates" ] || return 0
   MEMSEARCH_DIR="$MEMSEARCH_DIR" $MEMSEARCH_CMD skills status --hint 2>/dev/null || true
 }
 
