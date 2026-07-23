@@ -64,9 +64,9 @@ The plugin is a first-class component of memsearch — it's the primary real-wor
 plugins/claude-code/
 ├── hooks/
 │   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
-│   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
+│   ├── session-start.sh         # SessionStart: start watch and inject recent memories
 │   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
-│   ├── stop.sh                  # Stop: extract last turn → haiku summarize (third-person) → append to daily .md (async)
+│   ├── stop.sh                  # Stop: extract last turn → summarize → lazily create heading → append (async)
 │   ├── session-end.sh           # SessionEnd: stop watch process
 │   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats with role labels for LLM (Python 3, no jq)
 ├── scripts/

@@ -6,6 +6,30 @@ import subprocess
 from pathlib import Path
 
 
+def _write_executable(path: Path, source: str) -> None:
+    path.write_text(source, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _write_claude_transcript(path: Path, *, turn_uuid: str) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "system", "message": {"content": "start"}}),
+                json.dumps({"type": "user", "uuid": turn_uuid, "message": {"content": "Summarize this session"}}),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": "I explained the hook behavior."}]},
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Path) -> None:
     script = Path("plugins/claude-code/hooks/session-start.sh")
     env = {
@@ -26,6 +50,61 @@ def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Pat
 
     assert result.stdout.strip() == "{}"
     assert not (tmp_path / ".memsearch").exists()
+
+
+def test_claude_session_start_does_not_create_journal(tmp_path: Path) -> None:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    home.mkdir()
+    fake_bin.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"","api_key":""},"milvus":{"uri":"http://localhost:19530"}}'
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.4.16"
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash
+echo '{"info":{"version":"0.4.16"}}'
+""",
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_NO_WATCH": "1",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    payload = json.loads(result.stdout)
+    memory_dir = memsearch_dir / "memory"
+    assert "systemMessage" in payload
+    assert memory_dir.is_dir()
+    assert list(memory_dir.glob("*.md")) == []
 
 
 def test_claude_session_start_recent_memory_skips_empty_sessions(tmp_path: Path) -> None:
@@ -591,6 +670,103 @@ echo "- User discussed a macOS stop hook regression."
     assert captured_args[:4] == ["-p", "--strict-mcp-config", "--tools", ""]
     assert "--safe-mode" not in captured_args
     assert captured_args[captured_args.index("--model") + 1] == "haiku"
+
+
+def test_claude_stop_hook_groups_session_headings(tmp_path: Path) -> None:
+    script = Path("plugins/claude-code/hooks/stop.sh")
+    plugin_root = Path("plugins/claude-code").resolve()
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    transcript_a = tmp_path / "session-a.jsonl"
+    transcript_b = tmp_path / "session-b.jsonl"
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript_a, turn_uuid="turn-a")
+    _write_claude_transcript(transcript_b, turn_uuid="turn-b")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    plugins.claude-code.summarize.enabled) echo "true" ;;
+    plugins.claude-code.summarize.model) echo "" ;;
+    plugins.claude-code.summarize.provider) echo "" ;;
+    prompts.summarize) echo "" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "index" ]; then
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "claude",
+        """#!/usr/bin/env bash
+if [ "${1:-}" = "--help" ]; then
+  echo "Usage: claude"
+  exit 0
+fi
+echo "- Captured a session summary."
+""",
+    )
+    _write_executable(
+        fake_bin / "date",
+        """#!/usr/bin/env bash
+case "${1:-}" in
+  +%Y-%m-%d) echo "2026-07-23" ;;
+  +%H:%M) echo "12:34" ;;
+  *) /bin/date "$@" ;;
+esac
+""",
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+    }
+
+    def run_stop(transcript: Path) -> None:
+        result = subprocess.run(
+            ["bash", str(script)],
+            input=json.dumps({"transcript_path": str(transcript)}),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
+        )
+        assert result.stdout.strip() == "{}"
+
+    memory_file = memsearch_dir / "memory" / "2026-07-23.md"
+
+    run_stop(transcript_a)
+    memory_text = memory_file.read_text(encoding="utf-8")
+    assert memory_text.count("## Session 12:34") == 1
+    assert memory_text.count("### 12:34") == 1
+    assert memory_text.count("session:session-a ") == 1
+
+    run_stop(transcript_a)
+    memory_text = memory_file.read_text(encoding="utf-8")
+    assert memory_text.count("## Session 12:34") == 1
+    assert memory_text.count("### 12:34") == 2
+    assert memory_text.count("session:session-a ") == 2
+
+    run_stop(transcript_b)
+    memory_text = memory_file.read_text(encoding="utf-8")
+    sections = memory_text.split("## Session 12:34")
+    assert len(sections) == 3
+    assert sections[1].count("session:session-a ") == 2
+    assert "session:session-b " not in sections[1]
+    assert sections[2].count("session:session-b ") == 1
 
 
 def test_claude_stop_hook_avoids_empty_array_expansion_under_nounset() -> None:

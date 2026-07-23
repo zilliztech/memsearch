@@ -223,8 +223,8 @@ if [ -n "$recent_files" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
-    # Extract recent non-empty session sections. Empty SessionStart headings are
-    # common after short sessions, but they do not carry useful context.
+    # Extract recent non-empty session sections. Legacy journals may contain
+    # empty headings, but they do not carry useful context.
     content=$(_recent_memory_preview "$f" 40)
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"

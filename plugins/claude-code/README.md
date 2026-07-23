@@ -145,9 +145,9 @@ stateDiagram-v2
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
+| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
-| **Stop** | command | **yes** | 120s | Extract last turn from transcript with `parse-transcript.sh`, summarize via native Haiku by default or configured API provider, append summary with session/turn anchors to daily `.md` |
+| **Stop** | command | **yes** | 120s | Extract and summarize the last turn, lazily create its session heading, append the summary with session/turn anchors to the daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
 ### What Each Hook Does
@@ -156,12 +156,13 @@ stateDiagram-v2
 
 Fires once when a Claude Code session begins. This hook:
 
-1. **Reads config and checks API key.** Loads the resolved provider, model, API key, and Milvus URI in one `memsearch config list --json-output` snapshot. Older CLI versions automatically fall back to per-key `config get` calls. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`, `MISTRAL_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
+1. **Reads config and checks API key.** Loads the resolved provider, model, API key, and Milvus URI in one `memsearch config list --resolved --json-output` snapshot. Older CLI versions automatically fall back to per-key `config get` calls. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`, `MISTRAL_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
 2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce. Milvus Lite falls back to a one-time `memsearch index` at session start.
-3. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
-4. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
-5. **Checks for updates.** Queries PyPI (2s timeout) and compares with the installed version. If a newer version is available, appends an `UPDATE` hint to the status line.
-6. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch v0.1.10] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db` (with `| UPDATE: v0.1.12 available` when outdated).
+3. **Injects cold-start context.** Reads up to 40 lines from each of the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
+4. **Checks for updates.** Queries PyPI (2s timeout) and compares with the installed version. If a newer version is available, appends an `UPDATE` hint to the status line.
+5. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch v0.1.10] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db` (with `| UPDATE: v0.1.12 available` when outdated).
+
+SessionStart prepares the memory directory but does not create a daily journal. A journal appears only after the Stop hook captures content.
 
 #### UserPromptSubmit
 
@@ -181,7 +182,7 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
 2. **Validates the transcript.** Skips if the transcript file is missing or has fewer than 3 lines.
 3. **Extracts the last turn.** Calls `parse-transcript.sh` (Python3 inline, no `jq` dependency), which finds the last real user message and extracts User/Assistant text from there to EOF. Skips progress, `file-history-snapshot`, system, thinking blocks, raw tool calls, and raw tool results. Formats output with clear role labels (`[User]`, `[Claude Code]`) so the summarizer works from a clean third-party transcript while still allowing the assistant's text to mention important files, searches, findings, and tests.
 4. **Summarizes with Haiku.** Pipes the parsed turn to `CLAUDECODE= claude -p --model haiku --no-session-persistence` with an external-observer system prompt requesting 2-10 third-person bullet points in the same language as the user's message. To override only this plugin's native summarize model, set `plugins.claude-code.summarize.model`; empty or unset keeps the Haiku default. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.claude-code.summarize.provider` to that name.
-5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then runs `memsearch index` to ensure immediate indexing.
+5. **Appends to the daily log.** On the first content-bearing Stop for a session, creates the daily file if needed and writes `## Session HH:MM`. Every captured turn gets a `### HH:MM` sub-heading with an HTML comment anchor containing the session ID, turn UUID, and transcript path. Later Stops in the same session reuse its existing session heading. The hook then runs `memsearch index` for immediate indexing.
 
 #### SessionEnd
 
@@ -439,9 +440,9 @@ plugins/claude-code/
 ├── hooks/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
-│   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
+│   ├── session-start.sh         # Start watch + inject cold-start context
 │   ├── user-prompt-submit.sh    # Lightweight systemMessage hint ("[memsearch] Memory available")
-│   ├── stop.sh                  # Extract last turn → haiku summary (third-person) → append to daily .md
+│   ├── stop.sh                  # Extract last turn → summarize → lazily create heading → append to daily .md
 │   ├── parse-transcript.sh      # Extract last turn from JSONL, format with role labels (Python3, no jq)
 │   └── session-end.sh           # Stop watch process (cleanup)
 └── skills/
@@ -770,18 +771,19 @@ All memories are stored as plain markdown in `.memsearch/memory/`.
 **Verify the Stop hook is working:**
 
 ```bash
-# Check if today's file exists and has content
-cat .memsearch/memory/$(date +%Y-%m-%d).md
-
-# Check if recent sessions have summaries (not just headings)
-tail -20 .memsearch/memory/$(date +%Y-%m-%d).md
+# Inspect today's captured summaries if the Stop hook created a journal
+today=.memsearch/memory/$(date +%Y-%m-%d).md
+if [ -f "$today" ]; then tail -20 "$today"; else echo "No summaries captured today"; fi
 ```
 
-If you see `## Session HH:MM` headings but no `### HH:MM` sub-headings with bullet points underneath, the Stop hook is not completing successfully. Common causes:
+SessionStart does not create a daily file. If no content-bearing Stop has completed, today's journal will not exist. This is normal for short or empty sessions. If you expected a summary, check these early-exit conditions:
 
-- `claude` CLI not found — the Stop hook calls `claude -p --model haiku` to summarize
-- API key missing — the Stop hook skips summarization when the embedding provider key is not set
-- Transcript too short — sessions with fewer than 3 JSONL lines are skipped
+- The embedding provider requires an API key and neither the environment nor memsearch config supplies it.
+- The transcript is missing, has fewer than 3 JSONL lines, or contains no usable user turn.
+- `plugins.claude-code.summarize.enabled` is `false`.
+- The Stop hook timed out or failed; inspect the Claude Code debug log for the hook result.
+
+If the `claude` CLI is unavailable or native summarization returns no text, the hook falls back to the parsed turn instead of skipping the journal write.
 
 ---
 
@@ -795,7 +797,7 @@ If you see `## Session HH:MM` headings but no `### HH:MM` sub-headings with bull
 | Search returns no results | Run `memsearch stats` and `memsearch search` manually | [§3](#3-cli-diagnostic-commands) |
 | New memories not being indexed | Check watch process is running | [§4](#4-watch-process) |
 | Claude never invokes memory recall | Try `/memory-recall <query>` manually | [§5](#5-skill-execution--progressive-disclosure) |
-| Session summaries missing from memory files | Check `claude` CLI is available and API key is set | [§6](#6-memory-files) |
+| Session summaries missing from memory files | Check the Stop hook log, transcript, summarize setting, and embedding API key | [§6](#6-memory-files) |
 
 ---
 
