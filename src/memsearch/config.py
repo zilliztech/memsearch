@@ -249,6 +249,16 @@ _PLUGIN_FIELD_TO_KEY = {
 
 
 _ENV_PREFIX = "env:"
+ATLASCLOUD_DEFAULT_LLM_BASE_URL = "https://api.atlascloud.ai/v1"
+ATLASCLOUD_DEFAULT_LLM_MODEL = "qwen/qwen3.5-flash"
+ATLASCLOUD_LLM_PROVIDER_ALIASES = frozenset({"atlascloud", "atlas-cloud", "atlas"})
+ATLASCLOUD_API_KEY_ENV_VARS = ("ATLASCLOUD_API_KEY", "ATLAS_CLOUD_API_KEY")
+ATLASCLOUD_BASE_URL_ENV_VARS = (
+    "ATLASCLOUD_API_BASE",
+    "ATLASCLOUD_BASE_URL",
+    "ATLAS_CLOUD_API_BASE",
+    "ATLAS_CLOUD_BASE_URL",
+)
 
 
 class ConfigEnvVarError(KeyError):
@@ -275,6 +285,48 @@ def resolve_env_ref(value: str) -> str:
     if env_val is None:
         raise ConfigEnvVarError(f"Environment variable {var_name!r} referenced in config (via {value!r}) is not set")
     return env_val
+
+
+def is_atlascloud_llm_provider(provider: str | None) -> bool:
+    """Return whether *provider* names the built-in Atlas Cloud LLM shortcut."""
+    return (provider or "").strip().lower() in ATLASCLOUD_LLM_PROVIDER_ALIASES
+
+
+def _first_set_env(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return ""
+
+
+def _first_set_env_ref(names: tuple[str, ...]) -> str:
+    for name in names:
+        if os.environ.get(name):
+            return f"{_ENV_PREFIX}{name}"
+    return f"{_ENV_PREFIX}{names[0]}"
+
+
+def resolve_llm_provider_settings(
+    provider: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> tuple[str, str | None, str | None, str | None]:
+    """Resolve built-in LLM provider shortcuts to concrete provider settings.
+
+    Atlas Cloud exposes an OpenAI-compatible LLM endpoint, so the shortcut keeps
+    the existing OpenAI-compatible code path while supplying Atlas defaults.
+    """
+    normalized = (provider or "").strip()
+    if not is_atlascloud_llm_provider(normalized):
+        return normalized, model, base_url, api_key
+    return (
+        "openai-compatible",
+        model or ATLASCLOUD_DEFAULT_LLM_MODEL,
+        base_url or _first_set_env(ATLASCLOUD_BASE_URL_ENV_VARS) or ATLASCLOUD_DEFAULT_LLM_BASE_URL,
+        api_key or _first_set_env_ref(ATLASCLOUD_API_KEY_ENV_VARS),
+    )
 
 
 def _resolve_env_refs_in_dict(d: dict[str, Any], path: tuple[str, ...] = ()) -> dict[str, Any]:

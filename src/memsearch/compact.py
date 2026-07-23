@@ -1,8 +1,9 @@
 """Memory compact — compress and summarize chunks using an LLM.
 
-Supports OpenAI (default), Anthropic, and Gemini as LLM backends.
+Supports OpenAI (default), OpenAI-compatible, Anthropic, Gemini, and Atlas Cloud as LLM backends.
 API keys are read from environment variables:
     OPENAI_API_KEY / OPENAI_BASE_URL
+    ATLASCLOUD_API_KEY / ATLAS_CLOUD_API_KEY
     ANTHROPIC_API_KEY
     GOOGLE_API_KEY
 """
@@ -12,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .config import resolve_env_ref
+from .config import resolve_env_ref, resolve_llm_provider_settings
 
 COMPACT_PROMPT = """\
 You are a knowledge compression assistant. Given the following chunks of text \
@@ -42,7 +43,8 @@ async def compact_chunks(
     chunks:
         List of chunk dicts (must contain ``"content"`` key).
     llm_provider:
-        One of ``"openai"``, ``"anthropic"``, ``"gemini"``.
+        One of ``"openai"``, ``"openai-compatible"``, ``"anthropic"``,
+        ``"gemini"``, ``"atlascloud"``, ``"atlas-cloud"``, or ``"atlas"``.
     model:
         Override the default model for the provider.
     prompt_template:
@@ -50,10 +52,10 @@ async def compact_chunks(
         Defaults to the built-in ``COMPACT_PROMPT``.
     base_url:
         Custom base URL for OpenAI-compatible API endpoints.  Only used
-        when *llm_provider* is ``"openai"``.
+        when *llm_provider* uses an OpenAI-compatible route.
     api_key:
-        API key for the LLM provider.  Only used when *llm_provider* is
-        ``"openai"``.
+        API key for the LLM provider.  Only used when *llm_provider* uses an
+        OpenAI-compatible route.
 
     Returns
     -------
@@ -68,14 +70,20 @@ async def compact_chunks(
         raise ValueError("prompt_template must include the {chunks} placeholder")
     prompt = template.format(chunks=combined)
 
-    if llm_provider == "openai":
+    llm_provider, model, base_url, api_key = resolve_llm_provider_settings(llm_provider, model, base_url, api_key)
+    provider = "openai" if llm_provider == "openai-compatible" else llm_provider
+
+    if provider == "openai":
         return await _compact_openai(prompt, model or "gpt-5-mini", base_url=base_url, api_key=api_key)
-    elif llm_provider == "anthropic":
+    elif provider == "anthropic":
         return await _compact_anthropic(prompt, model or "claude-sonnet-4-6")
-    elif llm_provider == "gemini":
+    elif provider == "gemini":
         return await _compact_gemini(prompt, model or "gemini-3-flash-preview")
     else:
-        raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
+        raise ValueError(
+            f"Unknown LLM provider {llm_provider!r}. "
+            "Available: openai, openai-compatible, anthropic, gemini, atlascloud"
+        )
 
 
 async def summarize_text(
@@ -87,6 +95,7 @@ async def summarize_text(
     api_key: str | None = None,
 ) -> str:
     """Summarize preformatted text with a memsearch-managed LLM provider."""
+    llm_provider, model, base_url, api_key = resolve_llm_provider_settings(llm_provider, model, base_url, api_key)
     provider = "openai" if llm_provider == "openai-compatible" else llm_provider
     if provider == "openai":
         return await _compact_openai(prompt, model or "gpt-5-mini", base_url=base_url, api_key=api_key)
