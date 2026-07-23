@@ -112,6 +112,7 @@ def mem_with_fake(tmp_path: Path):
     ms._paths = []
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._min_chunk_size = 0
     ms._embedder = fake
     ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
     yield ms, fake
@@ -140,6 +141,7 @@ def mem_with_recording_store():
     ms._paths = []
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._min_chunk_size = 0
     ms._embedder = fake
     ms._store = store
     return ms, fake, store
@@ -214,6 +216,7 @@ async def test_index_continues_after_file_failure(tmp_path: Path):
     ms._paths = [str(docs)]
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._min_chunk_size = 0
     ms._embedder = fake
     ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
 
