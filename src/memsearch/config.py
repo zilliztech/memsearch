@@ -27,7 +27,7 @@ PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
 _INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
-_BOOL_FIELDS = {"enabled"}
+_BOOL_FIELDS = {"enabled", "flush_on_index"}
 _LIST_FIELDS = {"paths"}
 
 # Project-local config is loaded from the repository being opened, so it must
@@ -48,6 +48,7 @@ class MilvusConfig:
     uri: str = "~/.memsearch/milvus.db"
     token: str = ""
     collection: str = "memsearch_chunks"
+    flush_on_index: bool = False
 
 
 @dataclass

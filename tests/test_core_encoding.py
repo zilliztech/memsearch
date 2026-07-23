@@ -49,6 +49,7 @@ def make_memsearch() -> tuple[MemSearch, RecordingStore]:
     store = RecordingStore()
     ms._store = store
     ms._reranker_model = ""
+    ms._flush_on_index = False
     return ms, store
 
 

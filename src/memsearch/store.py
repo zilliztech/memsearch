@@ -154,7 +154,24 @@ class MilvusStore:
             collection_name=self._collection,
             data=chunks,
         )
-        return result.get("upsert_count", len(chunks)) if isinstance(result, dict) else len(chunks)
+        count = result.get("upsert_count") if isinstance(result, dict) else None
+        if count == 0:
+            raise RuntimeError(
+                f"Milvus reported 0 written rows for an upsert of {len(chunks)} chunks; "
+                "refusing to report a zero-write upsert as success"
+            )
+        return count if count is not None else len(chunks)
+
+    def flush(self) -> None:
+        """Seal pending writes so they are durable and visible to other readers.
+
+        Remote Milvus does not flush after upsert, and under the default
+        Bounded consistency freshly written chunks may be invisible to
+        search (and to ``get_collection_stats``) until a flush or segment
+        seal happens.  Flushing after every upsert would create many small
+        sealed segments, so callers should flush once per indexing run.
+        """
+        self._client.flush(self._collection)
 
     def search(
         self,

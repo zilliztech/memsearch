@@ -203,3 +203,42 @@ def test_collection_description_empty_by_default(tmp_path: Path):
     info = s._client.describe_collection(s._collection)
     assert info.get("description") == ""
     s.close()
+
+
+def _minimal_chunk() -> dict:
+    return {
+        "embedding": [1.0, 0.0, 0.0, 0.0],
+        "content": "hello",
+        "source": "x.md",
+        "heading": "",
+        "chunk_hash": "hx",
+        "heading_level": 0,
+        "start_line": 1,
+        "end_line": 1,
+    }
+
+
+def test_upsert_trusts_server_count(store: MilvusStore, monkeypatch):
+    """The server-reported upsert_count wins over len(chunks)."""
+    monkeypatch.setattr(store._client, "upsert", lambda **kw: {"upsert_count": 5})
+    assert store.upsert([_minimal_chunk()]) == 5
+
+
+def test_upsert_zero_write_raises(store: MilvusStore, monkeypatch):
+    """An explicit zero-write response must fail loudly, not report success."""
+    monkeypatch.setattr(store._client, "upsert", lambda **kw: {"upsert_count": 0})
+    with pytest.raises(RuntimeError, match="0 written rows"):
+        store.upsert([_minimal_chunk()])
+
+
+def test_upsert_falls_back_when_count_missing(store: MilvusStore, monkeypatch):
+    """Responses without upsert_count keep the historical len(chunks) fallback."""
+    monkeypatch.setattr(store._client, "upsert", lambda **kw: {})
+    assert store.upsert([_minimal_chunk()]) == 1
+
+
+def test_flush_targets_collection(store: MilvusStore, monkeypatch):
+    flushed = []
+    monkeypatch.setattr(store._client, "flush", lambda name: flushed.append(name))
+    store.flush()
+    assert flushed == [store._collection]
