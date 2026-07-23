@@ -17,10 +17,10 @@ classifiers = [
 ]
 dependencies = [
     "pymilvus>=2.5.0,!=2.6.10",
-    "milvus-lite>=2.5.0; sys_platform != 'win32'",
+    "milvus-lite>=3.0; sys_platform != 'win32'",
     "click>=8.1",
     "watchdog>=4.0",
-    "setuptools>=78.1.1,<81",
+    "setuptools>=83",
     "tomli_w>=1.0",
     "tomli>=2.0; python_version < '3.11'",
     "openai>=1.0",
