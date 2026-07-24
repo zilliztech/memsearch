@@ -37,6 +37,43 @@ def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monke
     assert captured == {"model": "gemini-test", "provider_type": "gemini"}
 
 
+def test_maintenance_routes_atlascloud_shortcut_to_openai_compatible_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-05-27.md").write_text("- User discussed Atlas Cloud maintenance.\n", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+    cfg.plugins.codex.project_review.provider = "atlascloud"
+
+    captured = {}
+
+    def fake_openai(ctx, prompt: str, provider_type: str, model: str | None, provider_cfg) -> str:
+        captured["model"] = model
+        captured["provider_type"] = provider_type
+        captured["config_type"] = provider_cfg.type
+        captured["base_url"] = provider_cfg.base_url
+        captured["api_key"] = provider_cfg.api_key
+        return json.dumps({"action": "none", "reason": "ok"})
+
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "atlas-key")
+    monkeypatch.setattr("memsearch.maintenance._run_openai_with_tools", fake_openai)
+
+    results = run_due_tasks(platform="codex", project_dir=project, cfg=cfg)
+
+    assert results[0].action == "none"
+    assert captured == {
+        "model": "qwen/qwen3.5-flash",
+        "provider_type": "openai-compatible",
+        "config_type": "openai-compatible",
+        "base_url": "https://api.atlascloud.ai/v1",
+        "api_key": "env:ATLASCLOUD_API_KEY",
+    }
+
+
 def test_read_recent_journals_replaces_invalid_utf8_bytes(tmp_path: Path) -> None:
     memory = tmp_path / "memory"
     memory.mkdir()

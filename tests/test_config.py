@@ -17,6 +17,7 @@ from memsearch.config import (
     load_config_file,
     resolve_config,
     resolve_env_ref,
+    resolve_llm_provider_settings,
     save_config,
     set_config_value,
 )
@@ -331,6 +332,20 @@ def test_named_llm_provider_config_roundtrip(tmp_path: Path, monkeypatch: pytest
     saved = load_config_file(cfg_path)
     assert saved["llm"]["providers"]["openai"]["model"] == "gpt-test"
     assert saved["llm"]["providers"]["openai"]["api_key"] == "env:OPENAI_API_KEY"
+
+
+def test_atlascloud_llm_provider_shortcut_uses_openai_compatible_defaults(monkeypatch: pytest.MonkeyPatch):
+    """Atlas Cloud shortcuts should resolve to the existing OpenAI-compatible route."""
+    monkeypatch.delenv("ATLASCLOUD_API_KEY", raising=False)
+    monkeypatch.setenv("ATLAS_CLOUD_API_KEY", "atlas-key")
+    monkeypatch.setenv("ATLASCLOUD_BASE_URL", "https://atlas.example/v1")
+
+    provider, model, base_url, api_key = resolve_llm_provider_settings("atlas-cloud")
+
+    assert provider == "openai-compatible"
+    assert model == "qwen/qwen3.5-flash"
+    assert base_url == "https://atlas.example/v1"
+    assert api_key == "env:ATLAS_CLOUD_API_KEY"
 
 
 def test_plugin_summarize_model_empty_preserves_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from .config import (
+    ATLASCLOUD_DEFAULT_LLM_MODEL,
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
     ConfigEnvVarError,
@@ -1051,12 +1052,13 @@ def config_init(project: bool) -> None:
     click.echo("  Plugin summarization uses plugins.<platform>.summarize.model.")
     _llm_defaults = {
         "openai": "gpt-5-mini",
+        "atlascloud": ATLASCLOUD_DEFAULT_LLM_MODEL,
         "anthropic": "claude-sonnet-4-6",
         "gemini": "gemini-3-flash-preview",
     }
     result["llm"] = {}
     result["llm"]["provider"] = click.prompt(
-        "  Provider (empty/openai/anthropic/gemini)",
+        "  Provider (empty/openai/anthropic/gemini/atlascloud)",
         default=current.llm.provider,
     )
     _llm_provider = result["llm"]["provider"]

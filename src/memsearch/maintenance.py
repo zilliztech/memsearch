@@ -10,7 +10,7 @@ import re
 import shlex
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -22,7 +22,9 @@ from .config import (
     MemSearchConfig,
     PluginMaintenanceTaskConfig,
     config_to_dict,
+    is_atlascloud_llm_provider,
     resolve_env_ref,
+    resolve_llm_provider_settings,
 )
 from .io import read_utf8_text_replace
 
@@ -284,9 +286,25 @@ def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:
 
     provider_cfg = cfg.llm.providers.get(provider_name)
     if provider_cfg is None:
-        raise RuntimeError(f"Unknown LLM provider {provider_name!r}")
+        if is_atlascloud_llm_provider(provider_name):
+            provider_cfg = LLMProviderConfig(type=provider_name)
+        else:
+            raise RuntimeError(f"Unknown LLM provider {provider_name!r}")
     provider_type = provider_cfg.type or provider_name
     model = ctx.task_config.model or provider_cfg.model or None
+    provider_type, model, base_url, api_key = resolve_llm_provider_settings(
+        provider_type,
+        model=model,
+        base_url=provider_cfg.base_url or None,
+        api_key=provider_cfg.api_key or None,
+    )
+    provider_cfg = replace(
+        provider_cfg,
+        type=provider_type,
+        model=model or "",
+        base_url=base_url or "",
+        api_key=api_key or "",
+    )
 
     if provider_type in {"openai", "openai-compatible"}:
         return _run_openai_with_tools(ctx, prompt, provider_type, model, provider_cfg)
