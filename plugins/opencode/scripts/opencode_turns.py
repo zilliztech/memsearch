@@ -91,14 +91,14 @@ def get_db_path() -> str:
     return default
 
 
-def get_turn_db_path(project_dir: str) -> str:
-    """Return the derived turn metadata database path for a project."""
-    return os.path.join(project_dir, ".memsearch", "opencode-turns.db")
+def get_turn_db_path(memsearch_dir: str) -> str:
+    """Return the sidecar database path inside the resolved memsearch storage dir."""
+    return os.path.join(memsearch_dir, "opencode-turns.db")
 
 
-def open_turn_db(project_dir: str) -> sqlite3.Connection:
+def open_turn_db(memsearch_dir: str) -> sqlite3.Connection:
     """Open the sidecar turn database and ensure its schema exists."""
-    turn_db_path = get_turn_db_path(project_dir)
+    turn_db_path = get_turn_db_path(memsearch_dir)
     Path(turn_db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(turn_db_path, timeout=5)
     conn.row_factory = sqlite3.Row
@@ -139,12 +139,8 @@ def ensure_turn_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS turns_session_index_idx ON turns (session_id, turn_index)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS turns_session_time_idx ON turns (session_id, end_time, turn_id)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS turns_session_index_idx ON turns (session_id, turn_index)")
+    conn.execute("CREATE INDEX IF NOT EXISTS turns_session_time_idx ON turns (session_id, end_time, turn_id)")
     conn.commit()
 
 
@@ -160,7 +156,9 @@ def load_turn_state(conn: sqlite3.Connection, session_id: str) -> TurnState:
     ).fetchone()
 
     if row is None:
-        return TurnState(session_id=session_id, last_completed_time=0, last_completed_message_id="", last_completed_turn_id="")
+        return TurnState(
+            session_id=session_id, last_completed_time=0, last_completed_message_id="", last_completed_turn_id=""
+        )
 
     return TurnState(
         session_id=row["session_id"],
@@ -264,9 +262,7 @@ def load_messages(
 
     if after_time is not None:
         if after_message_id:
-            query.append(
-                "AND (time_created > ? OR (time_created = ? AND id > ?))"
-            )
+            query.append("AND (time_created > ? OR (time_created = ? AND id > ?))")
             params.extend([after_time, after_time, after_message_id])
         else:
             query.append("AND time_created > ?")

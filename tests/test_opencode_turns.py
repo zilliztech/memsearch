@@ -164,7 +164,7 @@ def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeyp
     monkeypatch.setenv("MEMSEARCH_NO_WATCH", "0")
     monkeypatch.delenv("MEMSEARCH_DISABLE", raising=False)
 
-    capture_daemon.wake_maintenance(str(project))
+    capture_daemon.wake_maintenance(str(project), str(project / ".memsearch"))
 
     assert captured["cmd"][:4] == ["python3", str(SCRIPT_DIR / "maintenance-runner.py"), "--platform", "opencode"]
     assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
@@ -529,7 +529,7 @@ def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     turn = OpenCodeTurn(
         session_id="ses_1",
         turn_id="u1",
@@ -558,13 +558,101 @@ def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
     rows = load_session_turn_rows(turn_db, "ses_1")
     state = load_turn_state(turn_db, "ses_1")
 
-    assert get_turn_db_path(str(project_dir)).endswith(".memsearch/opencode-turns.db")
+    assert get_turn_db_path(str(project_dir / ".memsearch")) == str(project_dir / ".memsearch" / "opencode-turns.db")
     assert len(rows) == 1
     assert rows[0]["turn_id"] == "u1"
     assert state.last_completed_turn_id == "u1"
     assert state.last_completed_message_id == "a1"
 
     turn_db.close()
+
+
+def test_turn_db_path_honors_explicit_memsearch_dir(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    shared_dir = tmp_path / "shared" / ".memsearch"
+
+    # With MEMSEARCH_DIR (global scope), the sidecar lives in the shared dir,
+    # not under the project directory.
+    path = get_turn_db_path(str(shared_dir))
+    assert path == str(shared_dir / "opencode-turns.db")
+    assert str(shared_dir) in path
+    assert str(project_dir) not in path
+
+    turn_db = open_turn_db(str(shared_dir))
+    try:
+        assert (shared_dir / "opencode-turns.db").exists()
+        assert not (project_dir / ".memsearch").exists()
+    finally:
+        turn_db.close()
+
+
+def test_wake_maintenance_passes_explicit_memsearch_dir(tmp_path: Path, monkeypatch) -> None:
+    project = tmp_path / "repo"
+    shared = tmp_path / "shared" / ".memsearch"
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+
+        class Process:
+            pass
+
+        return Process()
+
+    monkeypatch.setattr(capture_daemon.subprocess, "Popen", fake_popen)
+
+    capture_daemon.wake_maintenance(str(project), str(shared))
+
+    assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
+    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(shared)
+
+
+def test_capture_session_turns_uses_explicit_project_dir_for_summarizer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """project_dir kwarg is forwarded to summarize_with_llm (not derived from memory_dir)."""
+    db_path = tmp_path / "opencode.db"
+    conn = _make_opencode_db(db_path)
+    session_id = "ses_explicit_proj"
+    project_dir = tmp_path / "real-project"
+    shared_memsearch = tmp_path / "shared" / ".memsearch"
+    memory_dir = shared_memsearch / "memory"
+    memory_dir.mkdir(parents=True)
+    project_dir.mkdir()
+
+    received_project_dir: list = []
+
+    def fake_summarize(turn_text, small_model, memsearch_cmd, proj_dir):
+        received_project_dir.append(proj_dir)
+        return None
+
+    monkeypatch.setattr(capture_daemon, "summarize_with_llm", fake_summarize)
+    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda _: True)
+
+    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
+    _insert_message(conn, "a1", session_id, 200, "assistant", parent_id="u1", finish="stop", text="Answer")
+    _insert_message(conn, "u2", session_id, 300, "user", text="Next question")
+    conn.commit()
+
+    turn_db = open_turn_db(str(shared_memsearch))
+    capture_daemon.capture_session_turns(
+        conn,
+        turn_db,
+        str(memory_dir),
+        session_id,
+        "",
+        "memsearch",
+        str(db_path),
+        None,  # tail_turn_cache
+        str(project_dir),
+    )
+
+    assert len(received_project_dir) == 1
+    assert received_project_dir[0] == str(project_dir)
+
+    turn_db.close()
+    conn.close()
 
 
 def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
@@ -586,7 +674,7 @@ def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
     conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -664,7 +752,7 @@ def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
             raise RuntimeError("simulated crash before cursor persisted")
         return original_save_turn_state(*args, **kwargs)
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     monkeypatch.setattr(capture_daemon, "save_turn_state", flaky_save_turn_state)
 
     with suppress(RuntimeError):
@@ -721,7 +809,7 @@ def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
     conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -786,7 +874,7 @@ def test_capture_session_turns_resets_tail_stability_when_content_changes(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Draft answer")
     conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -867,7 +955,7 @@ def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
     _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
     conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -936,7 +1024,7 @@ def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
 
     monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -945,6 +1033,7 @@ def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
         "",
         "memsearch",
         str(db_path),
+        project_dir=str(project_dir),
     )
 
     rows = load_session_turn_rows(turn_db, session_id)
@@ -986,7 +1075,7 @@ def test_capture_session_turns_does_not_advance_sidecar_when_markdown_write_fail
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
 
     with suppress(OSError):
         capture_daemon.capture_session_turns(
@@ -1036,7 +1125,7 @@ def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
     _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
     conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
@@ -1053,7 +1142,7 @@ def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
 
     turn_db.close()
 
-    turn_db = open_turn_db(str(project_dir))
+    turn_db = open_turn_db(str(project_dir / ".memsearch"))
     capture_daemon.capture_session_turns(
         conn,
         turn_db,
