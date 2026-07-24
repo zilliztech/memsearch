@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 ( run_maintenance ) </dev/null &>/dev/null &
 
 stop_watch
+stop_watch_superpowers
 kill_orphaned_index
 
 exit 0
