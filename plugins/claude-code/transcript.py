@@ -229,13 +229,10 @@ def _summarize_tool_input(name: str, tool_input: dict) -> str:
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
 
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="View conversation turns from a Claude Code JSONL transcript."
-    )
+    parser = argparse.ArgumentParser(description="View conversation turns from a Claude Code JSONL transcript.")
     parser.add_argument("jsonl_path", help="Path to the JSONL transcript file.")
     parser.add_argument("--turn", "-t", default=None, help="Target turn UUID (prefix match).")
     parser.add_argument("--context", "-c", default=3, type=int, help="Number of turns before/after target.")
