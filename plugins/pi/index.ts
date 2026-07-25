@@ -257,8 +257,24 @@ async function summarizeTurn(turnText: string): Promise<string> {
 }
 
 // The per-session heading is written on first capture, not at session start,
-// so sessions that never produce a memory leave no stub behind.
+// so sessions that never produce a memory leave no stub behind. Reset on
+// session_start, because /new, /resume and /fork all start a fresh session
+// inside the same process.
 let sessionHeadingWritten = false;
+
+// agent_settled can fire again without a new exchange — after an aborted run,
+// or once queued messages drain — which would append the same turn twice.
+let lastCapturedLeafId: string | undefined;
+
+// Summarizing takes tens of seconds, long enough for the next turn to settle
+// while the previous capture is still writing. Serialize them so the journal
+// keeps conversation order and the heading is only written once.
+let captureQueue: Promise<void> = Promise.resolve();
+
+function queueCapture(task: () => Promise<void>): Promise<void> {
+  captureQueue = captureQueue.then(task, task);
+  return captureQueue;
+}
 
 /** Summarize a turn and append it to today's journal, then reindex. */
 async function writeTurnCapture(
@@ -437,6 +453,11 @@ export default async function (pi: ExtensionAPI) {
     const memoryDir = getMemoryDir(projectDir);
     const home = process.env.HOME || "";
 
+    // /new, /resume and /fork reuse this process, so per-session state has to
+    // be cleared here rather than relying on a fresh module instance.
+    sessionHeadingWritten = false;
+    lastCapturedLeafId = undefined;
+
     try {
       const cmd = await getMemsearchCmd();
       const collection = await getCollectionName(projectDir);
@@ -498,16 +519,22 @@ export default async function (pi: ExtensionAPI) {
   pi.on("agent_settled", async (_event, ctx) => {
     if (IS_CHILD_PROCESS) return;
     try {
+      const leafId = ctx.sessionManager.getLeafId();
+      if (leafId && leafId === lastCapturedLeafId) return;
+
       const entries = ctx.sessionManager.buildContextEntries();
       const turn = extractLastTurn(entries);
       if (!turn || turn.length < 50) return;
 
-      await writeTurnCapture(
-        turn,
-        ctx.cwd,
-        ctx.sessionManager.getSessionId(),
-        ctx.sessionManager.getSessionFile(),
-        ctx.sessionManager.getLeafId()
+      lastCapturedLeafId = leafId;
+      const sessionId = ctx.sessionManager.getSessionId();
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      const projectDir = ctx.cwd;
+
+      await queueCapture(() =>
+        writeTurnCapture(turn, projectDir, sessionId, sessionFile, leafId).catch(
+          (err) => debugLog("capture", err)
+        )
       );
     } catch (err) {
       debugLog("capture", err);
