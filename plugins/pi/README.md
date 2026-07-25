@@ -10,13 +10,17 @@ Memories are shared with the [Claude Code](../claude-code/README.md), [Codex CLI
 
 ```bash
 # 1. Install the plugin (user scope — see the note below)
-pi install git:github.com/zilliztech/memsearch#plugins/pi
+git clone --depth 1 https://github.com/zilliztech/memsearch.git
+pi install ./memsearch/plugins/pi
 
 # 2. Have a conversation, then check what was remembered
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
 # 3. Start a new session — pi recalls the earlier work
 ```
+
+pi's git source resolves whole repositories, not subdirectories, so the plugin
+is installed from a local path until it is published to npm.
 
 The plugin defaults to the **ONNX bge-m3** embedding model: no API key, no GPU, runs locally on CPU. If memsearch is not installed, the plugin falls back to `uvx --from 'memsearch[onnx]' memsearch` on first use.
 

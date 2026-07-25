@@ -23,15 +23,17 @@ key, no GPU.
 
 ## Install
 
-```bash
-pi install git:github.com/zilliztech/memsearch#plugins/pi
-```
-
-From a local checkout:
+The plugin lives in a subdirectory of the memsearch repository, and pi's git
+source resolves whole repositories rather than subdirectories. Clone first, then
+install from the local path:
 
 ```bash
-pi install /path/to/memsearch/plugins/pi
+git clone --depth 1 https://github.com/zilliztech/memsearch.git
+pi install ./memsearch/plugins/pi
 ```
+
+`pi install` records the path rather than copying the files, so pulling in the
+repository updates the installed plugin in place.
 
 To try it for a single run without installing anything:
 
@@ -112,11 +114,12 @@ collection; this is existing memsearch behavior, not specific to pi.
 ## Update
 
 ```bash
-pi update git:github.com/zilliztech/memsearch#plugins/pi
+git -C /path/to/memsearch pull
 ```
 
-For an auto-discovered extension, `/reload` picks up code changes without
-restarting. Changes to `pi` settings or package installs require a restart.
+Because the install records a path, a `git pull` is enough — there is nothing to
+reinstall. Restart pi, or use `/reload` for an auto-discovered extension, to pick
+up the new code.
 
 Update the CLI separately -- it ships from PyPI:
 
@@ -129,7 +132,7 @@ uv tool install -U "memsearch[onnx]"
 ## Uninstall
 
 ```bash
-pi remove git:github.com/zilliztech/memsearch#plugins/pi
+pi remove /path/to/memsearch/plugins/pi
 ```
 
 Journals under `.memsearch/memory/` are left alone. They are plain markdown and

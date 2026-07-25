@@ -180,7 +180,8 @@ We discussed the authentication flow before, what was the approach?
 
 ```bash
 # Install (user scope — project scope needs the project trusted first)
-pi install git:github.com/zilliztech/memsearch#plugins/pi
+git clone --depth 1 https://github.com/zilliztech/memsearch.git
+pi install ./memsearch/plugins/pi
 ```
 
 After installing, chat as usual. Each settled turn is summarized and appended to
