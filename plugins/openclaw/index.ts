@@ -19,7 +19,7 @@ import {
   writeFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
@@ -31,12 +31,12 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 export function getMemsearchDir(projectDir: string): string {
   // Honor MEMSEARCH_DIR for shared/global scope — matches claude-code/codex behavior.
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? resolve(explicit) : join(projectDir, ".memsearch");
+  return explicit ? explicit : join(projectDir, ".memsearch");
 }
 
 export function getCollectionScopeDir(projectDir: string): string {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? resolve(explicit) : projectDir;
+  return explicit ? explicit : projectDir;
 }
 
 function getMemoryDir(projectDir: string): string {

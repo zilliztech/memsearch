@@ -7,16 +7,16 @@ import {
   writeFileSync,
   unlinkSync
 } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 function getMemsearchDir(projectDir) {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? resolve(explicit) : join(projectDir, ".memsearch");
+  return explicit ? explicit : join(projectDir, ".memsearch");
 }
 function getCollectionScopeDir(projectDir) {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
-  return explicit ? resolve(explicit) : projectDir;
+  return explicit ? explicit : projectDir;
 }
 function getMemoryDir(projectDir) {
   return join(getMemsearchDir(projectDir), "memory");
