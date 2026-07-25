@@ -776,7 +776,7 @@ def compact(
 
 
 @cli.command()
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw, pi).")
 @click.option("--agent-name", default="", help="Agent display name for the summarize prompt.")
 def summarize(plugin: str, agent_name: str) -> None:
     """Summarize stdin using a configured memsearch-managed LLM provider."""
@@ -1245,7 +1245,7 @@ def skills_group() -> None:
 
 
 @skills_group.command("distill")
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw, pi).")
 @click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
 def skills_distill(plugin: str, force: bool) -> None:
     """Mine recent memory journals for recurring workflows using a configured API provider.
