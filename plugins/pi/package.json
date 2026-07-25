@@ -1,0 +1,50 @@
+{
+  "name": "@zilliz/memsearch-pi",
+  "version": "0.1.0",
+  "description": "memsearch plugin for pi — semantic memory search across sessions",
+  "type": "module",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "scripts/*.sh",
+    "scripts/*.py",
+    "skills/",
+    "prompts/",
+    "README.md"
+  ],
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "memsearch",
+    "memory",
+    "semantic-search",
+    "milvus"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "author": "memsearch contributors",
+  "license": "MIT",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.82.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zilliztech/memsearch",
+    "directory": "plugins/pi"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.82.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}
