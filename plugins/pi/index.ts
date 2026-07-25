@@ -10,7 +10,7 @@
  *
  * Memory is shared with the Claude Code, Codex, OpenCode, and OpenClaw plugins:
  * the collection name is derived from the project path via the shared
- * derive-collection.sh, and memories live in <project>/.memsearch/memory/.
+ * derive-collection.sh, and memories live in the project's .memsearch/memory/ directory.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -44,12 +44,61 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getMemsearchDir(projectDir: string): string {
-  return join(projectDir, ".memsearch");
+/**
+ * Where memory lives, and what the collection name is derived from.
+ *
+ * Resolution has to match the other plugins exactly, or memories stop being
+ * shared:
+ *
+ * - The git repository root is the project, not the working directory, so
+ *   starting an agent from a subdirectory still lands on the same collection.
+ * - An explicit MEMSEARCH_DIR switches to that directory as a global scope and
+ *   derives the collection from it instead of from the project.
+ */
+interface MemoryScope {
+  memsearchDir: string;
+  memoryDir: string;
+  collectionSeed: string;
 }
 
-function getMemoryDir(projectDir: string): string {
-  return join(getMemsearchDir(projectDir), "memory");
+async function resolveGitRoot(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--show-toplevel"],
+      { cwd, timeout: 5000 }
+    );
+    return stdout.trim() || cwd;
+  } catch {
+    return cwd; // not a repository
+  }
+}
+
+const scopePromises = new Map<string, Promise<MemoryScope>>();
+
+function getScope(cwd: string): Promise<MemoryScope> {
+  let promise = scopePromises.get(cwd);
+  if (!promise) {
+    promise = (async () => {
+      const explicit = process.env.MEMSEARCH_DIR;
+      if (explicit) {
+        return {
+          memsearchDir: explicit,
+          memoryDir: join(explicit, "memory"),
+          collectionSeed: explicit,
+        };
+      }
+      const projectDir = await resolveGitRoot(cwd);
+      const memsearchDir = join(projectDir, ".memsearch");
+      return {
+        memsearchDir,
+        memoryDir: join(memsearchDir, "memory"),
+        collectionSeed: projectDir,
+      };
+    })();
+    scopePromises.set(cwd, promise);
+  }
+  return promise;
 }
 
 /**
@@ -105,13 +154,21 @@ function getMemsearchCmd(): Promise<string> {
 }
 
 const collectionPromises = new Map<string, Promise<string>>();
-function getCollectionName(projectDir: string): Promise<string> {
-  let promise = collectionPromises.get(projectDir);
+function getCollectionName(seed: string): Promise<string> {
+  let promise = collectionPromises.get(seed);
   if (!promise) {
-    promise = deriveCollectionName(projectDir);
-    collectionPromises.set(projectDir, promise);
+    promise = deriveCollectionName(seed);
+    collectionPromises.set(seed, promise);
   }
   return promise;
+}
+
+/** Resolve the scope for a working directory and its collection in one step. */
+async function getScopeAndCollection(
+  cwd: string
+): Promise<MemoryScope & { collection: string }> {
+  const scope = await getScope(cwd);
+  return { ...scope, collection: await getCollectionName(scope.collectionSeed) };
 }
 
 /** Run a memsearch subcommand and return its output. */
@@ -313,7 +370,7 @@ async function writeTurnCapture(
   sessionFile?: string,
   leafId?: string
 ): Promise<void> {
-  const memoryDir = getMemoryDir(projectDir);
+  const { memoryDir, collection } = await getScopeAndCollection(projectDir);
   const now = new Date();
   const today = now.toISOString().split("T")[0];
   const clock = now.toTimeString().slice(0, 5);
@@ -345,7 +402,6 @@ async function writeTurnCapture(
   appendFileSync(memoryFile, `### ${clock}\n${anchor}${cleaned}\n\n`, "utf-8");
 
   const cmd = await getMemsearchCmd();
-  const collection = await getCollectionName(projectDir);
   execFileAsync(
     "bash",
     ["-c", `${cmd} index '${shellEscape(memoryDir)}' --collection ${collection}`],
@@ -383,7 +439,7 @@ export default async function (pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const collection = await getCollectionName(ctx.cwd);
+      const { collection } = await getScopeAndCollection(ctx.cwd);
       const topK = params.top_k ?? 5;
       try {
         const out = await runMemsearch(
@@ -415,7 +471,7 @@ export default async function (pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const collection = await getCollectionName(ctx.cwd);
+      const { collection } = await getScopeAndCollection(ctx.cwd);
       try {
         const out = await runMemsearch(
           `expand '${shellEscape(params.chunk_hash)}' --collection ${collection}`,
@@ -479,7 +535,6 @@ export default async function (pi: ExtensionAPI) {
   // ----- Hook: session_start — ensure config + initial index -----
   pi.on("session_start", async (_event, ctx) => {
     const projectDir = ctx.cwd;
-    const memoryDir = getMemoryDir(projectDir);
     const home = process.env.HOME || "";
 
     // /new, /resume and /fork reuse this process, so per-session state has to
@@ -489,7 +544,7 @@ export default async function (pi: ExtensionAPI) {
 
     try {
       const cmd = await getMemsearchCmd();
-      const collection = await getCollectionName(projectDir);
+      const { memoryDir, collection } = await getScopeAndCollection(projectDir);
 
       // Ensure default config (onnx provider, no API key needed)
       const globalConfig = join(home, ".memsearch", "config.toml");
@@ -528,7 +583,8 @@ export default async function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, ctx) => {
     if (IS_CHILD_PROCESS) return;
     try {
-      const context = getRecentMemories(getMemoryDir(ctx.cwd));
+      const { memoryDir } = await getScope(ctx.cwd);
+      const context = getRecentMemories(memoryDir);
       if (!context) return;
 
       const block =
