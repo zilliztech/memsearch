@@ -265,7 +265,8 @@ async function writeTurnCapture(
   turnText: string,
   projectDir: string,
   sessionId?: string,
-  sessionFile?: string
+  sessionFile?: string,
+  leafId?: string
 ): Promise<void> {
   const memoryDir = getMemoryDir(projectDir);
   const now = new Date();
@@ -290,8 +291,11 @@ async function writeTurnCapture(
     sessionHeadingWritten = true;
   }
 
+  // The leaf id pins the exact tree position, which is what memory_transcript
+  // needs to drill back into the original conversation.
   const anchor = sessionId
-    ? `<!-- session:${sessionId}${sessionFile ? ` transcript:${sessionFile}` : ""} -->\n`
+    ? `<!-- session:${sessionId}${leafId ? ` turn:${leafId}` : ""}` +
+      `${sessionFile ? ` transcript:${sessionFile}` : ""} -->\n`
     : "";
   appendFileSync(memoryFile, `### ${clock}\n${anchor}${cleaned}\n\n`, "utf-8");
 
@@ -379,6 +383,54 @@ export default async function (pi: ExtensionAPI) {
     },
   });
 
+  // ----- Tool: memory_transcript (L3) -----
+  pi.registerTool({
+    name: "memory_transcript",
+    label: "Memory Transcript",
+    description:
+      "Retrieve the original conversation behind a memory. Use after memory_get " +
+      "when the expanded section carries an anchor comment " +
+      "(<!-- session:ID turn:ID transcript:PATH -->) and the exact wording of the " +
+      "original exchange matters. Pass the transcript path from the anchor; pass " +
+      "the turn id too and the surrounding turns are returned.",
+    promptSnippet: "Read the original conversation behind a memory",
+    promptGuidelines: [
+      "Use memory_transcript only when memory_get left the original wording ambiguous — " +
+        "the expanded section is usually enough.",
+    ],
+    parameters: Type.Object({
+      transcript_path: Type.String({
+        description: "The transcript path from the anchor comment",
+      }),
+      turn_id: Type.Optional(
+        Type.String({ description: "The turn id from the anchor comment" })
+      ),
+      context: Type.Optional(
+        Type.Number({ description: "Turns before/after the target (default: 3)" })
+      ),
+      limit: Type.Optional(
+        Type.Number({ description: "Max turns when no turn_id is given (default: 20)" })
+      ),
+    }),
+    async execute(_toolCallId, params) {
+      const script = join(PLUGIN_DIR, "transcript.py");
+      const args = [script, params.transcript_path];
+      if (params.turn_id) args.push("--turn", params.turn_id);
+      if (typeof params.context === "number") {
+        args.push("--context", String(params.context));
+      }
+      if (typeof params.limit === "number") {
+        args.push("--limit", String(params.limit));
+      }
+      try {
+        const out = await runChild("python3", args, { timeoutMs: 15000 });
+        return toolText(out.trim() || "No transcript content found.");
+      } catch (e: any) {
+        return toolText(`Transcript parse failed: ${e.message}`);
+      }
+    },
+  });
+
   // ----- Hook: session_start — ensure config + initial index -----
   pi.on("session_start", async (_event, ctx) => {
     const projectDir = ctx.cwd;
@@ -454,7 +506,8 @@ export default async function (pi: ExtensionAPI) {
         turn,
         ctx.cwd,
         ctx.sessionManager.getSessionId(),
-        ctx.sessionManager.getSessionFile()
+        ctx.sessionManager.getSessionFile(),
+        ctx.sessionManager.getLeafId()
       );
     } catch (err) {
       debugLog("capture", err);

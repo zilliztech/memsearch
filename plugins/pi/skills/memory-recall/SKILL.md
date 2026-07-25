@@ -1,7 +1,7 @@
 ---
 name: memory-recall
-description: "Search and recall relevant memories from past sessions via memsearch. Use when the user's question could benefit from historical context, past decisions, debugging notes, previous conversations, or project knowledge -- especially questions like 'what did I decide about X', 'why did we do Y', or 'have I seen this before'. Also use when you see a `[memsearch] Memory available` hint in the system prompt. Typical flow: search for 3-5 chunks, then expand the most relevant ones. Skip when the question is purely about current code state (use read/grep), ephemeral (today's task only), or the user has explicitly asked to ignore memory."
-allowed-tools: memory_search memory_get read bash
+description: "Search and recall relevant memories from past sessions via memsearch. Use when the user's question could benefit from historical context, past decisions, debugging notes, previous conversations, or project knowledge -- especially questions like 'what did I decide about X', 'why did we do Y', or 'have I seen this before'. Also use when you see a `[memsearch] Memory available` hint in the system prompt. Typical flow: search for 3-5 chunks, expand the most relevant, and optionally drill into the original transcript via the anchor. Skip when the question is purely about current code state (use read/grep), ephemeral (today's task only), or the user has explicitly asked to ignore memory."
+allowed-tools: memory_search memory_get memory_transcript read bash
 ---
 
 Retrieve context from past sessions and fold it into your answer.
@@ -22,7 +22,12 @@ searchable here.
    result to read the full markdown section with surrounding context.
    Search results are truncated, so expand before relying on a hit.
 
-4. **Answer** — fold the relevant findings into your response. Cite the source
+4. **Drill down (optional)** — an expanded section may carry an anchor comment
+   (`<!-- session:… turn:… transcript:… -->`). When the exact wording of the
+   original exchange matters, call `memory_transcript` with the anchor's
+   `transcript` path, passing `turn_id` to get the surrounding turns.
+
+5. **Answer** — fold the relevant findings into your response. Cite the source
    file and date so the user can trace the claim. Only include what is
    genuinely useful for the question at hand.
 
@@ -41,9 +46,8 @@ Once a concrete topic surfaces, go back to `memory_search` with a specific query
 
 ## Notes
 
-- Expanded chunks may contain an anchor comment
-  (`<!-- session:… turn:… transcript:… -->`) pointing at the original
-  conversation. Reading that transcript file directly is possible but usually
-  unnecessary — the expanded section is normally enough.
+- The three layers are progressive: search is cheap, expand is cheaper than
+  reading a transcript, and `memory_transcript` is the last resort. Stop as
+  soon as you have enough.
 - If nothing relevant turns up, say so plainly rather than padding the answer
   with weak matches.

@@ -10,6 +10,7 @@
   "files": [
     "index.ts",
     "context.ts",
+    "transcript.py",
     "scripts/*.sh",
     "scripts/*.py",
     "skills/",
