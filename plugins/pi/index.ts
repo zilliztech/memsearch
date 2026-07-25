@@ -6,6 +6,7 @@
  * - memory_get tool: expand a chunk to its full markdown section (L2)
  * - session_start hook: ensure default config + initial background index
  * - before_agent_start hook: inject recent memories as cold-start context
+ * - agent_settled hook: auto-capture per-turn summary (extract, summarize, write)
  *
  * Memory is shared with the Claude Code, Codex, OpenCode, and OpenClaw plugins:
  * the collection name is derived from the project path via the shared
@@ -13,14 +14,27 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Type } from "typebox";
 
-import { getRecentMemories, MEMSEARCH_HINT, shellEscape } from "./context.ts";
+import {
+  extractLastTurn,
+  getRecentMemories,
+  isNoiseLine,
+  MEMSEARCH_HINT,
+  shellEscape,
+  tailTruncate,
+} from "./context.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -112,6 +126,184 @@ async function runMemsearch(argline: string, timeoutMs: number): Promise<string>
 
 function toolText(text: string) {
   return { content: [{ type: "text" as const, text }], details: {} };
+}
+
+function ensureDir(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+/**
+ * Capture and injection failures are swallowed so they can never break a
+ * session, which makes them invisible when something is misconfigured.
+ * Set MEMSEARCH_DEBUG=<path> to have those failures appended to a file.
+ */
+function debugLog(stage: string, err: unknown): void {
+  const target = process.env.MEMSEARCH_DEBUG;
+  if (!target) return;
+  try {
+    const message = err instanceof Error ? err.message : String(err);
+    appendFileSync(target, `[${new Date().toISOString()}] ${stage}: ${message}\n`);
+  } catch {
+    /* debugging must not throw either */
+  }
+}
+
+/**
+ * Marks child processes we spawn so their own memsearch hooks stay inert.
+ * Without this the `pi -p` summarization fallback would settle its own turn,
+ * capture it, and spawn another summarizer — recursing without bound.
+ */
+const CHILD_ENV = { MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" };
+const IS_CHILD_PROCESS = !!process.env.MEMSEARCH_NO_WATCH;
+
+/**
+ * Run a child process and resolve with its stdout.
+ *
+ * When `input` is omitted stdin is closed rather than left as an open pipe:
+ * `pi -p` reads stdin and would otherwise wait for an EOF that never arrives.
+ */
+function runChild(
+  command: string,
+  args: string[],
+  { input, timeoutMs }: { input?: string; timeoutMs: number }
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      env: { ...process.env, ...CHILD_ENV },
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr.trim() || `exited with code ${code}`));
+    });
+
+    if (input !== undefined) {
+      child.stdin.write(input);
+      child.stdin.end();
+    }
+  });
+}
+
+/**
+ * Re-invoke pi using the running process's own node binary and entry script.
+ * Resolving `pi` from PATH is unreliable: under Volta the PATH entry is a shim
+ * that refuses to run when the working directory has no project-local install,
+ * which is exactly the case in most projects.
+ */
+function piInvocation(): { command: string; prefixArgs: string[] } {
+  const entry = process.argv[1];
+  if (entry && existsSync(entry)) {
+    return { command: process.execPath, prefixArgs: [entry] };
+  }
+  return { command: "pi", prefixArgs: [] };
+}
+
+/**
+ * Summarize one turn as third-person notes.
+ * Falls back through: memsearch-managed LLM -> `pi -p` -> raw tail.
+ */
+async function summarizeTurn(turnText: string): Promise<string> {
+  const cmd = await getMemsearchCmd();
+
+  // 1. memsearch-managed provider, when the user configured plugins.pi.summarize
+  try {
+    const out = await runChild(
+      "bash",
+      ["-c", `${cmd} summarize --plugin pi --agent-name Pi`],
+      { input: turnText, timeoutMs: 60000 }
+    );
+    if (out.trim()) return out.trim();
+  } catch (err) {
+    debugLog("summarize/memsearch", err);
+  }
+
+  // 2. pi itself, in print mode
+  try {
+    const template = readFileSync(
+      join(PLUGIN_DIR, "prompts", "summarize.txt"),
+      "utf-8"
+    ).replace(/\{\{AGENT_NAME\}\}/g, "Pi");
+    const { command, prefixArgs } = piInvocation();
+    const stdout = await runChild(
+      command,
+      [...prefixArgs, "-p", `${template}\n\nTranscript:\n${turnText}`],
+      { timeoutMs: 120000 }
+    );
+    if (stdout.trim().includes("- ")) return stdout.trim();
+    debugLog("summarize/pi", `no bullets in output: ${JSON.stringify(stdout.slice(0, 200))}`);
+  } catch (err) {
+    debugLog("summarize/pi", err);
+  }
+
+  // 3. Raw text, truncated
+  return tailTruncate(turnText, 1500);
+}
+
+// The per-session heading is written on first capture, not at session start,
+// so sessions that never produce a memory leave no stub behind.
+let sessionHeadingWritten = false;
+
+/** Summarize a turn and append it to today's journal, then reindex. */
+async function writeTurnCapture(
+  turnText: string,
+  projectDir: string,
+  sessionId?: string,
+  sessionFile?: string
+): Promise<void> {
+  const memoryDir = getMemoryDir(projectDir);
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  const clock = now.toTimeString().slice(0, 5);
+  const memoryFile = join(memoryDir, `${today}.md`);
+
+  const summary = await summarizeTurn(turnText);
+  const cleaned = summary
+    .split("\n")
+    .filter((line) => !isNoiseLine(line))
+    .join("\n")
+    .trim();
+  if (!cleaned) return;
+
+  ensureDir(memoryDir);
+  if (!existsSync(memoryFile)) {
+    writeFileSync(memoryFile, `# ${today}\n\n`, "utf-8");
+  }
+  if (!sessionHeadingWritten) {
+    appendFileSync(memoryFile, `## Session ${clock}\n\n`, "utf-8");
+    sessionHeadingWritten = true;
+  }
+
+  const anchor = sessionId
+    ? `<!-- session:${sessionId}${sessionFile ? ` transcript:${sessionFile}` : ""} -->\n`
+    : "";
+  appendFileSync(memoryFile, `### ${clock}\n${anchor}${cleaned}\n\n`, "utf-8");
+
+  const cmd = await getMemsearchCmd();
+  const collection = await getCollectionName(projectDir);
+  execFileAsync(
+    "bash",
+    ["-c", `${cmd} index '${shellEscape(memoryDir)}' --collection ${collection}`],
+    { timeout: 60000 }
+  ).catch(() => {
+    /* the journal is the source of truth; indexing can catch up later */
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +424,7 @@ export default async function (pi: ExtensionAPI) {
 
   // ----- Hook: before_agent_start — inject recent memories -----
   pi.on("before_agent_start", async (event, ctx) => {
+    if (IS_CHILD_PROCESS) return;
     try {
       const context = getRecentMemories(getMemoryDir(ctx.cwd));
       if (!context) return;
@@ -243,6 +436,28 @@ export default async function (pi: ExtensionAPI) {
       return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
     } catch {
       /* injection is best-effort */
+    }
+  });
+
+  // ----- Hook: agent_settled — capture the turn -----
+  // agent_settled rather than agent_end: pi may still auto-retry, auto-compact,
+  // or drain queued messages after agent_end, which would capture the same turn
+  // more than once.
+  pi.on("agent_settled", async (_event, ctx) => {
+    if (IS_CHILD_PROCESS) return;
+    try {
+      const entries = ctx.sessionManager.buildContextEntries();
+      const turn = extractLastTurn(entries);
+      if (!turn || turn.length < 50) return;
+
+      await writeTurnCapture(
+        turn,
+        ctx.cwd,
+        ctx.sessionManager.getSessionId(),
+        ctx.sessionManager.getSessionFile()
+      );
+    } catch (err) {
+      debugLog("capture", err);
     }
   });
 }
