@@ -1082,6 +1082,7 @@ def config_init(project: bool) -> None:
         "codex": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "opencode": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "openclaw": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "pi": {"summarize": {}, "project_review": {}, "user_profile": {}},
     }
     result["plugins"]["claude-code"]["summarize"]["enabled"] = click.confirm(
         "  Claude Code automatic summaries enabled",
@@ -1131,6 +1132,18 @@ def config_init(project: bool) -> None:
         "  OpenClaw summarize model",
         default=current.plugins.openclaw.summarize.model,
     )
+    result["plugins"]["pi"]["summarize"]["enabled"] = click.confirm(
+        "  pi automatic summaries enabled",
+        default=current.plugins.pi.summarize.enabled,
+    )
+    result["plugins"]["pi"]["summarize"]["provider"] = click.prompt(
+        "  pi summarize provider",
+        default=current.plugins.pi.summarize.provider,
+    )
+    result["plugins"]["pi"]["summarize"]["model"] = click.prompt(
+        "  pi summarize model",
+        default=current.plugins.pi.summarize.model,
+    )
 
     click.echo("\n── Advanced maintenance ──")
     click.echo("  Disabled by default. Configure provider/model if you enable these tasks.")
@@ -1139,6 +1152,7 @@ def config_init(project: bool) -> None:
         ("codex", "Codex", current.plugins.codex),
         ("opencode", "OpenCode", current.plugins.opencode),
         ("openclaw", "OpenClaw", current.plugins.openclaw),
+        ("pi", "pi", current.plugins.pi),
     ]:
         for task_name, task_label in [("project_review", "project review"), ("user_profile", "user profile")]:
             task = getattr(current_platform, task_name)
