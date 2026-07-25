@@ -202,6 +202,31 @@ function runChild(
 }
 
 /**
+ * Whether the user pointed summarization at a memsearch-managed LLM.
+ *
+ * Resolved once per session: the answer only changes when the user edits
+ * config, and the lookup costs a CLI start-up. An unset or "native" provider
+ * means summaries come from the host agent instead.
+ */
+let managedProviderPromise: Promise<boolean> | null = null;
+function hasManagedSummarizeProvider(): Promise<boolean> {
+  managedProviderPromise ??= (async () => {
+    try {
+      const value = await runMemsearch(
+        "config get plugins.pi.summarize.provider",
+        10000
+      );
+      const provider = value.trim();
+      return provider !== "" && provider !== "native";
+    } catch {
+      // Older memsearch releases do not know the `pi` platform at all.
+      return false;
+    }
+  })();
+  return managedProviderPromise;
+}
+
+/**
  * Re-invoke pi using the running process's own node binary and entry script.
  * Resolving `pi` from PATH is unreliable: under Volta the PATH entry is a shim
  * that refuses to run when the working directory has no project-local install,
@@ -222,16 +247,20 @@ function piInvocation(): { command: string; prefixArgs: string[] } {
 async function summarizeTurn(turnText: string): Promise<string> {
   const cmd = await getMemsearchCmd();
 
-  // 1. memsearch-managed provider, when the user configured plugins.pi.summarize
-  try {
-    const out = await runChild(
-      "bash",
-      ["-c", `${cmd} summarize --plugin pi --agent-name Pi`],
-      { input: turnText, timeoutMs: 60000 }
-    );
-    if (out.trim()) return out.trim();
-  } catch (err) {
-    debugLog("summarize/memsearch", err);
+  // 1. memsearch-managed provider — only when the user opted into one. The
+  //    default ("" or "native") means summarize with the host agent, so
+  //    checking first avoids paying a CLI start-up on every capture.
+  if (await hasManagedSummarizeProvider()) {
+    try {
+      const out = await runChild(
+        "bash",
+        ["-c", `${cmd} summarize --plugin pi --agent-name Pi`],
+        { input: turnText, timeoutMs: 60000 }
+      );
+      if (out.trim()) return out.trim();
+    } catch (err) {
+      debugLog("summarize/memsearch", err);
+    }
   }
 
   // 2. pi itself, in print mode
