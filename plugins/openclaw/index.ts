@@ -28,19 +28,13 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 // Helpers (no external process calls — those live inside register())
 // ---------------------------------------------------------------------------
 
-function getMemsearchDir(projectDir: string): string {
+export function getMemsearchDir(projectDir: string): string {
   // Honor MEMSEARCH_DIR for shared/global scope — matches claude-code/codex behavior.
   const explicit = process.env.MEMSEARCH_DIR?.trim();
   return explicit ? resolve(explicit) : join(projectDir, ".memsearch");
 }
 
-/**
- * Directory to derive the collection name from.
- * When MEMSEARCH_DIR is set, collection keys off that shared dir (global scope).
- * Otherwise collection keys off projectDir (per-project isolation).
- * Matches claude-code/codex common.sh behavior exactly.
- */
-function getCollectionScopeDir(projectDir: string): string {
+export function getCollectionScopeDir(projectDir: string): string {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
   return explicit ? resolve(explicit) : projectDir;
 }

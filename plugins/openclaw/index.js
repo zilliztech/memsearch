@@ -705,5 +705,7 @@ ${anchor}${cleanSummary}
   }
 };
 export {
-  index_default as default
+  index_default as default,
+  getCollectionScopeDir,
+  getMemsearchDir
 };

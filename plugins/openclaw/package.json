@@ -15,7 +15,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "esbuild index.ts --platform=node --format=esm --outfile=index.js"
+    "build": "esbuild index.ts --platform=node --format=esm --outfile=index.js",
+    "test": "node --test"
   },
   "openclaw": {
     "extensions": ["./index.js"],

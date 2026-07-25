@@ -92,7 +92,7 @@ Each OpenClaw agent stores memory independently under its own workspace:
 ~/.openclaw/workspace-work/.memsearch/memory/      ← work agent
 ```
 
-Collection names are derived from the workspace path (same algorithm as Claude Code, Codex, and OpenCode), so agents with different workspaces have isolated memories. When an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
+Collection names are derived from the workspace path, so agents with different workspaces have isolated memories. When an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
 
 ### Shared memory across projects
 
@@ -106,8 +106,6 @@ openclaw tui
 When `MEMSEARCH_DIR` is set:
 - All agents write memories to that directory regardless of their workspace path.
 - The collection name is derived from `MEMSEARCH_DIR` instead of the workspace path, so all agents share the same index.
-
-This matches the behavior of the Claude Code and Codex plugins.
 
 ## Configuration
 
