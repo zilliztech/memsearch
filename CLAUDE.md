@@ -104,12 +104,12 @@ When modifying hooks/skills, keep in mind:
 - **ONNX bge-m3 as plugin default.** The Claude Code plugin hooks default to `onnx` provider (bge-m3, CPU, no API key). The Python API still defaults to `openai`.
 - **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them. RRF scores are normalized to `[0, 1]` (theoretical max = `num_retrievers / (k + 1)`).
 - **`[llm]` + `[prompts]` config.** New config sections for LLM provider selection and custom prompt templates. `[compact]` is deprecated but still works (fallback: `[llm]` > `[compact]` > defaults). Plugins read `prompts.summarize` for custom session summarization prompts. **Migration plan:** `[compact]` will be removed in the next major version (1.0). During the transition, `resolve_config()` emits a `DeprecationWarning` when user config files contain `[compact]`. The compact CLI command resolves LLM settings as `cfg.llm.* or cfg.compact.*`.
-- **Shared prompt template.** All four plugins share a single `summarize.txt` template (maintained in `plugins/_shared/prompts/`, synced via `scripts/sync-prompts.sh`). Template uses `{{AGENT_NAME}}` placeholder.
+- **Shared prompt template.** All five plugins share a single `summarize.txt` template (maintained in `plugins/_shared/prompts/`, synced via `scripts/sync-prompts.sh`). Template uses `{{AGENT_NAME}}` placeholder.
 - **Remote Milvus `query()` requires a filter.** Use `chunk_hash != ""` as a "match all" filter when no filter is provided (Milvus Lite doesn't enforce this, but Milvus Server does).
 
 ## Versioning & Release
 
-**Five independent version numbers** — bump only the ones that changed:
+**Six independent version numbers** — bump only the ones that changed:
 
 | Component | Version file | Publish channel |
 |-----------|-------------|-----------------|
@@ -118,6 +118,7 @@ When modifying hooks/skills, keep in mind:
 | **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
 | **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`) |
 | **Codex CLI plugin** | *(none)* | `install.sh` (no version management) |
+| **pi plugin** | `plugins/pi/package.json` | npm (`@zilliz/memsearch-pi`) |
 
 See `CLAUDE.local.md` for detailed release procedures, current versions, and operational details.
 

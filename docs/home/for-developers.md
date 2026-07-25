@@ -53,7 +53,7 @@ See the full [CLI Reference →](../cli.md) and [Python API →](../python-api.m
 
 ## How Plugins Use the API
 
-All 4 platform plugins are built on top of the same CLI/API:
+All 5 platform plugins are built on top of the same CLI/API:
 
 ```
 Plugin Capture:  conversation → LLM summary → append daily.md → memsearch index

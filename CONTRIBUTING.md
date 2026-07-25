@@ -99,10 +99,15 @@ plugins/
 │   ├── index.ts            # Tools + experimental hooks
 │   ├── scripts/            # capture-daemon.py (SQLite polling), parse-transcript.py
 │   └── skills/             # memory-recall SKILL.md
-└── codex/                  # Codex CLI plugin (shell hooks + SKILL.md)
-    ├── hooks/              # SessionStart, Stop, UserPromptSubmit
-    ├── skills/             # memory-recall skill
-    └── scripts/            # install.sh, parse-rollout.sh, derive-collection.sh
+├── codex/                  # Codex CLI plugin (shell hooks + SKILL.md)
+│   ├── hooks/              # SessionStart, Stop, UserPromptSubmit
+│   ├── skills/             # memory-recall skill
+│   └── scripts/            # install.sh, parse-rollout.sh, derive-collection.sh
+└── pi/                     # pi plugin (TypeScript, registerTool)
+    ├── index.ts            # memory_search/get/transcript tools + lifecycle hooks
+    ├── transcript.py       # pi JSONL parser, tree-aware (L3)
+    ├── skills/             # memory-recall, memory-config, memory-to-skill
+    └── scripts/            # derive-collection.sh
 
 evaluation/                 # Embedding provider benchmark (platform-agnostic)
 tests/                      # pytest test suite
@@ -142,6 +147,16 @@ ln -sf $(pwd)/plugins/opencode/index.ts ~/.config/opencode/plugins/memsearch.ts
 bash plugins/codex/scripts/install.sh   # copies skill + generates hooks.json
 codex --yolo                             # test with sandbox disabled
 ```
+
+### pi
+
+```bash
+pi -e ./plugins/pi     # load the package for one run, without installing
+cd plugins/pi && npm test
+```
+
+TypeScript loads natively — no compilation step. Note that `pi install -l`
+writes to project settings, which pi ignores until the project is trusted.
 
 ## Documentation
 

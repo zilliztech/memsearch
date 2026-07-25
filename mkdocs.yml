@@ -65,6 +65,11 @@ nav:
     - Installation: platforms/codex/installation.md
     - How It Works: platforms/codex/how-it-works.md
     - Memory Recall: platforms/codex/memory-recall.md
+  - pi Plugin:
+    - Overview: platforms/pi/index.md
+    - Installation: platforms/pi/installation.md
+    - How It Works: platforms/pi/how-it-works.md
+    - Memory Tools: platforms/pi/memory-tools.md
   - For Agent Developers:
     - CLI Reference: cli.md
     - Python API: python-api.md
