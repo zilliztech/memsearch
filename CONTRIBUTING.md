@@ -107,7 +107,7 @@ plugins/
     ├── index.ts            # memory_search/get/transcript tools + lifecycle hooks
     ├── transcript.py       # pi JSONL parser, tree-aware (L3)
     ├── skills/             # memory-recall, memory-config, memory-to-skill
-    └── scripts/            # derive-collection.sh
+    └── scripts/            # derive-collection.sh, maintenance-runner.py
 
 evaluation/                 # Embedding provider benchmark (platform-agnostic)
 tests/                      # pytest test suite

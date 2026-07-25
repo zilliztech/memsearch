@@ -26,7 +26,7 @@ graph LR
 |----------|----------------------|
 | `session_start` | Ensure the ONNX default config, index the journal in the background, reset per-session state |
 | `before_agent_start` | Append recent journal entries and a `[memsearch] Memory available.` hint to the system prompt |
-| `agent_settled` | Extract the settled turn, summarize it, append it to today's journal, reindex |
+| `agent_settled` | Extract the settled turn, summarize it, append it to today's journal, reindex, wake maintenance |
 
 ### Why `agent_settled` and not `agent_end`
 
@@ -132,6 +132,34 @@ session is not picked up until the next session start, or until you run
 
 ---
 
+## Background maintenance
+
+After each capture the plugin wakes `scripts/maintenance-runner.py`, the same
+runner the other four plugins use. It owns three opt-in tasks:
+
+| Task | Output |
+|------|--------|
+| `project_review` | `.memsearch/PROJECT.md` |
+| `user_profile` | `.memsearch/USER.md` |
+| `memory_to_skill` | Skill candidates under `.memsearch/skill-candidates/` |
+
+All three are disabled by default, and the runner keeps its own interval,
+change-detection, and lock state — so waking it after every capture costs
+nothing when nothing is due:
+
+```bash
+memsearch config set plugins.pi.project_review.enabled true
+```
+
+With `provider = "native"` the task re-invokes pi in print mode, stripped down to
+nothing but the prompt: `--no-session --no-extensions --no-context-files
+--no-skills --no-tools`. Unlike the Claude Code plugin, skill distillation gets
+no shell either: pi's allowlist is tool-level, so there is no way to expose only
+the two read-only `memsearch` drill commands, and an unattended run is the wrong
+place to hand out an unscoped shell.
+
+---
+
 ## Failure handling
 
 Capture and injection failures are swallowed so they can never break a session.
@@ -142,4 +170,4 @@ MEMSEARCH_DEBUG=/tmp/memsearch.log pi
 ```
 
 Every swallowed failure is appended there with the stage that produced it
-(`summarize/memsearch`, `summarize/pi`, or `capture`).
+(`summarize/memsearch`, `summarize/pi`, `capture`, or `maintenance`).

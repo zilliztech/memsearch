@@ -33,7 +33,8 @@ The plugin registers three tools and three lifecycle hooks.
 ```
 session_start        ensure the onnx default, index the journal in the background
 before_agent_start   inject recent journal entries into the system prompt
-agent_settled        extract the turn, summarize it, append it, reindex
+agent_settled        extract the turn, summarize it, append it, reindex,
+                     wake the maintenance runner
 ```
 
 Capture runs on `agent_settled` rather than `agent_end` because pi may still auto-retry, auto-compact, or drain queued messages after `agent_end`, which would capture the same turn twice.
@@ -102,6 +103,7 @@ Common cases:
 - **Journals are written but search is empty** — check `.memsearch/.index-state.json` for `status` and `last_error`, then re-run `memsearch index`.
 - **The index will not open** — a Milvus Lite database written by an older release is unreadable by 3.x. Move the `.db` aside and re-index from the markdown, which is the source of truth.
 - **Entries contain raw transcript instead of bullet points** — every summarizer fell through. The debug log names the one that failed.
+- **PROJECT.md / USER.md are not appearing** — they are opt-in. Enable with `memsearch config set plugins.pi.project_review.enabled true`, then check the `maintenance` stage in the debug log.
 
 ## Development
 

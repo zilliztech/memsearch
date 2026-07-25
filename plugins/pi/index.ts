@@ -224,12 +224,16 @@ const IS_CHILD_PROCESS = !!process.env.MEMSEARCH_NO_WATCH;
 function runChild(
   command: string,
   args: string[],
-  { input, timeoutMs }: { input?: string; timeoutMs: number }
+  {
+    input,
+    timeoutMs,
+    env,
+  }: { input?: string; timeoutMs: number; env?: Record<string, string> }
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-      env: { ...process.env, ...CHILD_ENV },
+      env: { ...process.env, ...CHILD_ENV, ...env },
     });
 
     let stdout = "";
@@ -360,6 +364,47 @@ let captureQueue: Promise<void> = Promise.resolve();
 function queueCapture(task: () => Promise<void>): Promise<void> {
   captureQueue = captureQueue.then(task, task);
   return captureQueue;
+}
+
+/**
+ * Wake the plugin-local maintenance runner: PROJECT.md, USER.md, and skill
+ * candidate distillation.
+ *
+ * Every task is disabled by default and `run_due_tasks` owns the interval,
+ * change-detection and lock state, so waking it after each capture is cheap —
+ * it exits immediately when nothing is due. Fire-and-forget, because a run that
+ * is due takes as long as a model call and must not hold up the capture queue.
+ */
+async function wakeMaintenance(projectDir: string): Promise<void> {
+  try {
+    const { memsearchDir } = await getScope(projectDir);
+    const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
+    const { command, prefixArgs } = piInvocation();
+    runChild(
+      "python3",
+      [
+        runner,
+        "--platform",
+        "pi",
+        "--project-dir",
+        projectDir,
+        "--memsearch-dir",
+        memsearchDir,
+      ],
+      {
+        timeoutMs: 180000,
+        // The runner re-invokes pi for native tasks and hits the same shim
+        // problem piInvocation() solves, so hand it the resolved command.
+        env: {
+          MEMSEARCH_PI_BIN: [command, ...prefixArgs]
+            .map((part) => `'${shellEscape(part)}'`)
+            .join(" "),
+        },
+      }
+    ).catch((err) => debugLog("maintenance", err));
+  } catch (err) {
+    debugLog("maintenance", err);
+  }
 }
 
 /** Summarize a turn and append it to today's journal, then reindex. */
@@ -621,6 +666,7 @@ export default async function (pi: ExtensionAPI) {
           (err) => debugLog("capture", err)
         )
       );
+      await wakeMaintenance(projectDir);
     } catch (err) {
       debugLog("capture", err);
     }

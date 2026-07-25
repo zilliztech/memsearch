@@ -22,7 +22,7 @@ def _load_runner():
 def test_plugin_maintenance_runner_copies_match_shared() -> None:
     root = Path(__file__).resolve().parents[1]
     shared = (root / "plugins" / "_shared" / "scripts" / "maintenance-runner.py").read_text(encoding="utf-8")
-    for platform in ["claude-code", "codex", "openclaw", "opencode"]:
+    for platform in ["claude-code", "codex", "openclaw", "opencode", "pi"]:
         copied = (root / "plugins" / platform / "scripts" / "maintenance-runner.py").read_text(encoding="utf-8")
         assert copied == shared
 

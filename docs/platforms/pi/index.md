@@ -30,6 +30,7 @@ If you use more than one coding agent, memsearch gives you a single memory layer
 - **Three-layer progressive recall** -- search, expand, and drill into the original conversation ([details](memory-tools.md))
 - **Automatic summarization** -- each turn is summarized by pi itself in print mode, with optional routing to a memsearch-managed provider
 - **Cold-start context** -- recent journal entries injected into the system prompt via `before_agent_start`
+- **Opt-in background maintenance** -- PROJECT.md, USER.md, and skill distillation through the shared maintenance runner ([details](how-it-works.md#background-maintenance))
 - **ONNX embedding by default** -- no API key, runs locally on CPU
 
 ---

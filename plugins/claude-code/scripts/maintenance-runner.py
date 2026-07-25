@@ -25,6 +25,7 @@ DEFAULT_NATIVE_MODELS = {
     "codex": "",
     "opencode": "",
     "openclaw": "",
+    "pi": "",
 }
 
 
@@ -500,12 +501,33 @@ def run_native_provider(ctx, prompt: str) -> str:
         env["XDG_DATA_HOME"] = str(isolated / "data")
         return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
 
+    if ctx.platform == "pi":
+        # Resolving `pi` from PATH is unreliable: under a version manager the
+        # PATH entry is a shim that refuses to run when the project has no
+        # local install. The plugin passes its own resolved invocation here.
+        cmd = shlex.split(os.environ.get("MEMSEARCH_PI_BIN", "").strip()) or ["pi"]
+        cmd += ["-p", "--no-session", "--no-extensions", "--no-context-files", "--no-skills"]
+        # No tools, including for memory_to_skill. pi's allowlist is tool-level,
+        # so there is no equivalent of the Claude Code plugin's narrow
+        # Bash(memsearch transcript:*) hole, and an unattended maintenance run
+        # is the wrong place to hand out an unscoped shell.
+        cmd += ["--no-tools"]
+        if model:
+            cmd += ["--model", model]
+        cmd += [
+            "--system-prompt",
+            "You are a maintenance task runner. Output only the requested JSON object.",
+            prompt,
+        ]
+        env["MEMSEARCH_DISABLE"] = "1"
+        return extract_task_json_output(run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120))
+
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run plugin-local MemSearch maintenance tasks.")
-    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw"])
+    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "pi"])
     parser.add_argument("--project-dir", default=None)
     parser.add_argument("--memsearch-dir", default=None)
     parser.add_argument("--force", action="store_true")

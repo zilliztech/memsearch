@@ -93,6 +93,7 @@ skill directory:
 | Claude Code | `.claude/skills/` (or `~/.claude/skills/`) |
 | Codex / OpenCode / Cursor … | `.agents/skills/` (the shared standard; **not** read by Claude Code) |
 | OpenClaw | `.openclaw/skills/` |
+| pi | `.pi/skills/` (or `~/.pi/agent/skills/`; also reads `.agents/skills/`) |
 
 A skill can be installed to several directories at once to cover multiple agents.
 
