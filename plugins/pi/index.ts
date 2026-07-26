@@ -293,6 +293,21 @@ function hasManagedSummarizeProvider(): Promise<boolean> {
  * that refuses to run when the working directory has no project-local install,
  * which is exactly the case in most projects.
  */
+/**
+ * Flags shared by every child pi run.
+ *
+ * Extensions are deliberately left enabled: custom model providers are
+ * registered by extensions (`pi.registerProvider()`), so `--no-extensions`
+ * would break summarization for anyone on a proxied or self-hosted provider.
+ * The plugin's own hooks stay inert in children via MEMSEARCH_NO_WATCH instead.
+ */
+const NON_INTERACTIVE_ARGS = [
+  "--no-session",
+  "--no-tools",
+  "--no-skills",
+  "--no-context-files",
+];
+
 function piInvocation(): { command: string; prefixArgs: string[] } {
   const entry = process.argv[1];
   if (entry && existsSync(entry)) {
@@ -333,7 +348,15 @@ async function summarizeTurn(turnText: string): Promise<string> {
     const { command, prefixArgs } = piInvocation();
     const stdout = await runChild(
       command,
-      [...prefixArgs, "-p", `${template}\n\nTranscript:\n${turnText}`],
+      [
+        ...prefixArgs,
+        "-p",
+        // Summarizing is a pure text task, so the child is stripped down to
+        // the prompt. --no-session above all: without it every capture leaves
+        // a saved session behind and `pi -r` fills up with summarizer runs.
+        ...NON_INTERACTIVE_ARGS,
+        `${template}\n\nTranscript:\n${turnText}`,
+      ],
       { timeoutMs: 120000 }
     );
     if (stdout.trim().includes("- ")) return stdout.trim();
@@ -579,6 +602,7 @@ export default async function (pi: ExtensionAPI) {
 
   // ----- Hook: session_start — ensure config + initial index -----
   pi.on("session_start", async (_event, ctx) => {
+    if (IS_CHILD_PROCESS) return;
     const projectDir = ctx.cwd;
     const home = process.env.HOME || "";
 

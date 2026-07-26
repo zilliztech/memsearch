@@ -74,6 +74,29 @@ written -- so without serialization the journal could interleave.
 The prompt is `prompts/summarize.txt`, shared across every plugin via
 `scripts/sync-prompts.sh`, with `{{AGENT_NAME}}` resolved to `Pi`.
 
+### Child pi runs
+
+Summarization and native maintenance both re-invoke pi in print mode. Those runs
+are stripped down to the prompt:
+
+```
+--no-session --no-tools --no-skills --no-context-files
+```
+
+`--no-session` is the load-bearing one: without it every captured turn leaves a
+saved session behind, and the user's `pi -r` picker fills up with summarizer
+runs instead of real conversations.
+
+Extensions stay **enabled**, unlike the flags above. Custom model providers are
+registered by extensions (`pi.registerProvider()`), so `--no-extensions` would
+break summarization for anyone behind a proxy or on a self-hosted deployment.
+Recursion is prevented instead by `MEMSEARCH_NO_WATCH=1`, which every hook in
+this plugin checks before doing any work.
+
+pi is re-invoked through the running process's own node binary and entry script
+rather than the `pi` on `PATH`: under a version manager that PATH entry is a
+shim which refuses to run when the project has no local install.
+
 ---
 
 ## Memory files
@@ -151,12 +174,11 @@ nothing when nothing is due:
 memsearch config set plugins.pi.project_review.enabled true
 ```
 
-With `provider = "native"` the task re-invokes pi in print mode, stripped down to
-nothing but the prompt: `--no-session --no-extensions --no-context-files
---no-skills --no-tools`. Unlike the Claude Code plugin, skill distillation gets
-no shell either: pi's allowlist is tool-level, so there is no way to expose only
-the two read-only `memsearch` drill commands, and an unattended run is the wrong
-place to hand out an unscoped shell.
+With `provider = "native"` the task re-invokes pi in print mode using the same
+[child flags](#child-pi-runs) as summarization. Unlike the Claude Code plugin,
+skill distillation gets no shell either: pi's allowlist is tool-level, so there
+is no way to expose only the two read-only `memsearch` drill commands, and an
+unattended run is the wrong place to hand out an unscoped shell.
 
 ---
 

@@ -506,12 +506,13 @@ def run_native_provider(ctx, prompt: str) -> str:
         # PATH entry is a shim that refuses to run when the project has no
         # local install. The plugin passes its own resolved invocation here.
         cmd = shlex.split(os.environ.get("MEMSEARCH_PI_BIN", "").strip()) or ["pi"]
-        cmd += ["-p", "--no-session", "--no-extensions", "--no-context-files", "--no-skills"]
-        # No tools, including for memory_to_skill. pi's allowlist is tool-level,
+        # --no-session keeps maintenance runs out of the user's `pi -r` list.
+        # No tools, including for memory_to_skill: pi's allowlist is tool-level,
         # so there is no equivalent of the Claude Code plugin's narrow
         # Bash(memsearch transcript:*) hole, and an unattended maintenance run
-        # is the wrong place to hand out an unscoped shell.
-        cmd += ["--no-tools"]
+        # is the wrong place to hand out an unscoped shell. Extensions stay
+        # enabled because custom model providers are registered by extensions.
+        cmd += ["-p", "--no-session", "--no-tools", "--no-skills", "--no-context-files"]
         if model:
             cmd += ["--model", model]
         cmd += [
