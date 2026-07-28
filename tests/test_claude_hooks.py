@@ -920,3 +920,45 @@ exit 0
     # The update hint survives the cache round trip.
     for run in (first, second):
         assert "UPDATE: v2.0.0 available" in json.loads(run.stdout)["systemMessage"]
+
+
+def test_claude_session_start_caches_failed_pypi_lookup(tmp_path: Path) -> None:
+    """A failed lookup is cached too, so an offline machine stops retrying."""
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+    curl_log = tmp_path / "curl-calls.txt"
+
+    fake_bin = _install_layout(tmp_path / "opt", "1.0.0")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
+  exit 0
+fi
+exit 0
+""",
+    )
+    # Stand in for an unreachable index: no output, non-zero exit.
+    _write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\nexit 6\n""",
+    )
+
+    env = _session_start_env(tmp_path, home, fake_bin, call_log)
+    env["CURL_CALL_LOG"] = str(curl_log)
+
+    first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+    second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+
+    cache = home / ".memsearch" / ".pypi-latest"
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+    assert cache.exists() and cache.read_text(encoding="utf-8") == ""
+    # No latest version known, so no hint is claimed either way.
+    for run in (first, second):
+        assert "UPDATE:" not in json.loads(run.stdout)["systemMessage"]

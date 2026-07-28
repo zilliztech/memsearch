@@ -99,18 +99,18 @@ _installed_version_from_dist_info() {
 # unreachable PyPI otherwise costs the full curl timeout on every start.
 # Prints nothing when the lookup fails.
 _pypi_latest_version() {
-  local cache="$HOME/.memsearch/.pypi-latest" latest="" json
+  local cache="$HOME/.memsearch/.pypi-latest" latest json
+  # A cache file younger than a day is authoritative even when it is empty: an
+  # empty file records a lookup that failed, so an offline machine stops
+  # re-paying the curl timeout on every session start.
   if [ -n "$(find "$cache" -mtime -1 2>/dev/null)" ]; then
-    latest=$(cat "$cache" 2>/dev/null || true)
+    cat "$cache" 2>/dev/null || true
+    return 0
   fi
-  if [ -z "$latest" ]; then
-    json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
-    latest=$(_json_val "$json" "info.version" "")
-    if [ -n "$latest" ]; then
-      mkdir -p "$(dirname "$cache")" 2>/dev/null || true
-      printf '%s' "$latest" > "$cache" 2>/dev/null || true
-    fi
-  fi
+  json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
+  latest=$(_json_val "$json" "info.version" "")
+  mkdir -p "$(dirname "$cache")" 2>/dev/null || true
+  printf '%s' "$latest" > "$cache" 2>/dev/null || true
   printf '%s' "$latest"
 }
 
