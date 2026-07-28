@@ -50,7 +50,8 @@ if [ -n "$MEMSEARCH_CMD" ]; then
     MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
   fi
   # "memsearch, version 0.1.10" → "0.1.10"
-  VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
+  VERSION=$(_installed_version_from_dist_info)
+  [ -n "$VERSION" ] || VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
 
 # Determine required API key for the configured provider
@@ -77,11 +78,11 @@ if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   fi
 fi
 
-# Check PyPI for newer version (2s timeout, non-blocking on failure)
+# Check PyPI for a newer version. The lookup is cached, so a slow or
+# unreachable index does not delay every session start.
 UPDATE_HINT=""
 if [ -n "$VERSION" ]; then
-  _PYPI_JSON=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
-  LATEST=$(_json_val "$_PYPI_JSON" "info.version" "")
+  LATEST=$(_pypi_latest_version)
   if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
     # Detect install method to suggest the right upgrade command.
     _MS_BIN=$(command -v memsearch 2>/dev/null || echo "")

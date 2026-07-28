@@ -775,3 +775,148 @@ def test_claude_stop_hook_avoids_empty_array_expansion_under_nounset() -> None:
 
     assert '"${CLAUDE_SAFE_MODE_ARGS[@]}"' not in source
     assert "CLAUDE_SAFE_MODE_ARG" in source
+
+
+def _install_layout(root: Path, version: str) -> Path:
+    """Create a uv/pipx-style install tree and return its bin directory."""
+    bin_dir = root / "bin"
+    site = root / "lib" / "python3.14" / "site-packages"
+    bin_dir.mkdir(parents=True)
+    site.mkdir(parents=True)
+    (site / f"memsearch-{version}.dist-info").mkdir()
+    return bin_dir
+
+
+def _session_start_env(tmp_path: Path, home: Path, fake_bin: Path, call_log: Path) -> dict[str, str]:
+    return {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_CALL_LOG": str(call_log),
+    }
+
+
+def test_claude_session_start_reads_version_from_dist_info(tmp_path: Path) -> None:
+    """The status version comes from dist-info, without a second CLI start."""
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+
+    fake_bin = _install_layout(tmp_path / "opt", "9.9.9")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.0.0-should-not-be-used"
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", """#!/usr/bin/env bash\necho '{"info":{"version":"9.9.9"}}'\n""")
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=_session_start_env(tmp_path, home, fake_bin, call_log),
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "[memsearch v9.9.9]" in status
+    assert "--version" not in calls
+
+
+def test_claude_session_start_falls_back_to_cli_version_without_dist_info(tmp_path: Path) -> None:
+    """Layouts with no discoverable dist-info still report a version."""
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 1.2.3"
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", """#!/usr/bin/env bash\necho '{"info":{"version":"1.2.3"}}'\n""")
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=_session_start_env(tmp_path, home, fake_bin, call_log),
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "[memsearch v1.2.3]" in status
+    assert "--version" in calls
+
+
+def test_claude_session_start_caches_pypi_lookup(tmp_path: Path) -> None:
+    """PyPI is queried on the first start and served from cache on the next."""
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+    curl_log = tmp_path / "curl-calls.txt"
+
+    fake_bin = _install_layout(tmp_path / "opt", "1.0.0")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"2.0.0"}}'\n""",
+    )
+
+    env = _session_start_env(tmp_path, home, fake_bin, call_log)
+    env["CURL_CALL_LOG"] = str(curl_log)
+
+    first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+    second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+    assert (home / ".memsearch" / ".pypi-latest").read_text(encoding="utf-8") == "2.0.0"
+    # The update hint survives the cache round trip.
+    for run in (first, second):
+        assert "UPDATE: v2.0.0 available" in json.loads(run.stdout)["systemMessage"]

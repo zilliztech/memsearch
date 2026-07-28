@@ -72,6 +72,48 @@ _json_encode_str() {
   return 0
 }
 
+# Resolve the installed memsearch version from its dist-info directory name.
+# Callers already spend one CLI start reading config; asking the CLI for
+# `--version` spawns a second Python interpreter (~0.3s warm, several seconds
+# cold) purely to render a status string. Prints nothing when no dist-info is
+# discoverable (uvx, editable installs) so callers can fall back to the CLI.
+_installed_version_from_dist_info() {
+  local bin real candidate
+  bin=$(command -v memsearch 2>/dev/null) || return 0
+  [ -n "$bin" ] || return 0
+  real=$(readlink -f "$bin" 2>/dev/null || echo "$bin")
+  for candidate in "${real%/bin/memsearch}"/lib/python*/site-packages/memsearch-*.dist-info; do
+    [ -d "$candidate" ] || continue
+    candidate=${candidate##*/memsearch-}
+    candidate=${candidate%.dist-info}
+    # Require a version-shaped string so a sibling distribution whose name
+    # starts with "memsearch-" cannot be mistaken for the package itself.
+    case "$candidate" in
+      [0-9]*) printf '%s' "$candidate"; return 0 ;;
+    esac
+  done
+}
+
+# Latest memsearch version on PyPI, cached for 24h. Keeps the update hint
+# current without making every session start wait on a network round trip: an
+# unreachable PyPI otherwise costs the full curl timeout on every start.
+# Prints nothing when the lookup fails.
+_pypi_latest_version() {
+  local cache="$HOME/.memsearch/.pypi-latest" latest="" json
+  if [ -n "$(find "$cache" -mtime -1 2>/dev/null)" ]; then
+    latest=$(cat "$cache" 2>/dev/null || true)
+  fi
+  if [ -z "$latest" ]; then
+    json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
+    latest=$(_json_val "$json" "info.version" "")
+    if [ -n "$latest" ]; then
+      mkdir -p "$(dirname "$cache")" 2>/dev/null || true
+      printf '%s' "$latest" > "$cache" 2>/dev/null || true
+    fi
+  fi
+  printf '%s' "$latest"
+}
+
 # Return a concise user-facing warning when the persisted index state says
 # search may be stale. Detailed diagnosis stays in the memory-config skill.
 index_state_warning() {
