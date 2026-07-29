@@ -68,11 +68,15 @@ async def test_openai_compact_uses_default_temperature(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_compact_chunks_dispatches_to_anthropic(monkeypatch) -> None:
-    captured: dict[str, str] = {}
+    captured: dict[str, str | None] = {}
 
-    async def fake_anthropic(prompt: str, model: str) -> str:
+    async def fake_anthropic(
+        prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None
+    ) -> str:
         captured["prompt"] = prompt
         captured["model"] = model
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
         return "anthropic-summary"
 
     monkeypatch.setattr(compact_module, "_compact_anthropic", fake_anthropic)
@@ -84,6 +88,8 @@ async def test_compact_chunks_dispatches_to_anthropic(monkeypatch) -> None:
 
     assert result == "anthropic-summary"
     assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["base_url"] is None
+    assert captured["api_key"] is None
     assert "memory chunk" in captured["prompt"]
 
 
@@ -124,3 +130,85 @@ async def test_compact_chunks_rejects_prompt_without_chunks_placeholder() -> Non
 async def test_compact_chunks_rejects_unknown_provider() -> None:
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         await compact_module.compact_chunks([{"content": "x"}], llm_provider="unknown")
+
+
+@pytest.mark.asyncio
+async def test_compact_chunks_dispatches_minimax_to_openai_compatible(monkeypatch) -> None:
+    captured: dict[str, str | None] = {}
+
+    async def fake_openai(prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None) -> str:
+        captured["prompt"] = prompt
+        captured["model"] = model
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
+        return "minimax-summary"
+
+    for name in ("MINIMAX_REGION", "MINIMAX_API_REGION", "MINIMAX_API_BASE", "MINIMAX_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+    monkeypatch.setattr(compact_module, "_compact_openai", fake_openai)
+
+    result = await compact_module.compact_chunks(
+        [{"content": "minimax memory"}],
+        llm_provider="minimax",
+    )
+
+    assert result == "minimax-summary"
+    assert captured == {
+        "prompt": compact_module.COMPACT_PROMPT.format(chunks="minimax memory"),
+        "model": "MiniMax-M3",
+        "base_url": "https://api.minimax.io/v1",
+        "api_key": "env:MINIMAX_API_KEY",
+    }
+
+
+@pytest.mark.asyncio
+async def test_compact_anthropic_accepts_custom_base_url(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            captured["create"] = kwargs
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="anthropic-summary")])
+
+    class FakeAsyncAnthropic:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic))
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+
+    result = await compact_module._compact_anthropic(
+        "prompt",
+        "claude-test",
+        base_url="https://api.minimax.io/anthropic",
+        api_key="env:MINIMAX_API_KEY",
+    )
+
+    assert result == "anthropic-summary"
+    assert captured["client_kwargs"] == {
+        "base_url": "https://api.minimax.io/anthropic",
+        "api_key": "minimax-key",
+    }
+
+
+@pytest.mark.asyncio
+async def test_compact_anthropic_falls_back_to_default_credentials(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")])
+
+    class FakeAsyncAnthropic:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic))
+
+    result = await compact_module._compact_anthropic("prompt", "claude-test")
+
+    assert result == "ok"
+    assert captured["client_kwargs"] == {}

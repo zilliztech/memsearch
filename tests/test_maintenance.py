@@ -245,3 +245,87 @@ def test_run_memory_command_allows_transcript_outside_roots(tmp_path: Path) -> N
     # A non-transcript command pointed outside the roots is still rejected.
     rejected = run_memory_command(f"grep foo {tmp_path}/outside.txt", ctx)
     assert "outside allowed memory roots" in rejected
+
+
+def test_maintenance_routes_minimax_shortcut_to_openai_compatible_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-05-27.md").write_text("- User discussed MiniMax maintenance.\n", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+    cfg.plugins.codex.project_review.provider = "minimax"
+
+    captured = {}
+
+    def fake_openai(ctx, prompt: str, provider_type: str, model: str | None, provider_cfg) -> str:
+        captured["model"] = model
+        captured["provider_type"] = provider_type
+        captured["config_type"] = provider_cfg.type
+        captured["base_url"] = provider_cfg.base_url
+        captured["api_key"] = provider_cfg.api_key
+        return json.dumps({"action": "none", "reason": "ok"})
+
+    for name in ("MINIMAX_REGION", "MINIMAX_API_REGION", "MINIMAX_API_BASE", "MINIMAX_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+    monkeypatch.setattr("memsearch.maintenance._run_openai_with_tools", fake_openai)
+
+    results = run_due_tasks(platform="codex", project_dir=project, cfg=cfg)
+
+    assert results[0].action == "none"
+    assert captured == {
+        "model": "MiniMax-M3",
+        "provider_type": "openai-compatible",
+        "config_type": "openai-compatible",
+        "base_url": "https://api.minimax.io/v1",
+        "api_key": "env:MINIMAX_API_KEY",
+    }
+
+
+def test_anthropic_maintenance_runner_honors_custom_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from memsearch import maintenance as maintenance_module
+
+    captured: dict[str, object] = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured["create"] = kwargs
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")])
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+
+    project = tmp_path / "repo"
+    (project / ".memsearch" / "memory").mkdir(parents=True)
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=project / ".memsearch" / "memory",
+        output_file=project / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    provider_cfg = LLMProviderConfig(
+        type="anthropic",
+        base_url="https://api.minimax.io/anthropic",
+        api_key="env:MINIMAX_API_KEY",
+    )
+
+    result = maintenance_module._run_anthropic_with_tools(ctx, "prompt", "claude-test", provider_cfg)
+
+    assert result == "ok"
+    assert captured["client_kwargs"] == {
+        "base_url": "https://api.minimax.io/anthropic",
+        "api_key": "minimax-key",
+    }
