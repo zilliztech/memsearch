@@ -157,16 +157,27 @@ All memories are written to `.memsearch/memory/YYYY-MM-DD.md`.
 **Verify files exist:**
 ```bash
 ls -la .memsearch/memory/
-cat .memsearch/memory/$(date +%Y-%m-%d).md
+today=".memsearch/memory/$(date +%Y-%m-%d).md"
+if [ -f "$today" ]; then
+  cat "$today"
+else
+  echo "No summaries captured today"
+fi
 ```
 
-**If you see session headings but no bullet-point summaries:**
+SessionStart prepares the memory directory but does not create a daily file. If no content-bearing Stop has completed, today's journal will not exist. This is normal for short or empty sessions.
+
+**If you expected a summary but no entry was written:**
 
 | Cause | Fix |
 |-------|-----|
-| `claude` CLI not found | Ensure `claude` is in PATH |
+| Embedding API key missing | Set the provider's environment variable or configure `embedding.api_key` |
+| Summarization disabled | Set `plugins.claude-code.summarize.enabled` to `true` |
+| Transcript missing or empty | Check the Stop hook payload and transcript path |
 | Transcript too short (< 3 lines) | Normal for very short sessions |
 | Stop hook timed out | Check `~/.claude/logs/` for errors |
+
+If the `claude` CLI is unavailable or native summarization returns no text, the hook falls back to the parsed turn instead of skipping the journal write.
 
 ---
 

@@ -17,7 +17,7 @@ from .compact import compact_chunks
 from .embeddings import EmbeddingProvider, get_provider
 from .index_report import IndexFailure, IndexReport, format_error
 from .io import read_utf8_text_replace
-from .scanner import ScannedFile, scan_paths
+from .scanner import ScannedFile, scan_paths, should_index_path
 from .store import MilvusStore
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,12 @@ class MemSearch:
     collection:
         Milvus collection name.  Use different names to isolate
         agents sharing the same Milvus server.
+    ignore_files:
+        Ignore filenames to discover within each directory index root, such
+        as ``[".gitignore"]``. Empty by default for backward compatibility.
+    exclude:
+        Additional gitignore-style patterns applied relative to each index
+        root after discovered ignore-file rules.
     """
 
     def __init__(
@@ -61,11 +67,15 @@ class MemSearch:
         description: str = "",
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
+        ignore_files: list[str] | None = None,
+        exclude: list[str] | None = None,
         reranker_model: str = "",
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
         self._overlap_lines = overlap_lines
+        self._ignore_files = list(ignore_files or [])
+        self._exclude = list(exclude or [])
         self._embedder: EmbeddingProvider = get_provider(
             embedding_provider,
             model=embedding_model,
@@ -97,7 +107,11 @@ class MemSearch:
 
     async def index_with_report(self, *, force: bool = False) -> IndexReport:
         """Scan paths and index all markdown files with structured status."""
-        files = scan_paths(self._paths)
+        files = scan_paths(
+            self._paths,
+            ignore_files=self._ignore_files,
+            exclude=self._exclude,
+        )
         total = 0
         failed_files: list[IndexFailure] = []
         active_sources: set[str] = set()
@@ -398,7 +412,17 @@ class MemSearch:
         fw_kwargs: dict[str, Any] = {}
         if debounce_ms is not None:
             fw_kwargs["debounce_ms"] = debounce_ms
-        watcher = FileWatcher(self._paths, _on_change, **fw_kwargs)
+        watcher = FileWatcher(
+            self._paths,
+            _on_change,
+            path_filter=lambda path: should_index_path(
+                path,
+                self._paths,
+                ignore_files=self._ignore_files,
+                exclude=self._exclude,
+            ),
+            **fw_kwargs,
+        )
         watcher.start()
         return watcher
 

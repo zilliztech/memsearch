@@ -214,6 +214,8 @@ async def test_index_continues_after_file_failure(tmp_path: Path):
     ms._paths = [str(docs)]
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._ignore_files = []
+    ms._exclude = []
     ms._embedder = fake
     ms._store = MilvusStore(uri=str(tmp_path / "test.db"), dimension=fake.dimension)
 

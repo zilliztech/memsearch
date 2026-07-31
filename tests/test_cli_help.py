@@ -43,3 +43,5 @@ def test_chunk_size_flag_appears_in_help(args: list[str]) -> None:
 
     assert result.exit_code == 0
     assert "--max-chunk-size" in result.output
+    assert "--ignore-file" in result.output
+    assert "--exclude" in result.output

@@ -123,7 +123,15 @@ Only these low-risk local indexing keys are honored from project config:
 - `embedding.batch_size`
 - `chunking.max_chunk_size`
 - `chunking.overlap_lines`
+- `indexing.ignore_files`
+- `indexing.exclude`
 - `watch.debounce_ms`
+
+Index exclusions are opt-in for compatibility. Missing or empty
+`indexing.ignore_files` and `indexing.exclude` keep the old scan-all behavior;
+new files created by `memsearch config init` explicitly write
+`ignore_files = [".gitignore"]`. Each directory passed to index/watch is its own
+root, and ignore discovery never walks into parent directories.
 
 Trusted settings are ignored or rejected in project config. Put these in global
 config (`~/.memsearch/config.toml`) or pass explicit CLI flags instead:

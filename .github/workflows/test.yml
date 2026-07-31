@@ -35,3 +35,32 @@ jobs:
 
       - name: Run tests with coverage
         run: uv run python -m pytest --cov --cov-report=term-missing
+
+  opencode:
+    name: OpenCode plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/opencode
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm install --package-lock=false
+
+      - name: Test package
+        run: npm test
+
+      - name: Check package entrypoint syntax
+        run: |
+          node --check index.ts
+          node --check context.ts
+
+      - name: Pack package
+        run: npm pack --dry-run

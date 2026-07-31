@@ -11,7 +11,12 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 function getMemsearchDir(projectDir) {
-  return join(projectDir, ".memsearch");
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : join(projectDir, ".memsearch");
+}
+function getCollectionScopeDir(projectDir) {
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : projectDir;
 }
 function getMemoryDir(projectDir) {
   return join(getMemsearchDir(projectDir), "memory");
@@ -228,7 +233,7 @@ var index_default = {
           [
             "bash",
             "-c",
-            `MEMSEARCH_DIR='${shellEscape(memsearchDir)}' ${cmd} skills status --hint`
+            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`
           ],
           { timeoutMs: 5e3 }
         );
@@ -245,7 +250,7 @@ var index_default = {
           [
             "bash",
             "-c",
-            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(memsearchDir)}'`
+            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(getMemsearchDir(projectDir))}'`
           ],
           {
             timeoutMs: 12e4,
@@ -259,10 +264,11 @@ var index_default = {
     let _collectionNameFor = "";
     let _collectionName = "ms_openclaw_default";
     async function getCollectionName() {
-      if (_collectionNameFor === projectDir) return _collectionName;
+      const scopeDir = getCollectionScopeDir(projectDir);
+      if (_collectionNameFor === scopeDir) return _collectionName;
       const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
       try {
-        const r = await runCmd(["bash", script, projectDir], { timeoutMs: 5e3 });
+        const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5e3 });
         if (r.code === 0 && r.stdout?.trim()) {
           _collectionName = r.stdout.trim();
         } else {
@@ -271,21 +277,19 @@ var index_default = {
       } catch {
         _collectionName = "ms_openclaw_default";
       }
-      _collectionNameFor = projectDir;
+      _collectionNameFor = scopeDir;
       return _collectionName;
     }
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");
-    let memsearchDir = join(projectDir, ".memsearch");
-    let memoryDir = join(memsearchDir, "memory");
+    let memoryDir = getMemoryDir(projectDir);
     function updateAgentContext(ctx) {
       const newId = ctx?.agentId;
       const newWorkspace = ctx?.workspaceDir;
       if (newId && (newId !== agentId || newWorkspace && newWorkspace !== projectDir)) {
         agentId = newId;
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
-        memsearchDir = join(projectDir, ".memsearch");
-        memoryDir = join(memsearchDir, "memory");
+        memoryDir = getMemoryDir(projectDir);
         _collectionNameFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
@@ -701,5 +705,7 @@ ${anchor}${cleanSummary}
   }
 };
 export {
-  index_default as default
+  index_default as default,
+  getCollectionScopeDir,
+  getMemsearchDir
 };

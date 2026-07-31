@@ -28,7 +28,7 @@ PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 # Fields that should be parsed as int when set via CLI strings
 _INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
 _BOOL_FIELDS = {"enabled"}
-_LIST_FIELDS = {"paths"}
+_LIST_FIELDS = {"paths", "ignore_files", "exclude"}
 
 # Project-local config is loaded from the repository being opened, so it must
 # not be able to redirect network endpoints, credentials, LLM routing, prompt
@@ -39,6 +39,8 @@ _PROJECT_CONFIG_ALLOWED_PATHS = {
     ("embedding", "batch_size"),
     ("chunking", "max_chunk_size"),
     ("chunking", "overlap_lines"),
+    ("indexing", "ignore_files"),
+    ("indexing", "exclude"),
     ("watch", "debounce_ms"),
 }
 
@@ -72,6 +74,18 @@ class CompactConfig:
 class ChunkingConfig:
     max_chunk_size: int = 1500
     overlap_lines: int = 2
+
+
+@dataclass
+class IndexingConfig:
+    """File discovery settings.
+
+    Empty defaults preserve the pre-ignore indexing behavior. New config files
+    created by ``memsearch config init`` opt in to ``.gitignore`` explicitly.
+    """
+
+    ignore_files: list[str] = field(default_factory=list)
+    exclude: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -197,6 +211,7 @@ class MemSearchConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     compact: CompactConfig = field(default_factory=CompactConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    indexing: IndexingConfig = field(default_factory=IndexingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -210,6 +225,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "embedding": EmbeddingConfig,
     "compact": CompactConfig,
     "chunking": ChunkingConfig,
+    "indexing": IndexingConfig,
     "watch": WatchConfig,
     "reranker": RerankerConfig,
     "llm": LLMConfig,

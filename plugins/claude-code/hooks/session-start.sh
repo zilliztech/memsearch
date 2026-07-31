@@ -31,12 +31,24 @@ if [ -n "$MEMSEARCH_CMD" ]; then
   fi
 fi
 
-# Read resolved config and version for status display
-PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
+# Read resolved config in one CLI call. Older CLI versions do not support
+# --json-output, so keep the existing per-key reads as a compatibility fallback.
+PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; CONFIG_API_KEY=""; VERSION=""
+CONFIG_SNAPSHOT_LOADED=false
 if [ -n "$MEMSEARCH_CMD" ]; then
-  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
-  MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
-  MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  CONFIG_JSON=$($MEMSEARCH_CMD config list --resolved --json-output 2>/dev/null || true)
+  SNAPSHOT_PROVIDER=$(_json_val "$CONFIG_JSON" "embedding.provider" "")
+  if [ -n "$SNAPSHOT_PROVIDER" ]; then
+    PROVIDER="$SNAPSHOT_PROVIDER"
+    MODEL=$(_json_val "$CONFIG_JSON" "embedding.model" "")
+    MILVUS_URI=$(_json_val "$CONFIG_JSON" "milvus.uri" "")
+    CONFIG_API_KEY=$(_json_val "$CONFIG_JSON" "embedding.api_key" "")
+    CONFIG_SNAPSHOT_LOADED=true
+  else
+    PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
+    MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
+    MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  fi
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
@@ -57,8 +69,7 @@ REQUIRED_KEY=$(_required_env_var "$PROVIDER")
 KEY_MISSING=false
 if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   # Env var not set — check if API key is configured in memsearch config file
-  CONFIG_API_KEY=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
+  if [ "$CONFIG_SNAPSHOT_LOADED" != true ] && [ -n "$MEMSEARCH_CMD" ]; then
     CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
   fi
   if [ -z "$CONFIG_API_KEY" ]; then
@@ -153,14 +164,12 @@ _recent_memory_preview() {
   ' "$file" 2>/dev/null | tail -n "$max_lines" || true
 }
 
-# Write session heading to today's memory file
+# The session heading is written lazily by stop.sh on the first
+# content-bearing Stop. Writing it eagerly here left header-only stub
+# journals (bare "## Session HH:MM" files) for every session in which the
+# Stop hook never appended a summary, and those stubs occupied one of the
+# two recent-memory injection slots below.
 ensure_memory_dir
-TODAY=$(date +%Y-%m-%d)
-NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
-  echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
-fi
 
 # If API key is missing, show status and exit early (watch/search would fail)
 if [ "$KEY_MISSING" = true ]; then
@@ -197,7 +206,7 @@ fi
 # Always include status in systemMessage
 json_status=$(_json_encode_str "$status")
 
-# If memory dir has no .md files (other than the one we just created), nothing to inject
+# If memory dir has no .md files, nothing to inject
 if [ ! -d "$MEMORY_DIR" ] || ! ls "$MEMORY_DIR"/*.md &>/dev/null; then
   echo "{\"systemMessage\": $json_status}"
   exit 0
@@ -214,8 +223,8 @@ if [ -n "$recent_files" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
-    # Extract recent non-empty session sections. Empty SessionStart headings are
-    # common after short sessions, but they do not carry useful context.
+    # Extract recent non-empty session sections. Legacy journals may contain
+    # empty headings, but they do not carry useful context.
     content=$(_recent_memory_preview "$f" 40)
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"

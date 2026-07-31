@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -60,11 +61,18 @@ class InMemoryStore:
         self._records_by_source.pop(source, None)
 
 
-def make_memsearch(paths: list[str | Path]) -> tuple[MemSearch, InMemoryStore]:
+def make_memsearch(
+    paths: list[str | Path],
+    *,
+    ignore_files: list[str] | None = None,
+    exclude: list[str] | None = None,
+) -> tuple[MemSearch, InMemoryStore]:
     ms = MemSearch.__new__(MemSearch)
     ms._paths = [str(path) for path in paths]
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._ignore_files = list(ignore_files or [])
+    ms._exclude = list(exclude or [])
     ms._embedder = FakeEmbedder()
     store = InMemoryStore()
     ms._store = store
@@ -145,6 +153,49 @@ async def test_directory_cleanup_uses_path_boundaries_not_string_prefixes(tmp_pa
     assert str(doc) in store.indexed_sources()
     assert str(similar_prefix_doc) in store.indexed_sources()
     assert store.deleted_sources == []
+
+
+@pytest.mark.asyncio
+async def test_enabling_ignore_rules_removes_previously_indexed_sources(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    keep = write_note(docs / "keep.md", "# Keep\n\nalpha\n")
+    ignored = write_note(docs / "ignored.md", "# Ignored\n\nbravo\n")
+
+    ms, store = make_memsearch([docs])
+    await ms.index()
+
+    write_note(docs / ".gitignore", "ignored.md\n")
+    ms._ignore_files = [".gitignore"]
+    await ms.index()
+
+    assert str(keep) in store.indexed_sources()
+    assert str(ignored) not in store.indexed_sources()
+    assert store.deleted_sources == [str(ignored)]
+
+
+@pytest.mark.asyncio
+async def test_initial_index_and_live_watch_share_ignore_policy(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    write_note(docs / ".gitignore", "ignored*.md\n")
+    existing_included = write_note(docs / "included.md", "# Included\n\nalpha\n")
+    existing_ignored = write_note(docs / "ignored-old.md", "# Ignored\n\nbravo\n")
+
+    ms, store = make_memsearch([docs], ignore_files=[".gitignore"])
+    await ms.index()
+
+    assert str(existing_included) in store.indexed_sources()
+    assert str(existing_ignored) not in store.indexed_sources()
+
+    watcher = ms.watch(debounce_ms=50)
+    try:
+        live_included = write_note(docs / "live.md", "# Live\n\ncharlie\n")
+        live_ignored = write_note(docs / "ignored-live.md", "# Ignored Live\n\ndelta\n")
+        await asyncio.sleep(0.5)
+    finally:
+        watcher.stop()
+
+    assert str(live_included) in store.indexed_sources()
+    assert str(live_ignored) not in store.indexed_sources()
 
 
 @pytest.mark.asyncio

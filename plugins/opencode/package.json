@@ -1,6 +1,6 @@
 {
   "name": "@zilliz/memsearch-opencode",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "description": "memsearch plugin for OpenCode — semantic memory search across sessions",
   "type": "module",
   "main": "index.ts",
@@ -8,6 +8,7 @@
     ".": "./index.ts"
   },
   "files": [
+    "context.ts",
     "index.ts",
     "scripts/*.py",
     "scripts/*.sh",

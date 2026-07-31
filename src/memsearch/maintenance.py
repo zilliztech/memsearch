@@ -227,7 +227,14 @@ def _build_prompt(ctx: TaskContext, cfg: MemSearchConfig) -> str:
         template = template.replace(marker, value)
 
     existing = ctx.output_file.read_text(encoding="utf-8") if ctx.output_file.is_file() else ""
-    journals = _read_recent_journals(ctx.input_dir)
+    journal_budget = max(
+        0,
+        MAX_PROMPT_CHARS - len(template) - len(existing) - 512,
+    )
+    journals = _read_recent_journals(
+        ctx.input_dir,
+        budget=journal_budget,
+    )
     prompt = f"""{template}
 
 ## Existing output file
@@ -261,15 +268,30 @@ def _load_prompt_template(task: str, cfg: MemSearchConfig) -> str:
         return f.read()
 
 
-def _read_recent_journals(input_dir: Path, max_files: int = 12) -> str:
+def _read_recent_journals(
+    input_dir: Path,
+    max_files: int = 12,
+    budget: int | None = None,
+) -> str:
     if not input_dir.is_dir():
         return ""
     chunks: list[str] = []
-    files = sorted((p for p in input_dir.rglob("*.md") if p.is_file()), key=lambda p: p.stat().st_mtime)[-max_files:]
+    files = sorted(
+        (p for p in input_dir.rglob("*.md") if p.is_file()),
+        key=lambda p: p.stat().st_mtime,
+    )[-max_files:]
     for path in files:
         with contextlib.suppress(OSError):
             chunks.append(f"\n<!-- source:{path} -->\n{read_utf8_text_replace(path)}")
-    return "\n".join(chunks)
+    text = "\n".join(chunks)
+    if budget is None or len(text) <= budget:
+        return text
+    if budget <= 0:
+        return ""
+    marker = "[older journal entries truncated]\n"
+    if budget <= len(marker):
+        return text[-budget:]
+    return marker + text[-(budget - len(marker)) :]
 
 
 def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:

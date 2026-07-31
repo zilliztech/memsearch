@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+
 from click.testing import CliRunner
 
 from memsearch import cli as cli_module
 from memsearch.cli import cli
-from memsearch.config import MemSearchConfig, load_config_file
+from memsearch.config import MemSearchConfig, load_config_file, save_config
 
 
 def test_build_cli_overrides_maps_only_non_none_values() -> None:
@@ -71,9 +73,15 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
     cfg.milvus.collection = "team_notes"
     cfg.chunking.max_chunk_size = 1800
     cfg.chunking.overlap_lines = 4
+    cfg.indexing.ignore_files = [".gitignore"]
+    cfg.indexing.exclude = ["generated/**"]
     cfg.reranker.model = ""
 
-    kwargs = cli_module._cfg_to_memsearch_kwargs(cfg)
+    kwargs = cli_module._cfg_to_memsearch_kwargs(
+        cfg,
+        extra_ignore_files=(".cursorignore", ".gitignore"),
+        extra_exclude=("drafts/**",),
+    )
 
     assert kwargs == {
         "embedding_provider": "local",
@@ -86,6 +94,8 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "collection": "team_notes",
         "max_chunk_size": 1800,
         "overlap_lines": 4,
+        "ignore_files": [".gitignore", ".cursorignore"],
+        "exclude": ["generated/**", "drafts/**"],
         "reranker_model": "",
     }
 
@@ -113,5 +123,49 @@ def test_config_init_project_writes_only_allowlisted_keys(monkeypatch) -> None:
         "milvus": {"collection": "notes"},
         "embedding": {"batch_size": 16},
         "chunking": {"max_chunk_size": 2048, "overlap_lines": 4},
+        "indexing": {"ignore_files": [".gitignore"], "exclude": []},
         "watch": {"debounce_ms": 300},
     }
+
+
+def test_config_init_preserves_explicitly_disabled_ignore_files(monkeypatch) -> None:
+    cfg = MemSearchConfig()
+    monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        save_config({"indexing": {"ignore_files": [], "exclude": []}}, ".memsearch.toml")
+        result = runner.invoke(cli, ["config", "init", "--project"], input="\n\n\n\n\n")
+
+        assert result.exit_code == 0
+        data = load_config_file(".memsearch.toml")
+
+    assert data["indexing"] == {"ignore_files": [], "exclude": []}
+
+
+def test_config_get_prints_lowercase_booleans(monkeypatch) -> None:
+    monkeypatch.setattr(cli_module, "get_config_value", lambda _key: False)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "get", "plugins.claude-code.summarize.enabled"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "false"
+
+
+def test_config_list_json_output_preserves_config_types(monkeypatch) -> None:
+    cfg = MemSearchConfig()
+    cfg.embedding.provider = "onnx"
+    cfg.embedding.batch_size = 32
+    cfg.indexing.ignore_files = [".gitignore"]
+    cfg.plugins.claude_code.summarize.enabled = False
+    monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
+
+    result = CliRunner().invoke(cli, ["config", "list", "--resolved", "--json-output"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["embedding"]["provider"] == "onnx"
+    assert data["embedding"]["batch_size"] == 32
+    assert data["indexing"]["ignore_files"] == [".gitignore"]
+    assert data["plugins"]["claude-code"]["summarize"]["enabled"] is False
