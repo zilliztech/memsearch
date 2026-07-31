@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -77,6 +78,45 @@ def test_distill_creates_candidate_and_commits(tmp_path: Path) -> None:
         check=True,
     )
     assert "distill" in log.stdout
+
+
+def test_distill_prompt_preserves_newest_journal_when_corpus_exceeds_budget(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+
+    oldest = memory / "2026-07-30.md"
+    newest = memory / "2026-07-31.md"
+    oldest.write_text(
+        "OLDEST_JOURNAL_MARKER\n" + "x" * (skills_mod.MAX_PROMPT_CHARS + 1_000),
+        encoding="utf-8",
+    )
+    newest.write_text("NEWEST_JOURNAL_MARKER\n", encoding="utf-8")
+    os.utime(oldest, (100, 100))
+    os.utime(newest, (200, 200))
+
+    ctx = skills_mod.TaskContext(
+        platform="codex",
+        task=skills_mod.TASK,
+        task_config=skills_mod.PluginMemoryToSkillConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / ".memsearch" / "skill-candidates",
+        input_digest="sha256:test",
+    )
+
+    prompt = skills_mod._build_distill_prompt(
+        ctx,
+        min_occurrences=3,
+        existing=[],
+        cfg=MemSearchConfig(),
+    )
+
+    assert "NEWEST_JOURNAL_MARKER" in prompt
+    assert "OLDEST_JOURNAL_MARKER" not in prompt
+    assert "[older journal entries truncated]" in prompt
+    assert len(prompt) <= skills_mod.MAX_PROMPT_CHARS
 
 
 def test_render_skill_md_has_only_standard_frontmatter() -> None:

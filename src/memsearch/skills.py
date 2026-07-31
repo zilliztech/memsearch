@@ -154,7 +154,14 @@ def _build_distill_prompt(
         template = template.replace(marker, value)
 
     existing_block = _render_existing_block(skills_root(ctx.memsearch_dir), existing)
-    journals = _read_recent_journals(ctx.input_dir)
+    journal_budget = max(
+        0,
+        MAX_PROMPT_CHARS - len(template) - len(existing_block) - 512,
+    )
+    journals = _read_recent_journals(
+        ctx.input_dir,
+        budget=journal_budget,
+    )
     prompt = f"""{template}
 
 ## Existing skills (you may revise these)
