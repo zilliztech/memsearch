@@ -72,6 +72,26 @@ _json_encode_str() {
   return 0
 }
 
+# _resolve_symlinks <path>
+# Follow a symlink chain to its target without `readlink -f`, which BSD
+# readlink (macOS) does not support. Relative link targets resolve against
+# the link's directory; a hop cap guards against cycles. The directory part
+# is canonicalized with `pwd -P` so `..` segments and directory symlinks
+# collapse the way GNU `readlink -f` would collapse them.
+_resolve_symlinks() {
+  local target="$1" link dir hops=0
+  while [ -L "$target" ] && [ "$hops" -lt 40 ]; do
+    link=$(readlink "$target" 2>/dev/null) || break
+    case "$link" in
+      /*) target="$link" ;;
+      *) target="$(dirname "$target")/$link" ;;
+    esac
+    hops=$((hops + 1))
+  done
+  dir=$(cd "$(dirname "$target")" 2>/dev/null && pwd -P) || { printf '%s' "$target"; return 0; }
+  printf '%s/%s' "$dir" "${target##*/}"
+}
+
 # Resolve the installed memsearch version from its dist-info directory name.
 # Callers already spend one CLI start reading config; asking the CLI for
 # `--version` spawns a second Python interpreter (~0.3s warm, several seconds
@@ -81,7 +101,7 @@ _installed_version_from_dist_info() {
   local bin real candidate
   bin=$(command -v memsearch 2>/dev/null) || return 0
   [ -n "$bin" ] || return 0
-  real=$(readlink -f "$bin" 2>/dev/null || echo "$bin")
+  real=$(_resolve_symlinks "$bin")
   for candidate in "${real%/bin/memsearch}"/lib/python*/site-packages/memsearch-*.dist-info; do
     [ -d "$candidate" ] || continue
     candidate=${candidate##*/memsearch-}

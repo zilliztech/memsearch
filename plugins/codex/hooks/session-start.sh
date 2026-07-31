@@ -72,7 +72,7 @@ if [ -n "$VERSION" ]; then
     _MS_BIN=$(command -v memsearch 2>/dev/null || echo "")
     _MS_REAL=""
     if [ -n "$_MS_BIN" ]; then
-      _MS_REAL=$(readlink -f "$_MS_BIN" 2>/dev/null || python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$_MS_BIN" 2>/dev/null || echo "$_MS_BIN")
+      _MS_REAL=$(_resolve_symlinks "$_MS_BIN")
     fi
     if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ]; then
       UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 def _write_executable(path: Path, source: str) -> None:
@@ -880,6 +883,122 @@ exit 0
     calls = call_log.read_text(encoding="utf-8").splitlines()
     assert "[memsearch v1.2.3]" in status
     assert "--version" in calls
+
+
+def _write_bsd_readlink_shim(shim_dir: Path) -> None:
+    """Shadow readlink with a macOS-like implementation that rejects -f."""
+    real_readlink = shutil.which("readlink")
+    assert real_readlink is not None
+    _write_executable(
+        shim_dir / "readlink",
+        f"""#!/usr/bin/env bash
+for arg in "$@"; do
+  if [ "$arg" = "-f" ]; then
+    echo "readlink: illegal option -- f" >&2
+    exit 1
+  fi
+done
+exec "{real_readlink}" "$@"
+""",
+    )
+
+
+@pytest.mark.parametrize(
+    "common_sh",
+    ["plugins/claude-code/hooks/common.sh", "plugins/codex/hooks/common.sh"],
+    ids=["claude-code", "codex"],
+)
+def test_dist_info_version_resolves_symlinked_bin_without_gnu_readlink(
+    tmp_path: Path, common_sh: str
+) -> None:
+    """A symlinked entry point (uv tool / pipx layout) must resolve to its
+    install tree even where readlink lacks -f (BSD readlink on macOS)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    install_bin = _install_layout(tmp_path / "opt", "9.9.9")
+    _write_executable(install_bin / "memsearch", "#!/usr/bin/env bash\nexit 0\n")
+
+    # ~/.local/bin/memsearch -> ../opt/bin/memsearch, a relative target like
+    # the ones uv writes.
+    link_bin = tmp_path / "links"
+    link_bin.mkdir()
+    (link_bin / "memsearch").symlink_to(Path("..") / "opt" / "bin" / "memsearch")
+
+    shim_bin = tmp_path / "shims"
+    shim_bin.mkdir()
+    _write_bsd_readlink_shim(shim_bin)
+
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1" < /dev/null && _installed_version_from_dist_info', "bash", common_sh],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "PATH": f"{shim_bin}:{link_bin}:{os.environ['PATH']}",
+            "MEMSEARCH_DISABLE": "",
+        },
+        check=True,
+    )
+
+    assert result.stdout == "9.9.9"
+
+
+def test_claude_session_start_resolves_symlinked_bin_without_gnu_readlink(tmp_path: Path) -> None:
+    """The full SessionStart path works through a symlinked uv tool install
+    without GNU readlink: version comes from dist-info (no --version call) and
+    the update hint recognizes the uv/tools layout behind the symlink."""
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+
+    install_bin = _install_layout(tmp_path / "share" / "uv" / "tools" / "memsearch", "9.9.9")
+    _write_executable(
+        install_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.0.0-should-not-be-used"
+  exit 0
+fi
+exit 0
+""",
+    )
+
+    link_bin = tmp_path / "local-bin"
+    link_bin.mkdir()
+    (link_bin / "memsearch").symlink_to(
+        Path("..") / "share" / "uv" / "tools" / "memsearch" / "bin" / "memsearch"
+    )
+
+    fake_bin = tmp_path / "shims"
+    fake_bin.mkdir()
+    _write_bsd_readlink_shim(fake_bin)
+    _write_executable(fake_bin / "curl", """#!/usr/bin/env bash\necho '{"info":{"version":"9.9.10"}}'\n""")
+
+    env = _session_start_env(tmp_path, home, fake_bin, call_log)
+    env["PATH"] = f"{link_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "[memsearch v9.9.9]" in status
+    assert "--version" not in calls
+    assert "uv tool upgrade memsearch" in status
 
 
 def test_claude_session_start_caches_pypi_lookup(tmp_path: Path) -> None:
