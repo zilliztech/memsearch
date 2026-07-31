@@ -72,3 +72,46 @@ async def test_no_flush_when_nothing_indexed(tmp_path: Path):
         assert flush_calls == []
     finally:
         m.close()
+
+
+@pytest.mark.asyncio
+async def test_deleted_file_cleanup_flushes(tmp_path: Path, sample_dir: Path):
+    """A run whose only write is deleted-file cleanup still flushes."""
+    m, flush_calls = _make(tmp_path, [str(sample_dir)], flush_on_index=True)
+    try:
+        await m.index()
+        flush_calls.clear()
+        (sample_dir / "notes.md").unlink()
+        assert await m.index() == 0
+        assert flush_calls == [True]
+    finally:
+        m.close()
+
+
+@pytest.mark.asyncio
+async def test_stale_chunk_deletion_flushes(tmp_path: Path, sample_dir: Path):
+    """A run whose only write is removing a section's chunks still flushes."""
+    (sample_dir / "notes.md").write_text("# Title\n\nSome content worth indexing.\n\n# Extra\n\nA second section.\n")
+    m, flush_calls = _make(tmp_path, [str(sample_dir)], flush_on_index=True)
+    try:
+        await m.index()
+        flush_calls.clear()
+        (sample_dir / "notes.md").write_text("# Title\n\nSome content worth indexing.\n")
+        assert await m.index() == 0
+        assert flush_calls == [True]
+    finally:
+        m.close()
+
+
+@pytest.mark.asyncio
+async def test_zero_write_upsert_surfaces_as_index_failure(tmp_path: Path, sample_dir: Path):
+    """A server-reported zero-write fails the file instead of counting as success."""
+    m, _ = _make(tmp_path, [str(sample_dir)], flush_on_index=False)
+    try:
+        m._store._client.upsert = lambda **kwargs: {"upsert_count": 0}  # type: ignore[method-assign]
+        report = await m.index_with_report()
+        assert report.indexed_chunks == 0
+        assert len(report.failed_files) == 1
+        assert "0 written rows" in report.failed_files[0].error
+    finally:
+        m.close()

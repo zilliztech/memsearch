@@ -160,6 +160,12 @@ class MilvusStore:
                 f"Milvus reported 0 written rows for an upsert of {len(chunks)} chunks; "
                 "refusing to report a zero-write upsert as success"
             )
+        if count is not None and count < len(chunks):
+            logger.warning(
+                "Milvus reported %d written rows for an upsert of %d chunks; reporting the server count",
+                count,
+                len(chunks),
+            )
         return count if count is not None else len(chunks)
 
     def flush(self) -> None:

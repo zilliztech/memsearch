@@ -284,6 +284,21 @@ def test_plugin_summarize_provider_config_roundtrip(tmp_path: Path, monkeypatch:
     assert saved["plugins"]["codex"]["summarize"]["provider"] == "openai"
 
 
+def test_flush_on_index_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The CLI string "true" parses to a bool for milvus.flush_on_index."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+
+    set_config_value("milvus.flush_on_index", "true")
+
+    cfg = resolve_config()
+    assert cfg.milvus.flush_on_index is True
+
+    saved = load_config_file(cfg_path)
+    assert saved["milvus"]["flush_on_index"] is True
+
+
 def test_plugin_maintenance_config_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Plugin maintenance tasks should be addressable by dotted keys."""
     cfg_path = tmp_path / "config.toml"
