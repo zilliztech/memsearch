@@ -908,9 +908,7 @@ exec "{real_readlink}" "$@"
     ["plugins/claude-code/hooks/common.sh", "plugins/codex/hooks/common.sh"],
     ids=["claude-code", "codex"],
 )
-def test_dist_info_version_resolves_symlinked_bin_without_gnu_readlink(
-    tmp_path: Path, common_sh: str
-) -> None:
+def test_dist_info_version_resolves_symlinked_bin_without_gnu_readlink(tmp_path: Path, common_sh: str) -> None:
     """A symlinked entry point (uv tool / pipx layout) must resolve to its
     install tree even where readlink lacks -f (BSD readlink on macOS)."""
     home = tmp_path / "home"
@@ -974,9 +972,7 @@ exit 0
 
     link_bin = tmp_path / "local-bin"
     link_bin.mkdir()
-    (link_bin / "memsearch").symlink_to(
-        Path("..") / "share" / "uv" / "tools" / "memsearch" / "bin" / "memsearch"
-    )
+    (link_bin / "memsearch").symlink_to(Path("..") / "share" / "uv" / "tools" / "memsearch" / "bin" / "memsearch")
 
     fake_bin = tmp_path / "shims"
     fake_bin.mkdir()
