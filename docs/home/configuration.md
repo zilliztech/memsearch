@@ -11,8 +11,8 @@ memsearch uses a layered TOML config system. Most users don't need to configure 
 Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
 before it is merged. It can only set low-risk local indexing keys:
 `milvus.collection`, `embedding.batch_size`, `chunking.max_chunk_size`,
-`chunking.overlap_lines`, `indexing.ignore_files`, `indexing.exclude`, and
-`watch.debounce_ms`. Put trusted settings such as provider routing, API
+`chunking.min_chunk_size`, `chunking.overlap_lines`, `indexing.ignore_files`,
+`indexing.exclude`, and `watch.debounce_ms`. Put trusted settings such as provider routing, API
 endpoints, API keys, prompt files, and `plugins.*` automation in global config
 or pass them as explicit CLI flags.
 

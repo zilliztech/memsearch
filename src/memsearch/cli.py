@@ -216,6 +216,12 @@ def cli() -> None:
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
 )
+@click.option(
+    "--min-chunk-size",
+    default=None,
+    type=click.IntRange(min=0),
+    help="Merge heading sections smaller than this many characters (0 disables merging).",
+)
 @click.option("--description", default=None, help="Collection description (written on creation only).")
 def index(
     paths: tuple[str, ...],
@@ -231,6 +237,7 @@ def index(
     exclude_patterns: tuple[str, ...],
     force: bool,
     max_chunk_size: int | None,
+    min_chunk_size: int | None,
     description: str | None,
 ) -> None:
     """Index markdown files from PATHS."""
@@ -248,6 +255,7 @@ def index(
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
             max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size,
         )
     )
     ms = None
@@ -563,6 +571,12 @@ def _extract_section(
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
 )
+@click.option(
+    "--min-chunk-size",
+    default=None,
+    type=click.IntRange(min=0),
+    help="Merge heading sections smaller than this many characters (0 disables merging).",
+)
 @click.option("--description", default=None, help="Collection description (written on creation only).")
 def watch(
     paths: tuple[str, ...],
@@ -578,6 +592,7 @@ def watch(
     exclude_patterns: tuple[str, ...],
     debounce_ms: int | None,
     max_chunk_size: int | None,
+    min_chunk_size: int | None,
     description: str | None,
 ) -> None:
     """Watch PATHS for markdown changes and auto-index."""
@@ -596,6 +611,7 @@ def watch(
             milvus_token=milvus_token,
             debounce_ms=debounce_ms,
             max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size,
         )
     )
     ms = None
