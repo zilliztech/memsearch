@@ -13,8 +13,9 @@ def test_default_batch_size_is_64():
     assert onnx_module.OnnxEmbedding._DEFAULT_BATCH_SIZE == 64
 
 
-def test_zero_batch_size_resolves_to_provider_default():
+def test_non_positive_batch_size_resolves_to_provider_default():
     assert onnx_module.OnnxEmbedding._resolve_batch_size(0) == 64
+    assert onnx_module.OnnxEmbedding._resolve_batch_size(-1) == 64
 
 
 def test_explicit_batch_size_overrides_default():
