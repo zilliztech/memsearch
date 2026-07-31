@@ -149,6 +149,48 @@ def test_cli_index_records_ok_state(monkeypatch, tmp_path: Path) -> None:
     assert state["total_files"] == 2
 
 
+def test_cli_index_combines_configured_and_one_off_ignore_rules(monkeypatch, tmp_path: Path) -> None:
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    cfg = MemSearchConfig()
+    cfg.indexing.ignore_files = [".gitignore"]
+    cfg.indexing.exclude = ["generated/**"]
+    captured: dict = {}
+
+    class FakeMemSearch:
+        def __init__(self, paths, **kwargs):
+            captured["paths"] = paths
+            captured["kwargs"] = kwargs
+
+        async def index_with_report(self, *, force=False):
+            return IndexReport(indexed_chunks=0, total_files=0, indexed_files=0)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "resolve_config", lambda _overrides=None: cfg)
+    monkeypatch.setattr(core_module, "MemSearch", FakeMemSearch)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "index",
+            str(memory_dir),
+            "--ignore-file",
+            ".cursorignore",
+            "--ignore-file",
+            ".gitignore",
+            "--exclude",
+            "drafts/**",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["paths"] == [str(memory_dir)]
+    assert captured["kwargs"]["ignore_files"] == [".gitignore", ".cursorignore"]
+    assert captured["kwargs"]["exclude"] == ["generated/**", "drafts/**"]
+
+
 def test_cli_index_records_degraded_state(monkeypatch, tmp_path: Path) -> None:
     memory_dir = tmp_path / ".memsearch" / "memory"
     memory_dir.mkdir(parents=True)

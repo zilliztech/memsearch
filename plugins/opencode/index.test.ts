@@ -10,7 +10,14 @@ import {
   isDailyJournalFile,
   mergeSystemMemoryContext,
   MEMSEARCH_SYSTEM_MARKER,
-} from "./index.ts";
+} from "./context.ts";
+
+test("plugin entry exposes only the default plugin function", async () => {
+  const mod = await import("./index.ts");
+
+  assert.deepEqual(Object.keys(mod), ["default"]);
+  assert.equal(typeof mod.default, "function");
+});
 
 test("appends memory context when no system entry exists yet", () => {
   const result = mergeSystemMemoryContext(undefined, `${MEMSEARCH_SYSTEM_MARKER} ctx-a`);

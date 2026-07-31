@@ -61,7 +61,9 @@ Higher-priority sources override lower-priority ones.
 
 Launch an interactive wizard and write a TOML config file. Global mode walks
 through all configuration sections. Project mode writes only allowlisted local
-indexing keys to `.memsearch.toml`.
+indexing keys to `.memsearch.toml`. Newly generated files explicitly enable
+`.gitignore` discovery with `indexing.ignore_files = [".gitignore"]`; upgrades
+never rewrite existing config files.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -146,9 +148,9 @@ Set chunking.max_chunk_size = 2000 in .memsearch.toml
 Project config is restricted before it is merged. Use `--project` only for
 allowlisted local indexing keys such as `milvus.collection`,
 `embedding.batch_size`, `chunking.max_chunk_size`, `chunking.overlap_lines`, and
-`watch.debounce_ms`. Trusted settings such as provider routing, endpoints, API
-keys, prompt files, and plugin automation must go in global config or explicit
-CLI flags.
+`indexing.ignore_files`, `indexing.exclude`, and `watch.debounce_ms`. Trusted
+settings such as provider routing, endpoints, API keys, prompt files, and plugin
+automation must go in global config or explicit CLI flags.
 
 Plugin config keys use `plugins.<platform>.<task>.<field>` and are global:
 
@@ -184,13 +186,14 @@ $ memsearch config get chunking.max_chunk_size
 
 #### `memsearch config list`
 
-Display configuration in TOML format.
+Display configuration in TOML format by default, or JSON for scripting.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--resolved` | *(default)* | Show the fully merged configuration from all sources |
 | `--global` | | Show only the global config file (`~/.memsearch/config.toml`) |
 | `--project` | | Show only the project config file (`.memsearch.toml`) |
+| `--json-output`, `-j` | `false` | Output the selected configuration as JSON |
 
 ```bash
 $ memsearch config list --resolved
@@ -248,6 +251,13 @@ compact = ""
 summarize = ""
 ```
 
+Use JSON when another process needs several resolved values without launching
+the CLI once per key:
+
+```bash
+$ memsearch config list --resolved --json-output > resolved-config.json
+```
+
 ```bash
 $ memsearch config list --global
 # Global (/home/user/.memsearch/config.toml)
@@ -274,6 +284,8 @@ provider = "openai"
 | `embedding.api_key` | string | `""` | API key for embedding provider (supports `env:VAR_NAME` syntax) |
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
+| `indexing.ignore_files` | list[string] | `[]` | Ignore filenames discovered within each directory index root; new `config init` files write `[".gitignore"]` |
+| `indexing.exclude` | list[string] | `[]` | Additional gitignore-style patterns relative to each index root |
 | `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
 | `compact.llm_provider` | string | `openai` | *(deprecated)* LLM provider for compact — use `llm.provider` instead |
 | `compact.llm_model` | string | `""` | *(deprecated)* LLM model — use `llm.model` instead |
@@ -318,6 +330,8 @@ Scan one or more directories (or files) and index all markdown files (`.md`, `.m
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token (for server or Zilliz Cloud) |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
+| `--ignore-file NAME` | | *(none)* | Append an ignore filename to discover within each directory index root; repeatable |
+| `--exclude PATTERN` | | *(none)* | Append a gitignore-style pattern relative to each index root; repeatable |
 | `--force` | | `false` | Re-embed and re-index all chunks, even if unchanged |
 
 ### Examples
@@ -357,10 +371,26 @@ $ memsearch index ./memory/ --provider openai --model text-embedding-3-large
 Indexed 42 chunks.
 ```
 
+Use repository ignore rules for this run:
+
+```bash
+$ memsearch index . --ignore-file .gitignore
+Indexed 42 chunks.
+```
+
+Combine configured rules with another ignore file and a direct pattern:
+
+```bash
+$ memsearch index . --ignore-file .cursorignore --exclude 'generated/**'
+Indexed 42 chunks.
+```
+
 ### Notes
 
 - **Incremental by default.** Each chunk is identified by a composite hash of its source file, line range, content hash, and embedding model. Only chunks with new IDs are embedded and stored.
 - **Stale cleanup.** If a file under an indexed directory path no longer exists on disk, its chunks are automatically deleted from the index during the next `index` run. Explicit file paths are treated as partial updates and do not prune other indexed sources.
+- **Ignore behavior is opt-in.** Empty `indexing.ignore_files` and `indexing.exclude` lists preserve the previous scan-all behavior. Ignore discovery stays inside each directory index root and never walks into parent directories.
+- **Rule order.** Ignore files are applied in configured order at each directory, nested ignore files apply after parent rules, and `indexing.exclude`/`--exclude` patterns apply last. All rules use gitignore-compatible syntax.
 - **`--force` re-embeds everything.** Use this when you switch embedding providers or models, since the same content will produce different vectors with a different model.
 
 ---
@@ -459,6 +489,8 @@ Start a long-running file watcher that monitors directories for markdown file ch
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
+| `--ignore-file NAME` | | *(none)* | Append an ignore filename to discover within each watched root; repeatable |
+| `--exclude PATTERN` | | *(none)* | Append a gitignore-style exclusion pattern; repeatable |
 
 ### Examples
 
@@ -486,6 +518,7 @@ Watching 2 path(s) for changes... (Ctrl+C to stop)
 - **Initial index on startup.** The watcher indexes all existing files before it starts monitoring. Content-hash dedup means unchanged files are skipped with zero API calls — only genuinely new or modified content is embedded.
 - **Debounce.** Editors that write files in multiple steps (e.g., write temp file, then rename) can trigger several events in quick succession. The debounce window collapses these into one re-index operation.
 - **Recursive.** The watcher monitors all subdirectories recursively.
+- **Same exclusions as index.** The initial scan and later created/modified events use the same root-bounded ignore matcher. Run a full directory index after changing rules to clean up content indexed under older rules.
 - **Singleton behavior.** Only one watcher process should run per directory set. Running multiple watchers on the same paths will cause duplicate indexing work (though dedup by content hash means the index stays consistent).
 - **Stop with Ctrl+C.** The watcher runs until you interrupt it.
 

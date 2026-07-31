@@ -34,6 +34,8 @@ MemSearch(
     collection="memsearch_chunks",
     max_chunk_size=1500,
     overlap_lines=2,
+    ignore_files=None,
+    exclude=None,
 )
 ```
 
@@ -50,6 +52,8 @@ MemSearch(
 | `collection` | `str` | `"memsearch_chunks"` | Milvus collection name. Use different names to isolate agents sharing the same backend |
 | `max_chunk_size` | `int` | `1500` | Maximum chunk size in characters |
 | `overlap_lines` | `int` | `2` | Overlapping lines between adjacent chunks |
+| `ignore_files` | `list[str] \| None` | `None` | Ignore filenames discovered within each directory index root, for example `[".gitignore"]` |
+| `exclude` | `list[str] \| None` | `None` | Additional gitignore-style patterns relative to each directory index root |
 
 ### Context Manager
 
@@ -85,6 +89,7 @@ Scan all configured paths and index every markdown file (`.md`, `.markdown`) int
 - **Incremental by default.** Only new or changed chunks are embedded. Unchanged chunks are skipped via content-hash dedup.
 - **Stale cleanup.** Chunks from deleted files under configured directory paths are automatically removed. Explicit file paths are partial updates and do not prune other indexed sources.
 - **Deleted content.** If a section is removed from a file, its old chunks are cleaned up on the next `index()` call.
+- **Optional exclusions.** Ignore discovery is disabled unless `ignore_files` or `exclude` is provided. Rules never come from a parent of an explicit directory root, and `watch()` uses the same matcher.
 
 ```python
 mem = MemSearch(paths=["./memory", "./notes"])

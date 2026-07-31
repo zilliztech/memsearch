@@ -152,6 +152,32 @@ graph TD
 
 ---
 
+## Indexing Cost Model
+
+Deduplication makes indexing cost *event-driven*, not size-driven: what you pay depends on which of three events you are in, not on how big the knowledge base is.
+
+### Cold vs Incremental vs Model Swap
+
+| Event | What gets embedded | Typical cost |
+|-------|--------------------|--------------|
+| Steady state (watch / re-index) | Only new or edited sections | Seconds -- most runs embed nothing |
+| Cold index (new machine, wiped collection) | Everything | Minutes to hours, scales with chunk count x model size |
+| **Embedding model change** | **Everything** | Same as a cold index, plus collection implications below |
+
+The model name is part of every composite chunk ID (`hash(source:lines:contentHash:model)`), so changing `embedding.model` or `embedding.provider` invalidates every existing ID at once: the next index run re-embeds the entire corpus. If the new model also has a different vector dimension, the existing collection cannot hold the new vectors -- expect a [dimension mismatch](faq.md#what-does-dimension-mismatch-mean-and-how-do-i-fix-it) and plan to rebuild the collection. Treat a model swap as a scheduled migration, not a config tweak.
+
+### What Governs Cold-Index Throughput
+
+For local providers (`onnx`, `local`), embedding compute dominates cold-index time. Three knobs control it:
+
+1. **Model size.** The default `onnx` model (bge-m3, ~568M parameters) prioritizes multilingual quality; on CPU it embeds on the order of ~10 texts/second. Smaller models are 10-100x faster at some quality cost.
+2. **Chunk count.** Cost scales linearly with the number of chunks, and heading-dense documents (conversation transcripts) can chunk to many small pieces. `chunking.max_chunk_size` controls the split ceiling.
+3. **Batch size.** `embedding.batch_size` trades memory for throughput; measured on the default onnx model (CPU, Apple M-series, 128 texts), batch 64 was ~11% faster than batch 32 and batch 128 ~20% faster.
+
+A useful rule of thumb before a cold index: `chunks x (seconds per chunk for your model)`. If the projection is hours, either accept it as a one-time migration cost or pick a smaller model for that collection.
+
+---
+
 ## Storage Architecture
 
 ### Collection Schema

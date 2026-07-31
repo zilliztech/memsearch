@@ -107,7 +107,7 @@ Manual invocation is useful when:
 
 **Use specific queries.** "Redis caching" will return better results than "the thing we did last week". The search uses both semantic similarity (dense vectors) and keyword matching (BM25), so including specific terms helps.
 
-**Check cold-start context.** The SessionStart hook injects the last 30 lines from recent daily logs. For very recent work (today or yesterday), Claude may already have the context without needing to invoke the skill.
+**Check cold-start context.** The SessionStart hook injects up to 40 lines from each of the 2 most recent daily logs. For very recent work (today or yesterday), Claude may already have the context without needing to invoke the skill.
 
 **Don't over-manage.** The system is designed to be autonomous. You don't need to tell Claude to "check memory" -- if the question benefits from historical context, the `UserPromptSubmit` hint and Claude's own judgment will trigger the skill.
 
