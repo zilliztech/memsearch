@@ -13,16 +13,25 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { execSync, exec, spawnSync } from "node:child_process";
+import { execSync, exec, spawn, spawnSync } from "node:child_process";
 import {
   readFileSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   realpathSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  getRecentMemories,
+  getSkillCandidateHint,
+  MEMSEARCH_SYSTEM_MARKER,
+  mergeSystemMemoryContext,
+  shellEscape,
+} from "./context.ts";
 
 const PLUGIN_DIR = dirname(realpathSync(fileURLToPath(import.meta.url)));
 
@@ -69,51 +78,6 @@ function deriveCollectionName(projectDir: string): string {
 }
 
 /**
- * Summarize the N most recent daily .md files for cold-start context.
- * Extracts headings (## Session, ### turns) and bullet content from each
- * file so the agent sees the structure of past days (what sessions existed,
- * what topics came up), not just the tail of whichever file is newest.
- */
-function getRecentMemories(
-  memDir: string,
-  count = 2,
-  maxLinesPerFile = 30
-): string {
-  if (!existsSync(memDir)) return "";
-
-  const files = readdirSync(memDir)
-    .filter((f) => f.endsWith(".md"))
-    .sort()
-    .slice(-count);
-
-  if (files.length === 0) return "";
-
-  const summary: string[] = [];
-  for (const file of files) {
-    try {
-      const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n")
-        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ") || l.startsWith("[User]") || l.startsWith("[Assistant]"))
-        .slice(0, maxLinesPerFile);
-      if (lines.length > 0) {
-        summary.push(`[${file}]`, ...lines);
-      }
-    } catch { /* skip */ }
-  }
-
-  if (summary.length === 0) {
-    return `You have ${files.length} past memory file(s). Use the memory_search tool when the user's question could benefit from historical context.`;
-  }
-
-  return `Recent memories (use memory_search for full search):\n${summary.join("\n")}`;
-}
-
-/** Shell-escape a string for safe use inside single quotes. */
-function shellEscape(s: string): string {
-  return s.replace(/'/g, "'\\''");
-}
-
-/**
  * Start the capture daemon as a background process.
  * The daemon polls OpenCode's SQLite for completed turns and writes to daily .md files.
  */
@@ -122,6 +86,7 @@ function startCaptureDaemon(
   collectionName: string,
   memsearchCmd: string
 ): void {
+  const stateDir = join(projectDir, ".memsearch");
   const pidFile = join(projectDir, ".memsearch", ".capture.pid");
   const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
 
@@ -136,21 +101,40 @@ function startCaptureDaemon(
           return; // Already running
         } catch {
           // Process is dead, clean up stale PID file
+          try { unlinkSync(pidFile); } catch { /* ignore */ }
         }
       }
     } catch { /* ignore */ }
   }
 
-  // Start daemon in background
-  exec(
-    `python3 "${daemonScript}" "${projectDir}" "${collectionName}" ` +
-      `--memsearch-cmd "${shellEscape(memsearchCmd)}" --poll-interval 10 &`,
-    {
-      timeout: 5000,
-      env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
-    },
-    () => { /* ignore */ }
-  );
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    const child = spawn(
+      "python3",
+      [
+        daemonScript,
+        projectDir,
+        collectionName,
+        "--memsearch-cmd",
+        memsearchCmd,
+        "--poll-interval",
+        "10",
+        "--parent-pid",
+        String(process.pid),
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
+      }
+    );
+    child.unref();
+    if (child.pid) {
+      try { writeFileSync(pidFile, String(child.pid), "utf-8"); } catch { /* ignore */ }
+    }
+  } catch {
+    // Capture is best-effort; tools still work without the background daemon.
+  }
 }
 
 /**
@@ -192,6 +176,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   const collectionName = deriveCollectionName(projectDir);
   const memsearchDir = join(projectDir, ".memsearch");
   const memoryDir = join(memsearchDir, "memory");
+  const skillCandidateHint = getSkillCandidateHint(memsearchDir, memsearchCmd);
   const home = process.env.HOME || "~";
 
   // Skip capture/recall in child processes to prevent recursion
@@ -348,10 +333,13 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
           "experimental.chat.system.transform": async (_input: any, output: any) => {
             try {
               const context = getRecentMemories(memoryDir);
-              if (context) {
-                output.system.push(
-                  `[memsearch] Memory available. You have access to memory_search, memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`
-                );
+              if (context || skillCandidateHint) {
+                const memoryText =
+                  `${MEMSEARCH_SYSTEM_MARKER} You have access to memory_search, ` +
+                  `memory_get, and memory_transcript tools for recalling past sessions.` +
+                  `${skillCandidateHint ? `\n${skillCandidateHint}` : ""}` +
+                  `${context ? `\n\n${context}` : ""}`;
+                output.system = mergeSystemMemoryContext(output.system, memoryText);
               }
             } catch { /* ignore */ }
           },

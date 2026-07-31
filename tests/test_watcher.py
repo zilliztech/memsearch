@@ -84,6 +84,18 @@ class TestMarkdownHandler:
         assert len(handler._timers) == 0
         callback.assert_not_called()
 
+    def test_path_filter_skips_created_and_modified_but_keeps_deleted(self):
+        callback = MagicMock()
+        handler = _MarkdownHandler(callback, debounce_ms=10, path_filter=lambda path: path.name != "ignored.md")
+
+        ignored = _make_event("/tmp/ignored.md")
+        handler.on_created(ignored)
+        handler.on_modified(ignored)
+        handler.on_deleted(ignored)
+
+        handler._timers["/tmp/ignored.md"].join()
+        callback.assert_called_once_with("deleted", Path("/tmp/ignored.md"))
+
     def test_directory_events_are_filtered(self):
         callback = MagicMock()
         handler = _MarkdownHandler(callback)
@@ -198,6 +210,14 @@ class TestFileWatcher:
         assert w._paths[0] == src.resolve()
         assert isinstance(w._handler, _MarkdownHandler)
         assert w._handler._callback is callback
+
+    def test_init_passes_path_filter_to_handler(self, tmp_path: Path):
+        callback = MagicMock()
+        path_filter = MagicMock(return_value=True)
+
+        w = FileWatcher([tmp_path], callback, path_filter=path_filter)
+
+        assert w._handler._path_filter is path_filter
 
     def test_init_resolves_expands_user(self):
         """expanduser() should be called on paths with ~."""

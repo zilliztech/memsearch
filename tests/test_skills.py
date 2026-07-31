@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -61,7 +62,11 @@ def test_distill_creates_candidate_and_commits(tmp_path: Path) -> None:
 
     meta = json.loads((skill_dir / "meta.json").read_text(encoding="utf-8"))
     assert meta["status"] == "candidate"
+    assert meta["content_hash"].startswith("gitblob:")
     assert meta["occurrences"] == 3
+    listed = skills_mod.list_candidates(project / ".memsearch")
+    assert listed[0]["pending_install"] is True
+    assert listed[0]["pending_reason"] == "new"
 
     # The store is a git repo with at least one commit.
     git_dir = project / ".memsearch" / "skill-candidates" / ".git"
@@ -73,6 +78,45 @@ def test_distill_creates_candidate_and_commits(tmp_path: Path) -> None:
         check=True,
     )
     assert "distill" in log.stdout
+
+
+def test_distill_prompt_preserves_newest_journal_when_corpus_exceeds_budget(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+
+    oldest = memory / "2026-07-30.md"
+    newest = memory / "2026-07-31.md"
+    oldest.write_text(
+        "OLDEST_JOURNAL_MARKER\n" + "x" * (skills_mod.MAX_PROMPT_CHARS + 1_000),
+        encoding="utf-8",
+    )
+    newest.write_text("NEWEST_JOURNAL_MARKER\n", encoding="utf-8")
+    os.utime(oldest, (100, 100))
+    os.utime(newest, (200, 200))
+
+    ctx = skills_mod.TaskContext(
+        platform="codex",
+        task=skills_mod.TASK,
+        task_config=skills_mod.PluginMemoryToSkillConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / ".memsearch" / "skill-candidates",
+        input_digest="sha256:test",
+    )
+
+    prompt = skills_mod._build_distill_prompt(
+        ctx,
+        min_occurrences=3,
+        existing=[],
+        cfg=MemSearchConfig(),
+    )
+
+    assert "NEWEST_JOURNAL_MARKER" in prompt
+    assert "OLDEST_JOURNAL_MARKER" not in prompt
+    assert "[older journal entries truncated]" in prompt
+    assert len(prompt) <= skills_mod.MAX_PROMPT_CHARS
 
 
 def test_render_skill_md_has_only_standard_frontmatter() -> None:
@@ -162,7 +206,12 @@ def test_install_copies_to_paths_and_updates_meta(tmp_path: Path) -> None:
     meta_path = project / ".memsearch" / "skill-candidates" / "run-tests" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["status"] == "installed"
+    assert meta["content_hash"].startswith("gitblob:")
+    assert meta["installed_hash"] == meta["content_hash"]
+    assert meta["installed_at"]
     assert meta["installed_paths"] == installed
+    listed = skills_mod.list_candidates(project / ".memsearch")
+    assert listed[0]["pending_install"] is False
 
 
 def test_install_missing_candidate_raises(tmp_path: Path) -> None:
@@ -260,6 +309,92 @@ def test_installed_skill_source_keeps_evolving(tmp_path: Path) -> None:
     assert "pytest -x --ff" in source  # source evolved
     installed_copy = (project / ".claude" / "skills" / "run-tests" / "SKILL.md").read_text(encoding="utf-8")
     assert "pytest -x --ff" not in installed_copy  # snapshot unchanged until re-install
+    listed = skills_mod.list_candidates(project / ".memsearch")
+    assert listed[0]["pending_install"] is True
+    assert listed[0]["pending_reason"] == "updated"
+    assert listed[0]["installed_hash"] != listed[0]["content_hash"]
+
+
+def test_candidate_review_summary_counts_pending_versions(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()
+    _enable(cfg)
+
+    skills_mod.distill(
+        platform="claude-code",
+        project_dir=project,
+        cfg=cfg,
+        llm_runner=_body_runner("## v1\n\n1. pytest", name="installed-skill"),
+    )
+    skills_mod.install("installed-skill", [str(project / ".claude" / "skills")], project_dir=project)
+    skills_mod.distill(
+        platform="claude-code",
+        project_dir=project,
+        cfg=cfg,
+        force=True,
+        llm_runner=_body_runner("## v2\n\n1. pytest -x --ff", name="installed-skill"),
+    )
+    skills_mod.add(
+        "New Flow",
+        "Capture a new flow. Use when asked to capture this flow.",
+        "## New flow\n\n1. Do the thing",
+        project_dir=project,
+    )
+
+    summary = skills_mod.candidate_review_summary(project / ".memsearch")
+
+    assert summary["candidate_count"] == 2
+    assert summary["pending_count"] == 2
+    assert summary["new_count"] == 1
+    assert summary["updated_count"] == 1
+    assert summary["pending_names"] == ["installed-skill", "new-flow"]
+    assert skills_mod.format_candidate_hint(summary).startswith("SKILLS: 2 candidate skill version(s) pending install")
+
+
+def test_installed_candidate_with_legacy_meta_is_pending(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    skill_dir = project / ".memsearch" / "skill-candidates" / "legacy"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("---\nname: legacy\n---\n\n## Legacy\n", encoding="utf-8")
+    (skill_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "name": "legacy",
+                "status": "installed",
+                "description": "Legacy installed skill.",
+                "installed_paths": [str(project / ".agents" / "skills" / "legacy" / "SKILL.md")],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    listed = skills_mod.list_candidates(project / ".memsearch")
+
+    assert listed[0]["content_hash"].startswith("gitblob:")
+    assert listed[0]["pending_install"] is True
+    assert listed[0]["pending_reason"] == "updated"
+
+
+def test_cli_skills_status_outputs_hint(tmp_path: Path, monkeypatch) -> None:
+    from click.testing import CliRunner
+
+    from memsearch.cli import cli
+
+    project = tmp_path / "repo"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    skills_mod.add(
+        "Review Me",
+        "Review this candidate. Use when testing skill status.",
+        "## Review\n\n1. Check it",
+        project_dir=project,
+    )
+
+    result = CliRunner().invoke(cli, ["skills", "status", "--hint"])
+
+    assert result.exit_code == 0
+    assert "SKILLS: 1 candidate skill version(s) pending install" in result.output
 
 
 def test_load_template_respects_custom_prompt(tmp_path: Path) -> None:

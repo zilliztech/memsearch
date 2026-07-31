@@ -11,7 +11,12 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 function getMemsearchDir(projectDir) {
-  return join(projectDir, ".memsearch");
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : join(projectDir, ".memsearch");
+}
+function getCollectionScopeDir(projectDir) {
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : projectDir;
 }
 function getMemoryDir(projectDir) {
   return join(getMemsearchDir(projectDir), "memory");
@@ -22,6 +27,36 @@ function ensureDir(dir) {
   }
   return dir;
 }
+function recentMemoryPreviewLines(content, maxLines) {
+  const sections = [];
+  let current = [];
+  let hasBody = false;
+  const flush = () => {
+    if (current.length > 0 && hasBody) {
+      sections.push(current);
+    }
+    current = [];
+    hasBody = false;
+  };
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (/^##\s/.test(line)) {
+      flush();
+      current = [line];
+      continue;
+    }
+    if (/^#{3,4}\s/.test(line)) {
+      current.push(line);
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      current.push(line);
+      hasBody = true;
+    }
+  }
+  flush();
+  return sections.flat().slice(-maxLines);
+}
 function getRecentMemories(memDir, count = 2, maxLinesPerFile = 30) {
   if (!existsSync(memDir)) return "";
   const files = readdirSync(memDir).filter((f) => f.endsWith(".md")).sort().slice(-count);
@@ -30,7 +65,7 @@ function getRecentMemories(memDir, count = 2, maxLinesPerFile = 30) {
   for (const file of files) {
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n").filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- ")).slice(0, maxLinesPerFile);
+      const lines = recentMemoryPreviewLines(content, maxLinesPerFile);
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
       }
@@ -191,6 +226,23 @@ var index_default = {
       );
       return r.stdout?.trim() || "";
     }
+    async function getSkillCandidateHint() {
+      try {
+        const cmd = await getMemsearchCmd();
+        const r = await runCmd(
+          [
+            "bash",
+            "-c",
+            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`
+          ],
+          { timeoutMs: 5e3 }
+        );
+        if (r.code !== 0) return "";
+        return r.stdout?.trim().split("\n")[0] || "";
+      } catch {
+        return "";
+      }
+    }
     async function wakeMaintenance() {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
@@ -198,7 +250,7 @@ var index_default = {
           [
             "bash",
             "-c",
-            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(memsearchDir)}'`
+            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(getMemsearchDir(projectDir))}'`
           ],
           {
             timeoutMs: 12e4,
@@ -212,10 +264,11 @@ var index_default = {
     let _collectionNameFor = "";
     let _collectionName = "ms_openclaw_default";
     async function getCollectionName() {
-      if (_collectionNameFor === projectDir) return _collectionName;
+      const scopeDir = getCollectionScopeDir(projectDir);
+      if (_collectionNameFor === scopeDir) return _collectionName;
       const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
       try {
-        const r = await runCmd(["bash", script, projectDir], { timeoutMs: 5e3 });
+        const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5e3 });
         if (r.code === 0 && r.stdout?.trim()) {
           _collectionName = r.stdout.trim();
         } else {
@@ -224,21 +277,19 @@ var index_default = {
       } catch {
         _collectionName = "ms_openclaw_default";
       }
-      _collectionNameFor = projectDir;
+      _collectionNameFor = scopeDir;
       return _collectionName;
     }
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");
-    let memsearchDir = join(projectDir, ".memsearch");
-    let memoryDir = join(memsearchDir, "memory");
+    let memoryDir = getMemoryDir(projectDir);
     function updateAgentContext(ctx) {
       const newId = ctx?.agentId;
       const newWorkspace = ctx?.workspaceDir;
       if (newId && (newId !== agentId || newWorkspace && newWorkspace !== projectDir)) {
         agentId = newId;
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
-        memsearchDir = join(projectDir, ".memsearch");
-        memoryDir = join(memsearchDir, "memory");
+        memoryDir = getMemoryDir(projectDir);
         _collectionNameFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
@@ -378,8 +429,10 @@ var index_default = {
       api.on("before_agent_start", async () => {
         try {
           const context = getRecentMemories(memoryDir);
-          if (context) {
-            return { prependContext: context };
+          const skillHint = await getSkillCandidateHint();
+          const blocks = [context, skillHint].filter(Boolean);
+          if (blocks.length > 0) {
+            return { prependContext: blocks.join("\n\n") };
           }
         } catch (e) {
           logger?.warn?.(
@@ -652,5 +705,7 @@ ${anchor}${cleanSummary}
   }
 };
 export {
-  index_default as default
+  index_default as default,
+  getCollectionScopeDir,
+  getMemsearchDir
 };

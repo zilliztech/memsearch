@@ -481,6 +481,21 @@ def wake_maintenance(project_dir: str) -> None:
     )
 
 
+def process_is_alive(pid: int) -> bool:
+    """Return whether a process exists without sending it a signal."""
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
 def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     """Find OpenCode sessions that belong to the given project directory."""
     sessions = conn.execute(
@@ -764,6 +779,7 @@ def main() -> None:
     parser.add_argument("collection_name", help="Milvus collection name")
     parser.add_argument("--memsearch-cmd", default="memsearch", help="memsearch command")
     parser.add_argument("--poll-interval", type=int, default=10, help="Poll interval in seconds")
+    parser.add_argument("--parent-pid", type=int, default=0, help="Exit when this parent process is gone")
     args = parser.parse_args()
 
     db_path = get_db_path()
@@ -791,6 +807,9 @@ def main() -> None:
     tail_turn_cache: dict[str, TailTurnObservation] = {}
 
     while True:
+        if args.parent_pid and not process_is_alive(args.parent_pid):
+            cleanup()
+
         any_new = False
         conn = None
         try:
@@ -820,6 +839,8 @@ def main() -> None:
             if conn is not None:
                 conn.close()
 
+        if args.parent_pid and not process_is_alive(args.parent_pid):
+            cleanup()
         time.sleep(args.poll_interval)
 
 

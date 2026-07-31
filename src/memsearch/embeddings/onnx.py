@@ -53,6 +53,11 @@ class OnnxEmbedding:
         self._session = ort.InferenceSession(model_path)
         self._output_names = [o.name for o in self._session.get_outputs()]
         self._has_dense_vecs = "dense_vecs" in self._output_names
+        # BERT-family exports (e.g. Xenova/all-MiniLM-L6-v2) declare a
+        # token_type_ids input; XLM-R-family exports (e.g. bge-m3) do not.
+        # Session.run() requires every declared input to be fed.
+        input_names = {i.name for i in self._session.get_inputs()}
+        self._needs_token_type_ids = "token_type_ids" in input_names
         self._model = model
 
         # Detect dimension from a probe embedding
@@ -141,6 +146,9 @@ class OnnxEmbedding:
             "input_ids": input_ids,
             "attention_mask": attention_mask,
         }
+        if self._needs_token_type_ids:
+            # Single-sequence embedding: segment ids are all zero.
+            feed["token_type_ids"] = np.zeros_like(input_ids)
         outputs = self._session.run(None, feed)
 
         if self._has_dense_vecs:

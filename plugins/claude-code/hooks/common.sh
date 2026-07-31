@@ -76,12 +76,12 @@ _json_val() {
     # Build jq filter from dotted key: "info.version" → ".info.version"
     result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
   else
-    result=$(python3 -c "
+    result=$(printf '%s' "$json" | python3 -c "
 import json, sys
 try:
-    obj = json.loads(sys.argv[1])
+    obj = json.load(sys.stdin)
     val = obj
-    for k in sys.argv[2].split('.'):
+    for k in sys.argv[1].split('.'):
         val = val[k]
     if val is None:
         print('')
@@ -91,7 +91,7 @@ try:
         print(val)
 except Exception:
     print('')
-" "$json" "$key" 2>/dev/null) || true
+" "$key" 2>/dev/null) || true
   fi
 
   if [ -z "$result" ]; then
@@ -113,6 +113,43 @@ _json_encode_str() {
   # Last resort: simple quoting (no special char escaping)
   printf '"%s"' "$str"
   return 0
+}
+
+# Return a concise user-facing warning when the persisted index state says
+# search may be stale. Detailed diagnosis stays in the memory-config skill.
+index_state_warning() {
+  local state_path="$MEMSEARCH_DIR/.index-state.json"
+  [ -f "$state_path" ] || return 0
+  python3 - "$state_path" <<'PY' 2>/dev/null || true
+import json
+import sys
+from datetime import datetime, timezone
+
+try:
+    state = json.loads(open(sys.argv[1], encoding="utf-8").read())
+except Exception:
+    raise SystemExit(0)
+
+status = state.get("status")
+if status in {"error", "degraded"}:
+    print("WARNING: memory index may be stale; run the memory-config skill to diagnose")
+    raise SystemExit(0)
+
+if status == "running":
+    raw_started = state.get("last_started_at")
+    try:
+        started = datetime.fromisoformat(str(raw_started).replace("Z", "+00:00"))
+    except Exception:
+        raise SystemExit(0)
+    if datetime.now(timezone.utc).timestamp() - started.timestamp() > 3600:
+        print("WARNING: memory index has been running for over 1h; run the memory-config skill to diagnose")
+PY
+}
+
+skill_candidate_hint() {
+  [ -n "$MEMSEARCH_CMD" ] || return 0
+  [ -d "$MEMSEARCH_DIR/skill-candidates" ] || return 0
+  MEMSEARCH_DIR="$MEMSEARCH_DIR" $MEMSEARCH_CMD skills status --hint 2>/dev/null || true
 }
 
 # Helper: ensure memory directory exists

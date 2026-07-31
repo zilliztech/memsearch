@@ -73,12 +73,14 @@ if [ -n "$VERSION" ]; then
     if [ -n "$_MS_BIN" ]; then
       _MS_REAL=$(readlink -f "$_MS_BIN" 2>/dev/null || python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$_MS_BIN" 2>/dev/null || echo "$_MS_BIN")
     fi
-    if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ] || [[ "$_MS_REAL" == *"uv/tools"* ]]; then
-      UPGRADE_CMD="uv tool install -U 'memsearch[onnx]'"
+    if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ]; then
+      UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
+    elif [[ "$_MS_REAL" == *"uv/tools"* ]]; then
+      UPGRADE_CMD="uv tool upgrade memsearch"
     elif [[ "$_MS_REAL" == *"/pipx/venvs/memsearch/"* ]] || { command -v pipx &>/dev/null && pipx list 2>/dev/null | grep -Eq "package memsearch([ ,]|$)"; }; then
       UPGRADE_CMD="pipx upgrade memsearch"
     else
-      UPGRADE_CMD="pip install --upgrade 'memsearch[onnx]'"
+      UPGRADE_CMD="pip install --upgrade memsearch"
     fi
     UPDATE_HINT=" | UPDATE: v${LATEST} available — run: ${UPGRADE_CMD}"
   fi
@@ -94,6 +96,15 @@ status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | mil
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
   status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
+else
+  INDEX_WARNING=$(index_state_warning || true)
+  if [ -n "$INDEX_WARNING" ]; then
+    status+=" | ${INDEX_WARNING}"
+  fi
+fi
+SKILL_HINT=$(skill_candidate_hint || true)
+if [ -n "$SKILL_HINT" ]; then
+  status+=" | ${SKILL_HINT}"
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"
@@ -101,7 +112,8 @@ PROJECT_BASENAME=$(basename "$PROJECT_DIR")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
 # Capture preexisting memory files before writing the new session heading.
-EXISTING_MEMORY_FILES=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' 2>/dev/null | sort || true)
+DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'
+EXISTING_MEMORY_FILES=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" 2>/dev/null | sort || true)
 EXISTING_MEMORY_COUNT=$(printf '%s\n' "$EXISTING_MEMORY_FILES" | sed '/^$/d' | wc -l | tr -d ' ')
 
 # Write session heading to today's memory file

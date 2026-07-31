@@ -1463,12 +1463,13 @@ wheels = [
 
 [[package]]
 name = "memsearch"
-version = "0.4.12"
+version = "0.4.17"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "milvus-lite", marker = "sys_platform != 'win32'" },
     { name = "openai" },
+    { name = "pathspec" },
     { name = "pymilvus" },
     { name = "setuptools" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
@@ -1549,6 +1550,7 @@ requires-dist = [
     { name = "onnxruntime", marker = "python_full_version == '3.10.*' and extra == 'onnx'", specifier = ">=1.17,<1.24" },
     { name = "onnxruntime", marker = "python_full_version >= '3.11' and extra == 'onnx'", specifier = ">=1.17" },
     { name = "openai", specifier = ">=1.0" },
+    { name = "pathspec", specifier = ">=0.12" },
     { name = "pymilvus", specifier = ">=2.5.0,!=2.6.10" },
     { name = "sentence-transformers", marker = "extra == 'local'", specifier = ">=3.0" },
     { name = "setuptools", specifier = ">=78.1.1,<81" },

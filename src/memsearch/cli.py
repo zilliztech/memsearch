@@ -21,6 +21,13 @@ from .config import (
     save_config,
     set_config_value,
 )
+from .index_report import IndexFailure, format_error
+from .index_state import (
+    record_index_error,
+    record_index_report,
+    record_index_started,
+    resolve_index_state_path,
+)
 from .io import read_utf8_text_replace
 
 try:
@@ -81,7 +88,12 @@ def _build_cli_overrides(**kwargs) -> dict:
     return result
 
 
-def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
+def _cfg_to_memsearch_kwargs(
+    cfg: MemSearchConfig,
+    *,
+    extra_ignore_files: tuple[str, ...] = (),
+    extra_exclude: tuple[str, ...] = (),
+) -> dict:
     """Extract MemSearch constructor kwargs from a resolved config."""
     return {
         "embedding_provider": cfg.embedding.provider,
@@ -95,8 +107,15 @@ def _cfg_to_memsearch_kwargs(cfg: MemSearchConfig) -> dict:
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
         "min_chunk_size": cfg.chunking.min_chunk_size,
+        "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),
+        "exclude": _merge_unique(cfg.indexing.exclude, extra_exclude),
         "reranker_model": cfg.reranker.model,
     }
+
+
+def _merge_unique(configured: list[str], extra: tuple[str, ...]) -> list[str]:
+    """Append CLI list values to config values while preserving order."""
+    return list(dict.fromkeys([*configured, *extra]))
 
 
 def _normalize_compact_source(source: str | None) -> str | None:
@@ -164,6 +183,25 @@ def _common_options(f):
     return f
 
 
+def _indexing_options(f):
+    """Shared opt-in ignore options for index and watch."""
+    f = click.option(
+        "--ignore-file",
+        "ignore_files",
+        multiple=True,
+        metavar="NAME",
+        help="Discover an ignore filename within each index root (repeatable).",
+    )(f)
+    f = click.option(
+        "--exclude",
+        "exclude_patterns",
+        multiple=True,
+        metavar="PATTERN",
+        help="Add a gitignore-style exclusion pattern (repeatable).",
+    )(f)
+    return f
+
+
 @click.group()
 @click.version_option(package_name="memsearch")
 def cli() -> None:
@@ -173,6 +211,7 @@ def cli() -> None:
 @cli.command()
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
 @_common_options
+@_indexing_options
 @click.option("--force", is_flag=True, help="Re-index all files.")
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
@@ -188,6 +227,8 @@ def index(
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
+    ignore_files: tuple[str, ...],
+    exclude_patterns: tuple[str, ...],
     force: bool,
     max_chunk_size: int | None,
     description: str | None,
@@ -195,6 +236,7 @@ def index(
     """Index markdown files from PATHS."""
     from .core import MemSearch
 
+    state_path = resolve_index_state_path(paths)
     cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
@@ -210,12 +252,53 @@ def index(
     )
     ms = None
     try:
-        ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
-        n = _run(ms.index(force=force))
-        click.echo(f"Indexed {n} chunks.")
+        record_index_started(
+            state_path,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        ms = MemSearch(
+            list(paths),
+            **_cfg_to_memsearch_kwargs(
+                cfg,
+                extra_ignore_files=ignore_files,
+                extra_exclude=exclude_patterns,
+            ),
+            description=description or "",
+        )
+        report = _run(ms.index_with_report(force=force))
+        record_index_report(
+            state_path,
+            report,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        click.echo(f"Indexed {report.indexed_chunks} chunks.")
     except MilvusException as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
+    except Exception as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="index",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        raise
     finally:
         if ms is not None:
             ms.close()
@@ -475,6 +558,7 @@ def _extract_section(
 @cli.command()
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
 @_common_options
+@_indexing_options
 @click.option("--debounce-ms", default=None, type=int, help="Debounce delay in ms.")
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
@@ -490,6 +574,8 @@ def watch(
     collection: str | None,
     milvus_uri: str | None,
     milvus_token: str | None,
+    ignore_files: tuple[str, ...],
+    exclude_patterns: tuple[str, ...],
     debounce_ms: int | None,
     max_chunk_size: int | None,
     description: str | None,
@@ -497,6 +583,7 @@ def watch(
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
 
+    state_path = resolve_index_state_path(paths)
     cfg = _safe_resolve_config(
         _build_cli_overrides(
             provider=provider,
@@ -514,18 +601,53 @@ def watch(
     ms = None
     watcher = None
     try:
-        ms = MemSearch(list(paths), **_cfg_to_memsearch_kwargs(cfg), description=description or "")
+        record_index_started(
+            state_path,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        ms = MemSearch(
+            list(paths),
+            **_cfg_to_memsearch_kwargs(
+                cfg,
+                extra_ignore_files=ignore_files,
+                extra_exclude=exclude_patterns,
+            ),
+            description=description or "",
+        )
 
         # Initial index: ensure existing files are indexed before watching
-        n = _run(ms.index())
-        if n:
-            click.echo(f"Indexed {n} chunks.")
+        report = _run(ms.index_with_report())
+        record_index_report(
+            state_path,
+            report,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        if report.indexed_chunks:
+            click.echo(f"Indexed {report.indexed_chunks} chunks.")
 
         def _on_event(event_type: str, summary: str, file_path) -> None:
             click.echo(summary)
 
+        def _on_error(event_type: str, error: BaseException, file_path) -> None:
+            record_index_error(
+                state_path,
+                error,
+                operation=f"watch:{event_type}",
+                paths=(str(file_path),),
+                collection=cfg.milvus.collection,
+                milvus_uri=cfg.milvus.uri,
+                status="degraded",
+                failed_files=(IndexFailure(path=str(file_path), error=format_error(error)),),
+            )
+
         click.echo(f"Watching {len(paths)} path(s) for changes... (Ctrl+C to stop)")
-        watcher = ms.watch(on_event=_on_event, debounce_ms=cfg.watch.debounce_ms)
+        watcher = ms.watch(on_event=_on_event, on_error=_on_error, debounce_ms=cfg.watch.debounce_ms)
         while True:
             import time
 
@@ -533,8 +655,26 @@ def watch(
     except KeyboardInterrupt:
         click.echo("\nStopping watcher.")
     except MilvusException as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
+    except Exception as e:
+        record_index_error(
+            state_path,
+            e,
+            operation="watch",
+            paths=paths,
+            collection=cfg.milvus.collection,
+            milvus_uri=cfg.milvus.uri,
+        )
+        raise
     finally:
         if watcher is not None:
             watcher.stop()
@@ -777,13 +917,21 @@ def config_init(project: bool) -> None:
     """Interactive configuration wizard."""
 
     target = PROJECT_CONFIG_PATH if project else GLOBAL_CONFIG_PATH
-    load_config_file(target)
+    existing = load_config_file(target)
     current = resolve_config()
 
     result: dict = {}
 
     click.echo("memsearch configuration wizard")
     click.echo(f"Writing to: {target}\n")
+
+    existing_indexing = existing.get("indexing", {})
+    if not isinstance(existing_indexing, dict):
+        existing_indexing = {}
+    indexing_defaults = {
+        "ignore_files": existing_indexing.get("ignore_files", [".gitignore"]),
+        "exclude": existing_indexing.get("exclude", []),
+    }
 
     if project:
         click.echo("Project config is limited to low-risk local indexing keys.")
@@ -812,6 +960,8 @@ def config_init(project: bool) -> None:
             default=current.chunking.overlap_lines,
             type=int,
         )
+
+        result["indexing"] = indexing_defaults
 
         click.echo("\n── Watch ──")
         result["watch"] = {}
@@ -886,6 +1036,8 @@ def config_init(project: bool) -> None:
         default=current.chunking.overlap_lines,
         type=int,
     )
+
+    result["indexing"] = indexing_defaults
 
     # Watch
     click.echo("\n── Watch ──")
@@ -1050,7 +1202,9 @@ def config_get(key: str) -> None:
     """Get a resolved config value (e.g. memsearch config get milvus.uri)."""
     try:
         val = get_config_value(key)
-        click.echo(val)
+        # Lowercase booleans so shell consumers (e.g. hooks comparing against
+        # "false") don't trip over Python's "True"/"False" repr.
+        click.echo(str(val).lower() if isinstance(val, bool) else val)
     except KeyError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -1060,10 +1214,9 @@ def config_get(key: str) -> None:
 @click.option("--resolved", "mode", flag_value="resolved", default=True, help="Show fully resolved config (default).")
 @click.option("--global", "mode", flag_value="global", help="Show global config file only.")
 @click.option("--project", "mode", flag_value="project", help="Show project config file only.")
-def config_list(mode: str) -> None:
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+def config_list(mode: str, json_output: bool) -> None:
     """Show configuration."""
-    import tomli_w
-
     if mode == "global":
         data = load_config_file(GLOBAL_CONFIG_PATH)
         label = f"Global ({GLOBAL_CONFIG_PATH})"
@@ -1074,6 +1227,12 @@ def config_list(mode: str) -> None:
         cfg = resolve_config()
         data = config_to_dict(cfg)
         label = "Resolved (all sources merged)"
+
+    if json_output:
+        click.echo(json.dumps(data, ensure_ascii=False))
+        return
+
+    import tomli_w
 
     click.echo(f"# {label}\n")
     if data:
@@ -1166,9 +1325,40 @@ def skills_list(json_output: bool) -> None:
     for meta in candidates:
         occ = meta.get("occurrences")
         occ_text = f", seen {occ}x" if isinstance(occ, int) else ""
+        pending_reason = meta.get("pending_reason")
+        pending_text = ""
+        if pending_reason == "new":
+            pending_text = ", install ready"
+        elif pending_reason == "updated":
+            pending_text = ", update ready"
         click.echo(
-            f"- {meta.get('name')} [{meta.get('status', 'candidate')}{occ_text}] — {meta.get('description', '')}"
+            f"- {meta.get('name')} [{meta.get('status', 'candidate')}{occ_text}{pending_text}] "
+            f"- {meta.get('description', '')}"
         )
+
+
+@skills_group.command("status")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+@click.option("--hint", is_flag=True, help="Print only the startup hint when candidate skill versions are pending.")
+def skills_status(json_output: bool, hint: bool) -> None:
+    """Show whether candidate skills need review and installation."""
+    from . import skills as skills_mod
+
+    _project_root, mem_root = skills_mod.resolve_roots(None, None)
+    summary = skills_mod.candidate_review_summary(mem_root)
+    if json_output:
+        click.echo(json.dumps(summary, indent=2, ensure_ascii=False))
+        return
+    if hint:
+        rendered = skills_mod.format_candidate_hint(summary)
+        if rendered:
+            click.echo(rendered)
+        return
+    if summary["pending_count"] == 0:
+        click.echo("No candidate skill versions pending install.")
+        return
+    click.echo(skills_mod.format_candidate_hint(summary))
+    click.echo(f"New: {summary['new_count']}; updated: {summary['updated_count']}.")
 
 
 @skills_group.command("install")

@@ -31,12 +31,24 @@ if [ -n "$MEMSEARCH_CMD" ]; then
   fi
 fi
 
-# Read resolved config and version for status display
-PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
+# Read resolved config in one CLI call. Older CLI versions do not support
+# --json-output, so keep the existing per-key reads as a compatibility fallback.
+PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; CONFIG_API_KEY=""; VERSION=""
+CONFIG_SNAPSHOT_LOADED=false
 if [ -n "$MEMSEARCH_CMD" ]; then
-  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
-  MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
-  MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  CONFIG_JSON=$($MEMSEARCH_CMD config list --resolved --json-output 2>/dev/null || true)
+  SNAPSHOT_PROVIDER=$(_json_val "$CONFIG_JSON" "embedding.provider" "")
+  if [ -n "$SNAPSHOT_PROVIDER" ]; then
+    PROVIDER="$SNAPSHOT_PROVIDER"
+    MODEL=$(_json_val "$CONFIG_JSON" "embedding.model" "")
+    MILVUS_URI=$(_json_val "$CONFIG_JSON" "milvus.uri" "")
+    CONFIG_API_KEY=$(_json_val "$CONFIG_JSON" "embedding.api_key" "")
+    CONFIG_SNAPSHOT_LOADED=true
+  else
+    PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
+    MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
+    MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+  fi
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
@@ -57,8 +69,7 @@ REQUIRED_KEY=$(_required_env_var "$PROVIDER")
 KEY_MISSING=false
 if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   # Env var not set — check if API key is configured in memsearch config file
-  CONFIG_API_KEY=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
+  if [ "$CONFIG_SNAPSHOT_LOADED" != true ] && [ -n "$MEMSEARCH_CMD" ]; then
     CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
   fi
   if [ -z "$CONFIG_API_KEY" ]; then
@@ -78,12 +89,14 @@ if [ -n "$VERSION" ]; then
     if [ -n "$_MS_BIN" ]; then
       _MS_REAL=$(readlink -f "$_MS_BIN" 2>/dev/null || python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$_MS_BIN" 2>/dev/null || echo "$_MS_BIN")
     fi
-    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]] || [[ "$_MS_REAL" == *"uv/tools"* ]]; then
-      UPGRADE_CMD="uv tool install -U 'memsearch[onnx]'"
+    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]]; then
+      UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
+    elif [[ "$_MS_REAL" == *"uv/tools"* ]]; then
+      UPGRADE_CMD="uv tool upgrade memsearch"
     elif [[ "$_MS_REAL" == *"/pipx/venvs/memsearch/"* ]] || { command -v pipx &>/dev/null && pipx list 2>/dev/null | grep -Eq "package memsearch([ ,]|$)"; }; then
       UPGRADE_CMD="pipx upgrade memsearch"
     else
-      UPGRADE_CMD="pip install --upgrade 'memsearch[onnx]'"
+      UPGRADE_CMD="pip install --upgrade memsearch"
     fi
     UPDATE_HINT=" | UPDATE: v${LATEST} available — run: ${UPGRADE_CMD}"
   fi
@@ -99,20 +112,64 @@ status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | mil
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
   status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
+else
+  INDEX_WARNING=$(index_state_warning || true)
+  if [ -n "$INDEX_WARNING" ]; then
+    status+=" | ${INDEX_WARNING}"
+  fi
+fi
+SKILL_HINT=$(skill_candidate_hint || true)
+if [ -n "$SKILL_HINT" ]; then
+  status+=" | ${SKILL_HINT}"
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"
 PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
-# Write session heading to today's memory file
+_recent_memory_preview() {
+  local file="$1" max_lines="${2:-40}"
+  awk '
+    function flush_section() {
+      if (section_len > 0 && has_body) {
+        for (i = 1; i <= section_len; i++) {
+          print section[i]
+        }
+      }
+      delete section
+      section_len = 0
+      has_body = 0
+    }
+
+    /^##[[:space:]]/ {
+      flush_section()
+      section[++section_len] = $0
+      next
+    }
+
+    /^#{3,4}[[:space:]]/ {
+      section[++section_len] = $0
+      next
+    }
+
+    /^-[[:space:]]/ {
+      section[++section_len] = $0
+      has_body = 1
+      next
+    }
+
+    END {
+      flush_section()
+    }
+  ' "$file" 2>/dev/null | tail -n "$max_lines" || true
+}
+
+# The session heading is written lazily by stop.sh on the first
+# content-bearing Stop. Writing it eagerly here left header-only stub
+# journals (bare "## Session HH:MM" files) for every session in which the
+# Stop hook never appended a summary, and those stubs occupied one of the
+# two recent-memory injection slots below.
 ensure_memory_dir
-TODAY=$(date +%Y-%m-%d)
-NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
-  echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
-fi
 
 # If API key is missing, show status and exit early (watch/search would fail)
 if [ "$KEY_MISSING" = true ]; then
@@ -149,7 +206,7 @@ fi
 # Always include status in systemMessage
 json_status=$(_json_encode_str "$status")
 
-# If memory dir has no .md files (other than the one we just created), nothing to inject
+# If memory dir has no .md files, nothing to inject
 if [ ! -d "$MEMORY_DIR" ] || ! ls "$MEMORY_DIR"/*.md &>/dev/null; then
   echo "{\"systemMessage\": $json_status}"
   exit 0
@@ -158,18 +215,17 @@ fi
 context=""
 
 # Find the 2 most recent daily log files (sorted by filename descending).
-recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null | sort -r | head -2 || true)
+DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'
+recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" -print 2>/dev/null | sort -r | head -2 || true)
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
-    # Extract headings (## Session, ### turn timestamps) and bullet content —
-    # higher signal density than a raw tail, so Claude can see the structure
-    # of past days (what sessions existed, what topics came up) rather than
-    # just the last 30 lines of whichever file happened to be newest.
-    content=$(grep -E '^(#{2,4} |- )' "$f" 2>/dev/null | head -40 || true)
+    # Extract recent non-empty session sections. Legacy journals may contain
+    # empty headings, but they do not carry useful context.
+    content=$(_recent_memory_preview "$f" 40)
     if [ -n "$content" ]; then
       context+="## $basename_f\n$content\n\n"
     fi

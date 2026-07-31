@@ -11,9 +11,10 @@ memsearch uses a layered TOML config system. Most users don't need to configure 
 Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
 before it is merged. It can only set low-risk local indexing keys:
 `milvus.collection`, `embedding.batch_size`, `chunking.max_chunk_size`,
-`chunking.overlap_lines`, and `watch.debounce_ms`. Put trusted settings such as
-provider routing, API endpoints, API keys, prompt files, and `plugins.*`
-automation in global config or pass them as explicit CLI flags.
+`chunking.overlap_lines`, `indexing.ignore_files`, `indexing.exclude`, and
+`watch.debounce_ms`. Put trusted settings such as provider routing, API
+endpoints, API keys, prompt files, and `plugins.*` automation in global config
+or pass them as explicit CLI flags.
 
 ## Quick Setup
 
@@ -24,6 +25,47 @@ memsearch config init
 # Or set individual values
 memsearch config set embedding.provider onnx
 memsearch config set milvus.uri http://localhost:19530
+```
+
+## Index Exclusions
+
+Ignore support is explicit so upgrades do not silently change an existing
+user's index. If `[indexing]` is absent, or both lists are empty, memsearch keeps
+the previous scan-all behavior. `memsearch config init` writes this opt-in
+default into newly generated config files:
+
+```toml
+[indexing]
+ignore_files = [".gitignore"]
+exclude = []
+```
+
+Each directory passed to `memsearch index` or `memsearch watch` is an independent
+index root. Ignore files are discovered in that root and its subdirectories;
+memsearch never searches parent directories. For example, indexing
+`project/.memsearch/memory/` does not read `project/.gitignore`, while
+`project/.memsearch/memory/.gitignore` does apply.
+
+All rules use gitignore-compatible syntax. Add other tools' ignore filenames or
+direct patterns without enabling tool-specific behavior in memsearch:
+
+```toml
+[indexing]
+ignore_files = [".gitignore", ".cursorignore", ".cursorindexingignore"]
+exclude = ["generated/**", "*.draft.md"]
+```
+
+The same matcher is used by initial indexing and live watch events. Explicit
+file arguments, such as `memsearch index ignored.md`, remain explicit partial
+updates and bypass directory ignore discovery. After adding a new exclusion,
+run a full directory index once to remove previously indexed chunks that now
+match it.
+
+For a one-off run, repeat `--ignore-file` or `--exclude` as needed:
+
+```bash
+memsearch index . --ignore-file .gitignore --ignore-file .cursorignore
+memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 ```
 
 ## Embedding Provider

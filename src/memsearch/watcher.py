@@ -23,16 +23,21 @@ class _MarkdownHandler(FileSystemEventHandler):
         callback: Callable[[str, Path], None],
         extensions: tuple[str, ...] = (".md", ".markdown"),
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
+        path_filter: Callable[[Path], bool] | None = None,
     ) -> None:
         self._callback = callback
         self._extensions = extensions
         self._debounce_s = debounce_ms / 1000.0
+        self._path_filter = path_filter
         self._timers: dict[str, threading.Timer] = {}
         self._pending: dict[str, str] = {}  # path -> latest event_type
         self._lock = threading.Lock()
 
     def _is_markdown(self, path: str) -> bool:
         return Path(path).suffix.lower() in self._extensions
+
+    def _should_process(self, path: str) -> bool:
+        return self._path_filter is None or self._path_filter(Path(path))
 
     def _schedule(self, event_type: str, path: str) -> None:
         with self._lock:
@@ -52,11 +57,11 @@ class _MarkdownHandler(FileSystemEventHandler):
             self._callback(event_type, Path(path))
 
     def on_created(self, event: FileSystemEvent) -> None:
-        if not event.is_directory and self._is_markdown(event.src_path):
+        if not event.is_directory and self._is_markdown(event.src_path) and self._should_process(event.src_path):
             self._schedule("created", event.src_path)
 
     def on_modified(self, event: FileSystemEvent) -> None:
-        if not event.is_directory and self._is_markdown(event.src_path):
+        if not event.is_directory and self._is_markdown(event.src_path) and self._should_process(event.src_path):
             self._schedule("modified", event.src_path)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
@@ -86,6 +91,10 @@ class FileWatcher:
         Debounce delay in milliseconds.  Multiple events for the same
         file within this window are collapsed into one callback.
         Defaults to 1500 ms (matching OpenClaw).
+    path_filter:
+        Optional predicate for created and modified markdown paths. Deleted
+        files are always dispatched so any previously indexed chunks can be
+        removed safely.
     """
 
     def __init__(
@@ -93,9 +102,10 @@ class FileWatcher:
         paths: list[str | Path],
         callback: Callable[[str, Path], None],
         debounce_ms: int = DEFAULT_DEBOUNCE_MS,
+        path_filter: Callable[[Path], bool] | None = None,
     ) -> None:
         self._paths = [Path(p).expanduser().resolve() for p in paths]
-        self._handler = _MarkdownHandler(callback, debounce_ms=debounce_ms)
+        self._handler = _MarkdownHandler(callback, debounce_ms=debounce_ms, path_filter=path_filter)
         self._observer = Observer()
 
     def start(self) -> None:

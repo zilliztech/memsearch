@@ -30,6 +30,8 @@ def test_default_config():
     assert cfg.embedding.provider == "openai"
     assert cfg.chunking.max_chunk_size == 1500
     assert cfg.chunking.overlap_lines == 2
+    assert cfg.indexing.ignore_files == []
+    assert cfg.indexing.exclude == []
     assert cfg.watch.debounce_ms == 1500
     assert cfg.compact.llm_provider == "openai"
     assert cfg.llm.providers == {}
@@ -175,6 +177,10 @@ def test_project_config_cannot_override_trusted_settings(tmp_path: Path, monkeyp
             "prompts": {"summarize": "/home/victim/.ssh/id_rsa"},
             "plugins": {"codex": {"project_review": {"enabled": True, "provider": "openai"}}},
             "chunking": {"max_chunk_size": 2048},
+            "indexing": {
+                "ignore_files": [".gitignore", ".cursorignore"],
+                "exclude": ["generated/**"],
+            },
             "watch": {"debounce_ms": 250},
         },
         project_cfg,
@@ -195,6 +201,8 @@ def test_project_config_cannot_override_trusted_settings(tmp_path: Path, monkeyp
     assert cfg.prompts.summarize == "/trusted/prompts/summarize.txt"
     assert cfg.plugins.codex.project_review.enabled is False
     assert cfg.chunking.max_chunk_size == 2048
+    assert cfg.indexing.ignore_files == [".gitignore", ".cursorignore"]
+    assert cfg.indexing.exclude == ["generated/**"]
     assert cfg.watch.debounce_ms == 250
 
 
@@ -371,6 +379,18 @@ def test_set_config_value_writes_to_project_config_when_requested(tmp_path: Path
 
     assert load_config_file(global_cfg) == {}
     assert load_config_file(project_cfg)["milvus"]["collection"] == "project-col"
+
+
+def test_set_config_value_accepts_project_ignore_lists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    set_config_value("indexing.ignore_files", ".gitignore,.cursorignore", project=True)
+    set_config_value("indexing.exclude", '["generated/**", "drafts/**"]', project=True)
+
+    data = load_config_file(project_cfg)
+    assert data["indexing"]["ignore_files"] == [".gitignore", ".cursorignore"]
+    assert data["indexing"]["exclude"] == ["generated/**", "drafts/**"]
 
 
 @pytest.mark.parametrize(

@@ -177,6 +177,37 @@ def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeyp
     assert captured["start_new_session"] is True
 
 
+def test_opencode_plugin_capture_daemon_uses_spawned_child_lifecycle() -> None:
+    source = (SCRIPT_DIR.parent / "index.ts").read_text(encoding="utf-8")
+
+    assert 'exec(\n    `python3 "${daemonScript}"' not in source
+    assert "spawn(" in source
+    assert '"--parent-pid"' in source
+    assert "String(process.pid)" in source
+    assert "writeFileSync(pidFile, String(child.pid)" in source
+
+
+def test_opencode_capture_daemon_parent_process_liveness(monkeypatch) -> None:
+    def alive(pid: int, signal_number: int) -> None:
+        assert pid == 123
+        assert signal_number == 0
+
+    monkeypatch.setattr(capture_daemon.os, "kill", alive)
+    assert capture_daemon.process_is_alive(123) is True
+
+    def missing(pid: int, signal_number: int) -> None:
+        raise ProcessLookupError
+
+    monkeypatch.setattr(capture_daemon.os, "kill", missing)
+    assert capture_daemon.process_is_alive(123) is False
+
+    def inaccessible(pid: int, signal_number: int) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(capture_daemon.os, "kill", inaccessible)
+    assert capture_daemon.process_is_alive(123) is True
+
+
 def _make_opencode_db(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row

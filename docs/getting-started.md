@@ -536,7 +536,7 @@ $ memsearch config init --project
 | Scope | Path | Use case |
 |-------|------|----------|
 | Global | `~/.memsearch/config.toml` | Machine-wide defaults (Milvus URI, preferred provider) |
-| Project | `.memsearch.toml` | Low-risk local indexing overrides (collection name, batch size, chunking, watch debounce) |
+| Project | `.memsearch.toml` | Low-risk local indexing overrides (collection name, batch size, chunking, ignore rules, watch debounce) |
 
 Both files use TOML format:
 

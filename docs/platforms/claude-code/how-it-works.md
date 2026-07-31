@@ -43,9 +43,9 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch`, write session heading, inject recent memories as cold-start context, display config status |
+| **SessionStart** | command | no | 10s | Start `memsearch watch`, inject recent memories as cold-start context, display config status |
 | **UserPromptSubmit** | command | no | 15s | Return `systemMessage` hint "[memsearch] Memory available" (skips prompts < 10 chars) |
-| **Stop** | command | **yes** | 120s | Parse last turn from transcript, summarize via native Haiku by default or configured API provider, append to daily `.md`, re-index |
+| **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`, re-index |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process |
 
 All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
@@ -78,7 +78,7 @@ stateDiagram-v2
         ClaudeProcesses --> ClaudeResponds: no memory needed
         ClaudeResponds --> UserInput: next turn
         ClaudeResponds --> Summary: Stop hook (async)
-        Summary --> WriteMD: append to YYYY-MM-DD.md
+        Summary --> WriteMD: create heading if needed, then append
     }
 
     Prompting --> SessionEnd: user exits
@@ -88,13 +88,14 @@ stateDiagram-v2
 
 ### SessionStart -- Bootstrapping the Session
 
-The SessionStart hook runs once when Claude Code opens a new session. It performs five steps:
+The SessionStart hook runs once when Claude Code opens a new session. It performs four steps:
 
-1. **Config validation** -- reads the memsearch config and validates the API key for the configured embedding provider (ONNX needs no key)
+1. **Config validation** -- loads resolved config in one snapshot and validates the API key for the configured embedding provider (ONNX needs no key)
 2. **Start watcher** -- launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file at `.memsearch/.watch.pid` prevents duplicates)
-3. **Session heading** -- writes `## Session HH:MM` to today's memory file (`YYYY-MM-DD.md`), marking the start of a new session
-4. **Cold-start injection** -- reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext` so Claude has immediate awareness of recent work
-5. **Update check** -- queries PyPI (2s timeout) and shows an update banner if a newer version exists
+3. **Cold-start injection** -- reads up to 40 lines from each of the 2 most recent daily logs and returns them as `additionalContext` so Claude has immediate awareness of recent work
+4. **Update check** -- queries PyPI (2s timeout) and shows an update banner if a newer version exists
+
+SessionStart prepares the memory directory but does not create a daily journal. A journal appears only after the Stop hook captures content.
 
 The cold-start injection is critical for early-session context. Without it, Claude would have no idea what happened yesterday until the memory-recall skill triggers -- but the skill only triggers when Claude judges it would help, which requires knowing that relevant history exists.
 
@@ -116,7 +117,7 @@ graph TD
     C -->|"< 3 lines"| Z
     C -->|Valid| D["parse-transcript.sh<br/>Extract last turn"]
     D --> E["claude -p --model haiku<br/>Summarize as 3rd-person notes"]
-    E --> F["Append to YYYY-MM-DD.md<br/>with session anchors"]
+    E --> F["Create session heading if needed<br/>and append with anchors"]
     F --> G["memsearch index<br/>Re-index immediately"]
 ```
 
@@ -137,8 +138,10 @@ Step by step:
 
 4. **Haiku summarization** -- the extracted turn is piped to `claude -p --model haiku` with a system prompt instructing it to write 2-10 third-person bullet points in the same language as the user's message. Set `plugins.claude-code.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.claude-code.summarize.provider` to that name. Empty or `native` keeps the Haiku default. The third-person framing ("User asked about...", "Agent implemented...") makes the summaries more useful as memory entries than first-person notes.
 
-5. **Append with anchors** -- the summary is written to `.memsearch/memory/YYYY-MM-DD.md` under a `### HH:MM` heading with an HTML comment anchor:
+5. **Append with anchors** -- on the first content-bearing Stop for a session, the hook creates the daily file if needed and writes `## Session HH:MM`. Each captured turn is written under a `### HH:MM` heading with an HTML comment anchor. Later Stops in the same session reuse its heading:
     ```markdown
+    ## Session 14:30
+
     ### 14:30
     <!-- session:abc123def turn:ghi789jkl transcript:/home/user/.claude/projects/.../abc123def.jsonl -->
     - User asked about N+1 query performance in order-service
@@ -233,9 +236,9 @@ plugins/claude-code/
 ├── hooks/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
-│   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
+│   ├── session-start.sh         # Start watch + inject cold-start context
 │   ├── user-prompt-submit.sh    # Lightweight systemMessage hint
-│   ├── stop.sh                  # Parse transcript -> haiku summary -> append to daily .md
+│   ├── stop.sh                  # Parse transcript -> summarize -> lazily create heading -> append
 │   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser with truncation
 │   └── session-end.sh           # Stop watch process (cleanup)
 ├── scripts/
@@ -251,9 +254,9 @@ plugins/claude-code/
 | `plugin.json` | Claude Code plugin manifest. Declares the plugin name (`memsearch`), version, and description. |
 | `hooks.json` | Defines the 4 lifecycle hooks with their types, timeouts, and async flags. |
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). Changes here affect all hooks. |
-| `session-start.sh` | Starts the watcher, writes session heading, reads recent memory files for cold-start injection, checks for updates. |
+| `session-start.sh` | Starts the watcher, reads recent memory files for cold-start injection, and checks for updates. |
 | `user-prompt-submit.sh` | Returns lightweight `systemMessage` hint. No search -- retrieval is handled by the memory-recall skill. |
-| `stop.sh` | Extracts transcript, validates it, calls `parse-transcript.sh`, summarizes via native Haiku by default or configured API provider, appends with anchors. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
+| `stop.sh` | Extracts and validates the transcript, calls `parse-transcript.sh`, summarizes via native Haiku by default or a configured API provider, creates the session heading on the first captured turn, and appends with anchors. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
 | `session-end.sh` | Calls `stop_watch` to terminate background watcher and clean up. |
 | `derive-collection.sh` | Generates a deterministic per-project Milvus collection name from the project path (e.g., `ms_myproject_a1b2c3`). |

@@ -28,8 +28,15 @@ const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 // Helpers (no external process calls — those live inside register())
 // ---------------------------------------------------------------------------
 
-function getMemsearchDir(projectDir: string): string {
-  return join(projectDir, ".memsearch");
+export function getMemsearchDir(projectDir: string): string {
+  // Honor MEMSEARCH_DIR for shared/global scope — matches claude-code/codex behavior.
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : join(projectDir, ".memsearch");
+}
+
+export function getCollectionScopeDir(projectDir: string): string {
+  const explicit = process.env.MEMSEARCH_DIR?.trim();
+  return explicit ? explicit : projectDir;
 }
 
 function getMemoryDir(projectDir: string): string {
@@ -45,10 +52,43 @@ function ensureDir(dir: string): string {
 
 /**
  * Summarize the N most recent daily .md files for cold-start context.
- * Extracts headings (## Session, ### turns) and bullet content so the
- * agent sees the structure of past days rather than just the tail of
- * whichever file happened to be newest.
+ * Extracts recent non-empty session sections so empty SessionStart headings
+ * do not crowd out useful context.
  */
+function recentMemoryPreviewLines(content: string, maxLines: number): string[] {
+  const sections: string[][] = [];
+  let current: string[] = [];
+  let hasBody = false;
+
+  const flush = () => {
+    if (current.length > 0 && hasBody) {
+      sections.push(current);
+    }
+    current = [];
+    hasBody = false;
+  };
+
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (/^##\s/.test(line)) {
+      flush();
+      current = [line];
+      continue;
+    }
+    if (/^#{3,4}\s/.test(line)) {
+      current.push(line);
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      current.push(line);
+      hasBody = true;
+    }
+  }
+
+  flush();
+  return sections.flat().slice(-maxLines);
+}
+
 function getRecentMemories(
   memDir: string,
   count = 2,
@@ -67,9 +107,7 @@ function getRecentMemories(
   for (const file of files) {
     try {
       const content = readFileSync(join(memDir, file), "utf-8");
-      const lines = content.split("\n")
-        .filter((l) => /^#{2,4}\s/.test(l) || l.startsWith("- "))
-        .slice(0, maxLinesPerFile);
+      const lines = recentMemoryPreviewLines(content, maxLinesPerFile);
       if (lines.length > 0) {
         summary.push(`[${file}]`, ...lines);
       }
@@ -306,6 +344,23 @@ export default {
       return r.stdout?.trim() || "";
     }
 
+    async function getSkillCandidateHint(): Promise<string> {
+      try {
+        const cmd = await getMemsearchCmd();
+        const r = await runCmd(
+          [
+            "bash", "-c",
+            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`,
+          ],
+          { timeoutMs: 5000 }
+        );
+        if (r.code !== 0) return "";
+        return r.stdout?.trim().split("\n")[0] || "";
+      } catch {
+        return "";
+      }
+    }
+
     async function wakeMaintenance(): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
@@ -314,7 +369,7 @@ export default {
             "bash", "-c",
             `python3 '${shellEscape(runner)}' --platform openclaw ` +
               `--project-dir '${shellEscape(projectDir)}' ` +
-              `--memsearch-dir '${shellEscape(memsearchDir)}'`,
+              `--memsearch-dir '${shellEscape(getMemsearchDir(projectDir))}'`,
           ],
           {
             timeoutMs: 120000,
@@ -331,10 +386,11 @@ export default {
     let _collectionName = "ms_openclaw_default";
 
     async function getCollectionName(): Promise<string> {
-      if (_collectionNameFor === projectDir) return _collectionName;
+      const scopeDir = getCollectionScopeDir(projectDir);
+      if (_collectionNameFor === scopeDir) return _collectionName;
       const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
       try {
-        const r = await runCmd(["bash", script, projectDir], { timeoutMs: 5000 });
+        const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5000 });
         if (r.code === 0 && r.stdout?.trim()) {
           _collectionName = r.stdout.trim();
         } else {
@@ -343,7 +399,7 @@ export default {
       } catch {
         _collectionName = "ms_openclaw_default";
       }
-      _collectionNameFor = projectDir;
+      _collectionNameFor = scopeDir;
       return _collectionName;
     }
 
@@ -355,8 +411,7 @@ export default {
     // same project directory.
     let agentId = "main";
     let projectDir = join(home, ".openclaw", "workspace");  // default main workspace
-    let memsearchDir = join(projectDir, ".memsearch");
-    let memoryDir = join(memsearchDir, "memory");
+    let memoryDir = getMemoryDir(projectDir);
 
     /** Update agent context from tool factory ctx. Called on each tool invocation. */
     function updateAgentContext(ctx: any): void {
@@ -365,8 +420,7 @@ export default {
       if (newId && (newId !== agentId || (newWorkspace && newWorkspace !== projectDir))) {
         agentId = newId;
         projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
-        memsearchDir = join(projectDir, ".memsearch");
-        memoryDir = join(memsearchDir, "memory");
+        memoryDir = getMemoryDir(projectDir);
         // Invalidate cached collection name — will be re-derived on next getCollectionName()
         _collectionNameFor = "";
         logger?.info?.(
@@ -541,8 +595,10 @@ export default {
       api.on("before_agent_start", async () => {
         try {
           const context = getRecentMemories(memoryDir);
-          if (context) {
-            return { prependContext: context };
+          const skillHint = await getSkillCandidateHint();
+          const blocks = [context, skillHint].filter(Boolean);
+          if (blocks.length > 0) {
+            return { prependContext: blocks.join("\n\n") };
           }
         } catch (e: any) {
           logger?.warn?.(

@@ -140,12 +140,12 @@ elif command -v claude &>/dev/null; then
 
 Transcript:
 ${PARSED}"
-  CLAUDE_SAFE_MODE_ARGS=()
+  CLAUDE_SAFE_MODE_ARG=""
   if claude --help 2>/dev/null | grep -q -- '--safe-mode'; then
-    CLAUDE_SAFE_MODE_ARGS=(--safe-mode)
+    CLAUDE_SAFE_MODE_ARG="--safe-mode"
   fi
   SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_DISABLE=1 CLAUDECODE= claude -p \
-    "${CLAUDE_SAFE_MODE_ARGS[@]}" \
+    ${CLAUDE_SAFE_MODE_ARG:+"$CLAUDE_SAFE_MODE_ARG"} \
     --strict-mcp-config \
     --tools "" \
     --model "$SUMMARIZE_MODEL" \
@@ -160,9 +160,14 @@ if [ -z "$SUMMARY" ]; then
   SUMMARY="$PARSED"
 fi
 
-# Append as a sub-heading under the session heading written by SessionStart
-# Include HTML comment anchor for progressive disclosure (L3 transcript lookup)
+# Append under a session heading, writing the heading lazily on the first
+# content-bearing Stop of this session (SessionStart no longer writes it
+# eagerly, so sessions without summaries leave no stub journals). The
+# progressive-disclosure anchor comment doubles as the heading-written marker.
 {
+  if [ -z "$SESSION_ID" ] || ! grep -qF "session:${SESSION_ID}" "$MEMORY_FILE" 2>/dev/null; then
+    echo -e "\n## Session $NOW\n"
+  fi
   echo "### $NOW"
   if [ -n "$SESSION_ID" ]; then
     echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"

@@ -1,4 +1,4 @@
-# Build, publish to PyPI, and create a GitHub Release when a version tag is pushed
+# Build, publish to PyPI/npm, and create a GitHub Release when a version tag is pushed
 #
 # Usage:
 #   git tag v0.1.0  # must match the version in pyproject.toml
@@ -10,6 +10,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      publish_opencode:
+        description: "Publish the OpenCode npm package from plugins/opencode"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -17,6 +24,7 @@ permissions:
 jobs:
   publish:
     name: Publish to PyPI
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: pypi
 
@@ -50,3 +58,66 @@ jobs:
           name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-opencode:
+    name: Publish OpenCode package to npm
+    if: github.event_name == 'push' || github.event.inputs.publish_opencode == 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: plugins/opencode
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Use npm 11
+        run: |
+          npm install -g npm@11
+          npm --version
+
+      - name: Read package metadata
+        id: package
+        run: |
+          echo "name=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check published version
+        id: registry
+        run: |
+          if npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.registry.outputs.exists == 'false'
+        run: npm install --package-lock=false
+
+      - name: Test package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm test
+
+      - name: Check package entrypoint syntax
+        if: steps.registry.outputs.exists == 'false'
+        run: node --check index.ts
+
+      - name: Pack package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm pack --dry-run
+
+      - name: Publish package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm publish --access public
