@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import io
+import os
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -71,3 +74,30 @@ def test_configure_cli_streams_ignores_unsupported_streams(
     )
 
     cli_module._configure_cli_streams()
+
+
+def test_redirected_output_survives_a_legacy_code_page(tmp_path) -> None:
+    (tmp_path / ".memsearch.toml").write_text(
+        '[index]\nnotes_dir = "/tmp/amyloid-β-notes"\n',
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "memsearch",
+            "config",
+            "list",
+            "--project",
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": "cp1252",
+        },
+        capture_output=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+    assert "amyloid-β-notes" in proc.stdout.decode("utf-8")
