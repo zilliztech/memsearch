@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 import sys
 from pathlib import Path
@@ -13,6 +14,39 @@ logger = logging.getLogger(__name__)
 def _escape_filter_value(value: str) -> str:
     """Escape backslashes and double quotes for Milvus filter expressions."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _milvus_lite_major() -> int | None:
+    """Major version of the installed milvus-lite, or None if it cannot be read."""
+    try:
+        return int(importlib.metadata.version("milvus-lite").split(".")[0])
+    except (importlib.metadata.PackageNotFoundError, ValueError):
+        return None
+
+
+def _local_open_error_message(exc: Exception, resolved: str, major: int | None) -> str:
+    """Describe a failed local Milvus Lite open without asserting an unproven cause.
+
+    Milvus Lite 3.x stores a database as a directory, so a plain file under a 3.x
+    runtime is a leftover 2.x database and is safe to diagnose. Every other failure
+    is reported with the underlying error and no remediation that discards data:
+    pymilvus reports a database held by another process as a bare
+    ConnectionConfigException carrying no cause, so the reason is not recoverable
+    here and must not be guessed at.
+    """
+    if major is not None and major >= 3 and Path(resolved).is_file():
+        return (
+            f"This database was created by Milvus Lite 2.x, but Milvus Lite {major}.x is installed "
+            f"and needs a directory, not a file. Move {resolved} aside and rebuild the index with "
+            f"'memsearch index', or use Milvus Server via Docker or Zilliz Cloud instead. "
+            f"Original error: {exc}"
+        )
+    return (
+        f"Could not open the local Milvus database at {resolved}: {exc}. This can happen if another "
+        "process already has the database open, if file permissions are wrong, or if the file is "
+        "damaged. Check the log output above this message; milvus-lite prints the underlying cause "
+        "there. Do not delete the database until you have ruled out the first two causes."
+    )
 
 
 class MilvusStore:
@@ -55,13 +89,7 @@ class MilvusStore:
             self._client = MilvusClient(**connect_kwargs)
         except Exception as exc:
             if is_local:
-                raise RuntimeError(
-                    "Failed to open the local Milvus Lite database. If this database was created "
-                    "with an older Milvus Lite release, it may not be compatible with Milvus Lite "
-                    "3.x. Move the existing .db file aside, then rebuild the index from your "
-                    "source markdown files with 'memsearch index'. Alternatively, use Milvus "
-                    "Server via Docker or Zilliz Cloud."
-                ) from exc
+                raise RuntimeError(_local_open_error_message(exc, resolved, _milvus_lite_major())) from exc
             raise
         self._is_lite = is_local
         self._resolved_uri = resolved

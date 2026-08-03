@@ -1,10 +1,12 @@
 """Tests for the Milvus store."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from memsearch.store import MilvusStore
+from memsearch.store import MilvusStore, _local_open_error_message
 
 
 @pytest.fixture
@@ -203,3 +205,71 @@ def test_collection_description_empty_by_default(tmp_path: Path):
     info = s._client.describe_collection(s._collection)
     assert info.get("description") == ""
     s.close()
+
+
+def test_open_error_diagnoses_stale_2x_database(tmp_path: Path):
+    """A plain file under a 3.x runtime really is a leftover 2.x database."""
+    db = tmp_path / "old.db"
+    db.write_text("")
+    message = _local_open_error_message(RuntimeError("open failed"), str(db), 3)
+    assert "created by Milvus Lite 2.x" in message
+    assert "Move" in message
+    assert "open failed" in message
+
+
+def test_open_error_keeps_2x_layout_generic(tmp_path: Path):
+    """On a 2.x runtime a plain file is the normal layout, not a stale database."""
+    db = tmp_path / "current.db"
+    db.write_text("")
+    message = _local_open_error_message(RuntimeError("open failed"), str(db), 2)
+    assert "created by Milvus Lite 2.x" not in message
+    assert "Move" not in message
+    assert "open failed" in message
+
+
+def test_open_error_keeps_3x_layout_generic(tmp_path: Path):
+    """A directory is the expected 3.x layout, so nothing is diagnosable."""
+    db = tmp_path / "current.db"
+    db.mkdir()
+    message = _local_open_error_message(RuntimeError("open failed"), str(db), 3)
+    assert "created by Milvus Lite 2.x" not in message
+    assert "Move" not in message
+
+
+def test_open_error_generic_when_version_unknown(tmp_path: Path):
+    """An unreadable milvus-lite version proves nothing about the layout."""
+    db = tmp_path / "old.db"
+    db.write_text("")
+    message = _local_open_error_message(RuntimeError("open failed"), str(db), None)
+    assert "created by Milvus Lite 2.x" not in message
+    assert "Move" not in message
+
+
+_HOLD_DATABASE = """
+import sys
+import time
+
+from pymilvus import MilvusClient
+
+MilvusClient(uri=sys.argv[1])
+print("READY", flush=True)
+time.sleep(30)
+"""
+
+
+def test_concurrent_open_is_not_reported_as_incompatibility(tmp_path: Path):
+    """A database held by another process must not be diagnosed as an
+    incompatible old database, which would advise discarding a working index."""
+    db = str(tmp_path / "busy.db")
+    holder = subprocess.Popen([sys.executable, "-c", _HOLD_DATABASE, db], stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == "READY"
+        with pytest.raises(RuntimeError) as excinfo:
+            MilvusStore(uri=db, dimension=4)
+        message = str(excinfo.value)
+        assert "another process already has the database open" in message
+        assert "created by Milvus Lite 2.x" not in message
+        assert "Move" not in message
+    finally:
+        holder.kill()
+        holder.wait(timeout=30)
