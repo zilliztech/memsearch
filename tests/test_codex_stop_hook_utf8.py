@@ -2,8 +2,31 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _resolve_bash() -> str:
+    """Locate a bash executable usable by subprocess.run.
+
+    See tests/test_claude_hooks.py::_resolve_bash for why "bash" alone
+    is unreliable on Windows outside a Git Bash session.
+    """
+    found = shutil.which("bash")
+    if found:
+        return found
+    git = shutil.which("git")
+    if git:
+        git_root = Path(git).resolve().parent.parent
+        for candidate in ("bin/bash.exe", "usr/bin/bash.exe"):
+            path = git_root / candidate
+            if path.exists():
+                return str(path)
+    return "bash"
+
+
+BASH = _resolve_bash()
 
 SCRIPT = Path("plugins/codex/hooks/stop.sh")
 
@@ -48,7 +71,7 @@ def test_codex_stop_worker_fallback_summary_preserves_utf8(tmp_path: Path) -> No
         # formatting is exercised even on machines with codex installed.
         "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
     }
-    subprocess.run(["bash", str(SCRIPT), "--worker", str(work_file)], check=True, env=env)
+    subprocess.run([BASH, str(SCRIPT), "--worker", str(work_file)], check=True, env=env)
 
     content = memory_file.read_text(encoding="utf-8")
     assert "- User asked: как поправить?" in content

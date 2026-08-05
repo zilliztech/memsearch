@@ -2,8 +2,35 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _resolve_bash() -> str:
+    """Locate a bash executable usable by subprocess.run.
+
+    On Windows, "bash" alone only resolves via PATH inside a Git Bash
+    session, where Git's usr/bin is on PATH. A plain PowerShell/cmd
+    session doesn't have it on PATH at all, so shutil.which also
+    returns None there. Fall back to deriving Git's install root from
+    the git executable, which is reliably on PATH, and look for
+    bash.exe relative to it.
+    """
+    found = shutil.which("bash")
+    if found:
+        return found
+    git = shutil.which("git")
+    if git:
+        git_root = Path(git).resolve().parent.parent
+        for candidate in ("bin/bash.exe", "usr/bin/bash.exe"):
+            path = git_root / candidate
+            if path.exists():
+                return str(path)
+    return "bash"
+
+
+BASH = _resolve_bash()
 
 
 def _write_executable(path: Path, source: str) -> None:
@@ -40,7 +67,7 @@ def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Pat
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         input="{}",
         capture_output=True,
         text=True,
@@ -93,7 +120,7 @@ echo '{"info":{"version":"0.4.16"}}'
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         capture_output=True,
         text=True,
         env=env,
@@ -182,7 +209,7 @@ exit 0
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         capture_output=True,
         text=True,
         env=env,
@@ -258,7 +285,7 @@ echo '{"info":{"version":"0.4.13"}}'
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         capture_output=True,
         text=True,
         env=env,
@@ -317,7 +344,7 @@ exit 0
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         capture_output=True,
         text=True,
         env=env,
@@ -387,7 +414,7 @@ exit 0
     }
 
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         capture_output=True,
         text=True,
         env=env,
@@ -493,7 +520,7 @@ exit 0
         }
 
         result = subprocess.run(
-            ["bash", str(script)],
+            [BASH, str(script)],
             input=json.dumps({"cwd": str(project)}),
             capture_output=True,
             text=True,
@@ -566,7 +593,7 @@ exit 0
         }
 
         result = subprocess.run(
-            ["bash", str(script)],
+            [BASH, str(script)],
             input=json.dumps({"cwd": str(project)}),
             capture_output=True,
             text=True,
@@ -652,7 +679,7 @@ echo "- User discussed a macOS stop hook regression."
         "CLAUDE_ARGS_FILE": str(claude_args),
     }
     result = subprocess.run(
-        ["bash", str(script)],
+        [BASH, str(script)],
         input=json.dumps({"transcript_path": str(transcript)}),
         capture_output=True,
         text=True,
@@ -737,7 +764,7 @@ esac
 
     def run_stop(transcript: Path) -> None:
         result = subprocess.run(
-            ["bash", str(script)],
+            [BASH, str(script)],
             input=json.dumps({"transcript_path": str(transcript)}),
             capture_output=True,
             text=True,
