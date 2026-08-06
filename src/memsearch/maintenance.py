@@ -572,10 +572,34 @@ def _parse_task_response(raw: str) -> dict[str, str]:
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if match:
         text = match.group(1)
+
     try:
         data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Maintenance LLM did not return valid JSON: {e}") from e
+    except json.JSONDecodeError as initial_error:
+        decoder = json.JSONDecoder()
+        last_object: dict[str, Any] | None = None
+        last_action_object: dict[str, Any] | None = None
+
+        for brace in re.finditer(r"\{", text):
+            try:
+                candidate, _ = decoder.raw_decode(
+                    text,
+                    brace.start(),
+                )
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(candidate, dict):
+                continue
+
+            last_object = candidate
+            if "action" in candidate:
+                last_action_object = candidate
+
+        data = last_action_object or last_object
+        if data is None:
+            raise RuntimeError(f"Maintenance LLM did not return valid JSON: {initial_error}") from initial_error
+
     action = data.get("action")
     if action not in {"none", "replace"}:
         raise RuntimeError("Maintenance LLM action must be 'none' or 'replace'")
