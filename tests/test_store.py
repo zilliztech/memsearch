@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -207,23 +208,34 @@ def test_collection_description_empty_by_default(tmp_path: Path):
     s.close()
 
 
-def test_open_error_diagnoses_stale_2x_database(tmp_path: Path):
-    """A plain file under a 3.x runtime really is a leftover 2.x database."""
+def test_open_error_reports_file_where_directory_expected(tmp_path: Path):
+    """Under a 3.x runtime a plain file is a real layout mismatch worth reporting."""
     db = tmp_path / "old.db"
     db.write_text("")
     message = _local_open_error_message(RuntimeError("open failed"), str(db), 3)
-    assert "created by Milvus Lite 2.x" in message
-    assert "Move" in message
+    assert "but this path is a file" in message
     assert "open failed" in message
 
 
+def test_open_error_does_not_assert_the_file_is_a_2x_database(tmp_path: Path):
+    """The path being a file does not prove Milvus Lite 2.x wrote it. A mistyped
+    URI pointing at any unrelated file reaches this branch, so the legacy database
+    must be offered as one possibility, never stated as fact."""
+    unrelated = tmp_path / "notes.txt"
+    unrelated.write_text("not a database")
+    message = _local_open_error_message(RuntimeError("open failed"), str(unrelated), 3)
+    assert "If it is a database from Milvus Lite 2.x" in message
+    assert "was created by Milvus Lite 2.x" not in message
+    assert "check the configured URI" in message
+
+
 def test_open_error_keeps_2x_layout_generic(tmp_path: Path):
-    """On a 2.x runtime a plain file is the normal layout, not a stale database."""
+    """On a 2.x runtime a plain file is the normal layout, not a mismatch."""
     db = tmp_path / "current.db"
     db.write_text("")
     message = _local_open_error_message(RuntimeError("open failed"), str(db), 2)
-    assert "created by Milvus Lite 2.x" not in message
-    assert "Move" not in message
+    assert "but this path is a file" not in message
+    assert "move it aside" not in message
     assert "open failed" in message
 
 
@@ -232,8 +244,8 @@ def test_open_error_keeps_3x_layout_generic(tmp_path: Path):
     db = tmp_path / "current.db"
     db.mkdir()
     message = _local_open_error_message(RuntimeError("open failed"), str(db), 3)
-    assert "created by Milvus Lite 2.x" not in message
-    assert "Move" not in message
+    assert "but this path is a file" not in message
+    assert "move it aside" not in message
 
 
 def test_open_error_generic_when_version_unknown(tmp_path: Path):
@@ -241,35 +253,63 @@ def test_open_error_generic_when_version_unknown(tmp_path: Path):
     db = tmp_path / "old.db"
     db.write_text("")
     message = _local_open_error_message(RuntimeError("open failed"), str(db), None)
-    assert "created by Milvus Lite 2.x" not in message
-    assert "Move" not in message
+    assert "but this path is a file" not in message
+    assert "move it aside" not in message
 
 
 _HOLD_DATABASE = """
+import pathlib
 import sys
 import time
 
 from pymilvus import MilvusClient
 
 MilvusClient(uri=sys.argv[1])
-print("READY", flush=True)
+pathlib.Path(sys.argv[2]).write_text("ready")
 time.sleep(30)
 """
+
+_HOLD_TIMEOUT_S = 60
+
+
+def _wait_until_held(holder: subprocess.Popen, ready: Path) -> None:
+    """Block until the child has the database open, or fail with its stderr.
+
+    A readiness read with no bound can hang the whole suite if the child stalls,
+    so this polls a marker file against a deadline and surfaces the child's own
+    output when it dies early or never gets there.
+    """
+    deadline = time.monotonic() + _HOLD_TIMEOUT_S
+    while not ready.exists():
+        if holder.poll() is not None:
+            _, err = holder.communicate()
+            raise AssertionError(f"holder exited with {holder.returncode} before opening the database: {err.strip()}")
+        if time.monotonic() > deadline:
+            holder.kill()
+            _, err = holder.communicate()
+            raise AssertionError(f"holder did not open the database within {_HOLD_TIMEOUT_S}s: {err.strip()}")
+        time.sleep(0.05)
 
 
 def test_concurrent_open_is_not_reported_as_incompatibility(tmp_path: Path):
     """A database held by another process must not be diagnosed as an
     incompatible old database, which would advise discarding a working index."""
     db = str(tmp_path / "busy.db")
-    holder = subprocess.Popen([sys.executable, "-c", _HOLD_DATABASE, db], stdout=subprocess.PIPE, text=True)
+    ready = tmp_path / "holder.ready"
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _HOLD_DATABASE, db, str(ready)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     try:
-        assert holder.stdout.readline().strip() == "READY"
+        _wait_until_held(holder, ready)
         with pytest.raises(RuntimeError) as excinfo:
             MilvusStore(uri=db, dimension=4)
         message = str(excinfo.value)
         assert "another process already has the database open" in message
-        assert "created by Milvus Lite 2.x" not in message
-        assert "Move" not in message
+        assert "but this path is a file" not in message
+        assert "move it aside" not in message
     finally:
         holder.kill()
         holder.wait(timeout=30)

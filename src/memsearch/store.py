@@ -28,18 +28,19 @@ def _local_open_error_message(exc: Exception, resolved: str, major: int | None) 
     """Describe a failed local Milvus Lite open without asserting an unproven cause.
 
     Milvus Lite 3.x stores a database as a directory, so a plain file under a 3.x
-    runtime is a leftover 2.x database and is safe to diagnose. Every other failure
-    is reported with the underlying error and no remediation that discards data:
-    pymilvus reports a database held by another process as a bare
+    runtime is a layout mismatch worth reporting, but the path being a file does not
+    prove Milvus Lite 2.x wrote it: a mistyped URI reaches the same branch. Every
+    failure is reported with the underlying error and no remediation that discards
+    data. pymilvus reports a database held by another process as a bare
     ConnectionConfigException carrying no cause, so the reason is not recoverable
     here and must not be guessed at.
     """
     if major is not None and major >= 3 and Path(resolved).is_file():
         return (
-            f"This database was created by Milvus Lite 2.x, but Milvus Lite {major}.x is installed "
-            f"and needs a directory, not a file. Move {resolved} aside and rebuild the index with "
-            f"'memsearch index', or use Milvus Server via Docker or Zilliz Cloud instead. "
-            f"Original error: {exc}"
+            f"Could not open the local Milvus database at {resolved}: {exc}. Milvus Lite {major}.x "
+            f"stores a database as a directory, but this path is a file. If it is a database from "
+            f"Milvus Lite 2.x, move it aside and rebuild the index with 'memsearch index'. "
+            f"Otherwise check the configured URI, or use Milvus Server via Docker or Zilliz Cloud."
         )
     return (
         f"Could not open the local Milvus database at {resolved}: {exc}. This can happen if another "
