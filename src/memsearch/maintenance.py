@@ -580,14 +580,52 @@ def _parse_task_response(raw: str) -> dict[str, str]:
         last_object: dict[str, Any] | None = None
         last_action_object: dict[str, Any] | None = None
 
-        for brace in re.finditer(r"\{", text):
+        cursor = 0
+        while True:
+            brace = text.find("{", cursor)
+            if brace < 0:
+                break
+
             try:
-                candidate, _ = decoder.raw_decode(
+                candidate, end = decoder.raw_decode(
                     text,
-                    brace.start(),
+                    brace,
                 )
             except json.JSONDecodeError:
+                depth = 0
+                in_string = False
+                escaped = False
+                balanced_end: int | None = None
+
+                for index in range(brace, len(text)):
+                    char = text[index]
+
+                    if in_string:
+                        if escaped:
+                            escaped = False
+                        elif char == "\\":
+                            escaped = True
+                        elif char == '"':
+                            in_string = False
+                        continue
+
+                    if char == '"':
+                        in_string = True
+                    elif char == "{":
+                        depth += 1
+                    elif char == "}":
+                        depth -= 1
+                        if depth == 0:
+                            balanced_end = index + 1
+                            break
+
+                if balanced_end is None:
+                    break
+
+                cursor = balanced_end
                 continue
+
+            cursor = end
 
             if not isinstance(candidate, dict):
                 continue

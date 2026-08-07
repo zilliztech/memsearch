@@ -230,6 +230,34 @@ The expected no-op shape is {"action":"none","reason":"example"}.
     }
 
 
+def test_parse_task_response_preserves_outer_action_with_nested_object() -> None:
+    raw = (
+        json.dumps(
+            {
+                "action": "replace",
+                "reason": "durable update",
+                "content": "# Project Memory",
+                "meta": {"action": "none"},
+            }
+        )
+        + "\n\nDone."
+    )
+
+    parsed = _parse_task_response(raw)
+
+    assert parsed["action"] == "replace"
+
+
+def test_parse_task_response_rejects_truncated_outer_with_nested_action() -> None:
+    raw = '## Result\n{"action":"replace","meta":{"action":"none"},"content":"# Project Memory'
+
+    with pytest.raises(
+        RuntimeError,
+        match="did not return valid JSON",
+    ):
+        _parse_task_response(raw)
+
+
 def test_parse_task_response_preserves_braces_inside_content() -> None:
     raw = (
         json.dumps(
