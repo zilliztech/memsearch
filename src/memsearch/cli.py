@@ -14,9 +14,11 @@ from .config import (
     MINIMAX_DEFAULT_LLM_MODEL,
     PROJECT_CONFIG_PATH,
     ConfigEnvVarError,
+    LLMProviderConfig,
     MemSearchConfig,
     config_to_dict,
     get_config_value,
+    is_minimax_llm_provider,
     load_config_file,
     resolve_config,
     save_config,
@@ -795,8 +797,11 @@ def summarize(plugin: str, agent_name: str) -> None:
 
     provider_cfg = cfg.llm.providers.get(provider_name)
     if provider_cfg is None:
-        click.echo(f"Unknown LLM provider {provider_name!r}. Configure [llm.providers.{provider_name}].", err=True)
-        raise SystemExit(1)
+        if is_minimax_llm_provider(provider_name):
+            provider_cfg = LLMProviderConfig(type=provider_name)
+        else:
+            click.echo(f"Unknown LLM provider {provider_name!r}. Configure [llm.providers.{provider_name}].", err=True)
+            raise SystemExit(1)
 
     provider_type = provider_cfg.type or provider_name
     model = str(summarize_cfg.get("model") or provider_cfg.model or "").strip() or None
