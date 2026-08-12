@@ -71,6 +71,7 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
     cfg.milvus.uri = "http://milvus.local:19530"
     cfg.milvus.token = "milvus-token"
     cfg.milvus.collection = "team_notes"
+    cfg.milvus.flush_on_index = True
     cfg.chunking.max_chunk_size = 1800
     cfg.chunking.overlap_lines = 4
     cfg.indexing.ignore_files = [".gitignore"]
@@ -92,6 +93,7 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "milvus_uri": "http://milvus.local:19530",
         "milvus_token": "milvus-token",
         "collection": "team_notes",
+        "flush_on_index": True,
         "max_chunk_size": 1800,
         "overlap_lines": 4,
         "ignore_files": [".gitignore", ".cursorignore"],

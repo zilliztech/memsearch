@@ -116,6 +116,14 @@ On remote Milvus Server / Zilliz Cloud, `stats` may lag immediately after upsert
 
 Search results are still the better source of truth for "is my content searchable right now?"
 
+If another process needs to search immediately after `memsearch index` returns (for example a hook-driven pipeline), enable a single end-of-index flush:
+
+```bash
+memsearch config set milvus.flush_on_index true
+```
+
+This seals pending writes once per indexing run. It is off by default because remote Milvus reads normally catch up on their own under Bounded consistency, and flushing after every upsert would create many small sealed segments.
+
 ## First local model download is slow
 
 Local embedding setups such as ONNX may need to download model artifacts on first use. That initial run can feel slow compared with later runs.

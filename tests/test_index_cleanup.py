@@ -77,6 +77,7 @@ def make_memsearch(
     store = InMemoryStore()
     ms._store = store
     ms._reranker_model = ""
+    ms._flush_on_index = False
     return ms, store
 
 

@@ -103,6 +103,7 @@ def _cfg_to_memsearch_kwargs(
         "milvus_uri": cfg.milvus.uri,
         "milvus_token": cfg.milvus.token or None,
         "collection": cfg.milvus.collection,
+        "flush_on_index": cfg.milvus.flush_on_index,
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
         "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),

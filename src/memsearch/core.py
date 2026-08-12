@@ -44,6 +44,11 @@ class MemSearch:
     collection:
         Milvus collection name.  Use different names to isolate
         agents sharing the same Milvus server.
+    flush_on_index:
+        Flush the collection once at the end of each indexing run so
+        writes are immediately visible to readers in other processes.
+        Off by default: remote Milvus reads usually catch up on their
+        own, and frequent flushes create many small sealed segments.
     ignore_files:
         Ignore filenames to discover within each directory index root, such
         as ``[".gitignore"]``. Empty by default for backward compatibility.
@@ -64,6 +69,7 @@ class MemSearch:
         milvus_uri: str = "~/.memsearch/milvus.db",
         milvus_token: str | None = None,
         collection: str = "memsearch_chunks",
+        flush_on_index: bool = False,
         description: str = "",
         max_chunk_size: int = 1500,
         overlap_lines: int = 2,
@@ -91,6 +97,7 @@ class MemSearch:
             description=description,
         )
         self._reranker_model = reranker_model
+        self._flush_on_index = flush_on_index
 
     # ------------------------------------------------------------------
     # Indexing
@@ -113,13 +120,15 @@ class MemSearch:
             exclude=self._exclude,
         )
         total = 0
+        wrote = False
         failed_files: list[IndexFailure] = []
         active_sources: set[str] = set()
         for f in files:
             active_sources.add(str(f.path))
             try:
-                n = await self._index_file(f, force=force)
+                n, deleted_stale = await self._index_file(f, force=force)
                 total += n
+                wrote = wrote or n > 0 or deleted_stale
             except Exception as exc:
                 failed_files.append(IndexFailure(path=str(f.path), error=format_error(exc)))
                 logger.exception("Failed to index %s, skipping", f.path)
@@ -134,6 +143,12 @@ class MemSearch:
                 if source not in active_sources and _source_under_any_root(source, cleanup_roots):
                     self._store.delete_by_source(source)
                     logger.info("Removed stale chunks for deleted file: %s", source)
+                    wrote = True
+
+        # Deletions count as writes: a run that only removed chunks still
+        # changed what other readers should see.
+        if wrote and self._flush_on_index:
+            self._store.flush()
 
         if failed_files:
             logger.warning(
@@ -156,9 +171,11 @@ class MemSearch:
         p = Path(path).expanduser().resolve()
         _st = p.stat()
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
-        return await self._index_file(sf)
+        upserted, _ = await self._index_file(sf)
+        return upserted
 
-    async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
+    async def _index_file(self, f: ScannedFile, *, force: bool = False) -> tuple[int, bool]:
+        """Index one file; returns (upserted chunk count, whether stale chunks were deleted)."""
         source = str(f.path)
         text = read_utf8_text_replace(f.path)
         chunks = chunk_markdown(
@@ -179,7 +196,7 @@ class MemSearch:
             self._store.delete_by_hashes(list(stale))
 
         if not chunks:
-            return 0
+            return 0, bool(stale)
 
         if not force:
             # Only embed chunks whose ID doesn't already exist
@@ -189,9 +206,9 @@ class MemSearch:
                 if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) not in old_ids
             ]
             if not chunks:
-                return 0
+                return 0, bool(stale)
 
-        return await self._embed_and_store(chunks)
+        return await self._embed_and_store(chunks), bool(stale)
 
     async def _embed_and_store(self, chunks: list[Chunk]) -> int:
         if not chunks:
