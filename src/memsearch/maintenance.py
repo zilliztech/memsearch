@@ -583,21 +583,21 @@ def _parse_task_response(raw: str) -> dict[str, str]:
         cursor = 0
         while True:
             brace = text.find("{", cursor)
-            if brace < 0:
+            bracket = text.find("[", cursor)
+            starts = [position for position in (brace, bracket) if position >= 0]
+            if not starts:
                 break
+            start = min(starts)
 
             try:
-                candidate, end = decoder.raw_decode(
-                    text,
-                    brace,
-                )
+                candidate, end = decoder.raw_decode(text, start)
             except json.JSONDecodeError:
-                depth = 0
+                stack: list[str] = []
                 in_string = False
                 escaped = False
                 balanced_end: int | None = None
 
-                for index in range(brace, len(text)):
+                for index in range(start, len(text)):
                     char = text[index]
 
                     if in_string:
@@ -611,11 +611,14 @@ def _parse_task_response(raw: str) -> dict[str, str]:
 
                     if char == '"':
                         in_string = True
-                    elif char == "{":
-                        depth += 1
-                    elif char == "}":
-                        depth -= 1
-                        if depth == 0:
+                    elif char in "{[":
+                        stack.append(char)
+                    elif char in "}]":
+                        expected = "{" if char == "}" else "["
+                        if not stack or stack[-1] != expected:
+                            break
+                        stack.pop()
+                        if not stack:
                             balanced_end = index + 1
                             break
 

@@ -295,6 +295,26 @@ def test_parse_task_response_rejects_invalid_action() -> None:
         _parse_task_response(raw)
 
 
+def test_parse_task_response_rejects_nested_action_inside_non_dict() -> None:
+    raw = '[{"action":"none"}] trailing prose'
+
+    with pytest.raises(
+        RuntimeError,
+        match="did not return valid JSON",
+    ):
+        _parse_task_response(raw)
+
+
+def test_parse_task_response_rejects_truncated_non_dict_with_nested_action() -> None:
+    raw = '[{"action":"none"}'
+
+    with pytest.raises(
+        RuntimeError,
+        match="did not return valid JSON",
+    ):
+        _parse_task_response(raw)
+
+
 def test_openai_maintenance_uses_default_temperature(tmp_path: Path, monkeypatch) -> None:
     from memsearch import maintenance as maintenance_module
 
