@@ -257,6 +257,16 @@ def test_open_error_generic_when_version_unknown(tmp_path: Path):
     assert "move it aside" not in message
 
 
+def test_open_error_is_actionable_without_visible_logs(tmp_path: Path):
+    """Library and plugin callers may redirect or suppress dependency logs."""
+    db = tmp_path / "current.db"
+    message = _local_open_error_message(RuntimeError("open failed"), str(db), 3)
+    assert "Close other processes" in message
+    assert "verify that the path is writable" in message
+    assert "preserve the database" in message
+    assert "log output above" not in message
+
+
 _HOLD_DATABASE = """
 import pathlib
 import sys

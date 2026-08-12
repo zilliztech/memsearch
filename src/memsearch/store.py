@@ -45,8 +45,9 @@ def _local_open_error_message(exc: Exception, resolved: str, major: int | None) 
     return (
         f"Could not open the local Milvus database at {resolved}: {exc}. This can happen if another "
         "process already has the database open, if file permissions are wrong, or if the file is "
-        "damaged. Check the log output above this message; milvus-lite prints the underlying cause "
-        "there. Do not delete the database until you have ruled out the first two causes."
+        "damaged. Close other processes using this database and verify that the path is writable. "
+        "If the problem continues, preserve the database and inspect the application logs before "
+        "attempting recovery."
     )
 
 
