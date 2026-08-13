@@ -67,6 +67,50 @@ async def test_openai_compact_uses_default_temperature(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_anthropic_compact_skips_leading_thinking_block(monkeypatch) -> None:
+    """A ThinkingBlock before the TextBlock must not crash the response parse.
+
+    Extended-thinking models can emit a thinking block first. That block carries
+    no ``.text``, so indexing ``content[0]`` raised AttributeError and dropped
+    the whole compact result.
+    """
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            return SimpleNamespace(
+                content=[
+                    SimpleNamespace(type="thinking", thinking="considering..."),
+                    SimpleNamespace(type="text", text="summary"),
+                ]
+            )
+
+    class FakeAsyncAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic))
+
+    assert await compact_module._compact_anthropic("prompt", "claude-test") == "summary"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_compact_returns_empty_when_no_text_block(monkeypatch) -> None:
+    """A response carrying no text block yields "" rather than raising."""
+
+    class FakeMessages:
+        async def create(self, **kwargs):
+            return SimpleNamespace(content=[SimpleNamespace(type="thinking", thinking="...")])
+
+    class FakeAsyncAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(AsyncAnthropic=FakeAsyncAnthropic))
+
+    assert await compact_module._compact_anthropic("prompt", "claude-test") == ""
+
+
+@pytest.mark.asyncio
 async def test_compact_chunks_dispatches_to_anthropic(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
