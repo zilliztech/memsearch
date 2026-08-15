@@ -145,6 +145,46 @@ def test_summarize_uses_named_provider(monkeypatch, tmp_path: Path):
     assert captured["api_key"] == "env:OPENAI_API_KEY"
 
 
+def test_summarize_uses_minimax_shortcut(monkeypatch, tmp_path: Path):
+    cfg_path = tmp_path / "config.toml"
+    save_config(
+        {"plugins": {"codex": {"summarize": {"provider": "minimax"}}}},
+        cfg_path,
+    )
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+
+    captured = {}
+
+    async def fake_openai(prompt, model, *, base_url=None, api_key=None):
+        captured.update(
+            {
+                "prompt": prompt,
+                "model": model,
+                "base_url": base_url,
+                "api_key": api_key,
+            }
+        )
+        return "- summarized"
+
+    monkeypatch.setattr("memsearch.compact._compact_openai", fake_openai)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["summarize", "--plugin", "codex", "--agent-name", "Codex"],
+        input="[User]: hello\n[Codex]: hi",
+    )
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "- summarized"
+    assert "Transcript:\n[User]: hello" in captured["prompt"]
+    assert captured["model"] == "MiniMax-M3"
+    assert captured["base_url"] == "https://api.minimax.io/v1"
+    assert captured["api_key"] == "env:MINIMAX_API_KEY"
+
+
 def test_summarize_rejects_native_provider(monkeypatch, tmp_path: Path):
     cfg_path = tmp_path / "config.toml"
     save_config(

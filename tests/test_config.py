@@ -17,6 +17,7 @@ from memsearch.config import (
     load_config_file,
     resolve_config,
     resolve_env_ref,
+    resolve_llm_provider_settings,
     save_config,
     set_config_value,
 )
@@ -656,3 +657,58 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
     assert cfg.embedding.provider == "openai"
     assert cfg.milvus.collection == "memsearch_chunks"
     assert cfg.watch.debounce_ms == 1500
+
+
+def _clear_minimax_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("MINIMAX_API_KEY", "MINIMAX_REGION", "MINIMAX_API_REGION", "MINIMAX_API_BASE", "MINIMAX_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_minimax_llm_provider_shortcut_uses_openai_compatible_defaults(monkeypatch: pytest.MonkeyPatch):
+    """The MiniMax shortcut should resolve to the OpenAI-compatible route with global defaults."""
+    _clear_minimax_env(monkeypatch)
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+
+    provider, model, base_url, api_key = resolve_llm_provider_settings("minimax")
+
+    assert provider == "openai-compatible"
+    assert model == "MiniMax-M3"
+    assert base_url == "https://api.minimax.io/v1"
+    assert api_key == "env:MINIMAX_API_KEY"
+
+
+def test_minimax_llm_provider_shortcut_selects_cn_region(monkeypatch: pytest.MonkeyPatch):
+    """MINIMAX_REGION should switch the shortcut to the China endpoint preset."""
+    _clear_minimax_env(monkeypatch)
+    monkeypatch.setenv("MINIMAX_REGION", "cn")
+
+    provider, model, base_url, _ = resolve_llm_provider_settings("minimax")
+
+    assert provider == "openai-compatible"
+    assert model == "MiniMax-M3"
+    assert base_url == "https://api.minimaxi.com/v1"
+
+
+def test_minimax_llm_provider_shortcut_respects_explicit_overrides(monkeypatch: pytest.MonkeyPatch):
+    """Explicit model/base_url/api_key arguments should win over the presets."""
+    _clear_minimax_env(monkeypatch)
+    monkeypatch.setenv("MINIMAX_REGION", "cn")
+
+    provider, model, base_url, api_key = resolve_llm_provider_settings(
+        "minimax",
+        model="MiniMax-M2.7",
+        base_url="https://custom.example/v1",
+        api_key="env:CUSTOM_KEY",
+    )
+
+    assert provider == "openai-compatible"
+    assert model == "MiniMax-M2.7"
+    assert base_url == "https://custom.example/v1"
+    assert api_key == "env:CUSTOM_KEY"
+
+
+def test_resolve_llm_provider_settings_passthrough_for_known_types(monkeypatch: pytest.MonkeyPatch):
+    """Non-shortcut providers should be returned unchanged."""
+    _clear_minimax_env(monkeypatch)
+
+    assert resolve_llm_provider_settings("anthropic", model="claude-test") == ("anthropic", "claude-test", None, None)

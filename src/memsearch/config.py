@@ -250,6 +250,42 @@ _PLUGIN_FIELD_TO_KEY = {
 
 _ENV_PREFIX = "env:"
 
+# -- Built-in MiniMax LLM provider shortcut ---------------------------------
+# MiniMax exposes both an OpenAI-compatible endpoint (``/v1``) and an
+# Anthropic-compatible endpoint (``/anthropic``), each hosted on a global and a
+# China base host.  The ``minimax`` shortcut resolves to the OpenAI-compatible
+# route so it reuses the existing code path while supplying MiniMax defaults and
+# the selected regional endpoint preset.
+MINIMAX_DEFAULT_LLM_MODEL = "MiniMax-M3"
+MINIMAX_LLM_MODELS = ("MiniMax-M3", "MiniMax-M2.7")
+MINIMAX_LLM_PROVIDER_ALIASES = frozenset({"minimax"})
+MINIMAX_API_KEY_ENV_VARS = ("MINIMAX_API_KEY",)
+MINIMAX_BASE_URL_ENV_VARS = ("MINIMAX_API_BASE", "MINIMAX_BASE_URL")
+MINIMAX_REGION_ENV_VARS = ("MINIMAX_REGION", "MINIMAX_API_REGION")
+MINIMAX_DEFAULT_LLM_REGION = "global_en"
+# region -> {"openai": <OpenAI-compatible base>, "anthropic": <Anthropic-compatible base>}
+MINIMAX_LLM_REGION_ENDPOINTS: dict[str, dict[str, str]] = {
+    "global_en": {
+        "openai": "https://api.minimax.io/v1",
+        "anthropic": "https://api.minimax.io/anthropic",
+    },
+    "cn_zh": {
+        "openai": "https://api.minimaxi.com/v1",
+        "anthropic": "https://api.minimaxi.com/anthropic",
+    },
+}
+# Friendly aliases accepted for the region selector.
+_MINIMAX_REGION_ALIASES = {
+    "global_en": "global_en",
+    "global": "global_en",
+    "int": "global_en",
+    "international": "global_en",
+    "cn_zh": "cn_zh",
+    "cn": "cn_zh",
+    "china": "cn_zh",
+}
+MINIMAX_DEFAULT_LLM_BASE_URL = MINIMAX_LLM_REGION_ENDPOINTS[MINIMAX_DEFAULT_LLM_REGION]["openai"]
+
 
 class ConfigEnvVarError(KeyError):
     """Raised when an ``env:VAR_NAME`` reference points at an unset variable.
@@ -275,6 +311,71 @@ def resolve_env_ref(value: str) -> str:
     if env_val is None:
         raise ConfigEnvVarError(f"Environment variable {var_name!r} referenced in config (via {value!r}) is not set")
     return env_val
+
+
+def is_minimax_llm_provider(provider: str | None) -> bool:
+    """Return whether *provider* names the built-in MiniMax LLM shortcut."""
+    return (provider or "").strip().lower() in MINIMAX_LLM_PROVIDER_ALIASES
+
+
+def _first_set_env(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return ""
+
+
+def _first_set_env_ref(names: tuple[str, ...]) -> str:
+    for name in names:
+        if os.environ.get(name):
+            return f"{_ENV_PREFIX}{name}"
+    return f"{_ENV_PREFIX}{names[0]}"
+
+
+def resolve_minimax_region(region: str | None = None) -> str:
+    """Resolve a MiniMax region selector to a canonical region key.
+
+    Accepts the canonical ``global_en`` / ``cn_zh`` keys plus common aliases
+    (``global``, ``cn``, ...).  Falls back to the ``MINIMAX_REGION`` environment
+    variable and finally to the global endpoint.
+    """
+    candidate = (region or _first_set_env(MINIMAX_REGION_ENV_VARS) or MINIMAX_DEFAULT_LLM_REGION).strip().lower()
+    return _MINIMAX_REGION_ALIASES.get(candidate, MINIMAX_DEFAULT_LLM_REGION)
+
+
+def minimax_base_url(region: str | None = None, *, transport: str = "openai") -> str:
+    """Return the MiniMax base URL preset for *region* and *transport*.
+
+    *transport* is ``"openai"`` for the OpenAI-compatible endpoint or
+    ``"anthropic"`` for the Anthropic-compatible endpoint.
+    """
+    endpoints = MINIMAX_LLM_REGION_ENDPOINTS[resolve_minimax_region(region)]
+    return endpoints.get(transport, endpoints["openai"])
+
+
+def resolve_llm_provider_settings(
+    provider: str,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> tuple[str, str | None, str | None, str | None]:
+    """Resolve built-in LLM provider shortcuts to concrete provider settings.
+
+    MiniMax exposes an OpenAI-compatible LLM endpoint, so the shortcut keeps the
+    existing OpenAI-compatible code path while supplying MiniMax defaults and the
+    selected global/CN endpoint preset.  Unknown providers are returned
+    unchanged so explicit provider types keep their current behavior.
+    """
+    normalized = (provider or "").strip()
+    if not is_minimax_llm_provider(normalized):
+        return normalized, model, base_url, api_key
+    return (
+        "openai-compatible",
+        model or MINIMAX_DEFAULT_LLM_MODEL,
+        base_url or _first_set_env(MINIMAX_BASE_URL_ENV_VARS) or minimax_base_url(),
+        api_key or _first_set_env_ref(MINIMAX_API_KEY_ENV_VARS),
+    )
 
 
 def _resolve_env_refs_in_dict(d: dict[str, Any], path: tuple[str, ...] = ()) -> dict[str, Any]:
