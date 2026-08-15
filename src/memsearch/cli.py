@@ -176,6 +176,14 @@ def _configure_cli_streams() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+class _MemSearchGroup(click.Group):
+    """Configure CLI streams before Click parses arguments or exits eagerly."""
+
+    def main(self, *args, **kwargs):
+        _configure_cli_streams()
+        return super().main(*args, **kwargs)
+
+
 def _common_options(f):
     """Shared options for commands that create a MemSearch instance."""
     f = click.option("--provider", "-p", default=None, help="Embedding provider.")(f)
@@ -208,11 +216,10 @@ def _indexing_options(f):
     return f
 
 
-@click.group()
+@click.group(cls=_MemSearchGroup)
 @click.version_option(package_name="memsearch")
 def cli() -> None:
     """memsearch — semantic memory search for markdown knowledge bases."""
-    _configure_cli_streams()
 
 
 @cli.command()
