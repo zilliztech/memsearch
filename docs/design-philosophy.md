@@ -60,7 +60,7 @@ graph TB
     style MIL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
 ```
 
-All 4 platform plugins write to the same markdown format and use the same Milvus backend. This means:
+All 5 platform plugins write to the same markdown format and use the same Milvus backend. This means:
 
 - You can switch between Claude Code and Codex CLI and keep your memories
 - Team members using different agents can share a knowledge base

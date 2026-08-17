@@ -64,3 +64,38 @@ jobs:
 
       - name: Pack package
         run: npm pack --dry-run
+
+  pi:
+    name: pi plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/pi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: npm install --package-lock=false
+
+      - name: Test package
+        run: npm test
+
+      - name: Check package entrypoint syntax
+        run: |
+          node --check index.ts
+          node --check context.ts
+          python3 -m compileall -q transcript.py
+
+      - name: Pack package
+        run: npm pack --dry-run

@@ -792,7 +792,7 @@ def compact(
 
 
 @cli.command()
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw, pi).")
 @click.option("--agent-name", default="", help="Agent display name for the summarize prompt.")
 def summarize(plugin: str, agent_name: str) -> None:
     """Summarize stdin using a configured memsearch-managed LLM provider."""
@@ -1098,6 +1098,7 @@ def config_init(project: bool) -> None:
         "codex": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "opencode": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "openclaw": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "pi": {"summarize": {}, "project_review": {}, "user_profile": {}},
     }
     result["plugins"]["claude-code"]["summarize"]["enabled"] = click.confirm(
         "  Claude Code automatic summaries enabled",
@@ -1147,6 +1148,18 @@ def config_init(project: bool) -> None:
         "  OpenClaw summarize model",
         default=current.plugins.openclaw.summarize.model,
     )
+    result["plugins"]["pi"]["summarize"]["enabled"] = click.confirm(
+        "  pi automatic summaries enabled",
+        default=current.plugins.pi.summarize.enabled,
+    )
+    result["plugins"]["pi"]["summarize"]["provider"] = click.prompt(
+        "  pi summarize provider",
+        default=current.plugins.pi.summarize.provider,
+    )
+    result["plugins"]["pi"]["summarize"]["model"] = click.prompt(
+        "  pi summarize model",
+        default=current.plugins.pi.summarize.model,
+    )
 
     click.echo("\n── Advanced maintenance ──")
     click.echo("  Disabled by default. Configure provider/model if you enable these tasks.")
@@ -1155,6 +1168,7 @@ def config_init(project: bool) -> None:
         ("codex", "Codex", current.plugins.codex),
         ("opencode", "OpenCode", current.plugins.opencode),
         ("openclaw", "OpenClaw", current.plugins.openclaw),
+        ("pi", "pi", current.plugins.pi),
     ]:
         for task_name, task_label in [("project_review", "project review"), ("user_profile", "user profile")]:
             task = getattr(current_platform, task_name)
@@ -1261,7 +1275,7 @@ def skills_group() -> None:
 
 
 @skills_group.command("distill")
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw, pi).")
 @click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
 def skills_distill(plugin: str, force: bool) -> None:
     """Mine recent memory journals for recurring workflows using a configured API provider.

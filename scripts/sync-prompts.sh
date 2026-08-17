@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SHARED_DIR="$REPO_ROOT/plugins/_shared/prompts"
 
-PLUGINS=(claude-code codex openclaw opencode)
+PLUGINS=(claude-code codex openclaw opencode pi)
 
 for plugin in "${PLUGINS[@]}"; do
     dest="$REPO_ROOT/plugins/$plugin/prompts"
