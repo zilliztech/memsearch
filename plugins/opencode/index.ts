@@ -13,7 +13,7 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
-import { execSync, exec, spawn, spawnSync } from "node:child_process";
+import { execSync, execFileSync, exec, spawn, spawnSync } from "node:child_process";
 import {
   readFileSync,
   existsSync,
@@ -68,7 +68,7 @@ function detectMemsearchCmd(): string {
 function deriveCollectionName(projectDir: string): string {
   const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
   try {
-    return execSync(`bash "${script}" "${projectDir}"`, {
+    return execFileSync("bash", [script, projectDir], {
       encoding: "utf-8",
       timeout: 5000,
     }).trim();
