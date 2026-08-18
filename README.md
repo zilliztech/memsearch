@@ -185,6 +185,7 @@ Defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On fir
 ```bash
 memsearch config set embedding.provider onnx     # default — local, free
 memsearch config set embedding.provider openai   # needs OPENAI_API_KEY
+memsearch config set embedding.provider orcarouter  # needs ORCAROUTER_API_KEY
 memsearch config set embedding.provider ollama   # local, any model
 ```
 
