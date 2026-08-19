@@ -57,6 +57,7 @@ const SUMMARIZE_TIMEOUT_MS = 30000
 const CAPTURE_MAX_CHARS = 6000
 const INJECT_SNIPPET_CHARS = 180
 const DAILY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/
+const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h; runner's due-state gates actual runs
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -358,6 +359,36 @@ function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvu
     env: { ...process.env, MEMSEARCH_NO_WATCH: '1' },
   }, (error) => {
     if (error) ctx.logger.warn(`[memsearch] background index failed: ${error.message}`)
+  })
+  child.unref()
+}
+
+/**
+ * Run the shared maintenance runner (PROJECT.md / USER.md upkeep and
+ * memory-to-skill distillation) for a project, fire-and-forget.
+ *
+ * Mirrors the other platform plugins: the runner is a due-state machine —
+ * each task runs at most once per `min_interval_hours` and only when
+ * `[plugins.dsh.<task>].enabled` is true in memsearch config. A missing
+ * memsearch CLI or python3 is a no-op (the runner also checks internally).
+ */
+function runMaintenance(ctx, projectDir, memsearchDir) {
+  const runner = join(PLUGIN_DIR, 'scripts', 'maintenance-runner.py')
+  if (!existsSync(runner)) return
+  const command =
+    `MEMSEARCH_NO_WATCH=1 python3 '${shellEscape(runner)}' ` +
+    `--platform dsh ` +
+    `--project-dir '${shellEscape(projectDir)}' ` +
+    `--memsearch-dir '${shellEscape(memsearchDir)}'`
+  const child = execFile('bash', ['-c', command], {
+    cwd: projectDir,
+    timeout: 180000,
+    maxBuffer: 4 * 1024 * 1024,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, MEMSEARCH_NO_WATCH: '1' },
+  }, (error) => {
+    if (error) ctx.logger.warn(`[memsearch] maintenance run failed: ${error.message}`)
   })
   child.unref()
 }
@@ -824,6 +855,35 @@ export function apply(ctx, config = {}) {
     })
   }
 
+  // Maintenance (PROJECT.md / USER.md upkeep, memory-to-skill distillation)
+  // runs when a session is disposed (`session/disposed`), mirroring the other
+  // platform plugins' session-end triggers. The runner is a due-state machine,
+  // so this fires at most once per task per `min_interval_hours` and only for
+  // tasks the user enabled in memsearch config. An explicit interval fallback
+  // keeps upkeep going on long-lived web sessions that rarely dispose.
+  const maintenanceTimer = setInterval(() => {
+    try {
+      const projectDir = bootProjectDir
+      const memoryDir = memoryDirFor(projectDir)
+      if (!existsSync(memoryDir)) return
+      runMaintenance(ctx, projectDir, memoryDir)
+    } catch (error) {
+      ctx.logger.warn(`[memsearch] maintenance timer failed: ${error.message}`)
+    }
+  }, MAINTENANCE_INTERVAL_MS)
+  maintenanceTimer.unref?.()
+
+  ctx.on('session/disposed', (session) => {
+    try {
+      const projectDir = projectDirFor(session)
+      const memoryDir = memoryDirFor(projectDir)
+      if (!existsSync(memoryDir)) return
+      runMaintenance(ctx, projectDir, memoryDir)
+    } catch (error) {
+      ctx.logger.warn(`[memsearch] maintenance listener failed: ${error.message}`)
+    }
+  })
+
   // Warm the index for this project once at startup (fire-and-forget).
   const bootMemoryDir = memoryDirFor(bootProjectDir)
   if (bootCollection && hasMemoryFiles(bootMemoryDir)) {
@@ -858,6 +918,9 @@ export { captureExists }
 
 /** Append a captured turn to the daily memory file (shared format). */
 export { writeCapture }
+
+/** Fire-and-forget maintenance runner invocation (PROJECT.md/USER.md/skills). */
+export { runMaintenance }
 
 /** Memory dir for a project (MEMSEARCH_DIR env override, else <project>/.memsearch). */
 export { memsearchDirFor }

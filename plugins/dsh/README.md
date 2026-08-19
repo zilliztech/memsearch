@@ -87,6 +87,27 @@ Everything else — provider/model, Milvus, collection, memory dir — comes fro
 - **Memory dir** → `MEMSEARCH_DIR` env (explicit → global scope), else
   `<project>/.memsearch`.
 
+### Maintenance tasks (PROJECT.md / USER.md / skills)
+
+Optional background upkeep, aligned with the other platform plugins. Each task
+is disabled by default; enable the ones you want in `~/.memsearch/config.toml`:
+
+```toml
+[plugins.dsh.project_review]
+enabled = true            # maintain .memsearch/PROJECT.md
+[plugins.dsh.user_profile]
+enabled = true            # maintain .memsearch/USER.md
+[plugins.dsh.memory_to_skill]
+enabled = true            # distill recurring workflows into skill candidates
+min_occurrences = 3       # how often a workflow must recur before distilling
+```
+
+Common settings per task: `provider` (`native` = a one-shot DSH headless
+agent, default), `model`, `min_interval_hours` (default 24), `input_dir`,
+`output_file`. Candidates land in `.memsearch/skill-candidates/` (git-tracked)
+and are **never installed automatically** — installing is a human step (see
+the `memory-to-skill` skill in the other platform plugins).
+
 Example override layer (add this to the profile's own `cordis.patch.yml`):
 
 ```yaml
@@ -165,6 +186,15 @@ through the DSH logger.
 - **Recall** — registers a `memory-recall` skill (invocable through DSH's
   native `skill` tool) that performs search → expand → transcript drill-down
   and returns a curated summary.
+- **Maintenance** — runs the shared maintenance runner (PROJECT.md / USER.md
+  upkeep and memory-to-skill distillation), triggered on `session/disposed`
+  plus a 6-hourly fallback timer. Each task is a due-state machine: it runs at
+  most once per `min_interval_hours` (default 24h) and only when enabled in
+  memsearch config (`[plugins.dsh.project_review]`, `[plugins.dsh.user_profile]`,
+  `[plugins.dsh.memory_to_skill]`), mirroring the other platform plugins. The
+  maintenance work is executed by a one-shot DSH headless agent (the same
+  `dsh --profile headless` mechanism as summarization), booted with
+  `MEMSEARCH_DSH_SUMMARIZE=1` so the plugin stays inert inside it.
 
 ## Uninstall
 

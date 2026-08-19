@@ -22,7 +22,7 @@ def _load_runner():
 def test_plugin_maintenance_runner_copies_match_shared() -> None:
     root = Path(__file__).resolve().parents[1]
     shared = (root / "plugins" / "_shared" / "scripts" / "maintenance-runner.py").read_text(encoding="utf-8")
-    for platform in ["claude-code", "codex", "openclaw", "opencode"]:
+    for platform in ["claude-code", "codex", "openclaw", "opencode", "dsh"]:
         copied = (root / "plugins" / platform / "scripts" / "maintenance-runner.py").read_text(encoding="utf-8")
         assert copied == shared
 
@@ -212,6 +212,56 @@ def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, m
     assert isolated_config["username"] == "from-content"
     assert isolated_config["provider"]["openai"]["apiKey"] == f"{{file:{config_dir / 'token.txt'}}}"
     assert "plugin" not in isolated_config
+
+
+def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    captured = {}
+
+    def fake_run_command(cmd, *, env, cwd, timeout):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        captured["cwd"] = cwd
+        return '{"action":"none","reason":"ok"}'
+
+    monkeypatch.setattr(runner, "run_command", fake_run_command)
+    monkeypatch.setenv("DSH_CLI", "node /opt/dsh/bin.js --flag")
+    ctx = SimpleNamespace(
+        platform="dsh",
+        project_dir=tmp_path,
+        task_config=SimpleNamespace(model=""),
+    )
+
+    result = runner.run_native_provider(ctx, "maintenance prompt")
+
+    assert json.loads(result) == {"action": "none", "reason": "ok"}
+    assert captured["cmd"] == ["node", "/opt/dsh/bin.js", "--flag", "--profile", "headless", "maintenance prompt"]
+    assert captured["cwd"] == tmp_path
+    assert captured["env"]["DSH_CLI"] == "node /opt/dsh/bin.js --flag"
+    assert captured["env"]["MEMSEARCH_DSH_SUMMARIZE"] == "1"  # plugin inert inside the sub-agent
+    assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
+
+
+def test_dsh_native_runner_defaults_to_plain_dsh_command(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    captured = {}
+
+    def fake_run_command(cmd, *, env, cwd, timeout):
+        captured["cmd"] = cmd
+        return '{"action":"none","reason":"ok"}'
+
+    monkeypatch.setattr(runner, "run_command", fake_run_command)
+    monkeypatch.delenv("DSH_CLI", raising=False)
+    ctx = SimpleNamespace(
+        platform="dsh",
+        project_dir=tmp_path,
+        task_config=SimpleNamespace(model=""),
+    )
+
+    result = runner.run_native_provider(ctx, "maintenance prompt")
+
+    assert json.loads(result) == {"action": "none", "reason": "ok"}
+    assert captured["cmd"] == ["dsh", "--profile", "headless", "maintenance prompt"]
 
 
 def test_run_command_raises_with_exit_details(tmp_path: Path, monkeypatch) -> None:

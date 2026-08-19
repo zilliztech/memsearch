@@ -25,6 +25,7 @@ DEFAULT_NATIVE_MODELS = {
     "codex": "",
     "opencode": "",
     "openclaw": "",
+    "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
 }
 
 
@@ -500,12 +501,28 @@ def run_native_provider(ctx, prompt: str) -> str:
         env["XDG_DATA_HOME"] = str(isolated / "data")
         return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
 
+    if ctx.platform == "dsh":
+        # One-shot DSH headless agent; the model is the user's DSH default
+        # (agent-default-model in ~/.dsh/settings.yaml). The headless runner
+        # prints the final assistant text to stdout; for maintenance the agent
+        # is instructed to output only a JSON object, which we then extract.
+        # DSH_CLI may be a full command line (e.g. `node /path/to/bin.js`).
+        cli = os.environ.get("DSH_CLI", "dsh").strip()
+        cmd = shlex.split(cli) + ["--profile", "headless"]
+        if model:
+            cmd += ["--patch", f"agent-default-model={{model:{model}}}"]
+        cmd.append(prompt)
+        env["MEMSEARCH_DSH_SUMMARIZE"] = "1"  # keep the plugin inert inside the sub-agent
+        env["MEMSEARCH_DISABLE"] = "1"
+        out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=180)
+        return extract_task_json_output(out)
+
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run plugin-local MemSearch maintenance tasks.")
-    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw"])
+    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "dsh"])
     parser.add_argument("--project-dir", default=None)
     parser.add_argument("--memsearch-dir", default=None)
     parser.add_argument("--force", action="store_true")

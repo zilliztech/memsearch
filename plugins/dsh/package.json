@@ -19,7 +19,8 @@
     "skills/",
     "scripts/summarize.py",
     "scripts/parse-transcript.py",
-    "scripts/derive-collection.sh"
+    "scripts/derive-collection.sh",
+    "scripts/maintenance-runner.py"
   ],
   "license": "MIT",
   "keywords": [

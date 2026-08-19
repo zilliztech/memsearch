@@ -588,3 +588,30 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   assert.equal(result, decision, 'decision forwarded unchanged when injection disabled')
   assert.equal(result.messages.length, 1, 'no memory message injected')
 })
+
+test('apply: registers a session/disposed maintenance listener', () => {
+  // Maintenance uses the dedicated `session/disposed` event (the DSH
+  // equivalent of another platform's session end), so it never collides with
+  // the capture `session/event` listener.
+  const listeners = {}
+  const ctx = {
+    logger: { warn: () => {}, debug: () => {} },
+    skills: { register: () => {} },
+    on: (name, fn) => { listeners[name] = fn },
+  }
+  apply(ctx, {})
+  assert.ok(typeof listeners['session/disposed'] === 'function', 'session/disposed listener registered')
+})
+
+test('runMaintenance: is exported and tolerant of a missing project dir', async () => {
+  // runMaintenance is fire-and-forget: it must not throw for a project whose
+  // .memsearch dir does not exist (the runner checks due-state internally).
+  const { runMaintenance } = await import('../index.js')
+  const tmp = os.tmpdir()
+  const projDir = `${tmp}/memsearch-maint-${process.pid}`
+  const logger = { warn: () => {} }
+  runMaintenance({ logger }, projDir, `${projDir}/.memsearch`)
+  // No throw is the assertion; the child is detached + unref'd.
+  await new Promise((r) => setTimeout(r, 200))
+  assert.ok(true, 'runMaintenance returned without throwing')
+})
