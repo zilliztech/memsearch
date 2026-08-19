@@ -156,8 +156,8 @@ through the DSH logger.
   `<!-- session:<id> turn:<N> db:<path> -->`. The project directory comes from
   `session.header.cwd`, so a long-lived web surface captures every project it
   hosts, not just the process's boot directory. Turns are serialized (LLM
-  summarize calls never overlap) and `captureExists` dedup makes each turn
-  idempotent across restarts — there is no staging queue to drain or lose.
+  summarize calls never overlap) and `captureExists` dedup keeps each turn
+  idempotent if its event replays.
 - **Inject** — on `agent/pre-step` at step 1, runs a bounded memsearch search
   over the user's question. Only when relevant chunks exist does it inject
   them plus a `[memsearch] Memory available.` hint; otherwise the decision is

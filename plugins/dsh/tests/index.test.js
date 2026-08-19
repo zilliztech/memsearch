@@ -92,6 +92,26 @@ test('resolveSummarizeMode: auto with unreachable memsearch falls back to dsh-he
   assert.equal(r.mode, 'dsh-headless')
 })
 
+test('resolveSummarizeMode: read failure logs a warning (not silent)', () => {
+  // M3: a config-read failure must be surfaced, not silently treated as
+  // "not configured" — otherwise a slow/absent memsearch flips auto to the
+  // wrong backend with no signal.
+  const warnings = []
+  const logger = { warn: (m) => warnings.push(m) }
+  const r = resolveSummarizeMode('definitely-not-a-real-cmd-xyz', { summarizeMode: undefined, summarizeProvider: '', summarizeModel: '' }, {}, logger)
+  assert.equal(r.mode, 'dsh-headless')
+  assert.ok(warnings.length >= 1, 'a warning was logged')
+  assert.ok(warnings[0].includes('could not read'), `warning mentions the read failure: ${warnings[0]}`)
+})
+
+test('resolveSummarizeMode: unknown explicit mode logs a warning and treats as auto', () => {
+  const warnings = []
+  const logger = { warn: (m) => warnings.push(m) }
+  const r = resolveSummarizeMode('unused-cmd', { summarizeMode: 'custom-lm', summarizeProvider: '', summarizeModel: '' }, {}, logger)
+  assert.equal(r.mode, 'dsh-headless') // treated as auto with no provider configured
+  assert.ok(warnings.some((w) => w.includes('unknown summarizeMode')), `unknown-mode warning logged: ${warnings}`)
+})
+
 test('resolveSummarizeMode: auto with configured provider selects custom-llm', () => {
   // Simulate `[plugins.dsh.summarize] provider = "x"` by pointing memsearchCmd
   // at a shim that echoes the requested key.
@@ -123,9 +143,11 @@ test('summarizeTurn: default (no mode configured) dispatches to dsh-headless', a
   // agent, so without a CLI it errors with "dsh CLI not found".
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
+  const prevHome = process.env.HOME
   try {
     delete process.env.DSH_CLI
     process.env.PATH = '/nonexistent'
+    process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback
     const opts = { agentName: 'X', summarizeProvider: '', summarizeModel: '' } // no summarizeMode
     const ctx = { logger: { warn: () => {} } }
     const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
@@ -137,15 +159,19 @@ test('summarizeTurn: default (no mode configured) dispatches to dsh-headless', a
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
     process.env.PATH = prevPath
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
   }
 })
 
 test('summarizeTurn: dsh-headless mode without CLI errors visibly', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
+  const prevHome = process.env.HOME
   try {
     delete process.env.DSH_CLI
     process.env.PATH = '/nonexistent'
+    process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback
     const opts = { summarizeMode: 'dsh-headless', agentName: 'X', summarizeProvider: '', summarizeModel: '' }
     const ctx = { logger: { warn: () => {} } }
     const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
@@ -157,6 +183,8 @@ test('summarizeTurn: dsh-headless mode without CLI errors visibly', async () => 
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
     process.env.PATH = prevPath
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
   }
 })
 
@@ -323,9 +351,11 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
   // path in processTurn → unavailable note.
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
+  const prevHome = process.env.HOME
   try {
     delete process.env.DSH_CLI
     process.env.PATH = '/nonexistent'
+    process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback (would boot a real agent)
     apply(ctx, {})
     const session = {
       id: 'session-fail-test',
@@ -350,6 +380,8 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
     process.env.PATH = prevPath
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
   }
 })
 

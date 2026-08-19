@@ -186,6 +186,13 @@ function deriveCollection(projectDir, override) {
  * "not configured") instead of throwing — so the plugin never breaks on a
  * user's existing memsearch version.
  */
+/**
+ * Read a dotted memsearch config value. Returns `{ ok, value }` so callers can
+ * tell "successfully read and the value is empty" from "the command failed or
+ * timed out". A failure must not be mistaken for an authoritative "not
+ * configured": a slow/absent memsearch (e.g. first uvx run) would otherwise
+ * silently flip auto mode to the wrong backend.
+ */
 function readMemsearchConfigValue(memsearchCmd, key) {
   try {
     // memsearchCmd may be a full command line (e.g. `uvx --from 'memsearch[onnx]' memsearch`),
@@ -195,9 +202,9 @@ function readMemsearchConfigValue(memsearchCmd, key) {
       timeout: 5000,
       stdio: ['ignore', 'pipe', 'ignore'],
     })
-    return result.trim() || null
+    return { ok: true, value: result.trim() || null }
   } catch {
-    return null
+    return { ok: false, value: null }
   }
 }
 
@@ -210,10 +217,15 @@ function readMemsearchConfigValue(memsearchCmd, key) {
  *   lightweight `custom-llm` route; otherwise fall back to `dsh-headless`
  *   (zero-config DSH agent).
  *
+ * A read failure of `[plugins.dsh.summarize]` is NOT treated as "not
+ * configured": it is logged (via `logger`) and falls back to `dsh-headless`
+ * rather than silently picking a backend the user may not have intended.
+ * An unknown explicit mode is also logged and treated as auto.
+ *
  * Returns `{ mode, provider, model }` where provider/model carry the
  * memsearch-config values when auto resolved them.
  */
-function resolveSummarizeMode(memsearchCmd, opts, config) {
+function resolveSummarizeMode(memsearchCmd, opts, config, logger) {
   if (opts.summarizeMode === 'custom-llm' || opts.summarizeMode === 'dsh-headless') {
     return {
       mode: opts.summarizeMode,
@@ -221,14 +233,23 @@ function resolveSummarizeMode(memsearchCmd, opts, config) {
       model: opts.summarizeModel,
     }
   }
+  if (opts.summarizeMode !== undefined && opts.summarizeMode !== 'auto') {
+    logger?.warn?.(`[memsearch] unknown summarizeMode '${opts.summarizeMode}'; treating as auto`)
+  }
   // auto: consult memsearch config [plugins.dsh.summarize], aligned with the
   // other platform plugins. Tolerate missing section / older memsearch.
   const provider = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.provider')
-  if (provider) {
-    const model = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.model') || ''
+  if (!provider.ok) {
+    logger?.warn?.(
+      '[memsearch] could not read [plugins.dsh.summarize] provider from memsearch config; using dsh-headless',
+    )
+    return { mode: 'dsh-headless', provider: opts.summarizeProvider, model: opts.summarizeModel }
+  }
+  if (provider.value) {
+    const model = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.model')
     const enabled = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.enabled')
-    if (enabled === null || enabled === 'true') {
-      return { mode: 'custom-llm', provider, model }
+    if (enabled.ok && (enabled.value === null || enabled.value === 'true')) {
+      return { mode: 'custom-llm', provider: provider.value, model: model.ok ? model.value || '' : '' }
     }
   }
   return { mode: 'dsh-headless', provider: opts.summarizeProvider, model: opts.summarizeModel }
@@ -591,7 +612,7 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
 async function summarizeTurn(ctx, opts, render, projectDir) {
   let { summarizeMode, summarizeProvider, summarizeModel } = opts
   if (summarizeMode !== 'custom-llm' && summarizeMode !== 'dsh-headless') {
-    const resolved = resolveSummarizeMode(detectMemsearchCmd(), opts, {})
+    const resolved = resolveSummarizeMode(detectMemsearchCmd(), opts, {}, ctx.logger)
     summarizeMode = resolved.mode
     summarizeProvider = resolved.provider || summarizeProvider
     summarizeModel = resolved.model || summarizeModel
@@ -666,10 +687,20 @@ export function apply(ctx, config = {}) {
   }
 
   const memsearchCmd = detectMemsearchCmd()
+  // Legacy plugin-config fields were removed in favor of memsearch config /
+  // environment (aligned with the other platform plugins). A leftover field in
+  // the profile patch is now ignored; warn once so an upgrade is not silent.
+  const LEGACY_CONFIG_FIELDS = ['summarizeProvider', 'summarizeModel', 'memsearchDir', 'collection', 'milvusUri', 'agentName']
+  const legacyField = LEGACY_CONFIG_FIELDS.find((field) => config[field] !== undefined)
+  if (legacyField) {
+    ctx.logger.warn(
+      `[memsearch] config field '${legacyField}' is no longer used; provider/model/milvus/memory-dir now come from memsearch config (see README "Configuration")`,
+    )
+  }
   // Resolve the effective summarize backend now: explicit summarizeMode wins;
   // otherwise (auto) mirror the other plugins — a configured
   // [plugins.dsh.summarize] provider selects custom-llm, else dsh-headless.
-  const resolvedSummarize = resolveSummarizeMode(memsearchCmd, opts, config)
+  const resolvedSummarize = resolveSummarizeMode(memsearchCmd, opts, config, ctx.logger)
   opts.summarizeMode = resolvedSummarize.mode
   if (resolvedSummarize.provider) opts.summarizeProvider = resolvedSummarize.provider
   if (resolvedSummarize.model) opts.summarizeModel = resolvedSummarize.model
@@ -681,7 +712,7 @@ export function apply(ctx, config = {}) {
   //                   surface it for the skill's MILVUS_FLAG)
   //   - agent name:   fixed display name
   opts.agentName = DEFAULT_AGENT_NAME
-  opts.milvusUri = readMemsearchConfigValue(memsearchCmd, 'milvus.uri') || ''
+  opts.milvusUri = readMemsearchConfigValue(memsearchCmd, 'milvus.uri').value || ''
   const memoryDirFor = (projectDir) => join(memsearchDirFor(projectDir), 'memory')
 
   const collectionCache = new Map()
@@ -735,9 +766,8 @@ export function apply(ctx, config = {}) {
   // Each turn is processed against its *own* project directory (from
   // `session.header.cwd`), which on a long-lived web surface is not
   // necessarily `process.cwd()` — the boot directory. Turns are serialized
-  // through a promise chain so LLM summarize calls never overlap. The
-  // `captureExists` dedup makes a turn idempotent even if its event replays
-  // after a restart — nothing is lost in a queue, and nothing needs draining.
+  // through a promise chain so LLM summarize calls never overlap, and the
+  // `captureExists` dedup keeps a turn idempotent if its event replays.
   let captureChain = Promise.resolve()
   const enqueueCapture = (work) => {
     captureChain = captureChain
@@ -766,8 +796,11 @@ export function apply(ctx, config = {}) {
           body = '- Memory summary unavailable: summarizer returned empty output. Use the transcript anchor for progressive disclosure.'
         }
       } catch (error) {
-        ctx.logger.warn(`[memsearch] summarization failed (${error.message}); wrote unavailable note`)
-        body = `- Memory summary unavailable: ${error.message}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
+        // Collapse newlines so the reason stays a single `- ` bullet in the
+        // daily file (summarize.py stderr can span lines).
+        const reason = String(error.message).replace(/\s+/g, ' ').trim()
+        ctx.logger.warn(`[memsearch] summarization failed (${reason}); wrote unavailable note`)
+        body = `- Memory summary unavailable: ${reason}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
       }
     }
     writeCapture(memoryDir, body, sessionId, turn, dbPath)

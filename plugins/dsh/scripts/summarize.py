@@ -241,7 +241,7 @@ def main() -> int:
     # Read the transcript from stdin BEFORE any exec-based bootstrap: the uv
     # re-exec below replaces the process image and the pipe would otherwise be
     # consumed already. The re-exec'd process recovers the payload from
-    # MEMSEARCH_DSH_TRANSCRIPT (set by _preserve_transcript_for_reexec).
+    # MEMSEARCH_DSH_TRANSCRIPT (set by ensure_memsearch_importable).
     transcript = os.environ.get("MEMSEARCH_DSH_TRANSCRIPT", "")
     if not transcript:
         transcript = sys.stdin.read()
