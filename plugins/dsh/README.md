@@ -13,37 +13,36 @@ recall   ── ctx.skills.register(memory-recall) ──> search → expand →
 
 ## Prerequisites
 
-- A working `memsearch` CLI. Either install it:
+- Install memsearch:
 
   ```bash
   uv tool install "memsearch[onnx]"
   ```
 
-  or let the plugin fall back to `uvx --from 'memsearch[onnx]' memsearch`
-  (auto-detected at load).
 - A DSH profile (web / headless / tui) you want to attach memory to.
 - Node >= 22.19 (DSH's requirement).
 
 ## Install
 
-From the repo root, install the plugin into a profile. `dsh plugin` is a pnpm
-forwarder: it links the directory into the profile, detects the `dsh.bundle`
-declaration in `package.json`, and appends the package to the profile's bundle
-layers. The `cordis.patch.yml` inside this directory then inserts the
-`memsearch` row into the profile's plugin tree.
+### From npm (recommended, once published)
+
+```bash
+dsh plugin --profile web add @zilliz/memsearch-dsh
+```
+
+### From source (development)
 
 ```bash
 dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 ```
 
-> The path is resolved from the directory you run `dsh` in; an absolute path
-> is safest. Replace `web` with your profile name (`headless`, `tui`, ...).
+> `dsh plugin` is a pnpm forwarder: it links the package into the profile,
+> detects the `dsh.bundle` declaration in `package.json`, and appends it to
+> the profile's bundle layers. `cordis.patch.yml` inside the package then
+> inserts the `memsearch` row into the profile's plugin tree.
 >
-> Profiles are managed by the `@deepseek-ai/dsh-app-boot` profile store, and
-> the patch layer list lives in the profile manifest. The same flow works for
-> every shipped profile.
-
-Restart DSH for the profile (or start a new session) so the plugin mounts.
+> Replace `web` with your profile name (`headless`, `tui`, ...), and restart
+> DSH for the profile (or start a new session) so the plugin mounts.
 
 ### Manual patch insertion (no `dsh plugin`)
 
