@@ -128,8 +128,47 @@ fi
 PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
+RECENT_MEMORY_MAX_LINES=40
+RECENT_MEMORY_MAX_BYTES=1800
+
+_byte_len() {
+  LC_ALL=C printf '%s' "$1" | wc -c | tr -d '[:space:]'
+}
+
+_tail_lines_within_bytes() {
+  local max_bytes="$1"
+  LC_ALL=C awk -v budget="$max_bytes" '
+    {
+      lines[NR] = $0
+      sizes[NR] = length($0) + 1
+    }
+
+    END {
+      total = 0
+      start = NR + 1
+
+      for (i = NR; i >= 1; i--) {
+        if (total + sizes[i] > budget) {
+          break
+        }
+        total += sizes[i]
+        start = i
+      }
+
+      for (i = start; i <= NR; i++) {
+        print lines[i]
+      }
+    }
+  '
+}
+
 _recent_memory_preview() {
-  local file="$1" max_lines="${2:-40}"
+  local file="$1" max_lines="${2:-40}" max_bytes="${3:-0}"
+
+  if [ "$max_bytes" -le 0 ]; then
+    return 0
+  fi
+
   awk '
     function flush_section() {
       if (section_len > 0 && has_body) {
@@ -162,7 +201,7 @@ _recent_memory_preview() {
     END {
       flush_section()
     }
-  ' "$file" 2>/dev/null | tail -n "$max_lines" || true
+  ' "$file" 2>/dev/null | tail -n "$max_lines" | _tail_lines_within_bytes "$max_bytes" || true
 }
 
 # The session heading is written lazily by stop.sh on the first
@@ -224,11 +263,20 @@ if [ -n "$recent_files" ]; then
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
+    file_header="## $basename_f\n"
+    used_bytes=$(_byte_len "$context$file_header\n\n")
+    content_budget=$((RECENT_MEMORY_MAX_BYTES - used_bytes))
+    if [ "$content_budget" -le 0 ]; then
+      break
+    fi
     # Extract recent non-empty session sections. Legacy journals may contain
     # empty headings, but they do not carry useful context.
-    content=$(_recent_memory_preview "$f" 40)
+    content=$(_recent_memory_preview "$f" "$RECENT_MEMORY_MAX_LINES" "$content_budget")
     if [ -n "$content" ]; then
-      context+="## $basename_f\n$content\n\n"
+      context+="$file_header$content\n\n"
+    fi
+    if [ "$(_byte_len "$context")" -ge "$RECENT_MEMORY_MAX_BYTES" ]; then
+      break
     fi
   done <<< "$recent_files"
 fi
