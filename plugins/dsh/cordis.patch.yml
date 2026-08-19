@@ -2,9 +2,10 @@
 # profile's plugin tree.
 #
 # This patch is applied as one extra layer when the package is installed via
-# `dsh plugin --profile <name> add <path>` (see README.md). A later user
-# override in the profile's own cordis.patch.yml can address the same `id` to
-# tune `config`, and removing the dependency removes the row.
+# `dsh plugin --profile <name> add @zilliz/memsearch-dsh` (npm) or a local
+# path (see README.md). A later user override in the profile's own
+# cordis.patch.yml can address the same `id` to tune `config`, and removing
+# the dependency removes the row.
 
 - insert:
     - id: memsearch

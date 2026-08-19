@@ -1,5 +1,5 @@
 {
-  "name": "memsearch-dsh",
+  "name": "@zilliz/memsearch-dsh",
   "version": "0.1.0",
   "description": "MemSearch plugin for DeepSeek Harness: shared markdown memory across agents, with capture, pre-step context injection, and memory-recall skill.",
   "type": "module",
@@ -17,7 +17,9 @@
     "cordis.patch.yml",
     "prompts/",
     "skills/",
-    "scripts/"
+    "scripts/summarize.py",
+    "scripts/parse-transcript.py",
+    "scripts/derive-collection.sh"
   ],
   "license": "MIT",
   "keywords": [

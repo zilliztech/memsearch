@@ -1,4 +1,4 @@
-# memsearch-dsh
+# @zilliz/memsearch-dsh
 
 MemSearch plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).
 It gives DSH persistent, cross-agent memory on the same `.memsearch/memory/`
@@ -47,7 +47,7 @@ dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 ### Manual patch insertion (no `dsh plugin`)
 
 Append this row to the profile's `cordis.patch.yml` and make sure
-`memsearch-dsh` is resolvable from the profile's `node_modules` (for example a
+`@zilliz/memsearch-dsh` is resolvable from the profile's `node_modules` (for example a
 `link:` dependency):
 
 ```yaml
@@ -169,7 +169,7 @@ through the DSH logger.
 ## Uninstall
 
 ```bash
-dsh plugin --profile web rm memsearch-dsh
+dsh plugin --profile web rm @zilliz/memsearch-dsh
 ```
 
 Removing the dependency drops the profile-layer entry; the memory markdown
