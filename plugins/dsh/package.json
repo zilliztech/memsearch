@@ -1,6 +1,6 @@
 {
   "name": "@zilliz/memsearch-dsh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MemSearch plugin for DeepSeek Harness: shared markdown memory across agents, with capture, pre-step context injection, and memory-recall skill.",
   "type": "module",
   "main": "index.js",
