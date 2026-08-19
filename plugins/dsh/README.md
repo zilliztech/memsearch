@@ -53,7 +53,7 @@ Append this row to the profile's `cordis.patch.yml` and make sure
 ```yaml
 - insert:
     - id: memsearch
-      name: 'memsearch-dsh'
+      name: '@zilliz/memsearch-dsh'
 ```
 
 ### Verify it loaded

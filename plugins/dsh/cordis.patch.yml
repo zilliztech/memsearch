@@ -6,10 +6,15 @@
 # path (see README.md). A later user override in the profile's own
 # cordis.patch.yml can address the same `id` to tune `config`, and removing
 # the dependency removes the row.
+#
+# Note: `name` is the package name the cordis loader imports. It MUST equal
+# the npm package name (@zilliz/memsearch-dsh) — a path install links the
+# checkout under whatever name package.json declares, and `dsh plugin add`
+# installs the scoped name, so both resolve to the same string.
 
 - insert:
     - id: memsearch
-      name: 'memsearch-dsh'
+      name: '@zilliz/memsearch-dsh'
       config:
         # Optional overrides — see README.md for the full set. Everything else
         # (summarize provider/model, Milvus, collection, memory dir) comes from
