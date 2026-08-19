@@ -30,7 +30,10 @@ def make_config(**overrides) -> SimpleNamespace:
     llm = SimpleNamespace(provider="", model="", base_url="", api_key="", providers=providers)
     compact = SimpleNamespace(llm_provider="", llm_model="", base_url="", api_key="")
     prompts = SimpleNamespace(summarize="")
-    config = SimpleNamespace(llm=llm, compact=compact, prompts=prompts)
+    plugins = SimpleNamespace(
+        dsh=SimpleNamespace(summarize=SimpleNamespace(enabled=True, provider="", model=""))
+    )
+    config = SimpleNamespace(llm=llm, compact=compact, prompts=prompts, plugins=plugins)
     return config
 
 
@@ -85,6 +88,69 @@ class TestResolveLlmSettings:
         provider_type, model, _, _ = summarize._resolve_llm_settings(config, "", "")
         assert provider_type == "anthropic"
         assert model == "claude-sonnet-4-6"
+
+    def test_plugins_dsh_summarize_provider(self) -> None:
+        """[plugins.dsh.summarize] provider is used when no CLI arg is passed."""
+        config = make_config()
+        config.plugins.dsh.summarize.provider = "deepseek"
+        provider_type, model, base_url, api_key = summarize._resolve_llm_settings(config, "", "")
+        assert provider_type == "openai"
+        assert model == "deepseek-chat"
+        assert base_url == "https://api.deepseek.com"
+        assert api_key == "env:DSK"
+
+    def test_plugins_dsh_summarize_model_override(self) -> None:
+        """[plugins.dsh.summarize] model wins over the provider's default."""
+        config = make_config()
+        config.plugins.dsh.summarize.provider = "deepseek"
+        config.plugins.dsh.summarize.model = "deepseek-v4-flash"
+        _, model, _, _ = summarize._resolve_llm_settings(config, "", "")
+        assert model == "deepseek-v4-flash"
+
+    def test_cli_arg_beats_plugins_dsh_config(self) -> None:
+        """The DSH plugin's own --provider/--model (from plugin config) wins."""
+        config = make_config()
+        config.plugins.dsh.summarize.provider = "deepseek"
+        provider_type, model, _, _ = summarize._resolve_llm_settings(config, "local-anthropic", "my-model")
+        assert provider_type == "anthropic"
+        assert model == "my-model"
+
+
+class TestMainTranscriptRecovery:
+    """The uv re-exec must not lose the stdin payload.
+
+    ``ensure_memsearch_importable`` re-execs under ``uv run`` when uv is on
+    PATH; the re-exec'd process can no longer read the consumed stdin pipe, so
+    ``main()`` prefers ``MEMSEARCH_DSH_TRANSCRIPT`` (carried across the exec)
+    over a fresh stdin read. With the env payload present, main() must proceed
+    to summarization (not bail out on the empty stdin).
+    """
+
+    def test_main_uses_env_transcript_when_stdin_is_empty(self, monkeypatch, capsys) -> None:
+        marker = "env-transcript-marker-001"
+        monkeypatch.setenv("MEMSEARCH_DSH_TRANSCRIPT", f"=== Turn 1 ===\n[User]: remember {marker}\n[Assistant]: ok")
+        monkeypatch.setattr("sys.stdin.read", lambda: "")
+        # main() parses sys.argv; in pytest that is the pytest invocation, so
+        # replace it with the summarize.py CLI shape.
+        monkeypatch.setattr("sys.argv", ["summarize.py", "--agent-name", "Test"])
+
+        seen = {}
+
+        async def fake_summarize(prompt, provider_type, model, base_url, api_key):
+            seen["prompt"] = prompt
+            return "- remembered"
+
+        monkeypatch.setattr(summarize, "_summarize", fake_summarize)
+        monkeypatch.setattr(summarize, "_load_summarize_prompt", lambda *a, **k: "SYSTEM")
+        monkeypatch.setattr(summarize, "ensure_memsearch_importable", lambda transcript="": None)
+        # Point the local `from memsearch.config import resolve_config` at a stub.
+        monkeypatch.setattr("memsearch.config.resolve_config", lambda: make_config(), raising=False)
+
+        rc = summarize.main()
+        assert rc == 0
+        assert "env-transcript-marker-001" in seen.get("prompt", "")
+        out = capsys.readouterr().out
+        assert "- remembered" in out
 
 
 class TestLoadSummarizePrompt:

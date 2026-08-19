@@ -3,12 +3,16 @@
  *
  * Gives DSH persistent, cross-agent memory on top of memsearch:
  *
- *   capture  — every completed turn is staged from the `session/event` stream
- *              and summarized with a memsearch-managed `[llm.providers.*]`
- *              provider, then appended to `<project>/.memsearch/memory/YYYY-MM-DD.md`
- *              alongside the other platform plugins (Claude Code, Codex,
- *              OpenClaw, OpenCode). The anchor format is identical, so DSH
- *              writes join the same shared memory store.
+ *   capture  — every completed turn from the `session/event` stream is
+ *              summarized (memsearch-managed `[llm.providers.*]` or a one-shot
+ *              DSH headless agent, see `summarizeMode`) and appended to
+ *              `<project>/.memsearch/memory/YYYY-MM-DD.md` alongside the other
+ *              platform plugins (Claude Code, Codex, OpenClaw, OpenCode). The
+ *              anchor format is identical, so DSH writes join the same shared
+ *              memory store. Processing is fire-and-forget: each turn is
+ *              summarized and written asynchronously, serialized so LLM calls
+ *              never overlap, with `captureExists` dedup so a turn is recorded
+ *              exactly once even across restarts.
  *   inject   — before the first model step of each turn, `agent/pre-step`
  *              runs a bounded memsearch search over the user's question and,
  *              only when relevant results exist, injects them plus a
@@ -47,7 +51,6 @@ export const inject = ['agents', 'skills', 'sessionPersistence']
 
 const DEFAULT_AGENT_NAME = 'DeepSeek Harness'
 const MEMSEARCH_MARKER = '[memsearch] Memory available.'
-const STAGING_FILE = '.dsh-capture.jsonl'
 const SEARCH_TOP_K = 5
 const SEARCH_TIMEOUT_MS = 15000
 const SUMMARIZE_TIMEOUT_MS = 30000
@@ -175,9 +178,73 @@ function deriveCollection(projectDir, override) {
   }
 }
 
+/**
+ * Read a dotted value from the memsearch config (e.g. `plugins.dsh.summarize.provider`).
+ *
+ * Tolerant of older memsearch installs that predate the `dsh` plugin section:
+ * a missing key, missing binary, or any failure returns `null` (treated as
+ * "not configured") instead of throwing — so the plugin never breaks on a
+ * user's existing memsearch version.
+ */
+function readMemsearchConfigValue(memsearchCmd, key) {
+  try {
+    // memsearchCmd may be a full command line (e.g. `uvx --from 'memsearch[onnx]' memsearch`),
+    // so route through bash rather than execFileSync's single executable.
+    const result = execFileSync('bash', ['-c', `${memsearchCmd} config get '${key}'`], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return result.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolve the effective summarization backend for `summarizeMode`.
+ *
+ * - explicit `custom-llm` / `dsh-headless` pin the backend;
+ * - unset (auto) mirrors the other platform plugins: if the user configured a
+ *   provider under `[plugins.dsh.summarize]` (memsearch config), use the
+ *   lightweight `custom-llm` route; otherwise fall back to `dsh-headless`
+ *   (zero-config DSH agent).
+ *
+ * Returns `{ mode, provider, model }` where provider/model carry the
+ * memsearch-config values when auto resolved them.
+ */
+function resolveSummarizeMode(memsearchCmd, opts, config) {
+  if (opts.summarizeMode === 'custom-llm' || opts.summarizeMode === 'dsh-headless') {
+    return {
+      mode: opts.summarizeMode,
+      provider: opts.summarizeProvider,
+      model: opts.summarizeModel,
+    }
+  }
+  // auto: consult memsearch config [plugins.dsh.summarize], aligned with the
+  // other platform plugins. Tolerate missing section / older memsearch.
+  const provider = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.provider')
+  if (provider) {
+    const model = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.model') || ''
+    const enabled = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.summarize.enabled')
+    if (enabled === null || enabled === 'true') {
+      return { mode: 'custom-llm', provider, model }
+    }
+  }
+  return { mode: 'dsh-headless', provider: opts.summarizeProvider, model: opts.summarizeModel }
+}
+
 /** Project directory for a session (its durable cwd) or the process cwd. */
 function projectDirFor(session) {
   return session?.header?.cwd || process.cwd()
+}
+
+/**
+ * Memory directory for a project. `MEMSEARCH_DIR` (explicit → global scope)
+ * wins, mirroring the other platform plugins; otherwise `<project>/.memsearch`.
+ */
+function memsearchDirFor(projectDir) {
+  return process.env.MEMSEARCH_DIR || join(projectDir, '.memsearch')
 }
 
 /** `[User]`/`[Assistant]` text from a message's content blocks. */
@@ -301,8 +368,8 @@ function sessionLogPath(ctx, session) {
 
 /**
  * Render one completed turn as `[User]`/`[Assistant]` text for the summarizer
- * and as the raw-transcript fallback. Returns null when the turn carries no
- * genuine user message.
+ * (and as the raw body when summarization is disabled). Returns null when the
+ * turn carries no genuine user message.
  */
 function renderTurn(session, turnEndEvent) {
   const turn = turnEndEvent.data.turn
@@ -372,11 +439,17 @@ function writeCapture(memoryDir, body, sessionId, turn, dbPath) {
 }
 
 // ---------------------------------------------------------------------------
-// Summarization (memsearch-managed [llm.providers.*])
+// Summarization (two modes, selected by `summarizeMode`)
 // ---------------------------------------------------------------------------
 
-/** Summarize one rendered turn via scripts/summarize.py, reusing memsearch config. */
-function summarizeTurn(opts, render, projectDir) {
+/**
+ * Summarize one rendered turn via scripts/summarize.py — the memsearch-managed
+ * `[llm.providers.*]` route (the `custom-llm` mode). Lightweight: a single
+ * python process, no DSH boot. Model/provider come from memsearch config
+ * (`[plugins.dsh.summarize]` → `[llm.providers.*]`), resolved by
+ * `resolveSummarizeMode` into `opts.summarizeProvider` / `opts.summarizeModel`.
+ */
+function summarizeCustomLlm(opts, render, projectDir) {
   return new Promise((resolve, reject) => {
     const args = [
       join(PLUGIN_DIR, 'scripts', 'summarize.py'),
@@ -408,46 +481,125 @@ function summarizeTurn(opts, render, projectDir) {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Staging + drain (durable capture queue)
-// ---------------------------------------------------------------------------
-
-function stageCapture(memsearchDir, record, logger) {
-  try {
-    mkdirSync(memsearchDir, { recursive: true })
-    appendFileSync(join(memsearchDir, STAGING_FILE), `${JSON.stringify(record)}\n`, 'utf-8')
-  } catch (error) {
-    logger?.warn?.(`[memsearch] failed to stage turn: ${error.message}`)
+/**
+ * Resolve the dsh CLI command for one-shot headless summarization.
+ *
+ * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). We check
+ * PATH first, then `DSH_CLI` as an explicit override, then the pnpm global
+ * bin directory. Returns the command as an argv array (`[cmd, ...args]`),
+ * or null when not found. The array form is required because `DSH_CLI` may
+ * be an interpreter invocation (e.g. `node /path/to/bin.js`), which `spawn`
+ * cannot treat as a single executable.
+ */
+function detectDshCmd() {
+  const onPath = (cmd) => {
+    try {
+      execFileSync('bash', ['-c', `command -v ${cmd} >/dev/null 2>&1`], { stdio: 'pipe' })
+      return true
+    } catch {
+      return false
+    }
   }
+  if (onPath('dsh')) return ['dsh']
+  const fromEnv = process.env.DSH_CLI
+  if (fromEnv) return fromEnv.split(/\s+/).filter(Boolean)
+  const home = process.env.HOME || ''
+  const pnpmBin = join(home, '.local', 'share', 'pnpm')
+  if (existsSync(join(pnpmBin, 'dsh'))) return [join(pnpmBin, 'dsh')]
+  return null
 }
 
-function readStages(memsearchDir) {
-  const file = join(memsearchDir, STAGING_FILE)
-  if (!existsSync(file)) return []
-  let content
-  try {
-    content = readFileSync(file, 'utf-8')
-  } catch {
-    return []
-  }
-  return content
-    .split('\n')
-    .map((line) => {
-      try { return JSON.parse(line) } catch { return null }
+/**
+ * Summarize one rendered turn by booting a one-shot DSH headless agent
+ * (`dsh --profile headless`), mirroring how the Claude Code / Codex / OpenCode
+ * plugins reuse their own agent's headless mode with a small model.
+ *
+ * The headless profile is the same one the user already has; the plugin does
+ * not manage its bundles. The sub-agent's model is the deployment's
+ * `agent-default-model` — which the user layer of `~/.dsh/settings.yaml`
+ * (`agent-default-model:` section, the same selection the Web UI models
+ * settings writes) overrides with highest priority. A `--patch` overlay on
+ * `agent-default-model` sits below the user layer and is silently ignored
+ * when the user document sets the section, so this mode intentionally does
+ * NOT patch the model: the model is whatever the user configured in DSH
+ * (Web UI model picker → `settings.yaml`). The `[plugins.dsh.summarize]`
+ * provider/model therefore apply only to the `custom-llm` mode
+ * (see `summarizeCustomLlm`).
+ *
+ * Recursion guard: the sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`.
+ * This plugin checks that flag in `apply()` and, when set, skips capture,
+ * injection, and skill registration — so the summarizer's own session never
+ * gets re-captured and re-summarized in an infinite loop.
+ */
+function summarizeHeadless(ctx, opts, render, projectDir) {
+  return new Promise((resolve, reject) => {
+    const dshCmd = detectDshCmd()
+    if (!dshCmd) {
+      reject(new Error('dsh CLI not found; set DSH_CLI or install dsh on PATH for summarizeMode=dsh-headless'))
+      return
+    }
+    const promptFile = join(PLUGIN_DIR, 'prompts', 'summarize.txt')
+    let systemPrompt
+    try {
+      systemPrompt = readFileSync(promptFile, 'utf-8').replaceAll('{{AGENT_NAME}}', opts.agentName)
+    } catch {
+      systemPrompt = `You are a third-person note-taker for {{AGENT_NAME}}. Record the following transcript as 2-10 bullet points in the same language as the [User] text. Output ONLY bullet points.`.replaceAll('{{AGENT_NAME}}', opts.agentName)
+    }
+    const task = `${systemPrompt}\n\nTranscript:\n${render}`
+
+    const args = ['--profile', 'headless', task]
+
+    const child = spawn(dshCmd[0], [...dshCmd.slice(1), ...args], {
+      cwd: projectDir,
+      env: { ...process.env, MEMSEARCH_DSH_SUMMARIZE: '1' },
     })
-    .filter(Boolean)
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (data) => { stdout += data })
+    child.stderr.on('data', (data) => { stderr += data })
+    child.on('error', (error) => {
+      reject(error)
+    })
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout.trim() || null)
+      } else {
+        reject(new Error(stderr.trim() || `dsh headless summarize exited with status ${code}`))
+      }
+    })
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL') } catch { /* already exited */ }
+      reject(new Error('dsh headless summarization timed out'))
+    }, SUMMARIZE_TIMEOUT_MS)
+    timer.unref?.()
+  })
 }
 
-function removeStage(memsearchDir, key) {
-  const file = join(memsearchDir, STAGING_FILE)
-  try {
-    const remaining = readStages(memsearchDir).filter((record) => record.key !== key)
-    writeFileSync(
-      file,
-      remaining.length ? `${remaining.map((record) => JSON.stringify(record)).join('\n')}\n` : '',
-      'utf-8',
-    )
-  } catch { /* best effort; a leftover stage is replayed next boot */ }
+/**
+ * Run the configured summarizer for one turn.
+ *
+ * `opts.summarizeMode` is normally resolved by `apply()` via
+ * `resolveSummarizeMode` (auto → custom-llm when a `[plugins.dsh.summarize]`
+ * provider is configured, else dsh-headless). When called directly with an
+ * unset mode (tests, external callers), the same auto resolution is applied
+ * here. There is deliberately NO automatic fallback between modes: whichever
+ * backend is resolved either produces a summary or fails visibly (the caller
+ * writes the unavailable note) — a silent switch to an unconfigured LLM would
+ * be worse than an honest failure.
+ * @returns the summary text, or null when the summarizer produced nothing.
+ */
+async function summarizeTurn(ctx, opts, render, projectDir) {
+  let { summarizeMode, summarizeProvider, summarizeModel } = opts
+  if (summarizeMode !== 'custom-llm' && summarizeMode !== 'dsh-headless') {
+    const resolved = resolveSummarizeMode(detectMemsearchCmd(), opts, {})
+    summarizeMode = resolved.mode
+    summarizeProvider = resolved.provider || summarizeProvider
+    summarizeModel = resolved.model || summarizeModel
+  }
+  if (summarizeMode === 'custom-llm') {
+    return await summarizeCustomLlm({ ...opts, summarizeMode, summarizeProvider, summarizeModel }, render, projectDir)
+  }
+  return await summarizeHeadless(ctx, { ...opts, summarizeMode, summarizeProvider, summarizeModel }, render, projectDir)
 }
 
 // ---------------------------------------------------------------------------
@@ -497,35 +649,51 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
  * @param config - resolved patch config (see cordis.patch.yml).
  */
 export function apply(ctx, config = {}) {
+  // Recursion guard: when DSH booted this plugin as the summarizer's own
+  // headless sub-agent (`summarizeMode: dsh-headless` sets this flag), stay
+  // inert — no capture, no injection, no skill. Otherwise the summarizer's
+  // session would itself be captured and re-summarized forever.
+  if (process.env.MEMSEARCH_DSH_SUMMARIZE === '1') {
+    ctx.logger?.debug?.('[memsearch] summarize sub-agent: plugin inert')
+    return
+  }
+
   const opts = {
     captureEnabled: config.captureEnabled !== false,
     injectEnabled: config.injectEnabled !== false,
     summarizeEnabled: config.summarizeEnabled !== false,
-    summarizeProvider: typeof config.summarizeProvider === 'string' ? config.summarizeProvider : '',
-    summarizeModel: typeof config.summarizeModel === 'string' ? config.summarizeModel : '',
-    memsearchDir: typeof config.memsearchDir === 'string' ? config.memsearchDir : '',
-    collection: typeof config.collection === 'string' ? config.collection : '',
-    milvusUri: typeof config.milvusUri === 'string' ? config.milvusUri : '',
-    agentName: typeof config.agentName === 'string' && config.agentName
-      ? config.agentName
-      : DEFAULT_AGENT_NAME,
+    summarizeMode: config.summarizeMode,
   }
 
   const memsearchCmd = detectMemsearchCmd()
+  // Resolve the effective summarize backend now: explicit summarizeMode wins;
+  // otherwise (auto) mirror the other plugins — a configured
+  // [plugins.dsh.summarize] provider selects custom-llm, else dsh-headless.
+  const resolvedSummarize = resolveSummarizeMode(memsearchCmd, opts, config)
+  opts.summarizeMode = resolvedSummarize.mode
+  if (resolvedSummarize.provider) opts.summarizeProvider = resolvedSummarize.provider
+  if (resolvedSummarize.model) opts.summarizeModel = resolvedSummarize.model
+  // Everything below comes from memsearch config / environment, mirroring the
+  // other platform plugins (no per-plugin config fields):
+  //   - memory dir:   MEMSEARCH_DIR env (explicit → global scope), else <project>/.memsearch
+  //   - collection:   derived from the project path (derive-collection.sh)
+  //   - milvus:       memsearch config [milvus] uri (CLI reads it; we only
+  //                   surface it for the skill's MILVUS_FLAG)
+  //   - agent name:   fixed display name
+  opts.agentName = DEFAULT_AGENT_NAME
+  opts.milvusUri = readMemsearchConfigValue(memsearchCmd, 'milvus.uri') || ''
+  const memoryDirFor = (projectDir) => join(memsearchDirFor(projectDir), 'memory')
+
   const collectionCache = new Map()
   const bootProjectDir = process.cwd()
-  const bootCollection = deriveCollection(bootProjectDir, opts.collection)
+  const bootCollection = deriveCollection(bootProjectDir, '')
 
   const resolveCollection = (projectDir) => {
     if (collectionCache.has(projectDir)) return collectionCache.get(projectDir)
-    const resolved = deriveCollection(projectDir, opts.collection)
+    const resolved = deriveCollection(projectDir, '')
     collectionCache.set(projectDir, resolved)
     return resolved
   }
-
-  const memsearchDirFor = (projectDir) =>
-    opts.memsearchDir || join(projectDir, '.memsearch')
-  const memoryDirFor = (projectDir) => join(memsearchDirFor(projectDir), 'memory')
 
   // --- Recall skill (always available) ---
   registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootCollection, bootProjectDir)
@@ -563,45 +731,46 @@ export function apply(ctx, config = {}) {
     { prepend: true },
   )
 
-  // --- Capture: stage each completed turn, then summarize + write ---
-  let draining = false
-  const drain = async () => {
-    if (draining) return
-    draining = true
-    try {
-      for (;;) {
-        const stages = readStages(memsearchDirFor(bootProjectDir))
-        if (stages.length === 0) break
-        const record = stages[0]
-        if (!processStage(record)) break
-        removeStage(memsearchDirFor(bootProjectDir), record.key)
-      }
-    } catch (error) {
-      ctx.logger.warn(`[memsearch] capture drain failed: ${error.message}`)
-    } finally {
-      draining = false
-    }
+  // --- Capture: summarize + write each completed turn, fire-and-forget ---
+  // Each turn is processed against its *own* project directory (from
+  // `session.header.cwd`), which on a long-lived web surface is not
+  // necessarily `process.cwd()` — the boot directory. Turns are serialized
+  // through a promise chain so LLM summarize calls never overlap. The
+  // `captureExists` dedup makes a turn idempotent even if its event replays
+  // after a restart — nothing is lost in a queue, and nothing needs draining.
+  let captureChain = Promise.resolve()
+  const enqueueCapture = (work) => {
+    captureChain = captureChain
+      .then(work)
+      .catch((error) => ctx.logger.warn(`[memsearch] capture failed: ${error.message}`))
   }
 
-  const processStage = async (record) => {
-    const projectDir = record.projectDir || bootProjectDir
+  const processTurn = async (session, turnEndEvent) => {
+    const projectDir = projectDirFor(session)
+    const render = renderTurn(session, turnEndEvent)
+    if (!render) return
+    const sessionId = session.id
+    const turn = turnEndEvent.data.turn
+    const dbPath = sessionLogPath(ctx, session)
     const memoryDir = memoryDirFor(projectDir)
-    if (captureExists(memoryDir, record.sessionId, record.turn)) return true
+    if (captureExists(memoryDir, sessionId, turn)) return
 
-    let body = record.render
+    let body = render
     if (opts.summarizeEnabled) {
       try {
-        const summary = await summarizeTurn(opts, record.render, projectDir)
+        const summary = await summarizeTurn(ctx, opts, render, projectDir)
         if (summary) {
           body = summary
         } else {
-          ctx.logger.warn('[memsearch] summarizer returned empty output; wrote raw transcript fallback')
+          ctx.logger.warn('[memsearch] summarizer returned empty output; wrote unavailable note')
+          body = '- Memory summary unavailable: summarizer returned empty output. Use the transcript anchor for progressive disclosure.'
         }
       } catch (error) {
-        ctx.logger.warn(`[memsearch] summarization failed (${error.message}); wrote raw transcript fallback`)
+        ctx.logger.warn(`[memsearch] summarization failed (${error.message}); wrote unavailable note`)
+        body = `- Memory summary unavailable: ${error.message}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
       }
     }
-    writeCapture(memoryDir, body, record.sessionId, record.turn, record.dbPath)
+    writeCapture(memoryDir, body, sessionId, turn, dbPath)
     // Index right after the write so the memory is searchable by the next
     // session (or by this one's later turns) instead of waiting for a future
     // boot-time index. The index is idempotent via chunk_hash dedup.
@@ -609,36 +778,18 @@ export function apply(ctx, config = {}) {
     if (collection && hasMemoryFiles(memoryDir)) {
       indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, opts.milvusUri)
     }
-    return true
   }
 
   if (opts.captureEnabled) {
     ctx.on('session/event', (session, event) => {
       if (event.type !== 'turn/end') return
       try {
-        const projectDir = projectDirFor(session)
-        const render = renderTurn(session, event)
-        if (!render) return
-        const sessionId = session.id
-        const turn = event.data.turn
-        const dbPath = sessionLogPath(ctx, session)
-        stageCapture(memsearchDirFor(projectDir), {
-          key: `${sessionId}:${turn}`,
-          sessionId,
-          turn,
-          render,
-          dbPath,
-          projectDir,
-        }, ctx.logger)
-        void drain()
+        enqueueCapture(() => processTurn(session, event))
       } catch (error) {
         ctx.logger.warn(`[memsearch] capture listener failed: ${error.message}`)
       }
     })
   }
-
-  // Replay any turns staged by a previous run that was interrupted mid-drain.
-  void drain()
 
   // Warm the index for this project once at startup (fire-and-forget).
   const bootMemoryDir = memoryDirFor(bootProjectDir)
@@ -646,3 +797,34 @@ export function apply(ctx, config = {}) {
     indexMemory(ctx, memsearchCmd, bootMemoryDir, bootCollection, bootProjectDir)
   }
 }
+
+// ---------------------------------------------------------------------------
+// Exports for tests / external use
+// ---------------------------------------------------------------------------
+
+/** Detect the dsh CLI command used by `summarizeMode: dsh-headless`. */
+export { detectDshCmd }
+
+/** One-shot DSH-headless summarizer (see README "dsh-headless" mode). */
+export { summarizeHeadless }
+
+/** Summarize one rendered turn with the configured backend. */
+export { summarizeTurn }
+
+/** Resolve the effective summarize backend (auto → config-driven). */
+export { resolveSummarizeMode }
+
+/** Read a dotted memsearch config value (tolerant of missing sections). */
+export { readMemsearchConfigValue }
+
+/** Render one turn's events into the shared transcript format. */
+export { renderTurn }
+
+/** True when a session/turn anchor already exists in the memory dir. */
+export { captureExists }
+
+/** Append a captured turn to the daily memory file (shared format). */
+export { writeCapture }
+
+/** Memory dir for a project (MEMSEARCH_DIR env override, else <project>/.memsearch). */
+export { memsearchDirFor }

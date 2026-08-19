@@ -27,6 +27,9 @@
     "cordis",
     "plugin"
   ],
+  "scripts": {
+    "test": "node --test tests/index.test.js"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

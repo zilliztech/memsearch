@@ -44,6 +44,8 @@ def test_default_config():
     assert cfg.plugins.codex.project_review.input_dir == ".memsearch/memory"
     assert cfg.plugins.codex.project_review.output_file == ".memsearch/PROJECT.md"
     assert cfg.plugins.codex.user_profile.output_file == ".memsearch/USER.md"
+    assert cfg.plugins.dsh.summarize.provider == ""
+    assert cfg.plugins.dsh.summarize.model == ""
 
 
 def test_load_toml_file(tmp_path: Path):
@@ -254,12 +256,14 @@ def test_plugin_summarize_model_config_roundtrip(tmp_path: Path, monkeypatch: py
     set_config_value("plugins.codex.summarize.model", "gpt-5.1-codex-mini")
     set_config_value("plugins.opencode.summarize.model", "anthropic/claude-haiku")
     set_config_value("plugins.openclaw.summarize.model", "qwen3-coder")
+    set_config_value("plugins.dsh.summarize.model", "deepseek-v4-flash")
 
     cfg = resolve_config()
     assert cfg.plugins.claude_code.summarize.model == "claude-haiku-4-5"
     assert cfg.plugins.codex.summarize.model == "gpt-5.1-codex-mini"
     assert cfg.plugins.opencode.summarize.model == "anthropic/claude-haiku"
     assert cfg.plugins.openclaw.summarize.model == "qwen3-coder"
+    assert cfg.plugins.dsh.summarize.model == "deepseek-v4-flash"
     assert get_config_value("plugins.claude-code.summarize.model", cfg) == "claude-haiku-4-5"
 
     saved = load_config_file(cfg_path)

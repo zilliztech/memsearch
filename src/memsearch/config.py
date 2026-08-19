@@ -203,6 +203,7 @@ class PluginsConfig:
     codex: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     opencode: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     openclaw: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    dsh: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
 
 
 @dataclass
@@ -239,12 +240,14 @@ _PLUGIN_KEY_TO_FIELD = {
     "codex": "codex",
     "opencode": "opencode",
     "openclaw": "openclaw",
+    "dsh": "dsh",
 }
 _PLUGIN_FIELD_TO_KEY = {
     "claude_code": "claude-code",
     "codex": "codex",
     "opencode": "opencode",
     "openclaw": "openclaw",
+    "dsh": "dsh",
 }
 
 

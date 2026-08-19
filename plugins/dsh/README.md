@@ -6,7 +6,7 @@ markdown store used by the Claude Code, Codex, OpenClaw, and OpenCode plugins,
 backed by a Milvus hybrid search index.
 
 ```
-capture  ── session/event turn/end ──> summarize.py (reuses [llm.providers.*]) ──> memory/YYYY-MM-DD.md
+capture  ── session/event turn/end ──> summarize (dsh-headless agent default, or custom-llm) ──> memory/YYYY-MM-DD.md
 inject   ── agent/pre-step step 1  ──> memsearch search ──> relevant chunks injected (zero cost otherwise)
 recall   ── ctx.skills.register(memory-recall) ──> search → expand → transcript
 ```
@@ -72,44 +72,93 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | --- | --- | --- | --- |
 | `captureEnabled` | bool | `true` | Capture completed turns into memory. |
 | `injectEnabled` | bool | `true` | Inject relevant memory before each turn's first step. |
-| `summarizeEnabled` | bool | `true` | Summarize turns with a memsearch-managed LLM. |
-| `summarizeProvider` | string | `''` | Name of an `[llm.providers.*]` entry used for summarization. |
-| `summarizeModel` | string | `''` | Model override for summarization. |
-| `memsearchDir` | string | `<project>/.memsearch` | Override the memory directory. |
-| `collection` | string | derived | Override the Milvus collection name. |
-| `milvusUri` | string | `''` | Point search/index at a dedicated Milvus (URI or path) instead of memsearch's own config. Useful to isolate a profile's memory or target a shared Milvus Server. |
-| `agentName` | string | `DeepSeek Harness` | Display name in the summarize prompt. |
+| `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
+| `summarizeMode` | string | `auto` | Summarizer backend. `auto` (default) mirrors the other platform plugins: if `[plugins.dsh.summarize] provider` is set in memsearch config, it uses `custom-llm`; otherwise `dsh-headless` (zero-config DSH agent). Explicit `dsh-headless` / `custom-llm` pin the backend. |
+
+Everything else — provider/model, Milvus, collection, memory dir — comes from
+**memsearch config / environment**, exactly like the other platform plugins
+(no per-plugin config fields):
+
+- **Summarize provider/model** → `[plugins.dsh.summarize] provider` / `model`
+  in `~/.memsearch/config.toml` (or `[llm.providers.*]`; see the
+  `custom-llm` section below).
+- **Milvus** → `[milvus] uri` in memsearch config.
+- **Collection** → derived from the project path (`derive-collection.sh`),
+  or `--collection` passed to the memsearch CLI.
+- **Memory dir** → `MEMSEARCH_DIR` env (explicit → global scope), else
+  `<project>/.memsearch`.
 
 Example override layer (add this to the profile's own `cordis.patch.yml`):
 
 ```yaml
 - id: memsearch
   config:
-    summarizeProvider: deepseek
+    summarizeMode: dsh-headless   # pin the headless backend (default is auto)
 ```
 
-### Summarization provider resolution
+### Summarization modes
 
-Summarization reuses memsearch's `[llm.providers.*]` configuration — the same
-entries the other platform plugins use — so DSH adds no separate LLM setup.
-Provider selection (most specific first):
+Two backends are available, selected by `summarizeMode` — the same
+"configured choice" the Claude Code / Codex / OpenClaw / OpenCode plugins
+offer (each can summarize with their own LLM or a headless agent + small
+model). The default (`auto`) matches theirs: configure a provider and you get
+a direct LLM call; configure nothing and you get a headless agent.
 
-1. `summarizeProvider` — looked up in `[llm.providers.<name>]`; a missing
-   entry fails loudly (visible error), never a silent empty write.
-2. `llm.provider` when it names a configured provider or is a raw type.
-3. `compact.llm_provider` (deprecated) or `openai` as a final default.
+- **`auto`** (default) — mirrors the other platform plugins:
+  - if `[plugins.dsh.summarize] provider` is set in memsearch config
+    (`~/.memsearch/config.toml`, same place the other plugins read), use
+    `custom-llm` with that provider/model;
+  - otherwise use `dsh-headless` (zero-config DSH agent).
+  This means the plugin behaves like the other four: **configure a provider
+  → direct LLM; configure nothing → headless**.
+- **`dsh-headless`** — boots a one-shot DSH headless agent
+  (`dsh --profile headless "<summarize task>"`) to write the notes, mirroring
+  how the other plugins reuse their own agent's headless mode. Zero-config for
+  anyone already using DSH: the sub-agent's model is the deployment's
+  `agent-default-model` — the user layer of `~/.dsh/settings.yaml` (the same
+  selection the Web UI model settings write) wins over any patch, so **the
+  `[plugins.dsh.summarize]` provider/model do NOT apply here** — change the
+  model in DSH settings (`agent-default-model:` in `~/.dsh/settings.yaml`, or
+  the Web UI model picker) instead. The boot is asynchronous and fire-and-forget,
+  so the few seconds of headless startup never block the conversation. Requires
+  `dsh` on PATH or `DSH_CLI` set to the CLI
+  entry. The sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`; the plugin
+  checks that flag and stays inert (no capture / inject / skill) inside the
+  summarizer, so the summarizer's own session is never re-captured in a loop.
+- **`custom-llm`** — `scripts/summarize.py` imports memsearch's
+  `[llm.providers.*]` config and calls the LLM directly. Lightweight: one
+  python process, no DSH boot, no extra CLI dependency. Choose this when you
+  want a specific small model (e.g. an official `deepseek-v4-flash` key in
+  memsearch config) without booting an agent. Provider selection
+  (most specific first):
+  1. `[plugins.dsh.summarize] provider` (or the `summarizeProvider` CLI
+     argument summarize.py receives from it) — looked up in
+     `[llm.providers.<name>]`; a missing entry fails loudly (visible error),
+     never a silent empty write.
+  2. `llm.provider` when it names a configured provider or is a raw type.
+  3. `compact.llm_provider` (deprecated) or `openai` as a final default.
 
-A failed summarization writes the raw turn as a fallback so memory is never
-lost, and logs a visible warning through the DSH logger.
+There is **no automatic fallback between modes**: the backend you configure
+(or auto resolves) is the backend used. If it fails (missing dsh CLI, bad
+provider config), a short unavailable note is written with the reason — the
+plugin never silently switches to an LLM you did not configure.
+
+A failed summarization writes a short unavailable note (mirroring Claude
+Code's behavior — memory stays clean, the transcript anchor keeps the raw
+content reachable for progressive disclosure), and logs a visible warning
+through the DSH logger.
 
 ## How it works
 
 - **Capture** — listens on `session/event` for `turn/end`, renders the turn
-  (`[User]` / `[Assistant]` / `[Tool call]` lines), stages it durably in
-  `<memsearchDir>/.dsh-capture.jsonl`, then asynchronously summarizes and
-  appends it to `memory/YYYY-MM-DD.md` with the shared anchor format
-  `<!-- session:<id> turn:<N> db:<path> -->`. Turns staged by a run that was
-  interrupted mid-drain are replayed on the next plugin load.
+  (`[User]` / `[Assistant]` / `[Tool call]` lines), then fire-and-forget
+  summarizes (if enabled) and appends it to the **session's own**
+  `memory/YYYY-MM-DD.md` with the shared anchor format
+  `<!-- session:<id> turn:<N> db:<path> -->`. The project directory comes from
+  `session.header.cwd`, so a long-lived web surface captures every project it
+  hosts, not just the process's boot directory. Turns are serialized (LLM
+  summarize calls never overlap) and `captureExists` dedup makes each turn
+  idempotent across restarts — there is no staging queue to drain or lose.
 - **Inject** — on `agent/pre-step` at step 1, runs a bounded memsearch search
   over the user's question. Only when relevant chunks exist does it inject
   them plus a `[memsearch] Memory available.` hint; otherwise the decision is

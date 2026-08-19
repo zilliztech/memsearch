@@ -10,15 +10,22 @@
     - id: memsearch
       name: 'memsearch-dsh'
       config:
-        # Optional overrides — see README.md for the full set:
-        #   captureEnabled (bool, default true)
-        #   injectEnabled (bool, default true)
-        #   summarizeEnabled (bool, default true)
-        #   summarizeProvider (string, default '')  -> name of an [llm.providers.*] entry
-        #   summarizeModel (string, default '')      -> model override for summarization
-        #   memsearchDir (string, default '')        -> override <project>/.memsearch
-        #   collection (string, default '')          -> override the Milvus collection name
-        #   milvusUri (string, default '')           -> point search/index at a dedicated Milvus
-        #                                               (uri or path) instead of memsearch's config
-        #   agentName (string, default 'DeepSeek Harness')
+        # Optional overrides — see README.md for the full set. Everything else
+        # (summarize provider/model, Milvus, collection, memory dir) comes from
+        # memsearch config / environment, mirroring the other platform plugins.
+        #   captureEnabled (bool, default true)   — capture completed turns
+        #   injectEnabled (bool, default true)    — inject relevant memory
+        #   summarizeEnabled (bool, default true) — summarize turns before writing
+        #   summarizeMode (string, default 'auto')
+        #       -> 'auto'         if [plugins.dsh.summarize] provider is set in
+        #                          memsearch config → custom-llm, else
+        #                          dsh-headless (zero-config)
+        #       -> 'dsh-headless' one-shot dsh headless agent; the model is the
+        #                          user's DSH default from settings.yaml
+        #                          `agent-default-model`. Missing CLI fails
+        #                          visibly (unavailable note), never a silent
+        #                          switch to another backend.
+        #       -> 'custom-llm'   reuse memsearch [llm.providers.*] (lightweight
+        #                          direct LLM call; provider/model from
+        #                          [plugins.dsh.summarize] in memsearch config)
         {}
