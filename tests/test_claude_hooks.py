@@ -1213,3 +1213,132 @@ exit 0
     # No latest version known, so no hint is claimed either way.
     for run in (first, second):
         assert "UPDATE:" not in json.loads(run.stdout)["systemMessage"]
+
+
+COMMON_SH_PLUGINS = ["plugins/claude-code/hooks/common.sh", "plugins/codex/hooks/common.sh"]
+
+
+def _spawn_fake_watcher(tmp_path: Path, target: Path) -> subprocess.Popen[bytes]:
+    """Start a stub standing in for `memsearch watch <target>`.
+
+    Its argv contains "memsearch" so the reaper's PID-reuse guard recognises it,
+    and start_new_session mirrors the setsid/nohup launch in start_watch, which
+    makes it a process-group leader so _kill_tree's group kill has a group.
+    """
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir(exist_ok=True)
+    stub = stub_dir / "memsearch"
+    _write_executable(stub, "#!/usr/bin/env bash\nsleep 300\n")
+    return subprocess.Popen([str(stub), "watch", str(target)], start_new_session=True)
+
+
+def _run_registry_snippet(
+    common_sh: str, snippet: str, env: dict[str, str], *args: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "-c", f'source "$1" < /dev/null\n{snippet}', "bash", common_sh, *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+
+def _registry_env(tmp_path: Path, project: Path, state_dir: Path) -> dict[str, str]:
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    return {
+        **os.environ,
+        "HOME": str(home),
+        "CLAUDE_PROJECT_DIR": str(project),
+        "MEMSEARCH_STATE_DIR": str(state_dir),
+        "MEMSEARCH_DISABLE": "",
+    }
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SH_PLUGINS, ids=["claude-code", "codex"])
+def test_watch_registry_lives_outside_the_watched_tree(tmp_path: Path, common_sh: str) -> None:
+    """The handle used to reap a watcher must outlive the directory it watches.
+
+    A pidfile stored under the project tree is destroyed with that tree (e.g.
+    `git worktree remove`), which is exactly when reaping is needed.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    state_dir = tmp_path / "state"
+
+    result = _run_registry_snippet(
+        common_sh,
+        'printf "%s\\n%s\\n" "$WATCH_REGISTRY_DIR" "$MEMSEARCH_DIR"',
+        _registry_env(tmp_path, project, state_dir),
+    )
+    registry_dir, memsearch_dir = result.stdout.splitlines()
+
+    assert Path(registry_dir) == state_dir / "watchers"
+    assert not Path(registry_dir).is_relative_to(project)
+    assert not Path(registry_dir).is_relative_to(memsearch_dir)
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SH_PLUGINS, ids=["claude-code", "codex"])
+def test_reap_stale_watchers_kills_watcher_whose_target_is_gone(tmp_path: Path, common_sh: str) -> None:
+    """Positive control: the removed-worktree case the in-tree pidfile cannot reach."""
+    project = tmp_path / "project"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    state_dir = tmp_path / "state"
+
+    watcher = _spawn_fake_watcher(tmp_path, memory)
+    try:
+        _run_registry_snippet(
+            common_sh,
+            '_watch_registry_record "$2" "$3"',
+            _registry_env(tmp_path, project, state_dir),
+            str(watcher.pid),
+            str(memory),
+        )
+        entry = state_dir / "watchers" / f"{watcher.pid}.pid"
+        assert entry.exists(), "recording a watcher must create its registry entry"
+
+        shutil.rmtree(project)  # the worktree goes away, taking the in-tree pidfile with it
+
+        _run_registry_snippet(common_sh, "reap_stale_watchers", _registry_env(tmp_path, project, state_dir))
+        assert watcher.wait(timeout=10) is not None
+        assert not entry.exists()
+    finally:
+        if watcher.poll() is None:
+            watcher.kill()
+            watcher.wait(timeout=10)
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SH_PLUGINS, ids=["claude-code", "codex"])
+def test_reap_stale_watchers_leaves_live_watchers_alone(tmp_path: Path, common_sh: str) -> None:
+    """Negative control: a watcher whose target still exists must survive the sweep.
+
+    Without this, a reaper that killed everything unconditionally would pass the
+    positive control above.
+    """
+    project = tmp_path / "project"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    state_dir = tmp_path / "state"
+
+    watcher = _spawn_fake_watcher(tmp_path, memory)
+    try:
+        _run_registry_snippet(
+            common_sh,
+            '_watch_registry_record "$2" "$3"',
+            _registry_env(tmp_path, project, state_dir),
+            str(watcher.pid),
+            str(memory),
+        )
+        entry = state_dir / "watchers" / f"{watcher.pid}.pid"
+        assert entry.exists()
+
+        _run_registry_snippet(common_sh, "reap_stale_watchers", _registry_env(tmp_path, project, state_dir))
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            watcher.wait(timeout=1)
+        assert entry.exists(), "a live watcher must keep its registry entry"
+    finally:
+        watcher.kill()
+        watcher.wait(timeout=10)
