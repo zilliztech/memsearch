@@ -80,7 +80,7 @@ Writing to: /home/user/.memsearch/config.toml
   Collection name [memsearch_chunks]:
 
 -- Embedding --
-  Provider (openai/google/voyage/jina/mistral/ollama/local/onnx) [openai]:
+  Provider (openai/orcarouter/google/voyage/jina/mistral/ollama/local/onnx) [openai]:
   Model (empty for provider default) []:
 
 -- Chunking --
