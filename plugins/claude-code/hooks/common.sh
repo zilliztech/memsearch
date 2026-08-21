@@ -289,7 +289,16 @@ kill_orphaned_index() {
 
 # --- Watch singleton management ---
 
+# Legacy pidfile. It lives inside the tree it manages, so it is destroyed along
+# with that tree (e.g. `git worktree remove`) and the watcher is left running
+# with no handle to reap it. Still read below so upgrading does not strand a
+# watcher that an older version started.
 WATCH_PIDFILE="$MEMSEARCH_DIR/.watch.pid"
+
+# Registry of running watchers, kept OUTSIDE any watched tree so that deleting a
+# project directory cannot take the only handle to its watcher with it. One file
+# per watcher, named for its PID, containing "<pid>\n<target dir>".
+WATCH_REGISTRY_DIR="${MEMSEARCH_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/memsearch}/watchers"
 
 # Kill a process and its entire process group to avoid orphans
 _kill_tree() {
@@ -298,23 +307,103 @@ _kill_tree() {
   kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
 }
 
+# Best-effort guard against PID reuse: a recorded PID may have been recycled by
+# an unrelated process before we get to signal it. Succeeds when the process
+# cannot be inspected at all, which is the unconditional behaviour this
+# replaces rather than a regression.
+_watch_pid_is_ours() {
+  local pid="$1" cmd=""
+  cmd="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+  case "$cmd" in
+    "") return 0 ;;
+    *memsearch*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_watch_registry_record() {
+  local pid="$1" target="$2"
+  mkdir -p "$WATCH_REGISTRY_DIR" 2>/dev/null || return 0
+  printf '%s\n%s\n' "$pid" "$target" > "$WATCH_REGISTRY_DIR/$pid.pid" 2>/dev/null || true
+}
+
+_watch_registry_forget() {
+  rm -f "$WATCH_REGISTRY_DIR/$1.pid" 2>/dev/null || true
+}
+
+# Reap watchers whose target directory no longer exists. This is the
+# removed-worktree case, which neither the in-tree pidfile (deleted with the
+# tree) nor a "$MEMORY_DIR"-scoped pgrep (no live session ever has that
+# MEMORY_DIR again) can reach. Uses no pgrep, so it also covers platforms where
+# pgrep is unavailable.
+reap_stale_watchers() {
+  [ -d "$WATCH_REGISTRY_DIR" ] || return 0
+  local entry pid target
+  for entry in "$WATCH_REGISTRY_DIR"/*.pid; do
+    [ -f "$entry" ] || continue
+    pid="$(sed -n '1p' "$entry" 2>/dev/null || true)"
+    target="$(sed -n '2p' "$entry" 2>/dev/null || true)"
+    if [ -z "$pid" ]; then
+      rm -f "$entry" 2>/dev/null || true
+      continue
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$entry" 2>/dev/null || true
+      continue
+    fi
+    if [ -n "$target" ] && [ ! -d "$target" ]; then
+      if _watch_pid_is_ours "$pid"; then
+        _kill_tree "$pid"
+      fi
+      rm -f "$entry" 2>/dev/null || true
+    fi
+  done
+}
+
+# Kill any registered watcher whose target is this MEMORY_DIR.
+_stop_registered_watchers_for_memory_dir() {
+  [ -d "$WATCH_REGISTRY_DIR" ] || return 0
+  local entry pid target
+  for entry in "$WATCH_REGISTRY_DIR"/*.pid; do
+    [ -f "$entry" ] || continue
+    pid="$(sed -n '1p' "$entry" 2>/dev/null || true)"
+    target="$(sed -n '2p' "$entry" 2>/dev/null || true)"
+    if [ -z "$pid" ]; then
+      rm -f "$entry" 2>/dev/null || true
+      continue
+    fi
+    if [ "$target" = "$MEMORY_DIR" ]; then
+      if kill -0 "$pid" 2>/dev/null && _watch_pid_is_ours "$pid"; then
+        _kill_tree "$pid"
+      fi
+      rm -f "$entry" 2>/dev/null || true
+    fi
+  done
+}
+
 # Stop the watch process: pidfile first, then sweep for orphans
 stop_watch() {
   # Skip watch management in child claude -p processes (e.g. stop.sh summarization)
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
     return 0
   fi
-  # 1. Kill the process recorded in pidfile
+  # 1. Kill the process recorded in the legacy in-tree pidfile
   if [ -f "$WATCH_PIDFILE" ]; then
     local pid
-    pid=$(cat "$WATCH_PIDFILE" 2>/dev/null)
+    pid="$(cat "$WATCH_PIDFILE" 2>/dev/null || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       _kill_tree "$pid"
+    fi
+    if [ -n "$pid" ]; then
+      _watch_registry_forget "$pid"
     fi
     rm -f "$WATCH_PIDFILE"
   fi
 
-  # 2. Sweep for orphaned watch processes targeting this MEMORY_DIR
+  # 2. Kill any registered watcher for this MEMORY_DIR
+  _stop_registered_watchers_for_memory_dir
+
+  # 3. Sweep for orphaned watch processes targeting this MEMORY_DIR
   local orphans
   orphans=$(pgrep -f "memsearch watch $MEMORY_DIR" 2>/dev/null || true)
   if [ -n "$orphans" ]; then
@@ -330,6 +419,10 @@ start_watch() {
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
     return 0
   fi
+
+  # Reap watchers stranded by a deleted project tree before starting a new one.
+  reap_stale_watchers
+
   if [ -z "$MEMSEARCH_CMD" ]; then
     return 0
   fi
@@ -356,5 +449,7 @@ start_watch() {
   else
     $launch_prefix $MEMSEARCH_CMD watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
   fi
-  echo $! > "$WATCH_PIDFILE"
+  local _watch_pid=$!
+  echo "$_watch_pid" > "$WATCH_PIDFILE"
+  _watch_registry_record "$_watch_pid" "$MEMORY_DIR"
 }
