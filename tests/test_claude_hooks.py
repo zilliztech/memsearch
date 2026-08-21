@@ -74,7 +74,8 @@ exit 0
         check=True,
     )
 
-    return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    payload = json.loads(result.stdout)
+    return payload.get("hookSpecificOutput", {}).get("additionalContext", "")
 
 
 def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Path) -> None:
@@ -300,6 +301,33 @@ def test_claude_session_start_recent_memory_prioritizes_newest_journal(tmp_path:
     assert "TODAY_LATEST_MARKER" in context
     assert "OLD_DAY_MARKER" not in context
     assert len(context.encode("utf-8")) <= 1800
+
+
+def test_claude_session_start_does_not_fall_back_when_newest_entry_exceeds_budget(tmp_path: Path) -> None:
+    newest = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 17:00",
+            "### 17:00",
+            f"- NEWEST_OVERSIZED_ENTRY {'x' * 2000}",
+            "",
+        ]
+    )
+    older = """# 2026-08-18
+
+## Session 16:00
+### 16:00
+- OLD_DAY_MARKER
+"""
+
+    context = _run_claude_session_start_with_memory(
+        tmp_path,
+        {"2026-08-18.md": older, "2026-08-19.md": newest},
+    )
+
+    assert "OLD_DAY_MARKER" not in context
+    assert context == ""
 
 
 def test_claude_session_start_recent_memory_trims_utf8_on_line_boundaries(tmp_path: Path) -> None:

@@ -129,6 +129,8 @@ PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
 RECENT_MEMORY_MAX_LINES=40
+# Claude Code head-truncates inline hook context at roughly 2 KB.
+# Keep a safety margin below the observed threshold from #684.
 RECENT_MEMORY_MAX_BYTES=1800
 
 _byte_len() {
@@ -164,12 +166,13 @@ _tail_lines_within_bytes() {
 
 _recent_memory_preview() {
   local file="$1" max_lines="${2:-40}" max_bytes="${3:-0}"
+  local candidate trimmed
 
   if [ "$max_bytes" -le 0 ]; then
     return 0
   fi
 
-  awk '
+  candidate=$(awk '
     function flush_section() {
       if (section_len > 0 && has_body) {
         for (i = 1; i <= section_len; i++) {
@@ -201,7 +204,23 @@ _recent_memory_preview() {
     END {
       flush_section()
     }
-  ' "$file" 2>/dev/null | tail -n "$max_lines" | _tail_lines_within_bytes "$max_bytes" || true
+  ' "$file" 2>/dev/null | tail -n "$max_lines" || true)
+
+  # No useful recent-memory content in this journal. The caller may try
+  # an older journal.
+  if [ -z "$candidate" ]; then
+    return 0
+  fi
+
+  trimmed=$(printf '%s\n' "$candidate" | _tail_lines_within_bytes "$max_bytes")
+
+  # Candidate content exists, but even its newest complete line does not fit.
+  # Signal the caller not to fall back to an older journal.
+  if [ -z "$trimmed" ]; then
+    return 2
+  fi
+
+  printf '%s' "$trimmed"
 }
 
 # The session heading is written lazily by stop.sh on the first
@@ -260,6 +279,7 @@ recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATT
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
+  has_recent_memory=false
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
@@ -271,14 +291,26 @@ if [ -n "$recent_files" ]; then
     fi
     # Extract recent non-empty session sections. Legacy journals may contain
     # empty headings, but they do not carry useful context.
-    content=$(_recent_memory_preview "$f" "$RECENT_MEMORY_MAX_LINES" "$content_budget")
-    if [ -n "$content" ]; then
-      context+="$file_header$content\n\n"
+    content=""
+    if content=$(_recent_memory_preview "$f" "$RECENT_MEMORY_MAX_LINES" "$content_budget"); then
+      if [ -n "$content" ]; then
+        context+="$file_header$content\n\n"
+        has_recent_memory=true
+      fi
+    else
+      preview_status=$?
+      if [ "$preview_status" -eq 2 ]; then
+        break
+      fi
     fi
     if [ "$(_byte_len "$context")" -ge "$RECENT_MEMORY_MAX_BYTES" ]; then
       break
     fi
   done <<< "$recent_files"
+
+  if [ "$has_recent_memory" != true ]; then
+    context=""
+  fi
 fi
 
 # Note: Detailed memory search is handled by the memory-recall skill (pull-based).
