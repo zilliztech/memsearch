@@ -33,6 +33,51 @@ def _write_claude_transcript(path: Path, *, turn_uuid: str) -> None:
     )
 
 
+def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str]) -> str:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memory = tmp_path / ".memsearch" / "memory"
+    home.mkdir()
+    fake_bin.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    memory.mkdir(parents=True)
+
+    for name, content in journals.items():
+        (memory / name).write_text(content, encoding="utf-8")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"","api_key":""},"milvus":{"uri":"http://localhost:19530"}}'
+  exit 0
+fi
+exit 0
+""",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_NO_WATCH": "1",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    payload = json.loads(result.stdout)
+    return payload.get("hookSpecificOutput", {}).get("additionalContext", "")
+
+
 def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Path) -> None:
     script = Path("plugins/claude-code/hooks/session-start.sh")
     env = {
@@ -200,6 +245,108 @@ exit 0
     assert "Scratch content should not displace daily journals." not in context
     assert "Session 09:00" not in context
     assert "Session 09:02" not in context
+
+
+def test_claude_session_start_recent_memory_keeps_latest_entries_within_budget(tmp_path: Path) -> None:
+    filler = "x" * 180
+    journal = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 09:00",
+            "### 09:00",
+            "- OLDEST_ENTRY",
+            *[f"- {filler}-{index}" for index in range(30)],
+            "",
+            "## Session 17:00",
+            "### 17:00",
+            "- LATEST_ENTRY",
+            "",
+        ]
+    )
+
+    context = _run_claude_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
+
+    assert "LATEST_ENTRY" in context
+    assert "OLDEST_ENTRY" not in context
+    assert len(context.encode("utf-8")) <= 1800
+
+
+def test_claude_session_start_recent_memory_prioritizes_newest_journal(tmp_path: Path) -> None:
+    filler = "x" * 180
+    newest = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 17:00",
+            "### 17:00",
+            *[f"- {filler}-{index}" for index in range(20)],
+            "- TODAY_LATEST_MARKER",
+            "",
+        ]
+    )
+    older_filler = "x" * 180
+    older = f"""# 2026-08-18
+
+## Session 17:00
+### 17:00
+- OLD_DAY_MARKER {older_filler}
+"""
+
+    context = _run_claude_session_start_with_memory(
+        tmp_path,
+        {"2026-08-18.md": older, "2026-08-19.md": newest},
+    )
+
+    assert "TODAY_LATEST_MARKER" in context
+    assert "OLD_DAY_MARKER" not in context
+    assert len(context.encode("utf-8")) <= 1800
+
+
+def test_claude_session_start_does_not_fall_back_when_newest_entry_exceeds_budget(tmp_path: Path) -> None:
+    newest = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 17:00",
+            "### 17:00",
+            f"- NEWEST_OVERSIZED_ENTRY {'x' * 2000}",
+            "",
+        ]
+    )
+    older = """# 2026-08-18
+
+## Session 16:00
+### 16:00
+- OLD_DAY_MARKER
+"""
+
+    context = _run_claude_session_start_with_memory(
+        tmp_path,
+        {"2026-08-18.md": older, "2026-08-19.md": newest},
+    )
+
+    assert "OLD_DAY_MARKER" not in context
+    assert context == ""
+
+
+def test_claude_session_start_recent_memory_trims_utf8_on_line_boundaries(tmp_path: Path) -> None:
+    journal = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 17:00",
+            "### 17:00",
+            *[f"- 用户讨论了新的检索策略 需要保留完整中文内容 {index}" for index in range(50)],
+            "- 最新记录: 需要优先保存",
+            "",
+        ]
+    )
+
+    context = _run_claude_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
+
+    assert "最新记录" in context
+    assert len(context.encode("utf-8")) <= 1800
 
 
 def test_claude_session_start_uv_tool_upgrade_hint_preserves_extras(tmp_path: Path) -> None:

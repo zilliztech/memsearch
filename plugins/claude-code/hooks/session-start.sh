@@ -128,9 +128,51 @@ fi
 PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
+RECENT_MEMORY_MAX_LINES=40
+# Claude Code head-truncates inline hook context at roughly 2 KB.
+# Keep a safety margin below the observed threshold from #684.
+RECENT_MEMORY_MAX_BYTES=1800
+
+_byte_len() {
+  LC_ALL=C printf '%s' "$1" | wc -c | tr -d '[:space:]'
+}
+
+_tail_lines_within_bytes() {
+  local max_bytes="$1"
+  LC_ALL=C awk -v budget="$max_bytes" '
+    {
+      lines[NR] = $0
+      sizes[NR] = length($0) + 1
+    }
+
+    END {
+      total = 0
+      start = NR + 1
+
+      for (i = NR; i >= 1; i--) {
+        if (total + sizes[i] > budget) {
+          break
+        }
+        total += sizes[i]
+        start = i
+      }
+
+      for (i = start; i <= NR; i++) {
+        print lines[i]
+      }
+    }
+  '
+}
+
 _recent_memory_preview() {
-  local file="$1" max_lines="${2:-40}"
-  awk '
+  local file="$1" max_lines="${2:-40}" max_bytes="${3:-0}"
+  local candidate trimmed
+
+  if [ "$max_bytes" -le 0 ]; then
+    return 0
+  fi
+
+  candidate=$(awk '
     function flush_section() {
       if (section_len > 0 && has_body) {
         for (i = 1; i <= section_len; i++) {
@@ -162,7 +204,23 @@ _recent_memory_preview() {
     END {
       flush_section()
     }
-  ' "$file" 2>/dev/null | tail -n "$max_lines" || true
+  ' "$file" 2>/dev/null | tail -n "$max_lines" || true)
+
+  # No useful recent-memory content in this journal. The caller may try
+  # an older journal.
+  if [ -z "$candidate" ]; then
+    return 0
+  fi
+
+  trimmed=$(printf '%s\n' "$candidate" | _tail_lines_within_bytes "$max_bytes")
+
+  # Candidate content exists, but even its newest complete line does not fit.
+  # Signal the caller not to fall back to an older journal.
+  if [ -z "$trimmed" ]; then
+    return 2
+  fi
+
+  printf '%s' "$trimmed"
 }
 
 # The session heading is written lazily by stop.sh on the first
@@ -221,16 +279,38 @@ recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATT
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"
+  has_recent_memory=false
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     basename_f=$(basename "$f")
+    file_header="## $basename_f\n"
+    used_bytes=$(_byte_len "$context$file_header\n\n")
+    content_budget=$((RECENT_MEMORY_MAX_BYTES - used_bytes))
+    if [ "$content_budget" -le 0 ]; then
+      break
+    fi
     # Extract recent non-empty session sections. Legacy journals may contain
     # empty headings, but they do not carry useful context.
-    content=$(_recent_memory_preview "$f" 40)
-    if [ -n "$content" ]; then
-      context+="## $basename_f\n$content\n\n"
+    content=""
+    if content=$(_recent_memory_preview "$f" "$RECENT_MEMORY_MAX_LINES" "$content_budget"); then
+      if [ -n "$content" ]; then
+        context+="$file_header$content\n\n"
+        has_recent_memory=true
+      fi
+    else
+      preview_status=$?
+      if [ "$preview_status" -eq 2 ]; then
+        break
+      fi
+    fi
+    if [ "$(_byte_len "$context")" -ge "$RECENT_MEMORY_MAX_BYTES" ]; then
+      break
     fi
   done <<< "$recent_files"
+
+  if [ "$has_recent_memory" != true ]; then
+    context=""
+  fi
 fi
 
 # Note: Detailed memory search is handled by the memory-recall skill (pull-based).
