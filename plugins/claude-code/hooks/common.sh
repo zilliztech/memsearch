@@ -157,12 +157,13 @@ _installed_version_from_dist_info() {
   done
 }
 
-# Latest memsearch version on PyPI, cached for 24h. Keeps the update hint
-# current without making every session start wait on a network round trip: an
-# unreachable PyPI otherwise costs the full curl timeout on every start.
-# Prints nothing when the lookup fails.
+# Latest memsearch version on PyPI, cached for 24h and refreshed off the
+# blocking path. Keeps the update hint current without making any session start
+# wait on a network round trip: a cache older than a day is still printed, and
+# the refresh runs in a detached child, so the hint is at most one session
+# stale. Prints nothing until the first lookup has answered.
 _pypi_latest_version() {
-  local cache="$HOME/.memsearch/.pypi-latest" latest json
+  local cache="$HOME/.memsearch/.pypi-latest" last
   # A cache file younger than a day is authoritative even when it is empty: an
   # empty file records a lookup that failed, so an offline machine stops
   # re-paying the curl timeout on every session start.
@@ -170,11 +171,23 @@ _pypi_latest_version() {
     cat "$cache" 2>/dev/null || true
     return 0
   fi
-  json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
-  latest=$(_json_val "$json" "info.version" "")
+  last=$(cat "$cache" 2>/dev/null || true)
   mkdir -p "$(dirname "$cache")" 2>/dev/null || true
-  printf '%s' "$latest" > "$cache" 2>/dev/null || true
-  printf '%s' "$latest"
+  # Claim the refresh by marking the cache fresh before detaching, so parallel
+  # session starts do not each spawn their own lookup. The child replaces the
+  # contents; a child that dies leaves the previous answer, one day stale.
+  touch "$cache" 2>/dev/null || true
+  # Both fds must be redirected. The hook runner keeps a pipe on the hook's
+  # stderr, so `child >/dev/null &` still holds the session start open until the
+  # child exits (measured in #676). Same form as the Lite-mode index subshell.
+  (
+    local json latest
+    json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
+    latest=$(_json_val "$json" "info.version" "")
+    printf '%s' "$latest" > "$cache.$$" 2>/dev/null &&
+      mv -f "$cache.$$" "$cache" 2>/dev/null
+  ) >/dev/null 2>&1 &
+  printf '%s' "$last"
 }
 
 # Return a concise user-facing warning when the persisted index state says
