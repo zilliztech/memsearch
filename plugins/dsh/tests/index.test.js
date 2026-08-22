@@ -776,3 +776,124 @@ test('registerSkillReviewRoutes: POST review with unknown session returns 404', 
     else process.env.MEMSEARCH_DIR = prev
   }
 })
+
+test('registerSkillReviewRoutes: POST open-memsearch opens existing dir, 404 for missing', async () => {
+  const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-open-')
+  fs.mkdirSync(`${tmp}/.memsearch`, { recursive: true })
+  const routes = {}
+  const webServer = { register: (r) => { routes[r.path] = r } }
+  let opened = null
+  const ctx = {
+    agents: { get: () => undefined },
+    logger: { warn: (m) => { opened = m } },
+  }
+  const { registerSkillReviewRoutes } = await import('../index.js')
+  const prev = process.env.MEMSEARCH_DIR
+  process.env.MEMSEARCH_DIR = tmp
+  const { execFile } = await import('node:child_process')
+  // stub execFile so xdg-open doesn't actually fire
+  const { registerSkillReviewRoutes: real } = await import('../index.js')
+  try {
+    registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+    const route = routes['/memsearch-dsh/open-memsearch']
+    assert.ok(route, 'open-memsearch route registered')
+    const { EventEmitter } = await import('node:events')
+
+    // existing dir
+    const req1 = Object.assign(new EventEmitter(), { method: 'POST' })
+    const res1 = { writeHead: (s) => { res1.status = s }, end: (b) => { res1.body = JSON.parse(b) } }
+    const done1 = route.handler(req1, res1)
+    req1.emit('data', JSON.stringify({ sessionId: 'sess-1', scope: 'memsearch' }))
+    req1.emit('end')
+    await done1
+    assert.equal(res1.status, 200)
+    assert.equal(res1.body.ok, true)
+    assert.equal(res1.body.path, tmp, 'path is the memsearch dir (MEMSEARCH_DIR override)')
+
+    // missing dir
+    const req2 = Object.assign(new EventEmitter(), { method: 'POST' })
+    const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
+    const done2 = route.handler(req2, res2)
+    req2.emit('data', JSON.stringify({ sessionId: 'sess-1', scope: 'candidates' }))
+    req2.emit('end')
+    await done2
+    assert.equal(res2.status, 404)
+    assert.equal(res2.body.ok, false)
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prev
+  }
+})
+
+test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks traversal', async () => {
+  const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-list-')
+  fs.mkdirSync(`${tmp}/memory`, { recursive: true })
+  fs.mkdirSync(`${tmp}/skill-candidates/foo`, { recursive: true })
+  fs.writeFileSync(`${tmp}/memory/2026-08-22.md`, '# hello')
+  fs.writeFileSync(`${tmp}/config.toml`, 'x = 1')
+  fs.writeFileSync(`${tmp}/.hidden`, 'no')
+  const routes = {}
+  const webServer = { register: (r) => { routes[r.path] = r } }
+  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const { registerSkillReviewRoutes } = await import('../index.js')
+  const prev = process.env.MEMSEARCH_DIR
+  process.env.MEMSEARCH_DIR = tmp
+  try {
+    registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+    const route = routes['/memsearch-dsh/list-memsearch']
+    assert.ok(route, 'list route registered')
+
+    const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch' }, res)
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.body.dirs.sort(), ['memory', 'skill-candidates'])
+    assert.deepEqual(res.body.files, ['config.toml'])
+    assert.ok(!res.body.files.includes('.hidden'), 'hidden skipped')
+
+    // traversal blocked
+    const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
+    assert.equal(res2.status, 400)
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prev
+  }
+})
+
+test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal/oversize', async () => {
+  const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-read-')
+  fs.mkdirSync(`${tmp}/skill-candidates/foo`, { recursive: true })
+  fs.writeFileSync(`${tmp}/skill-candidates/foo/SKILL.md`, '# Foo\n\nDo the thing.\n')
+  fs.writeFileSync(`${tmp}/skill-candidates/foo/meta.json`, '{"name":"foo"}')
+  fs.writeFileSync(`${tmp}/blob.bin`, Buffer.from([0, 1, 2, 3]))
+  const routes = {}
+  const webServer = { register: (r) => { routes[r.path] = r } }
+  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const { registerSkillReviewRoutes } = await import('../index.js')
+  const prev = process.env.MEMSEARCH_DIR
+  process.env.MEMSEARCH_DIR = tmp
+  try {
+    registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+    const route = routes['/memsearch-dsh/read-file']
+    assert.ok(route, 'read route registered')
+
+    // md file
+    const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=skill-candidates%2Ffoo%2FSKILL.md' }, res)
+    assert.equal(res.status, 200)
+    assert.ok(res.body.content.includes('# Foo'))
+
+    // binary rejected
+    const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=blob.bin' }, res2)
+    assert.equal(res2.status, 415)
+
+    // traversal rejected
+    const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
+    assert.equal(res3.status, 400)
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prev
+  }
+})

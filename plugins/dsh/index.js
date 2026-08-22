@@ -35,10 +35,11 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
@@ -468,6 +469,23 @@ function resolveSkillInstallTarget(memsearchCmd, projectDir) {
   return join(process.env.HOME || '', '.agents', 'skills')
 }
 
+/** Hard cap for read-file payloads (protects the browser from huge files). */
+const READ_FILE_MAX_BYTES = 256 * 1024
+
+/** File extensions the read-only preview may serve (text only). */
+const TEXT_FILE_EXTS = new Set(['md', 'markdown', 'json', 'txt', 'toml', 'yml', 'yaml', 'sh', 'py', 'js', 'ts'])
+
+/**
+ * Resolve `rel` inside `root` and reject anything that escapes the root
+ * (path traversal). Returns the absolute path or null.
+ */
+function safeJoinWithin(root, rel) {
+  const abs = resolve(root, rel || '.')
+  const rootResolved = resolve(root)
+  if (abs !== rootResolved && !abs.startsWith(rootResolved + '/')) return null
+  return abs
+}
+
 /**
  * Register the browser-facing skill-review JSON routes on the web server.
  *
@@ -556,6 +574,105 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       })
       child.unref()
       return sendJson(res, 200, { ok: true, action, name, started: true, target })
+    },
+  })
+
+  webServer.register({
+    kind: 'exact',
+    path: '/memsearch-dsh/open-memsearch',
+    handler: async (req, res) => {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' })
+      const body = await readJsonBody(req)
+      const { sessionId, scope } = body // scope: 'memsearch' (default) | 'candidates'
+      const projectDir = projectDirForSession(sessionId)
+      const memsearchDir = memsearchDirFor(projectDir)
+      const dir = scope === 'candidates' ? join(memsearchDir, 'skill-candidates') : memsearchDir
+      if (!existsSync(dir)) {
+        return sendJson(res, 404, { ok: false, error: `no such directory: ${dir}`, path: dir })
+      }
+      // Open the directory in the local file manager (xdg-open on Linux). The
+      // response is success regardless of whether a desktop is present; the
+      // path is returned so the client can show it if nothing opens.
+      const child = execFile('xdg-open', [dir], {
+        detached: true,
+        stdio: 'ignore',
+        timeout: 10000,
+      }, (error) => {
+        if (error) ctx.logger.warn(`[memsearch] open dir failed: ${error.message}`)
+      })
+      child.unref()
+      return sendJson(res, 200, { ok: true, path: dir })
+    },
+  })
+
+  webServer.register({
+    kind: 'exact',
+    path: '/memsearch-dsh/list-memsearch',
+    handler: async (req, res) => {
+      if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
+      const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
+      const relPath = new URL(req.url, 'http://localhost').searchParams.get('path') || ''
+      const projectDir = projectDirForSession(sessionId)
+      const memsearchDir = memsearchDirFor(projectDir)
+      // Only ever list inside the project's .memsearch tree.
+      const abs = safeJoinWithin(memsearchDir, relPath)
+      if (abs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      let entries = []
+      try {
+        entries = readdirSync(abs, { withFileTypes: true })
+      } catch {
+        return sendJson(res, 404, { error: `no such directory: ${abs}`, path: abs })
+      }
+      const dirs = []
+      const files = []
+      for (const e of entries) {
+        if (e.name.startsWith('.')) continue // skip hidden (e.g. .git inside candidates)
+        if (e.isDirectory()) dirs.push(e.name)
+        else if (e.isFile()) files.push(e.name)
+      }
+      dirs.sort()
+      files.sort()
+      sendJson(res, 200, {
+        path: abs,
+        rel: relPath,
+        dirs,
+        files,
+      })
+    },
+  })
+
+  webServer.register({
+    kind: 'exact',
+    path: '/memsearch-dsh/read-file',
+    handler: async (req, res) => {
+      if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
+      const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
+      const relPath = new URL(req.url, 'http://localhost').searchParams.get('path') || ''
+      const projectDir = projectDirForSession(sessionId)
+      const memsearchDir = memsearchDirFor(projectDir)
+      const abs = safeJoinWithin(memsearchDir, relPath)
+      if (abs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      let stat
+      try {
+        stat = statSync(abs)
+      } catch {
+        return sendJson(res, 404, { error: `no such file: ${abs}`, path: abs })
+      }
+      if (!stat.isFile()) return sendJson(res, 400, { error: 'not a file' })
+      if (stat.size > READ_FILE_MAX_BYTES) {
+        return sendJson(res, 413, { error: `file too large (${stat.size} bytes, max ${READ_FILE_MAX_BYTES})` })
+      }
+      const ext = abs.split('.').pop().toLowerCase()
+      if (!TEXT_FILE_EXTS.has(ext)) {
+        return sendJson(res, 415, { error: `unsupported file type: .${ext}` })
+      }
+      let content
+      try {
+        content = readFileSync(abs, 'utf-8')
+      } catch {
+        return sendJson(res, 500, { error: 'read failed' })
+      }
+      sendJson(res, 200, { path: abs, rel: relPath, name: abs.split('/').pop(), ext, content })
     },
   })
 }
