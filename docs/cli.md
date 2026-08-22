@@ -147,8 +147,9 @@ Set chunking.max_chunk_size = 2000 in .memsearch.toml
 
 Project config is restricted before it is merged. Use `--project` only for
 allowlisted local indexing keys such as `milvus.collection`,
-`embedding.batch_size`, `chunking.max_chunk_size`, `chunking.overlap_lines`, and
-`indexing.ignore_files`, `indexing.exclude`, and `watch.debounce_ms`. Trusted
+`embedding.batch_size`, `chunking.max_chunk_size`, `chunking.min_chunk_size`,
+`chunking.overlap_lines`, `indexing.ignore_files`, `indexing.exclude`, and
+`watch.debounce_ms`. Trusted
 settings such as provider routing, endpoints, API keys, prompt files, and plugin
 automation must go in global config or explicit CLI flags.
 
@@ -210,6 +211,7 @@ model = ""
 
 [chunking]
 max_chunk_size = 1500
+min_chunk_size = 0
 overlap_lines = 2
 
 [watch]
@@ -282,6 +284,7 @@ provider = "openai"
 | `embedding.base_url` | string | `""` | OpenAI-compatible API base URL (empty = SDK default) |
 | `embedding.api_key` | string | `""` | API key for embedding provider (supports `env:VAR_NAME` syntax) |
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
+| `chunking.min_chunk_size` | int | `0` | Merge adjacent heading sections smaller than this many characters (0 = no merging) |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
 | `indexing.ignore_files` | list[string] | `[]` | Ignore filenames discovered within each directory index root; new `config init` files write `[".gitignore"]` |
 | `indexing.exclude` | list[string] | `[]` | Additional gitignore-style patterns relative to each index root |
@@ -329,6 +332,7 @@ Scan one or more directories (or files) and index all markdown files (`.md`, `.m
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token (for server or Zilliz Cloud) |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
+| `--min-chunk-size` | | config value | Override `chunking.min_chunk_size` for this run |
 | `--ignore-file NAME` | | *(none)* | Append an ignore filename to discover within each directory index root; repeatable |
 | `--exclude PATTERN` | | *(none)* | Append a gitignore-style pattern relative to each index root; repeatable |
 | `--force` | | `false` | Re-embed and re-index all chunks, even if unchanged |
@@ -488,6 +492,7 @@ Start a long-running file watcher that monitors directories for markdown file ch
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
+| `--min-chunk-size` | | config value | Override `chunking.min_chunk_size` for this run |
 | `--ignore-file NAME` | | *(none)* | Append an ignore filename to discover within each watched root; repeatable |
 | `--exclude PATTERN` | | *(none)* | Append a gitignore-style exclusion pattern; repeatable |
 

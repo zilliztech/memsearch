@@ -68,6 +68,7 @@ _PARAM_MAP = {
     "llm_api_key": "compact.api_key",
     "max_chunk_size": "chunking.max_chunk_size",
     "overlap_lines": "chunking.overlap_lines",
+    "min_chunk_size": "chunking.min_chunk_size",
     "debounce_ms": "watch.debounce_ms",
     "reranker_model": "reranker.model",
 }
@@ -106,6 +107,7 @@ def _cfg_to_memsearch_kwargs(
         "collection": cfg.milvus.collection,
         "max_chunk_size": cfg.chunking.max_chunk_size,
         "overlap_lines": cfg.chunking.overlap_lines,
+        "min_chunk_size": cfg.chunking.min_chunk_size,
         "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),
         "exclude": _merge_unique(cfg.indexing.exclude, extra_exclude),
         "reranker_model": cfg.reranker.model,
@@ -230,6 +232,12 @@ def cli() -> None:
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
 )
+@click.option(
+    "--min-chunk-size",
+    default=None,
+    type=click.IntRange(min=0),
+    help="Merge heading sections smaller than this many characters (0 disables merging).",
+)
 @click.option("--description", default=None, help="Collection description (written on creation only).")
 def index(
     paths: tuple[str, ...],
@@ -245,6 +253,7 @@ def index(
     exclude_patterns: tuple[str, ...],
     force: bool,
     max_chunk_size: int | None,
+    min_chunk_size: int | None,
     description: str | None,
 ) -> None:
     """Index markdown files from PATHS."""
@@ -262,6 +271,7 @@ def index(
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
             max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size,
         )
     )
     ms = None
@@ -577,6 +587,12 @@ def _extract_section(
 @click.option(
     "--max-chunk-size", default=None, type=click.IntRange(min=1), help="Max chunk size in characters (must be >= 1)."
 )
+@click.option(
+    "--min-chunk-size",
+    default=None,
+    type=click.IntRange(min=0),
+    help="Merge heading sections smaller than this many characters (0 disables merging).",
+)
 @click.option("--description", default=None, help="Collection description (written on creation only).")
 def watch(
     paths: tuple[str, ...],
@@ -592,6 +608,7 @@ def watch(
     exclude_patterns: tuple[str, ...],
     debounce_ms: int | None,
     max_chunk_size: int | None,
+    min_chunk_size: int | None,
     description: str | None,
 ) -> None:
     """Watch PATHS for markdown changes and auto-index."""
@@ -610,6 +627,7 @@ def watch(
             milvus_token=milvus_token,
             debounce_ms=debounce_ms,
             max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size,
         )
     )
     ms = None

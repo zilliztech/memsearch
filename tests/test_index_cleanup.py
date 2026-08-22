@@ -71,6 +71,7 @@ def make_memsearch(
     ms._paths = [str(path) for path in paths]
     ms._max_chunk_size = 1500
     ms._overlap_lines = 2
+    ms._min_chunk_size = 0
     ms._ignore_files = list(ignore_files or [])
     ms._exclude = list(exclude or [])
     ms._embedder = FakeEmbedder()

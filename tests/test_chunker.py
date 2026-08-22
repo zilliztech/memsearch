@@ -251,3 +251,50 @@ def test_long_cjk_text_splits_on_fullwidth_semicolon() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert all(chunk.content.endswith(semicolon) for chunk in chunks[:-1])
+
+
+def test_min_chunk_size_default_keeps_per_section_chunks():
+    md = "## user\n\nok sounds good\n\n## assistant\n\ndone, pushed the fix\n\n## user\n\nthanks"
+    chunks = chunk_markdown(md, source="t.md")
+    assert len(chunks) == 3
+
+
+def test_min_chunk_size_merges_tiny_sections():
+    md = "## user\n\nok sounds good\n\n## assistant\n\ndone, pushed the fix\n\n## user\n\nthanks"
+    chunks = chunk_markdown(md, source="t.md", min_chunk_size=200)
+    assert len(chunks) == 1
+    c = chunks[0]
+    # Merged chunk carries the first section's heading and spans all lines.
+    assert c.heading == "user"
+    assert c.start_line == 1
+    assert c.end_line == 11
+    # All section bodies preserved in order.
+    assert c.content.index("ok sounds good") < c.content.index("pushed the fix") < c.content.index("thanks")
+
+
+def test_min_chunk_size_merge_respects_max_chunk_size():
+    sections = [f"## turn {i}\n\n" + "x" * 120 for i in range(10)]
+    md = "\n\n".join(sections)
+    chunks = chunk_markdown(md, source="t.md", min_chunk_size=10_000, max_chunk_size=400)
+    assert len(chunks) > 1
+    for c in chunks:
+        assert len(c.content) <= 400
+
+
+def test_min_chunk_size_flush_before_oversized_section():
+    md = "## tiny\n\nshort body\n\n## big\n\n" + "y" * 900
+    chunks = chunk_markdown(md, source="t.md", min_chunk_size=5_000, max_chunk_size=300)
+    # The tiny section is flushed on its own; the big one goes through
+    # the large-section splitter with its own heading.
+    assert chunks[0].heading == "tiny"
+    assert all(c.heading == "big" for c in chunks[1:])
+    assert len(chunks) >= 3
+
+
+def test_min_chunk_size_stops_merging_once_reached():
+    md = "## a\n\n" + "a" * 150 + "\n\n## b\n\n" + "b" * 150 + "\n\n## c\n\n" + "c" * 150
+    chunks = chunk_markdown(md, source="t.md", min_chunk_size=200, max_chunk_size=1500)
+    # a+b reach 200 and flush together; c stands alone.
+    assert len(chunks) == 2
+    assert chunks[0].heading == "a"
+    assert chunks[1].heading == "c"
