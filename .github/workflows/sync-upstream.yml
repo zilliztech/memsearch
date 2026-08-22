@@ -1,0 +1,68 @@
+# Sync upstream (zilliztech/memsearch) changes into the development branch daily.
+#
+# This keeps the fork's development branch up to date with the latest upstream
+# changes while preserving local plugin additions (hermes, kimi, etc.).
+
+name: Sync Upstream
+
+on:
+  schedule:
+    # Run daily at 06:17 UTC (offset from :00 to avoid herd)
+    - cron: "17 6 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync upstream to development
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/zilliztech/memsearch.git || true
+
+      - name: Fetch upstream
+        run: git fetch upstream main
+
+      - name: Switch to development
+        run: git checkout development || git checkout -b development
+
+      - name: Check if already up to date
+        id: check
+        run: |
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/main)
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge upstream changes
+        if: steps.check.outputs.up_to_date == 'false'
+        run: |
+          # Try merge first (preserves history)
+          if git merge upstream/main --no-edit -m "merge: sync upstream $(date +%Y-%m-%d)"; then
+            echo "Merge succeeded"
+          else
+            echo "Merge conflict detected — aborting and skipping this run"
+            git merge --abort
+            exit 1
+          fi
+
+      - name: Push
+        if: steps.check.outputs.up_to_date == 'false'
+        run: git push origin development
