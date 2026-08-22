@@ -2,6 +2,12 @@
 
 Build memory into your own agents using the memsearch CLI and Python API.
 
+New here?
+- Start with [Getting Started](../getting-started.md) if you want the fastest working local setup
+- Jump to [CLI Reference](../cli.md) if you prefer shell workflows
+- Jump to [Python API](../python-api.md) if you are embedding memsearch into your own code
+- Read [Architecture](../architecture.md) if you want the underlying indexing and recall model first
+
 ## Install
 
 ```bash
