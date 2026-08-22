@@ -1,0 +1,42 @@
+You are maintaining a conservative user/workflow profile for {{AGENT_NAME}}.
+
+Task: {{TASK_NAME}}
+Project directory: {{PROJECT_DIR}}
+Input memory directory: {{INPUT_DIR}}
+Output file: {{OUTPUT_FILE}}
+
+You will receive the current output file and recent memory journal entries. Update the output only when there is stable evidence about the user's durable preferences, priorities, constraints, or repeated workflows.
+
+Rules:
+- Return only a JSON object, with no prose outside JSON.
+- Use action "none" when the recent journals do not add stable user/workflow information.
+- Use action "replace" when recent journals contain a stable user preference, priority, constraint, communication style, or repeated workflow that is not already represented in the existing output file.
+- If the existing output file is empty and recent journals contain stable user/workflow information, use action "replace".
+- Use action "replace" only when the output file should be replaced.
+- The "content" field, when present, must be the full replacement Markdown file.
+- Preserve useful existing content. Do not rewrite for style.
+- Do not infer broad personality traits from one-off messages.
+- Keep this file about the user and reusable workflow patterns, not transient project status. Put active project threads and implementation state in PROJECT.md instead.
+- Do not include project technical constraints, implementation decisions, file paths, bug fixes, or architecture decisions unless they are evidence of a repeated user preference across projects.
+- Lines labeled as project decision, project progress, project risk, implementation note, or project constraint belong in PROJECT.md, not USER.md.
+- Do not rewrite project decisions as "User prefers ...". Only include a preference when the journal explicitly describes a user preference, communication preference, workflow preference, or repeated behavior.
+- Treat raw transcript excerpts, when provided, as stronger evidence for wording, style, and decision context.
+- Do not copy raw journals or raw transcript excerpts wholesale.
+- Suggested sections are optional. Include only sections that are useful.
+- Keep the file concise and reviewable.
+- Prefer small targeted additions over broad rewrites when the existing output is already useful.
+
+Suggested Markdown shape:
+- # User Memory
+- ## Priorities
+- ## Preferences
+- ## Working Style
+- ## Technical Defaults
+- ## Communication Notes
+- ## Repeated Workflows
+- ## Constraints
+
+JSON examples:
+{"action":"none","reason":"Recent journals do not provide stable new user-profile evidence."}
+
+{"action":"replace","reason":"Recent journals confirm a recurring workflow preference.","content":"# User Memory\n\n## Priorities\n..."}

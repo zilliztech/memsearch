@@ -1,22 +1,22 @@
 # Platform Overview
 
-memsearch provides plugins for 4 AI coding agent platforms. All plugins share the same core architecture: capture conversations to markdown, index with Milvus, recall via semantic search.
+memsearch provides plugins for 5 AI coding agent platforms. All plugins share the same core architecture: capture conversations to markdown, index with Milvus, recall via semantic search.
 
 ---
 
 ## Comparison Table
 
-| Feature | [Claude Code](claude-code/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) | [Codex CLI](codex/index.md) |
-|---------|:---:|:---:|:---:|:---:|
-| **Plugin type** | Shell hooks | TS registerTool | TS npm plugin | Shell hooks |
-| **Capture method** | Stop hook (async) | agent_end hook | SQLite daemon | Stop hook (async) |
-| **Summarization** | `claude -p --model haiku` | OpenClaw agent | `opencode run` | `codex exec` |
-| **Recall mechanism** | SKILL.md (context: fork) | memory_search tool | memory_search tool | SKILL.md |
-| **L3 transcript format** | Claude Code JSONL | OpenClaw JSONL | OpenCode SQLite | Codex rollout JSONL |
-| **Isolation** | Per-project collection | Per-workspace collection | Per-project collection | Per-project collection |
-| **Install method** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` |
-| **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
-| **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
+| Feature | [Claude Code](claude-code/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) | [Codex CLI](codex/index.md) | [Hermes](hermes/index.md) |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| **Plugin type** | Shell hooks | TS registerTool | TS npm plugin | Shell hooks | MCP server (Python) |
+| **Capture method** | Stop hook (async) | agent_end hook | SQLite daemon | Stop hook (async) | SQLite poller (daemon/cron) |
+| **Summarization** | `claude -p --model haiku` | OpenClaw agent | `opencode run` | `codex exec` | `hermes-capture.py` (state.db) |
+| **Recall mechanism** | SKILL.md (context: fork) | memory_search tool | memory_search tool | SKILL.md | memory_search tool (MCP) |
+| **L3 transcript format** | Claude Code JSONL | OpenClaw JSONL | OpenCode SQLite | Codex rollout JSONL | Hermes state.db |
+| **Isolation** | Per-project collection | Per-workspace collection | Per-project collection | Per-project collection | Per-project collection |
+| **Install method** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` | `install.sh` |
+| **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
+| **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
 
 Each plugin keeps its current native summarizer when the plugin-specific
 provider setting is empty or `native`. To override one plugin's native model,
@@ -101,6 +101,7 @@ All plugins write standard markdown and derive collection names from the project
 | OpenClaw agent development | [OpenClaw plugin](openclaw/index.md) -- native TS integration, multi-agent isolation |
 | OpenCode user | [OpenCode plugin](opencode/index.md) -- npm package, SQLite-native capture |
 | Codex CLI user | [Codex plugin](codex/index.md) -- shell hooks, similar to Claude Code |
+| Hermes Agent user | [Hermes plugin](hermes/index.md) -- MCP tools + state.db capture |
 | Using multiple platforms | Install plugins on each -- they share the same memory backend |
 
 ---

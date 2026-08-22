@@ -17,7 +17,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex CLI, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep Claude Code, Codex CLI, OpenClaw, OpenCode, and Hermes working from the same project memory.
 
 ### Claude Code Plugin
 
@@ -71,16 +71,27 @@ codex --yolo
 
 [:octicons-arrow-right-24: Codex CLI Plugin docs](platforms/codex/index.md){ .md-button }
 
+### Hermes Plugin
+
+MCP server + scripts. Hermes stores sessions in `~/.hermes/state.db`, so capture is a state.db poller and recall is a memory MCP server.
+
+```bash
+bash memsearch/plugins/hermes/install.sh "$(pwd)"
+hermes mcp add memsearch --command "<plugin>/.venv/bin/python <plugin>/server/memsearch_mcp_server.py"
+```
+
+[:octicons-arrow-right-24: Hermes Plugin docs](platforms/hermes/index.md){ .md-button }
+
 ### One Memory, All Platforms
 
 All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.
 
-| | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) |
-|---|:---:|:---:|:---:|:---:|
-| **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks |
-| **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex |
-| **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md |
-| **Install** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` |
+| | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) | [Hermes](platforms/hermes/index.md) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks | MCP server (Python) |
+| **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex | SQLite poller (daemon) |
+| **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md | memory_search tool (MCP) |
+| **Install** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` | `install.sh` |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 
