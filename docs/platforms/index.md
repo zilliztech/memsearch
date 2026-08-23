@@ -6,7 +6,7 @@ memsearch provides plugins for 5 AI coding agent platforms. All plugins share th
 
 ## Comparison Table
 
-| Feature | [Claude Code](claude-code/index.md) | [Codex CLI](codex/index.md) | [DeepSeek Harness](dsh/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) |
+| Feature | [Claude Code](claude-code/index.md) | [Codex](codex/index.md) | [DeepSeek Harness](dsh/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) |
 |---------|:---:|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | Shell hooks | Native ESM + web client | TS registerTool | TS npm plugin |
 | **Capture method** | Stop hook (async) | Stop hook (async) | `session/event` turn end | agent_end hook | SQLite daemon |
@@ -101,7 +101,7 @@ All plugins write standard markdown and derive collection names from the project
 | Scenario | Recommended Platform |
 |----------|---------------------|
 | Primary Claude Code user | [Claude Code plugin](claude-code/index.md) -- most mature, marketplace install |
-| Codex CLI user | [Codex plugin](codex/index.md) -- shell hooks, similar to Claude Code |
+| Codex user | [Codex plugin](codex/index.md) -- shell hooks, similar to Claude Code |
 | DeepSeek Harness user | [DSH plugin](dsh/index.md) -- native lifecycle events, skill recall, and web memory browser |
 | OpenClaw agent development | [OpenClaw plugin](openclaw/index.md) -- native TS integration, multi-agent isolation |
 | OpenCode user | [OpenCode plugin](opencode/index.md) -- npm package, SQLite-native capture |

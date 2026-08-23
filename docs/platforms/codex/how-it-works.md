@@ -154,7 +154,7 @@ This ensures memory capture works even when the summarization model is unavailab
 
 ## hooks.json Format
 
-Codex CLI uses a `hooks.json` file (at `~/.codex/hooks.json`) to define hook scripts. The installer updates the nested `hooks` object, replacing only older memsearch Codex entries and preserving unrelated hooks:
+Codex uses a `hooks.json` file (at `~/.codex/hooks.json`) to define hook scripts. The installer updates the nested `hooks` object, replacing only older memsearch Codex entries and preserving unrelated hooks:
 
 ```json
 {

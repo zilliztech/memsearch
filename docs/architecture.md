@@ -6,13 +6,13 @@ This page explains the technical architecture and key implementation decisions b
 
 ## Cross-Platform Memory Sharing
 
-memsearch supports 5 AI coding agent platforms: [Claude Code](platforms/claude-code/index.md), [Codex CLI](platforms/codex/index.md), [DeepSeek Harness](platforms/dsh/index.md), [OpenClaw](platforms/openclaw/index.md), and [OpenCode](platforms/opencode/index.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
+memsearch supports 5 AI coding agent platforms: [Claude Code](platforms/claude-code/index.md), [Codex](platforms/codex/index.md), [DeepSeek Harness](platforms/dsh/index.md), [OpenClaw](platforms/openclaw/index.md), and [OpenCode](platforms/opencode/index.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
 
 ```mermaid
 graph TB
     subgraph "Capture (per-platform)"
         CC["Claude Code<br/>(Stop hook + Haiku)"]
-        CX["Codex CLI<br/>(Stop hook + Codex)"]
+        CX["Codex<br/>(Stop hook + Codex)"]
         DSH["DeepSeek Harness<br/>(turn event + headless agent)"]
         OC["OpenClaw<br/>(agent_end)"]
         OO["OpenCode<br/>(SQLite daemon)"]

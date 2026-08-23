@@ -1,10 +1,10 @@
-# memsearch — Codex CLI Plugin
+# memsearch — Codex Plugin
 
-Automatic persistent memory for [Codex CLI](https://github.com/openai/codex). Every conversation turn is summarized and indexed — your next session picks up where you left off.
+Automatic persistent memory for [Codex](https://github.com/openai/codex). Every conversation turn is summarized and indexed — your next session picks up where you left off.
 
 ## Prerequisites
 
-- [Codex CLI](https://github.com/openai/codex) v0.116.0+
+- [Codex](https://github.com/openai/codex) v0.116.0+
 - Python 3.10+
 
 ## Install

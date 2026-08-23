@@ -286,4 +286,4 @@ Each plugin may have additional configuration. See:
 - [Claude Code Plugin](../platforms/claude-code/index.md)
 - [OpenClaw Plugin](../platforms/openclaw/index.md)
 - [OpenCode Plugin](../platforms/opencode/index.md)
-- [Codex CLI Plugin](../platforms/codex/index.md)
+- [Codex Plugin](../platforms/codex/index.md)

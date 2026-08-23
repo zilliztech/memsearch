@@ -99,7 +99,7 @@ plugins/
 │   ├── index.ts            # Tools + experimental hooks
 │   ├── scripts/            # capture-daemon.py (SQLite polling), parse-transcript.py
 │   └── skills/             # memory-recall SKILL.md
-└── codex/                  # Codex CLI plugin (shell hooks + SKILL.md)
+└── codex/                  # Codex plugin (shell hooks + SKILL.md)
     ├── hooks/              # SessionStart, Stop, UserPromptSubmit
     ├── skills/             # memory-recall skill
     └── scripts/            # install.sh, parse-rollout.sh, derive-collection.sh
@@ -136,7 +136,7 @@ ln -sf $(pwd)/plugins/opencode/index.ts ~/.config/opencode/plugins/memsearch.ts
 # Restart opencode to load
 ```
 
-### Codex CLI
+### Codex
 
 ```bash
 bash plugins/codex/scripts/install.sh   # copies skill + generates hooks.json

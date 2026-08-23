@@ -117,7 +117,7 @@ When modifying hooks/skills, keep in mind:
 | **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | Marketplace (`.claude-plugin/marketplace.json`) |
 | **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
 | **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`) |
-| **Codex CLI plugin** | *(none)* | `install.sh` (no version management) |
+| **Codex plugin** | *(none)* | `install.sh` (no version management) |
 
 See `CLAUDE.local.md` for detailed release procedures, current versions, and operational details.
 

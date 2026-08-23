@@ -50,7 +50,7 @@ nav:
     - How It Works: platforms/claude-code/how-it-works.md
     - Memory Recall: platforms/claude-code/memory-recall.md
     - Troubleshooting: platforms/claude-code/troubleshooting.md
-  - Codex CLI Plugin:
+  - Codex Plugin:
     - Overview: platforms/codex/index.md
     - Installation: platforms/codex/installation.md
     - How It Works: platforms/codex/how-it-works.md

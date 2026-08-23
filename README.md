@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/pypi/v/memsearch?style=flat-square&color=blue" alt="PyPI"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/claude-code/"><img src="https://img.shields.io/badge/Claude_Code-plugin-c97539?style=flat-square&logo=claude&logoColor=white" alt="Claude Code"></a>
-  <a href="https://zilliztech.github.io/memsearch/platforms/codex/"><img src="https://img.shields.io/badge/Codex_CLI-plugin-ff6b35?style=flat-square" alt="Codex CLI"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/codex/"><img src="https://img.shields.io/badge/Codex-plugin-ff6b35?style=flat-square" alt="Codex"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/dsh/"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square" alt="DeepSeek Harness"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/openclaw/"><img src="https://img.shields.io/badge/OpenClaw-plugin-4a9eff?style=flat-square" alt="OpenClaw"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/opencode/"><img src="https://img.shields.io/badge/OpenCode-plugin-22c55e?style=flat-square" alt="OpenCode"></a>
@@ -38,7 +38,7 @@
 
 ### Why memsearch?
 
-- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex CLI](plugins/codex/README.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), and [OpenCode](plugins/opencode/README.md). A conversation in one agent becomes searchable context in all others — no extra setup
+- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex](plugins/codex/README.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), and [OpenCode](plugins/opencode/README.md). A conversation in one agent becomes searchable context in all others — no extra setup
 - 👥 **For Agent Users**, install a plugin and get persistent memory with zero effort; **for Agent Developers**, use the full [CLI](https://zilliztech.github.io/memsearch/cli/) and [Python API](https://zilliztech.github.io/memsearch/python-api/) to build memory and harness engineering into your own agents
 - 📄 **Markdown is the source of truth** — inspired by [OpenClaw](https://github.com/openclaw/openclaw). Your memories are just `.md` files — human-readable, editable, version-controllable. Milvus is a "shadow index": a derived, rebuildable cache
 - 🔍 **Progressive retrieval, hybrid search, smart dedup, live sync** — 3-layer recall (search → expand → transcript); dense vector + BM25 sparse + RRF reranking; SHA-256 content hashing skips unchanged content; file watcher auto-indexes in real time
@@ -83,7 +83,7 @@ We discussed Redis caching before, what was the TTL we chose?
 </details>
 
 <details open>
-<summary><h3>For Codex CLI Users</h3></summary>
+<summary><h3>For Codex Users</h3></summary>
 
 ```bash
 # Install
@@ -106,7 +106,7 @@ ls .memsearch/memory/
 $memory-recall what did we discuss about deployment?
 ```
 
-> 📖 [Codex CLI Plugin docs](https://zilliztech.github.io/memsearch/platforms/codex/)
+> 📖 [Codex Plugin docs](https://zilliztech.github.io/memsearch/platforms/codex/)
 
 </details>
 
@@ -318,7 +318,7 @@ Under the hood, candidates live in a git-tracked `.memsearch/skill-candidates/` 
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex CLI, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep Claude Code, Codex, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
 
 ---
 
@@ -331,7 +331,7 @@ Beyond ready-to-use plugins, memsearch provides a complete **CLI and Python API*
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                  🧑‍💻 For Agent Users (Plugins)                │
-│ Claude Code · Codex CLI · DSH · OpenClaw · OpenCode · Your App │
+│ Claude Code · Codex · DSH · OpenClaw · OpenCode · Your App   │
 │                              │                               │
 ├────────────────────────────┬─────────────────────────────────┤
 │  🛠️ For Agent Developers   │  Build your own with ↓          │
@@ -675,7 +675,7 @@ Settings priority: Built-in defaults → `~/.memsearch/config.toml` → `.memsea
 ## 🔗 Links
 
 - 📖 [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
-- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex CLI, DeepSeek Harness, OpenClaw, OpenCode
+- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex, DeepSeek Harness, OpenClaw, OpenCode
 - 💡 [Design Philosophy](https://zilliztech.github.io/memsearch/design-philosophy/) — why markdown, why Milvus, competitor comparison
 - 🦞 [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
 - 🗄️ [Milvus](https://milvus.io/) | [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — the vector database powering memsearch

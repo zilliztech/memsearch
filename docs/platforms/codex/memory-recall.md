@@ -101,7 +101,7 @@ The key architectural difference is in **skill execution context**:
 
 ### Why No Fork Context?
 
-Codex CLI does not support `context: fork` for skills. This means the `$memory-recall` skill runs in the **main conversation context** -- all intermediate search results, chunk expansions, and rollout parsing steps are visible to the user and consume main context tokens.
+Codex does not support `context: fork` for skills. This means the `$memory-recall` skill runs in the **main conversation context** -- all intermediate search results, chunk expansions, and rollout parsing steps are visible to the user and consume main context tokens.
 
 In practice, this works well for targeted queries but is less efficient for broad searches (where many intermediate results would clutter the context). For the best experience with large memory histories, consider using [Milvus Server](../../getting-started.md#milvus-backends) for faster search responses.
 

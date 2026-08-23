@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Codex CLI v0.116.0+
+- Codex v0.116.0+
 - Python 3.10+
 - memsearch installed: `uv tool install "memsearch[onnx]"`
 

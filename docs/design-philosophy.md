@@ -43,7 +43,7 @@ This is memsearch's key differentiator: **memories written by one agent are sear
 graph TB
     subgraph "Capture (per-platform)"
         CC["Claude Code<br/>(Stop hook + Haiku)"]
-        CX["Codex CLI<br/>(Stop hook + Codex)"]
+        CX["Codex<br/>(Stop hook + Codex)"]
         DSH["DeepSeek Harness<br/>(turn event + headless agent)"]
         OC["OpenClaw<br/>(agent_end)"]
         OO["OpenCode<br/>(SQLite daemon)"]
@@ -63,7 +63,7 @@ graph TB
 
 All 5 platform plugins write to the same markdown format and use the same Milvus backend. This means:
 
-- You can switch between Claude Code and Codex CLI and keep your memories
+- You can switch between Claude Code and Codex and keep your memories
 - Team members using different agents can share a knowledge base
 - There is no per-agent silo -- one memory, every agent
 

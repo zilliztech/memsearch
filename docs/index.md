@@ -17,7 +17,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex CLI, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep Claude Code, Codex, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
 
 ### Claude Code Plugin
 
@@ -34,7 +34,7 @@ Shell hooks + SKILL.md with `context: fork` subagent. Conversations are auto-sum
 [:octicons-arrow-right-24: Claude Code Plugin docs](platforms/claude-code/index.md){ .md-button .md-button--primary }
 [:octicons-arrow-right-24: Troubleshooting](platforms/claude-code/troubleshooting.md){ .md-button }
 
-### Codex CLI Plugin
+### Codex Plugin
 
 Shell hooks and a native memory-recall skill for terminal coding workflows.
 
@@ -43,7 +43,7 @@ bash memsearch/plugins/codex/scripts/install.sh
 codex --yolo
 ```
 
-[:octicons-arrow-right-24: Codex CLI Plugin docs](platforms/codex/index.md){ .md-button }
+[:octicons-arrow-right-24: Codex Plugin docs](platforms/codex/index.md){ .md-button }
 
 ### DeepSeek Harness Plugin
 
@@ -88,7 +88,7 @@ bash memsearch/plugins/opencode/install.sh
 
 All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.
 
-| | [Claude Code](platforms/claude-code/index.md) | [Codex CLI](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) |
+| | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | Shell hooks | Native ESM plugin | TS plugin | TS plugin |
 | **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | SQLite daemon |
