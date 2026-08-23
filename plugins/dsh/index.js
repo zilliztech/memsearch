@@ -34,12 +34,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
@@ -482,8 +483,27 @@ const TEXT_FILE_EXTS = new Set(['md', 'markdown', 'json', 'txt', 'toml', 'yml', 
 function safeJoinWithin(root, rel) {
   const abs = resolve(root, rel || '.')
   const rootResolved = resolve(root)
-  if (abs !== rootResolved && !abs.startsWith(rootResolved + '/')) return null
-  return abs
+  return pathIsWithin(rootResolved, abs) ? abs : null
+}
+
+/** Return true when `target` is `root` or one of its descendants. */
+function pathIsWithin(root, target) {
+  const rel = relative(root, target)
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
+
+/**
+ * Resolve symlinks for an existing candidate and reject targets outside the
+ * real memory root. `undefined` means one of the paths does not exist.
+ */
+function realPathWithin(root, candidate) {
+  try {
+    const rootReal = realpathSync(root)
+    const candidateReal = realpathSync(candidate)
+    return pathIsWithin(rootReal, candidateReal) ? candidateReal : null
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -617,9 +637,14 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       // Only ever list inside the project's .memsearch tree.
       const abs = safeJoinWithin(memsearchDir, relPath)
       if (abs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      const realAbs = realPathWithin(memsearchDir, abs)
+      if (realAbs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      if (realAbs === undefined) {
+        return sendJson(res, 404, { error: `no such directory: ${abs}`, path: abs })
+      }
       let entries = []
       try {
-        entries = readdirSync(abs, { withFileTypes: true })
+        entries = readdirSync(realAbs, { withFileTypes: true })
       } catch {
         return sendJson(res, 404, { error: `no such directory: ${abs}`, path: abs })
       }
@@ -652,9 +677,14 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       const memsearchDir = memsearchDirFor(projectDir)
       const abs = safeJoinWithin(memsearchDir, relPath)
       if (abs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      const realAbs = realPathWithin(memsearchDir, abs)
+      if (realAbs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })
+      if (realAbs === undefined) {
+        return sendJson(res, 404, { error: `no such file: ${abs}`, path: abs })
+      }
       let stat
       try {
-        stat = statSync(abs)
+        stat = statSync(realAbs)
       } catch {
         return sendJson(res, 404, { error: `no such file: ${abs}`, path: abs })
       }
@@ -662,17 +692,17 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       if (stat.size > READ_FILE_MAX_BYTES) {
         return sendJson(res, 413, { error: `file too large (${stat.size} bytes, max ${READ_FILE_MAX_BYTES})` })
       }
-      const ext = abs.split('.').pop().toLowerCase()
+      const ext = extname(realAbs).slice(1).toLowerCase()
       if (!TEXT_FILE_EXTS.has(ext)) {
         return sendJson(res, 415, { error: `unsupported file type: .${ext}` })
       }
       let content
       try {
-        content = readFileSync(abs, 'utf-8')
+        content = readFileSync(realAbs, 'utf-8')
       } catch {
         return sendJson(res, 500, { error: 'read failed' })
       }
-      sendJson(res, 200, { path: abs, rel: relPath, name: abs.split('/').pop(), ext, content })
+      sendJson(res, 200, { path: abs, rel: relPath, name: basename(abs), ext, content })
     },
   })
 }

@@ -827,11 +827,13 @@ test('registerSkillReviewRoutes: POST open-memsearch opens existing dir, 404 for
 
 test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks traversal', async () => {
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-list-')
+  const outside = fs.mkdtempSync(os.tmpdir() + '/msr-list-outside-')
   fs.mkdirSync(`${tmp}/memory`, { recursive: true })
   fs.mkdirSync(`${tmp}/skill-candidates/foo`, { recursive: true })
   fs.writeFileSync(`${tmp}/memory/2026-08-22.md`, '# hello')
   fs.writeFileSync(`${tmp}/config.toml`, 'x = 1')
   fs.writeFileSync(`${tmp}/.hidden`, 'no')
+  fs.symlinkSync(outside, `${tmp}/outside-link`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
@@ -854,6 +856,11 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
     const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
     route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
     assert.equal(res2.status, 400)
+
+    // A symlink inside .memsearch must not expose an outside directory.
+    const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
+    assert.equal(res3.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev
@@ -862,10 +869,13 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
 
 test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal/oversize', async () => {
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-read-')
+  const outside = `${tmp}-outside.md`
   fs.mkdirSync(`${tmp}/skill-candidates/foo`, { recursive: true })
   fs.writeFileSync(`${tmp}/skill-candidates/foo/SKILL.md`, '# Foo\n\nDo the thing.\n')
   fs.writeFileSync(`${tmp}/skill-candidates/foo/meta.json`, '{"name":"foo"}')
   fs.writeFileSync(`${tmp}/blob.bin`, Buffer.from([0, 1, 2, 3]))
+  fs.writeFileSync(outside, 'outside secret')
+  fs.symlinkSync(outside, `${tmp}/escape.md`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
@@ -892,6 +902,11 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
     const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
     route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
     assert.equal(res3.status, 400)
+
+    // A text-looking symlink must not expose a file outside .memsearch.
+    const res4 = { writeHead: (s) => { res4.status = s }, end: (b) => { res4.body = JSON.parse(b) } }
+    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
+    assert.equal(res4.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev

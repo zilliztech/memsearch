@@ -33,7 +33,7 @@
     "plugin"
   ],
   "scripts": {
-    "test": "node --test tests/index.test.js"
+    "test": "node --test tests/*.test.js"
   },
   "dsh": {
     "bundle": {

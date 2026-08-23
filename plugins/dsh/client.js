@@ -32,6 +32,7 @@ window.__ModuleLoader__.load({
     var useState = React.useState
     var useEffect = React.useEffect
     var useCallback = React.useCallback
+    var useRef = React.useRef
 
     var NS = 'memsearch-skill-review'
     var CSS_TAG = 'memsearch-skill-review-css'
@@ -168,10 +169,8 @@ window.__ModuleLoader__.load({
 
       function inline(text) {
         var nodes = []
-        // escape first, then apply inline styles on the escaped text
+        // React escapes text nodes, so keep the source text unchanged here.
         var esc = String(text)
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
         // inline code
         var parts = esc.split(/`([^`]+)`/g)
         for (var p = 0; p < parts.length; p++) {
@@ -180,9 +179,8 @@ window.__ModuleLoader__.load({
             nodes.push(h('code', { key: 'c' + key++ }, part))
             continue
           }
-          // bold / italic via regex on the escaped string
+          // bold / italic via regex on the remaining source text
           var boldRe = /\*\*([^*]+)\*\*/g
-          var itRe = /(?<!\*)\*([^*]+)\*(?!\*)/g
           var rest = part
           var last = 0
           var m
@@ -204,17 +202,31 @@ window.__ModuleLoader__.load({
             }
           }
         }
-        return nodes.length === 0 ? null : nodes
+        return nodes
       }
 
       function linkify(text) {
-        // [label](url) → anchor
-        var m = /\[([^\]]+)\]\(([^)\s]+)\)/.exec(text)
-        if (!m) return text
-        var before = text.slice(0, m.index)
-        var after = text.slice(m.index + m[0].length)
-        var el = h('a', { key: 'a' + key++, href: m[2], target: '_blank', rel: 'noreferrer' }, m[1])
-        return [before, el].concat(linkify(after))
+        // Parse links around the other inline styles. Unsafe URL schemes stay
+        // as plain text rather than becoming clickable anchors.
+        var source = String(text)
+        var nodes = []
+        var linkRe = /\[([^\]]+)\]\(([^)\s]+)\)/g
+        var last = 0
+        var m
+        while ((m = linkRe.exec(source)) !== null) {
+          nodes = nodes.concat(inline(source.slice(last, m.index)))
+          var href = m[2]
+          var hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href)
+          var safe = /^(https?:|mailto:)/i.test(href) || (!hasScheme && !/^\/\//.test(href))
+          if (safe) {
+            nodes.push(h('a', { key: 'a' + key++, href: href, target: '_blank', rel: 'noreferrer' }, inline(m[1])))
+          } else {
+            nodes = nodes.concat(inline(m[0]))
+          }
+          last = m.index + m[0].length
+        }
+        nodes = nodes.concat(inline(source.slice(last)))
+        return nodes.length === 0 ? null : nodes
       }
 
       while (i < lines.length) {
@@ -370,24 +382,24 @@ window.__ModuleLoader__.load({
 
       // Monotonic request id: a slow response for an older click must never
       // overwrite the preview of a newer click (race guard).
-      var reqSeq = 0
+      var reqSeq = useRef(0)
       var openFile = function (rel, name, ext) {
-        var seq = ++reqSeq
+        var seq = ++reqSeq.current
         setSel({ rel: rel, name: name, ext: ext })
         if (PREVIEW_EXTS.indexOf(ext) < 0) {
-          if (seq === reqSeq) setPreview({ err: 'File type .' + ext + ' is not supported for preview (read-only .md/.json/.txt/.toml and similar text).' })
+          if (seq === reqSeq.current) setPreview({ err: 'File type .' + ext + ' is not supported for preview (read-only .md/.json/.txt/.toml and similar text).' })
           return
         }
         setPreview({ text: null })
         fetch('/memsearch-dsh/read-file?sessionId=' + encodeURIComponent(sessionId) + '&path=' + encodeURIComponent(rel))
           .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, d: d } }) })
           .then(function (r) {
-            if (seq !== reqSeq) return // stale response — a newer click won
+            if (seq !== reqSeq.current) return // stale response — a newer click won
             if (!r.ok) throw new Error(r.d.error || 'read failed')
             setPreview({ text: r.d.content, ext: r.d.ext })
           })
           .catch(function (err) {
-            if (seq !== reqSeq) return
+            if (seq !== reqSeq.current) return
             setPreview({ text: null, err: String(err.message || err) })
           })
       }
