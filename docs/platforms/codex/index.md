@@ -12,7 +12,7 @@ memsearch fills this gap with a shell-hook-based plugin that gives Codex the sam
 
 - **First-class memory for Codex** -- no other solution provides hybrid semantic search with progressive disclosure
 - **Same architecture as the Claude Code plugin** -- if you're familiar with one, you understand both
-- **Cross-platform portability** -- memories captured in Codex are searchable from Claude Code, OpenClaw, or OpenCode
+- **Cross-platform portability** -- memories captured in Codex are searchable from Claude Code, DSH, OpenClaw, or OpenCode
 - **ONNX embedding default** -- no OpenAI API key needed for the memory system itself (Codex uses OpenAI for the agent, but memsearch's embeddings are independent)
 
 ---

@@ -115,7 +115,7 @@ This is useful for scripting, CI/CD pipelines, or quick lookups without starting
 | **Capture method** | Background daemon (automatic) | Hook-based or manual | N/A |
 | **Storage** | Plain `.md` files (human-readable) | SQLite (opaque) | N/A |
 | **Progressive disclosure** | Three-layer (search → expand → transcript) | Single-layer | N/A |
-| **Cross-platform** | Yes -- Claude Code, OpenClaw, Codex | OpenCode only | N/A |
+| **Cross-platform** | Yes -- Claude Code, Codex, DSH, OpenClaw | OpenCode only | N/A |
 | **Keyword search** | BM25 catches exact terms | Dense-only may miss specific terms | N/A |
 | **Embedding model** | Pluggable (ONNX default, no API key) | Typically fixed | N/A |
 

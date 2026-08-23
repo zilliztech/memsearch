@@ -134,7 +134,7 @@ OpenClaw supports multiple agents (e.g., `main`, `work`). The plugin provides au
 | `work` | `~/.openclaw/workspace-work/.memsearch/memory/` | `ms_workspace_work_<hash>` |
 | custom | `<workspace-dir>/.memsearch/memory/` | `ms_<basename>_<hash>` |
 
-Collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, and OpenCode. This means when an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
+Collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, DSH, and OpenCode. This means when an agent's workspace points to a project directory used by other platforms, memories are automatically shared across platforms.
 
 ---
 

@@ -25,7 +25,7 @@ review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list
 
 ## Install
 
-### From npm (recommended, once published)
+### From npm (recommended)
 
 ```bash
 dsh plugin --profile web add @zilliz/memsearch-dsh
@@ -226,7 +226,7 @@ through the DSH logger.
 ## Uninstall
 
 ```bash
-dsh plugin --profile web rm @zilliz/memsearch-dsh
+dsh plugin --profile web remove @zilliz/memsearch-dsh
 ```
 
 Removing the dependency drops the profile-layer entry; the memory markdown

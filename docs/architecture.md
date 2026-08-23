@@ -6,15 +6,16 @@ This page explains the technical architecture and key implementation decisions b
 
 ## Cross-Platform Memory Sharing
 
-memsearch supports 4 AI coding agent platforms: [Claude Code](platforms/claude-code/index.md), [OpenClaw](platforms/openclaw/index.md), [OpenCode](platforms/opencode/index.md), and [Codex CLI](platforms/codex/index.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
+memsearch supports 5 AI coding agent platforms: [Claude Code](platforms/claude-code/index.md), [Codex CLI](platforms/codex/index.md), [DeepSeek Harness](platforms/dsh/index.md), [OpenClaw](platforms/openclaw/index.md), and [OpenCode](platforms/opencode/index.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
 
 ```mermaid
 graph TB
     subgraph "Capture (per-platform)"
         CC["Claude Code<br/>(Stop hook + Haiku)"]
+        CX["Codex CLI<br/>(Stop hook + Codex)"]
+        DSH["DeepSeek Harness<br/>(turn event + headless agent)"]
         OC["OpenClaw<br/>(agent_end)"]
         OO["OpenCode<br/>(SQLite daemon)"]
-        CX["Codex CLI<br/>(Stop hook + Codex)"]
     end
 
     subgraph "Shared Memory"
@@ -22,7 +23,7 @@ graph TB
         MIL[("Milvus<br/>(shared index)")]
     end
 
-    CC & OC & OO & CX --> MD
+    CC & CX & DSH & OC & OO --> MD
     MD --> MIL
 
     style MD fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
@@ -260,7 +261,7 @@ graph LR
 | **L2: Expand** | Full markdown section around a chunk, including anchor metadata | Medium -- one file section |
 | **L3: Transcript** | Original conversation turns verbatim (user messages, assistant responses, tool calls) | High -- raw dialogue |
 
-The L3 transcript format varies by platform (Claude Code JSONL, OpenClaw JSONL, OpenCode SQLite, Codex rollout JSONL), but the L1/L2 layers are shared across all platforms via the `memsearch` CLI.
+The L3 transcript format varies by platform (Claude Code JSONL, Codex rollout JSONL, DSH session database, OpenClaw JSONL, OpenCode SQLite), but the L1/L2 layers are shared across all platforms via the `memsearch` CLI.
 
 **Session anchors** in memory files enable the L2-to-L3 bridge:
 

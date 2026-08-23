@@ -117,7 +117,7 @@ The three-layer model is particularly valuable for OpenClaw because agents often
 | **Search quality** | Hybrid search fuses semantic + keyword | Dense similarity only |
 | **Per-agent isolation** | Built-in (automatic) | Not in default version (fixed in memory-lancedb-pro) |
 | **Storage** | Plain `.md` files + Milvus index | LanceDB tables (Arrow format) |
-| **Cross-platform** | Memories accessible from Claude Code, Codex, OpenCode | OpenClaw only |
+| **Cross-platform** | Memories accessible from Claude Code, Codex, DSH, OpenCode | OpenClaw only |
 | **Embedding** | Pluggable (ONNX, OpenAI, etc.) | Typically fixed to one provider |
 
 memsearch's key advantages are hybrid search (BM25 catches exact identifiers that dense search misses), automatic per-agent isolation (which memory-lancedb only offers in its pro variant), and cross-platform portability.

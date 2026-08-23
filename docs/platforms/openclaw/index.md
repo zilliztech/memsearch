@@ -20,7 +20,7 @@ OpenClaw ships with **memory-core**, a built-in memory plugin backed by SQLite +
 | **Progressive disclosure** | Single-layer (search only) | Three-layer: search → expand → transcript drill-down |
 | **Embedding model** | Depends on configuration | Pluggable: ONNX bge-m3 (default), OpenAI, Google, Voyage, Jina, Mistral, Ollama |
 | **Data portability** | Locked in SQLite | Copy `.md` files, rebuild index anywhere |
-| **Cross-platform** | OpenClaw only | Same memories accessible from Claude Code, Codex, OpenCode |
+| **Cross-platform** | OpenClaw only | Same memories accessible from Claude Code, Codex, DSH, OpenCode |
 
 ### When to stay with memory-core
 
@@ -37,12 +37,12 @@ Switch when you need: hybrid search (keyword + semantic), cross-platform memory 
 OpenClaw supports multiple agents (e.g., `main`, `work`, custom agents). memsearch provides **automatic per-agent memory isolation** based on workspace directories:
 
 - **Separate memory directories**: each agent's workspace has its own `.memsearch/memory/`
-- **Directory-based collections**: collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, and OpenCode (`ms_<basename>_<hash>`)
+- **Directory-based collections**: collection names are derived from the workspace path using the same algorithm as Claude Code, Codex, DSH, and OpenCode (`ms_<basename>_<hash>`)
 - **Cross-platform sharing**: when an agent's workspace points to the same project directory used by other platforms, memories are automatically shared
 
 This means agents with different workspaces have isolated memories, while agents pointing to the same project directory share memories -- even across platforms.
 
-!!! tip "Cross-platform sharing with Claude Code / Codex / OpenCode"
+!!! tip "Cross-platform sharing with Claude Code / Codex / DSH / OpenCode"
 
     To share memories with other platforms on the same project, set your agent's workspace to the project directory:
 
@@ -70,7 +70,7 @@ This means agents with different workspaces have isolated memories, while agents
 - **Multi-agent isolation** -- each agent gets its own memory directory and Milvus collection
 - **Cold-start context** -- recent memories injected on agent start via `before_agent_start` hook
 - **ONNX embedding by default** -- no API key required, runs locally on CPU
-- **Cross-platform sharing** -- same collection names as Claude Code, Codex, and OpenCode for seamless memory portability
+- **Cross-platform sharing** -- same collection names as Claude Code, Codex, DSH, and OpenCode for seamless memory portability
 
 ---
 

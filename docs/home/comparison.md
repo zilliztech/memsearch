@@ -8,7 +8,7 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 
 | | memsearch | Claude Code native | claude-mem | qmd | MemPalace | mem0 | Letta |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Shape** | Engine + 4 native CLI plugins | Built-in (Claude Code only) | Plugin (Claude Code / Gemini CLI / OpenClaw) | Engine + MCP + Claude Code plugin | Claude Code plugin + MCP | Library + native plugins + MCP | Agent runtime (own CLI: Letta Code) |
+| **Shape** | Engine + 5 native agent plugins | Built-in (Claude Code only) | Plugin (Claude Code / Gemini CLI / OpenClaw) | Engine + MCP + Claude Code plugin | Claude Code plugin + MCP | Library + native plugins + MCP | Agent runtime (own CLI: Letta Code) |
 | **Source of truth** | Plain `.md` | Plain `.md` (`CLAUDE.md` + auto-memory) | SQLite + ChromaDB | Plain `.md` | ChromaDB | Vector DB (+ optional graph) | Postgres / git-backed MemFS (Letta Code) |
 | **Write** | Append-only | User edits `CLAUDE.md`; auto-memory appended by Claude | LLM-compressed transcripts | — (read-only) | Raw transcripts | LLM-extracted facts, LLM add/update/delete | Agent self-edits via tools |
 | **Search** | Dense + BM25 + RRF | **None** — whole file loaded every session | Chroma vector + FTS5 | BM25 + dense + LLM rerank | Dense | Dense (+ optional rerank, + optional graph) | Dense archival |
@@ -45,7 +45,7 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 
 ## Where memsearch is different
 
-- **Covers Claude Code + OpenClaw + OpenCode + Codex CLI in one project.** No other entry covers all four.
+- **Covers Claude Code + Codex CLI + DeepSeek Harness + OpenClaw + OpenCode in one project.** No other entry covers all five.
 - **Retrieves on demand** instead of stuffing the whole file into every session like Claude Code's built-in memory.
 - **Markdown + Milvus, not an opaque DB.** qmd and Letta's MemFS share the markdown-canonical approach; claude-mem / MemPalace / mem0 keep state in a DB.
 - **Append-only writes, no LLM curation on the write path.** mem0 and Letta's traditional memory depend on LLM write-time curation (powerful but can silently mutate past writes).

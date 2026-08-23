@@ -221,7 +221,7 @@ This design choice has several important consequences:
 - **Portable.** Copy `.memsearch/memory/` to another machine, run `memsearch index`, and all your memories are searchable there.
 - **Auditable.** You can read, edit, or delete any memory entry with a text editor. Bad summary? Fix it. Sensitive information captured? Delete the line.
 - **Git-friendly.** Commit your memory files to version control for a complete project history. Diff, blame, and revert all work naturally.
-- **Cross-platform.** Memories written by the Claude Code plugin are searchable from [OpenClaw](../openclaw/index.md), [OpenCode](../opencode/index.md), or [Codex](../codex/index.md) -- just point them at the same `.memsearch/memory/` directory.
+- **Cross-platform.** Memories written by the Claude Code plugin are searchable from [Codex](../codex/index.md), [DeepSeek Harness](../dsh/index.md), [OpenClaw](../openclaw/index.md), or [OpenCode](../opencode/index.md) -- just point them at the same `.memsearch/memory/` directory.
 
 This contrasts with solutions that store memories in opaque databases (SQLite, ChromaDB, LanceDB). With memsearch, if you can open a text editor, you can read your memories.
 
