@@ -173,10 +173,12 @@ _pypi_latest_version() {
   fi
   last=$(cat "$cache" 2>/dev/null || true)
   mkdir -p "$(dirname "$cache")" 2>/dev/null || true
-  # Claim the refresh by marking the cache fresh before detaching, so parallel
-  # session starts do not each spawn their own lookup. The child replaces the
-  # contents; a child that dies leaves the previous answer, one day stale.
-  touch "$cache" 2>/dev/null || true
+  # Only an answer marks the cache fresh: the child's mv is the sole writer of
+  # both the contents and the mtime. That keeps the sentence above true -- an
+  # empty fresh file records a lookup that ran and failed, never one that was
+  # merely started -- and a refresh that dies leaves the previous answer for the
+  # next start to retry. Concurrent starts may each spawn a lookup; off the
+  # blocking path that costs the session start nothing.
   # Both fds must be redirected. The hook runner keeps a pipe on the hook's
   # stderr, so `child >/dev/null &` still holds the session start open until the
   # child exits (measured in #676). Same form as the Lite-mode index subshell.

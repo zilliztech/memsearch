@@ -1224,10 +1224,13 @@ exit 0
     env = _session_start_env(tmp_path, home, fake_bin, call_log)
     env["CURL_CALL_LOG"] = str(curl_log)
 
+    cache = home / ".memsearch" / ".pypi-latest"
     first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+    # The failure is recorded by the detached child, so wait for it to land: only
+    # a recorded answer -- including this empty one -- marks the cache fresh.
+    assert _wait_for(lambda: cache.exists())
     second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
 
-    cache = home / ".memsearch" / ".pypi-latest"
     assert _wait_for(lambda: curl_log.exists() and curl_log.read_text(encoding="utf-8").count("called") == 1)
     assert curl_log.read_text(encoding="utf-8").count("called") == 1
     assert cache.exists() and cache.read_text(encoding="utf-8") == ""
@@ -1265,9 +1268,9 @@ exit 0
 
 
 def test_claude_session_start_does_not_wait_for_the_pypi_lookup(tmp_path: Path) -> None:
-    """A slow index costs the session start nothing, and is looked up once."""
+    """A slow index costs the session start nothing, and never fakes a fresh cache."""
     script = Path("plugins/claude-code/hooks/session-start.sh")
-    _home, env, curl_log = _pypi_stand(
+    home, env, curl_log = _pypi_stand(
         tmp_path,
         """#!/usr/bin/env bash
 printf 'called\n' >> "$CURL_CALL_LOG"
@@ -1280,12 +1283,15 @@ echo '{"info":{"version":"2.0.0"}}'
     subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
     first_elapsed = time.monotonic() - started
 
-    # A second cold start must not spawn a second lookup: the first one marks the
-    # cache fresh before detaching, so parallel starts do not stampede the index.
-    subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-
     assert first_elapsed < 4.0, f"session start waited {first_elapsed:.1f}s on the PyPI lookup"
-    assert _wait_for(lambda: curl_log.exists())
+
+    # The lookup is still in flight here. Nothing may present the cache as fresh
+    # before an answer lands: a start that claimed freshness up front would
+    # suppress the hint for a day whenever its refresh failed to finish.
+    cache = home / ".memsearch" / ".pypi-latest"
+    assert not cache.exists(), "cache was marked fresh before the lookup answered"
+
+    assert _wait_for(lambda: cache.exists() and cache.read_text(encoding="utf-8") == "2.0.0", timeout=20.0)
     assert curl_log.read_text(encoding="utf-8").count("called") == 1
 
 
