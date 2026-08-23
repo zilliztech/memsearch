@@ -109,15 +109,16 @@ When modifying hooks/skills, keep in mind:
 
 ## Versioning & Release
 
-**Five independent version numbers** — bump only the ones that changed:
+**Six release components** — bump only the versioned components that changed:
 
 | Component | Version file | Publish channel |
 |-----------|-------------|-----------------|
 | **memsearch** (PyPI) | `pyproject.toml` | PyPI (automated via GitHub Actions on tag push) |
 | **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | Marketplace (`.claude-plugin/marketplace.json`) |
-| **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
-| **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`) |
 | **Codex plugin** | *(none)* | `install.sh` (no version management) |
+| **DeepSeek Harness plugin** | `plugins/dsh/package.json` | npm (`@zilliz/memsearch-dsh`, trusted publishing via `release-dsh.yml`) |
+| **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
+| **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`, trusted publishing via `release.yml`) |
 
 See `CLAUDE.local.md` for detailed release procedures, current versions, and operational details.
 

@@ -25,6 +25,11 @@
     "scripts/maintenance-runner.py"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zilliztech/memsearch",
+    "directory": "plugins/dsh"
+  },
   "keywords": [
     "memsearch",
     "memory",

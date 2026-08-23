@@ -1,0 +1,81 @@
+name: Release DSH plugin
+
+on:
+  push:
+    tags:
+      - "dsh-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-dsh:
+    name: Publish DSH package to npm
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: plugins/dsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Use npm 11
+        run: |
+          npm install -g npm@11
+          npm --version
+
+      - name: Read package metadata
+        id: package
+        run: |
+          echo "name=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release tag
+        if: github.event_name == 'push'
+        run: |
+          tag_version="${GITHUB_REF_NAME#dsh-v}"
+          if [[ "$tag_version" != "${{ steps.package.outputs.version }}" ]]; then
+            echo "Tag version $tag_version does not match package version ${{ steps.package.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Check published version
+        id: registry
+        run: |
+          if npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm test
+
+      - name: Check package syntax
+        if: steps.registry.outputs.exists == 'false'
+        run: |
+          node --check index.js
+          node --check client.js
+
+      - name: Pack package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm pack --dry-run
+
+      - name: Publish package
+        if: steps.registry.outputs.exists == 'false'
+        run: npm publish --access public
