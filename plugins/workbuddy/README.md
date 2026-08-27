@@ -40,16 +40,16 @@ memsearch config set plugins.openclaw.summarize.provider <name>
 memsearch config set plugins.openclaw.summarize.enabled true
 ```
 
-### Install (development mount)
+### Install
 
-Point a WorkBuddy plugin marketplace directory at this folder (symlink/junction recommended so edits hot-reload — only `hooks.json` changes require a WorkBuddy restart):
+Place this plugin into a WorkBuddy marketplace directory, then restart WorkBuddy once to load `hooks/hooks.json`:
 
 ```bash
-# example: junction on Windows
-mklink /J "%USERPROFILE%\.workbuddy\plugins\marketplaces\local-dev\memsearch-workbuddy" "<this-dir>"
+# example: copy the plugin into a marketplace
+cp -r . "<marketplace-dir>/memsearch-workbuddy"
 ```
 
-Then restart WorkBuddy once to load `hooks/hooks.json`.
+`hooks.json` changes require a WorkBuddy restart; `scripts/*.py` edits hot-reload without one.
 
 ## How It Works
 
@@ -117,7 +117,7 @@ Pure file read, non-blocking, zero cost outside the window.
 Set `MEMSEARCH_WB_WATCH=1` to run a resident `memsearch watch <memory> -c <derived-collection>` instead of the one-shot background index — external edits to `memory/*.md` get re-indexed continuously, not just at turn end.
 
 - **Server mode only**: when `milvus.uri` is http(s) the daemon starts detached; with Milvus Lite it is skipped (the local `.db` file lock conflicts with watch — same rule as the claude-code plugin) and the one-shot index remains the fallback.
-- **Lifecycle**: pid in `.memsearch/.watch.pid` with a liveness probe (`os.kill(pid, 0)`); repeat SessionStarts adopt the running daemon instead of respawning it. Stderr (WARNING+) goes to `.memsearch/watch.log`, rotated to `watch.log.1` on restart.
+- **Lifecycle**: pid in `.memsearch/.watch.pid` with a cross-platform liveness probe (WinAPI on Windows); repeat SessionStarts adopt the running daemon instead of respawning it. Stderr (WARNING+) goes to `.memsearch/watch.log`, rotated to `watch.log.1` on restart.
 - **Stop**: stop is manual — send SIGTERM/SIGINT to the pid (or `os.kill`) and remove `.watch.pid`. On Windows a headless process has no console for Ctrl-C, so termination is direct (TerminateProcess); remote state is server-side and self-heals.
 
 ## Memory Files

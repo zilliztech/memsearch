@@ -177,20 +177,64 @@ def _lag_hint(memsearch_dir):
     return ""
 
 
+def _pid_alive(pid):
+    """跨平台进程存活判断。Windows 下 os.kill(pid,0) 会抛 ValueError，改走 WinAPI。
+
+    用 WaitForSingleObject(h, 0) 判存活：进程终止时句柄信号化，与退出码无关，
+    避免 GetExitCodeProcess 的 STILL_ACTIVE(259) 歧义。需 SYNCHRONIZE 权限。
+    边界：
+    - pid<=0 / 进程不存在（OpenProcess 返回 ERROR_INVALID_PARAMETER）→ False
+    - 打开被拒（ERROR_ACCESS_DENIED，如保护/提权进程）→ 保守视为存活，避免误判死亡重复点火
+    - WaitForSingleObject 失败（WAIT_FAILED）→ 保守存活
+    """
+    if not pid or pid <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            SYNCHRONIZE = 0x100000
+            WAIT_TIMEOUT = 0x102
+            WAIT_FAILED = 0xFFFFFFFF
+            ERROR_ACCESS_DENIED = 5
+            h = k32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid
+            )
+            if not h:
+                # 打开失败：进程不存在(87) → 死亡；权限不足(5) → 无法判定，保守存活
+                return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+            try:
+                st = k32.WaitForSingleObject(h, 0)
+                if st == WAIT_FAILED:
+                    return True  # 查询失败，保守视为存活
+                return st == WAIT_TIMEOUT  # 未终止→存活
+            finally:
+                k32.CloseHandle(h)
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _read_pid(pidfile):
+    """读 pidfile 内容为 int；缺失/损坏返回 0。"""
+    try:
+        with open(pidfile, encoding="utf-8") as f:
+            return int(f.read().strip() or "0")
+    except Exception:
+        return 0
+
+
 def _bg_run(pid_name, argv, memsearch_dir):
     """detached 子进程通用点火：pidfile 存活探针 skip-if-running（防抖）。"""
     pidfile = os.path.join(memsearch_dir, pid_name)
-    try:
-        if os.path.isfile(pidfile):
-            with open(pidfile, encoding="utf-8") as f:
-                old_pid = int(f.read().strip() or "0")
-            if old_pid > 0:
-                os.kill(old_pid, 0)  # 存活探测，进程不在则抛 OSError
-                return  # 上一个还在跑，跳过
-    except (OSError, ValueError):
-        pass  # 进程已死或 pidfile 损坏，继续起新进程
-    except Exception:
-        pass
+    if _pid_alive(_read_pid(pidfile)):
+        return  # 上一个还在跑，跳过
     try:
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
             subprocess, "DETACHED_PROCESS", 0
@@ -311,17 +355,9 @@ def _maintenance(project_dir, memsearch_dir):
 def _watch_pid(memsearch_dir):
     """探测 watch 存活并清理 stale pidfile。返回 pid，未运行返回 0。"""
     pidfile = os.path.join(memsearch_dir, WATCH_PID_NAME)
-    try:
-        with open(pidfile, encoding="utf-8") as f:
-            pid = int(f.read().strip() or "0")
-    except Exception:
-        return 0
-    if pid > 0:
-        try:
-            os.kill(pid, 0)  # 存活探测
-            return pid
-        except OSError:
-            pass
+    pid = _read_pid(pidfile)
+    if _pid_alive(pid):
+        return pid
     try:
         os.remove(pidfile)
     except Exception:
@@ -394,9 +430,7 @@ def _watch_stop(memsearch_dir, grace_s=3):
             pass
         for _ in range(grace_s):
             time.sleep(1)
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if not _pid_alive(pid):
                 break
         else:
             continue
@@ -413,20 +447,20 @@ def _watch_stop(memsearch_dir, grace_s=3):
 # ---------------------------------------------------------------------------
 
 def _resolve_summarize_provider():
-    """按 §3.4 规则从全局 ~/.memsearch/config.toml 解析 summarize 将用的 provider。
+    """按 openclaw summarize 配置解析 summarize 实际将用的 provider/model。
 
-    只读配置文件（不调用 memsearch config CLI）。返回 dict 供状态行与失败诊断。
-    安全约束：绝不回显 api_key / token 字段值。
+    对齐 memsearch cli.summarize：provider 取自 plugins.openclaw.summarize.provider，
+    空或 native → 无 memsearch 托管 provider（exit 2）；再校验对应
+    [llm.providers.<name>] 存在；model = summarize.model 或 provider.model。
+    只读配置文件（不调用 memsearch config CLI）。绝不回显 api_key / token。
     """
     result = {
-        "config_path": "",
         "provider": "",
         "model": "",
         "openclaw_summarize": {},
         "error": "",
     }
     cfg_path = os.path.expanduser(os.path.join("~", ".memsearch", "config.toml"))
-    result["config_path"] = cfg_path
     if not os.path.isfile(cfg_path):
         result["error"] = (
             "global config not found: %s — 请先创建 ~/.memsearch/config.toml "
@@ -445,25 +479,33 @@ def _resolve_summarize_provider():
         result["error"] = "config.toml 解析失败: %s" % e
         return result
 
-    providers = cfg.get("llm", {}).get("providers", {})
-    if isinstance(providers, dict):
-        for name, p in providers.items():
-            if isinstance(p, dict) and p.get("type") and p.get("model"):
-                result["provider"] = name
-                result["model"] = str(p.get("model"))
-                break
     oc_sum = cfg.get("plugins", {}).get("openclaw", {}).get("summarize", {})
-    if isinstance(oc_sum, dict):
-        # 只回显非敏感键
-        result["openclaw_summarize"] = {
-            k: v for k, v in oc_sum.items() if k not in ("api_key", "token")
-        }
-    if not result["provider"]:
+    if not isinstance(oc_sum, dict):
+        oc_sum = {}
+    result["openclaw_summarize"] = {
+        k: v for k, v in oc_sum.items() if k not in ("api_key", "token")
+    }
+
+    provider_name = str(oc_sum.get("provider") or "").strip()
+    if not provider_name or provider_name == "native":
         result["error"] = (
-            "~/.memsearch/config.toml 中无可用 [llm.providers.<name>]"
-            "（需 type 与 model 均非空）— summarize 将无 provider 可用，"
-            "按 §3.4 不静默降级"
+            "plugins.openclaw.summarize.provider 为空或 native — 无 memsearch 托管 "
+            "provider，summarize 走原生摘要（CLI 将 exit 2）"
         )
+        return result
+
+    providers = cfg.get("llm", {}).get("providers", {})
+    provider_cfg = providers.get(provider_name) if isinstance(providers, dict) else None
+    if not isinstance(provider_cfg, dict):
+        result["error"] = (
+            "Unknown LLM provider %r — 请配置 [llm.providers.%s]" % (provider_name, provider_name)
+        )
+        return result
+
+    result["provider"] = provider_name
+    result["model"] = str(
+        oc_sum.get("model") or provider_cfg.get("model") or ""
+    ).strip()
     return result
 
 
@@ -695,7 +737,9 @@ def _stop_live(ctx, meta, transcript, memory_dir, memory_file,
     if not ms:
         failure = "memsearch CLI not found on PATH"
     elif not prov["provider"]:
-        failure = "no LLM provider configured in ~/.memsearch/config.toml"
+        failure = (
+            "no memsearch-managed LLM provider for summarize: %s" % prov["error"]
+        )
     else:
         rc, out = _run(
             [ms, "summarize", "--plugin", "openclaw",
