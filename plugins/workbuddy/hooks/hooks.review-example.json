@@ -1,0 +1,60 @@
+{
+  "description": "【手动审阅配置样例】把全部事件指到 review_capture.py：抓取真实 stdin 载荷（<project>/.hook-review/captures/*.jsonl）并推导各节点带数据类型的 JSON Schema（.hook-review/hook-schema.json），供其他 agent 框架插件开发复用。用法：备份 hooks.json → 用本文件替换 → 跑几轮会话 → 换回原 hooks.json。仅开发用；HOOK_REVIEW_DIR 可改输出目录。",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ${CODEBUDDY_PLUGIN_ROOT}/scripts/review_capture.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ${CODEBUDDY_PLUGIN_ROOT}/scripts/review_capture.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ${CODEBUDDY_PLUGIN_ROOT}/scripts/review_capture.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ${CODEBUDDY_PLUGIN_ROOT}/scripts/review_capture.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ${CODEBUDDY_PLUGIN_ROOT}/scripts/review_capture.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

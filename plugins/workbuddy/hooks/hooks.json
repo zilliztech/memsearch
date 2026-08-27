@@ -1,0 +1,60 @@
+{
+  "description": "memsearch-workbuddy 对接层 —— 事件分派到 handler.py：SessionStart 注入 lag 提示+后台增量索引，Stop 摘要→写 memory/*.md→索引。遵循 spec §3.6.3 红线：不落 review/审阅文件。通用载荷抓取工具 review_capture.py 可手动换用（见 hooks.review-example.json）。源码在 D:\\Electronics\\agent-plugins\\workbuddy_plugin_memsearch\\workbuddy，经 junction 实时挂载",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pythonw ${CODEBUDDY_PLUGIN_ROOT}/scripts/handler.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pythonw ${CODEBUDDY_PLUGIN_ROOT}/scripts/handler.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pythonw ${CODEBUDDY_PLUGIN_ROOT}/scripts/handler.py",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pythonw ${CODEBUDDY_PLUGIN_ROOT}/scripts/handler.py",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pythonw ${CODEBUDDY_PLUGIN_ROOT}/scripts/handler.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+scripts/.memsearch/
+scripts/diag.log
+.hook-review/
+.pytest_cache/

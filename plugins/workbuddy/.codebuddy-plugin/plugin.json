@@ -1,0 +1,11 @@
+{
+  "name": "memsearch-workbuddy",
+  "version": "0.1.0",
+  "description": "Automatic semantic memory for WorkBuddy — turn capture → daily Markdown journals → Milvus index → top-2 memory injection on prompt submit, with due maintenance (PROJECT.md/USER.md, skill distillation) via the memsearch backend.",
+  "homepage": {
+    "url": "https://github.com/zilliztech/memsearch",
+    "type": "github"
+  },
+  "license": "MIT",
+  "keywords": ["memory", "semantic-search", "milvus", "markdown", "workbuddy"]
+}
