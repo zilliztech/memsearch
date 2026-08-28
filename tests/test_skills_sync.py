@@ -68,13 +68,9 @@ def test_skill_copies_match_shared() -> None:
             assert name == shared_name, f"{skill}/{platform}: name mismatch"
             expected_middle = [shared_middle[0], *FRONTMATTER_EXTRA[platform]]
             assert middle == expected_middle, (
-                f"{skill}/{platform}: frontmatter mismatch\n"
-                f"  got:      {middle}\n"
-                f"  expected: {expected_middle}"
+                f"{skill}/{platform}: frontmatter mismatch\n  got:      {middle}\n  expected: {expected_middle}"
             )
-            assert body == shared_body, (
-                f"{skill}/{platform}: body drifted from shared source"
-            )
+            assert body == shared_body, f"{skill}/{platform}: body drifted from shared source"
 
 
 def test_skill_references_match_shared() -> None:
@@ -84,19 +80,11 @@ def test_skill_references_match_shared() -> None:
         assert shared_refs.is_dir(), f"missing shared references {shared_refs}"
 
         shared_files = {
-            p.relative_to(shared_refs): p.read_bytes()
-            for p in sorted(shared_refs.rglob("*"))
-            if p.is_file()
+            p.relative_to(shared_refs): p.read_bytes() for p in sorted(shared_refs.rglob("*")) if p.is_file()
         }
 
         for platform in (*FS_PLATFORMS, "dsh"):
             refs = ROOT / "plugins" / platform / "skills" / skill / "references"
             assert refs.is_dir(), f"missing references {refs}"
-            copied_files = {
-                p.relative_to(refs): p.read_bytes()
-                for p in sorted(refs.rglob("*"))
-                if p.is_file()
-            }
-            assert copied_files == shared_files, (
-                f"{skill}/{platform}: references/ drifted from shared source"
-            )
+            copied_files = {p.relative_to(refs): p.read_bytes() for p in sorted(refs.rglob("*")) if p.is_file()}
+            assert copied_files == shared_files, f"{skill}/{platform}: references/ drifted from shared source"
