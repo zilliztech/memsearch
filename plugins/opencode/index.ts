@@ -32,6 +32,7 @@ import {
   mergeSystemMemoryContext,
   shellEscape,
 } from "./context.ts";
+import { deriveCollectionNameFromScript } from "./derive-collection.ts";
 
 const PLUGIN_DIR = dirname(realpathSync(fileURLToPath(import.meta.url)));
 
@@ -67,14 +68,7 @@ function detectMemsearchCmd(): string {
 /** Derive a per-project Milvus collection name via the shared script. */
 function deriveCollectionName(projectDir: string): string {
   const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
-  try {
-    return execSync(`bash "${script}" "${projectDir}"`, {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-  } catch {
-    return "ms_opencode_default";
-  }
+  return deriveCollectionNameFromScript(script, projectDir);
 }
 
 /**

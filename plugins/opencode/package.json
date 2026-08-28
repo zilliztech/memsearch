@@ -9,6 +9,7 @@
   },
   "files": [
     "context.ts",
+    "derive-collection.ts",
     "index.ts",
     "scripts/*.py",
     "scripts/*.sh",
