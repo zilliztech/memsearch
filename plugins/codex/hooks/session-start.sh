@@ -67,7 +67,7 @@ fi
 UPDATE_HINT=""
 if [ -n "$VERSION" ]; then
   LATEST=$(_pypi_latest_version)
-  if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
+  if [ -n "$LATEST" ] && _version_gt "$LATEST" "$VERSION"; then
     # Detect install method to suggest the right upgrade command.
     _MS_BIN=$(command -v memsearch 2>/dev/null || echo "")
     _MS_REAL=""

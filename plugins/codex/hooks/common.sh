@@ -114,6 +114,28 @@ _installed_version_from_dist_info() {
   done
 }
 
+# True when the first version is strictly newer than the second, comparing the
+# dot-separated numeric fields left to right. Anything from the first
+# non-numeric character on is ignored (1.2.0rc1 compares as 1.2.0), so an
+# unrecognised shape can only ever compare equal -- never greater. The update
+# hint therefore stays silent when the installed build is ahead of the cached
+# answer, which a plain string inequality could not tell apart from an upgrade.
+_version_gt() {
+  local a="${1%%[!0-9.]*}" b="${2%%[!0-9.]*}" ax bx
+  while [ -n "$a" ] || [ -n "$b" ]; do
+    ax=${a%%.*}
+    bx=${b%%.*}
+    # 10# forces base ten so a zero-padded field is not read as octal.
+    ax=$((10#${ax:-0}))
+    bx=$((10#${bx:-0}))
+    [ "$ax" -gt "$bx" ] && return 0
+    [ "$ax" -lt "$bx" ] && return 1
+    case "$a" in *.*) a=${a#*.} ;; *) a="" ;; esac
+    case "$b" in *.*) b=${b#*.} ;; *) b="" ;; esac
+  done
+  return 1
+}
+
 # Latest memsearch version on PyPI, cached for 24h and refreshed off the
 # blocking path. Keeps the update hint current without making any session start
 # wait on a network round trip: a cache older than a day is still printed, and

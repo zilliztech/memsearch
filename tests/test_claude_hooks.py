@@ -1150,96 +1150,15 @@ exit 0
     assert "uv tool upgrade memsearch" in status
 
 
-def test_claude_session_start_caches_pypi_lookup(tmp_path: Path) -> None:
-    """PyPI is queried on the first start and served from cache on the next."""
-    script = Path("plugins/claude-code/hooks/session-start.sh")
-    home = tmp_path / "home"
-    (home / ".memsearch").mkdir(parents=True)
-    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
-    (tmp_path / ".memsearch").mkdir()
-    call_log = tmp_path / "memsearch-calls.txt"
-    curl_log = tmp_path / "curl-calls.txt"
-
-    fake_bin = _install_layout(tmp_path / "opt", "1.0.0")
-    _write_executable(
-        fake_bin / "memsearch",
-        """#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
-if [ "$1" = "config" ] && [ "$2" = "list" ]; then
-  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
-  exit 0
-fi
-exit 0
-""",
-    )
-    _write_executable(
-        fake_bin / "curl",
-        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"2.0.0"}}'\n""",
-    )
-
-    env = _session_start_env(tmp_path, home, fake_bin, call_log)
-    env["CURL_CALL_LOG"] = str(curl_log)
-
-    cache = home / ".memsearch" / ".pypi-latest"
-    first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-    assert _wait_for(lambda: cache.exists() and cache.read_text(encoding="utf-8") == "2.0.0")
-    second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-
-    assert curl_log.read_text(encoding="utf-8").count("called") == 1
-    assert cache.read_text(encoding="utf-8") == "2.0.0"
-    # The first start has no answer to show yet: the lookup it triggered runs off
-    # the blocking path, so the hint arrives from the next start onwards.
-    assert "UPDATE:" not in json.loads(first.stdout)["systemMessage"]
-    assert "UPDATE: v2.0.0 available" in json.loads(second.stdout)["systemMessage"]
+# Both plugins ship a byte-identical copy of the hook helpers, so every PyPI
+# test below runs against both session starts: a fix that lands in one copy and
+# not the other fails here instead of drifting silently.
+SESSION_STARTS = ["plugins/claude-code/hooks/session-start.sh", "plugins/codex/hooks/session-start.sh"]
+COMMON_SHS = ["plugins/claude-code/hooks/common.sh", "plugins/codex/hooks/common.sh"]
+PLUGIN_IDS = ["claude-code", "codex"]
 
 
-def test_claude_session_start_caches_failed_pypi_lookup(tmp_path: Path) -> None:
-    """A failed lookup is cached too, so an offline machine stops retrying."""
-    script = Path("plugins/claude-code/hooks/session-start.sh")
-    home = tmp_path / "home"
-    (home / ".memsearch").mkdir(parents=True)
-    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
-    (tmp_path / ".memsearch").mkdir()
-    call_log = tmp_path / "memsearch-calls.txt"
-    curl_log = tmp_path / "curl-calls.txt"
-
-    fake_bin = _install_layout(tmp_path / "opt", "1.0.0")
-    _write_executable(
-        fake_bin / "memsearch",
-        """#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
-if [ "$1" = "config" ] && [ "$2" = "list" ]; then
-  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"/tmp/x.db"}}'
-  exit 0
-fi
-exit 0
-""",
-    )
-    # Stand in for an unreachable index: no output, non-zero exit.
-    _write_executable(
-        fake_bin / "curl",
-        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\nexit 6\n""",
-    )
-
-    env = _session_start_env(tmp_path, home, fake_bin, call_log)
-    env["CURL_CALL_LOG"] = str(curl_log)
-
-    cache = home / ".memsearch" / ".pypi-latest"
-    first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-    # The failure is recorded by the detached child, so wait for it to land: only
-    # a recorded answer -- including this empty one -- marks the cache fresh.
-    assert _wait_for(lambda: cache.exists())
-    second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-
-    assert _wait_for(lambda: curl_log.exists() and curl_log.read_text(encoding="utf-8").count("called") == 1)
-    assert curl_log.read_text(encoding="utf-8").count("called") == 1
-    assert cache.exists() and cache.read_text(encoding="utf-8") == ""
-    # No latest version known, so no hint is claimed either way.
-    for run in (first, second):
-        assert "UPDATE:" not in json.loads(run.stdout)["systemMessage"]
-
-
-def _pypi_stand(tmp_path: Path, curl_body: str):
+def _pypi_stand(tmp_path: Path, curl_body: str, installed: str = "1.0.0"):
     """Session-start stand whose PyPI lookup is a fake curl of our choosing."""
     home = tmp_path / "home"
     (home / ".memsearch").mkdir(parents=True)
@@ -1248,7 +1167,7 @@ def _pypi_stand(tmp_path: Path, curl_body: str):
     call_log = tmp_path / "memsearch-calls.txt"
     curl_log = tmp_path / "curl-calls.txt"
 
-    fake_bin = _install_layout(tmp_path / "opt", "1.0.0")
+    fake_bin = _install_layout(tmp_path / "opt", installed)
     _write_executable(
         fake_bin / "memsearch",
         """#!/usr/bin/env bash
@@ -1264,54 +1183,178 @@ exit 0
     _write_executable(fake_bin / "curl", curl_body)
     env = _session_start_env(tmp_path, home, fake_bin, call_log)
     env["CURL_CALL_LOG"] = str(curl_log)
+    # The codex hook reads its project dir from its own variable.
+    env["MEMSEARCH_PROJECT_DIR"] = str(tmp_path)
     return home, env, curl_log
 
 
-def test_claude_session_start_does_not_wait_for_the_pypi_lookup(tmp_path: Path) -> None:
-    """A slow index costs the session start nothing, and never fakes a fresh cache."""
-    script = Path("plugins/claude-code/hooks/session-start.sh")
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_caches_pypi_lookup(tmp_path: Path, script: str) -> None:
+    """PyPI is queried on the first start and served from cache on the next."""
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"2.0.0"}}'\n""",
+    )
+
+    cache = home / ".memsearch" / ".pypi-latest"
+    first = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+    assert _wait_for(lambda: cache.exists() and cache.read_text(encoding="utf-8") == "2.0.0")
+    second = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+    assert cache.read_text(encoding="utf-8") == "2.0.0"
+    # The first start has no answer to show yet: the lookup it triggered runs off
+    # the blocking path, so the hint arrives from the next start onwards.
+    assert "UPDATE:" not in json.loads(first.stdout)["systemMessage"]
+    assert "UPDATE: v2.0.0 available" in json.loads(second.stdout)["systemMessage"]
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_caches_failed_pypi_lookup(tmp_path: Path, script: str) -> None:
+    """A failed lookup is cached too, so an offline machine stops retrying."""
+    # Stand in for an unreachable index: no output, non-zero exit.
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\nexit 6\n""",
+    )
+
+    cache = home / ".memsearch" / ".pypi-latest"
+    first = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+    # The failure is recorded by the detached child, so wait for it to land: only
+    # a recorded answer -- including this empty one -- marks the cache fresh.
+    assert _wait_for(lambda: cache.exists())
+    second = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+
+    assert _wait_for(lambda: curl_log.exists() and curl_log.read_text(encoding="utf-8").count("called") == 1)
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+    assert cache.exists() and cache.read_text(encoding="utf-8") == ""
+    # No latest version known, so no hint is claimed either way.
+    for run in (first, second):
+        assert "UPDATE:" not in json.loads(run.stdout)["systemMessage"]
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_does_not_wait_for_the_pypi_lookup(tmp_path: Path, script: str) -> None:
+    """A slow lookup costs the session start nothing, and never fakes a fresh cache.
+
+    The lookup is held open by a file this test creates only after the session
+    start has returned, so the pin is the ordering itself rather than a
+    wall-clock bound that a loaded runner could miss.
+    """
+    release = tmp_path / "release-curl"
     home, env, curl_log = _pypi_stand(
         tmp_path,
         """#!/usr/bin/env bash
 printf 'called\n' >> "$CURL_CALL_LOG"
-sleep 5
+i=0
+while [ ! -f "$CURL_RELEASE" ] && [ "$i" -lt 600 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
 echo '{"info":{"version":"2.0.0"}}'
 """,
     )
+    env["CURL_RELEASE"] = str(release)
 
-    started = time.monotonic()
-    subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
-    first_elapsed = time.monotonic() - started
-
-    assert first_elapsed < 4.0, f"session start waited {first_elapsed:.1f}s on the PyPI lookup"
+    # A start that waited on the child cannot return while the lookup is held,
+    # so the timeout is the failure mode, not the assertion.
+    subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True, timeout=60)
 
     # The lookup is still in flight here. Nothing may present the cache as fresh
     # before an answer lands: a start that claimed freshness up front would
     # suppress the hint for a day whenever its refresh failed to finish.
     cache = home / ".memsearch" / ".pypi-latest"
     assert not cache.exists(), "cache was marked fresh before the lookup answered"
+    assert _wait_for(lambda: curl_log.exists() and curl_log.read_text(encoding="utf-8").count("called") == 1)
 
+    release.write_text("go", encoding="utf-8")
     assert _wait_for(lambda: cache.exists() and cache.read_text(encoding="utf-8") == "2.0.0", timeout=20.0)
     assert curl_log.read_text(encoding="utf-8").count("called") == 1
 
 
-def test_claude_session_start_shows_the_stale_hint_while_refreshing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_shows_the_stale_hint_while_refreshing(tmp_path: Path, script: str) -> None:
     """An expired cache is still worth showing; the refresh happens behind it."""
-    script = Path("plugins/claude-code/hooks/session-start.sh")
     home, env, curl_log = _pypi_stand(
         tmp_path,
-        """#!/usr/bin/env bash
-printf 'called\n' >> "$CURL_CALL_LOG"
-echo '{"info":{"version":"3.0.0"}}'
-""",
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"3.0.0"}}'\n""",
     )
     cache = home / ".memsearch" / ".pypi-latest"
     cache.write_text("2.0.0", encoding="utf-8")
     two_days_ago = time.time() - 2 * 24 * 3600
     os.utime(cache, (two_days_ago, two_days_ago))
 
-    run = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+    run = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
 
     assert "UPDATE: v2.0.0 available" in json.loads(run.stdout)["systemMessage"]
     assert _wait_for(lambda: cache.read_text(encoding="utf-8") == "3.0.0")
     assert curl_log.read_text(encoding="utf-8").count("called") == 1
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_does_not_hint_a_downgrade_from_the_cache(tmp_path: Path, script: str) -> None:
+    """A cached answer older than the installed build is not an update.
+
+    Serving a stale cache widened the window in which the cached version can
+    trail the installed one -- upgrade between two writes and the old value is
+    still on disk. Compared as strings it merely differs, and the hint would
+    tell the user to "upgrade" to the version they just left.
+    """
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"1.0.0"}}'\n""",
+        installed="1.0.0",
+    )
+    cache = home / ".memsearch" / ".pypi-latest"
+    cache.write_text("0.9.13", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(cache, (two_days_ago, two_days_ago))
+
+    run = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+
+    status = json.loads(run.stdout)["systemMessage"]
+    assert "UPDATE:" not in status, status
+    # The refresh still runs behind the suppressed hint.
+    assert _wait_for(lambda: cache.read_text(encoding="utf-8") == "1.0.0")
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+def test_version_gt_orders_numeric_release_fields(common_sh: str) -> None:
+    """The comparison behind the hint orders fields numerically, and treats an
+    unrecognised shape as not-newer rather than as an upgrade."""
+    cases = [
+        ("0.4.14", "0.4.13", True),
+        ("0.4.13", "0.4.14", False),
+        ("0.4.13", "0.4.13", False),
+        # The pair that produced the downgrade hint: 9 < 13 as numbers, but
+        # "0.4.9" > "0.4.13" as strings.
+        ("0.4.9", "0.4.13", False),
+        ("0.4.13", "0.4.9", True),
+        ("1.0.0", "0.9.9", True),
+        ("10.0.0", "9.0.0", True),
+        ("0.5", "0.4.13", True),
+        ("0.4.13", "0.5", False),
+        # A zero-padded field must not be read as octal.
+        ("0.4.08", "0.4.7", True),
+        # Pre-release suffixes compare on their release fields only, so they can
+        # never claim to be newer than the release they precede.
+        ("1.2.0rc1", "1.2.0", False),
+        ("1.2.0", "1.2.0rc1", False),
+        # An unknown installed version keeps the old behaviour: hint anyway.
+        ("2.0.0", "", True),
+    ]
+    script = 'source "$1" < /dev/null; shift; while [ "$#" -gt 0 ]; do if _version_gt "$1" "$2"; then echo gt; else echo not; fi; shift 2; done'
+    args = []
+    for left, right, _ in cases:
+        args += [left, right]
+    result = subprocess.run(
+        ["bash", "-c", script, "bash", common_sh, *args],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "MEMSEARCH_DISABLE": ""},
+        check=True,
+    )
+
+    got = result.stdout.split()
+    want = ["gt" if expected else "not" for _, _, expected in cases]
+    assert got == want, [(c, g, w) for c, g, w in zip(cases, got, want) if g != w]
