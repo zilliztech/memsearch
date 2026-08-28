@@ -256,7 +256,53 @@ run_maintenance() {
 
 # --- Index process cleanup ---
 
-INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
+# Which harness is running these hooks. Claude Code, Codex, and third-party
+# clients that load these Claude-compatible plugin hooks can all share a single
+# MEMSEARCH_DIR. Tagging the index pidfile per harness -- and skipping PIDs that
+# another harness owns -- stops one harness's session start from reaping an
+# index another harness still has in flight. Override when a harness reuses
+# another plugin's hooks verbatim.
+MEMSEARCH_HARNESS_ID="${MEMSEARCH_HARNESS:-codex}"
+
+INDEX_PIDFILE="$MEMSEARCH_DIR/.index.${MEMSEARCH_HARNESS_ID}.pid"
+# Pidfile format from before harness tagging. No harness owns it, so whichever
+# cleanup runs first reaps it.
+INDEX_PIDFILE_LEGACY="$MEMSEARCH_DIR/.index.pid"
+
+# Is $1 present in the newline-separated list $2?
+_pid_in_list() {
+  [ -n "$2" ] || return 1
+  printf '%s\n' "$2" | grep -qx "$1"
+}
+
+# PIDs owned by *other* harnesses: each live recorded index PID plus its
+# descendants. milvus_lite is spawned by `memsearch index` and outlives it, so
+# the whole subtree has to be spared, not just the recorded root.
+_other_harness_pids() {
+  local f pid frontier next p kid depth snapshot
+  frontier=""
+  for f in "$MEMSEARCH_DIR"/.index.*.pid; do
+    [ -e "$f" ] || continue
+    [ "$f" = "$INDEX_PIDFILE" ] && continue
+    pid=$(cat "$f" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      frontier="$frontier $pid"
+    fi
+  done
+  [ -n "${frontier// /}" ] || return 0
+  snapshot=$(ps -Ao pid=,ppid= 2>/dev/null || true)
+  depth=0
+  while [ -n "${frontier// /}" ] && [ "$depth" -lt 10 ]; do
+    next=""
+    for p in $frontier; do
+      printf '%s\n' "$p"
+      kid=$(printf '%s\n' "$snapshot" | awk -v pp="$p" '$2 == pp {print $1}')
+      [ -n "$kid" ] && next="$next $kid"
+    done
+    frontier="$next"
+    depth=$((depth + 1))
+  done
+}
 
 # Kill any previously spawned background index processes for this project.
 # Also sweeps orphaned milvus_lite processes.
@@ -266,29 +312,39 @@ kill_orphaned_index() {
     return 0
   fi
 
-  # 1. Kill PID recorded from previous background index launch
-  if [ -f "$INDEX_PIDFILE" ]; then
-    local pid
-    pid=$(cat "$INDEX_PIDFILE" 2>/dev/null || true)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+  local protected f pid orphans opid
+  protected=$(_other_harness_pids | sort -u)
+
+  # 1. Kill PIDs this harness recorded for a previous background index launch,
+  #    plus the untagged legacy pidfile.
+  for f in "$INDEX_PIDFILE" "$INDEX_PIDFILE_LEGACY"; do
+    [ -f "$f" ] || continue
+    pid=$(cat "$f" 2>/dev/null || true)
+    if [ -n "$pid" ] && ! _pid_in_list "$pid" "$protected" && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
-    rm -f "$INDEX_PIDFILE"
-  fi
+    rm -f "$f"
+  done
 
-  # 2. Sweep any orphaned memsearch index processes for this MEMORY_DIR
-  local orphans
+  # 2. Sweep orphaned memsearch index processes for this MEMORY_DIR. Every
+  #    harness sharing MEMSEARCH_DIR indexes the same MEMORY_DIR, so the
+  #    pattern alone cannot tell them apart -- skip what another harness owns.
   orphans=$(pgrep -f "memsearch index $MEMORY_DIR" 2>/dev/null || true)
   if [ -n "$orphans" ]; then
-    echo "$orphans" | while read -r opid; do
+    printf '%s\n' "$orphans" | while read -r opid; do
+      [ -n "$opid" ] || continue
+      if _pid_in_list "$opid" "$protected"; then continue; fi
       kill "$opid" 2>/dev/null || true
     done
   fi
 
-  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index exits)
+  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index
+  #    exits). This pattern is global, so the protected set matters most here.
   orphans=$(pgrep -f "milvus_lite/lib/milvus" 2>/dev/null || true)
   if [ -n "$orphans" ]; then
-    echo "$orphans" | while read -r opid; do
+    printf '%s\n' "$orphans" | while read -r opid; do
+      [ -n "$opid" ] || continue
+      if _pid_in_list "$opid" "$protected"; then continue; fi
       kill "$opid" 2>/dev/null || true
     done
   fi
