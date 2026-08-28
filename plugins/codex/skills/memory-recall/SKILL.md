@@ -25,8 +25,8 @@ bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash __INSTALL_DIR__/scripts/deriv
    - **Fallback** (if expand fails with a lock/permission error due to sandbox): Read the source file directly. The search results include `source` (file path) and `start_line`/`end_line` — use `cat <source_file>` or read the relevant line range to get the full context. This avoids the Milvus lock file issue.
 
 4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session/rollout info), and the original conversation seems critical:
-   - Run `bash __INSTALL_DIR__/scripts/parse-rollout.sh <rollout_path>` to retrieve the original conversation turns.
-   - If the anchor format is unfamiliar (e.g. `transcript:` + `turn:`, `db:` instead of `rollout:`), try reading the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
+   - Run `memsearch transcript <rollout_path>` to retrieve the original conversation turns (auto-detects the format and includes tool calls). If `memsearch` is not found, use `uvx memsearch` instead.
+   - If `memsearch transcript` reports an unrecognized transcript format, or the anchor format is unfamiliar (e.g. `transcript:` + `turn:`, `db:` instead of `rollout:`), read the referenced file directly to explore its structure and locate the relevant conversation by the session or turn identifiers in the anchor.
 
 5. **Return results**: Output a curated summary of the most relevant memories. Be concise — only include information that is genuinely useful for the user's current question.
 

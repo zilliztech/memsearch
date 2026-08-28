@@ -1006,6 +1006,70 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
 }
 
 // ---------------------------------------------------------------------------
+// Memory-config + memory-to-skill skills (platform-independent, synced from
+// plugins/_shared/skills/ by scripts/sync-skills.sh)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read and strip a runtime-registered skill body from plugins/dsh/skills/.
+ * Returns the body string, or null if the file is missing/unreadable.
+ * The leading YAML frontmatter and the sync-script HTML comment are removed;
+ * metadata (name/description/whenToUse) is supplied in the register() call.
+ */
+function readRuntimeSkillBody(ctx, skillName) {
+  const skillPath = join(PLUGIN_DIR, 'skills', skillName, 'SKILL.md')
+  let content
+  try {
+    content = readFileSync(skillPath, 'utf-8')
+  } catch (error) {
+    ctx.logger.warn(`[memsearch] could not read ${skillName} skill: ${error.message}`)
+    return null
+  }
+  return content
+    .replace(/^﻿?---[\s\S]*?---\s*/u, '') // strip optional YAML frontmatter
+    .replace(/^<!--[\s\S]*?-->\s*/u, '') // strip the human-facing metadata comment
+    .trim()
+}
+
+function registerMemoryConfigSkill(ctx) {
+  const content = readRuntimeSkillBody(ctx, 'memory-config')
+  if (content === null) return
+  ctx.skills.register({
+    name: 'memory-config',
+    description:
+      'Diagnose and configure MemSearch memory behavior. Use when the user asks about ' +
+      'MemSearch configuration, plugin summarization, PROJECT.md/USER.md maintenance, ' +
+      'memory directories, index health, provider routing, prompt files, or migration/compatibility questions.',
+    whenToUse:
+      'The user asks to check, change, or troubleshoot MemSearch memory settings on ' +
+      'DeepSeek Harness.',
+    content,
+    source: 'runtime',
+    invocation: { modelInvocable: true, userInvocable: true },
+    resourceBase: { kind: 'directory', path: join(PLUGIN_DIR, 'skills', 'memory-config') },
+  })
+}
+
+function registerMemoryToSkillSkill(ctx) {
+  const content = readRuntimeSkillBody(ctx, 'memory-to-skill')
+  if (content === null) return
+  ctx.skills.register({
+    name: 'memory-to-skill',
+    description:
+      'Turn workflows from your MemSearch memory into reusable skills. Use when the user ' +
+      'asks to make/create/extract/distill a skill from what they just did or from past work, ' +
+      'review skill candidates, install a distilled skill, or "turn this into a skill".',
+    whenToUse:
+      'The user wants to capture a recurring workflow as a skill, review or install distilled ' +
+      'skill candidates from .memsearch/skill-candidates/, or enable/tune background distillation.',
+    content,
+    source: 'runtime',
+    invocation: { modelInvocable: true, userInvocable: true },
+    resourceBase: { kind: 'directory', path: join(PLUGIN_DIR, 'skills', 'memory-to-skill') },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Plugin entry
 // ---------------------------------------------------------------------------
 
@@ -1073,6 +1137,10 @@ export function apply(ctx, config = {}) {
 
   // --- Recall skill (always available) ---
   registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootCollection, bootProjectDir)
+
+  // --- Config + distillation skills (always available) ---
+  registerMemoryConfigSkill(ctx)
+  registerMemoryToSkillSkill(ctx)
 
   // --- Pre-step injection: relevant memory only, zero context otherwise ---
   ctx.on(

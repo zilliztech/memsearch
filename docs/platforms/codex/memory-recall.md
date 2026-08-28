@@ -26,7 +26,7 @@ graph TD
     SKILL["$memory-recall skill<br/>(runs in main context)"]
     SKILL --> L1["L1: Search<br/>(memsearch search)"]
     L1 --> L2["L2: Expand<br/>(memsearch expand or direct file read)"]
-    L2 --> L3["L3: Best-effort rollout drill-down<br/>(parse-rollout.sh)"]
+    L2 --> L3["L3: Best-effort rollout drill-down<br/>(memsearch transcript)"]
     L3 --> RETURN["Curated summary"]
 
     style SKILL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
@@ -40,7 +40,7 @@ graph TD
 |-------|---------|----------------|-------------|
 | **L1: Search** | `memsearch search "<query>" --top-k 5 --json-output` | Top-K relevant chunk snippets with scores | Always -- the starting point |
 | **L2: Expand** | `memsearch expand <chunk_hash>` (or direct `cat` fallback) | Full markdown section with rollout anchors | When a snippet needs more context |
-| **L3: Rollout** | `bash parse-rollout.sh <rollout_path>` | Original Codex conversation turns when a rollout anchor exists | When you need the exact exchange and the memory entry includes a rollout path |
+| **L3: Rollout** | `memsearch transcript <rollout_path>` | Original Codex conversation turns when a rollout anchor exists | When you need the exact exchange and the memory entry includes a rollout path |
 
 ### L2 Fallback: Direct File Read
 
@@ -77,7 +77,7 @@ Score 0.71: "Added cache invalidation via pub/sub channel..."
 - Decided against Memcached due to lack of pub/sub support
 ```
 
-**L3 (optional):** If the summary isn't enough and the memory entry includes a rollout anchor, the skill runs `parse-rollout.sh` to get the original conversation.
+**L3 (optional):** If the summary isn't enough and the memory entry includes a rollout anchor, the skill runs `memsearch transcript` to get the original conversation.
 
 !!! note "Current Codex payloads"
     Current Codex Stop hook payloads may omit `transcript_path`. In those cases memsearch still captures the turn from `history.jsonl` plus `last_assistant_message`, but there is no rollout path to drill into later.

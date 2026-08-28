@@ -1,15 +1,39 @@
 ---
 name: memory-config
-description: "Diagnose and configure MemSearch memory behavior for the OpenCode plugin. Use when the user asks about MemSearch configuration, plugin summarization, PROJECT.md/USER.md maintenance, memory directories, index health, provider routing, prompt files, or migration/compatibility questions."
+description: "Diagnose and configure MemSearch memory behavior. Use when the user asks about MemSearch configuration, plugin summarization, PROJECT.md/USER.md maintenance, memory directories, index health, provider routing, prompt files, or migration/compatibility questions."
+allowed-tools: Bash
 ---
 
-You are a MemSearch configuration assistant for the OpenCode plugin. This skill manages MemSearch settings only. It is not OpenCode's built-in memory configuration.
+You are a MemSearch configuration assistant. This skill manages MemSearch settings only. It is not the host agent's built-in memory/config system.
 
 In diagnostic summaries or final answers, state once that this is MemSearch
-memory configuration, not OpenCode's own memory/config system. Do not prepend
-that sentence to every progress update or every paragraph.
+memory configuration, not the host agent's own memory/config system. Do not
+prepend that sentence to every progress update or every paragraph.
 
-When this skill is triggered, inspect the user's request text. If there is no concrete request, run a diagnostic. If they ask for a specific setting or change, route the request using the flows below.
+When this skill is triggered, inspect the user's request text. If there is no
+concrete request, run a diagnostic. If they ask for a specific setting or
+change, route the request using the flows below.
+
+## Which agent am I running as?
+
+This skill is shared by five agent platforms, but platform-specific details
+(version-check commands, `plugins.<platform>.*` keys, native model defaults,
+restart guidance) live in per-platform reference files. Read ONLY the one file
+matching your current environment:
+
+- Claude Code → `references/claude-code.md`
+- Codex → `references/codex.md`
+- OpenClaw → `references/openclaw.md`
+- OpenCode → `references/opencode.md`
+- DeepSeek Harness → `references/dsh.md`
+
+If you are unsure which agent you are, check these environment markers:
+`DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
+`~/.openclaw` → OpenClaw; `~/.config/opencode` → OpenCode;
+`CLAUDE_PLUGIN_ROOT` → Claude Code.
+
+Read that platform file before performing platform-specific diagnosis or
+configuration. Do not read the other platform files.
 
 ## Intent Routing
 
@@ -19,7 +43,7 @@ When this skill is triggered, inspect the user's request text. If there is no co
 - "Not capturing/search empty/no memory": troubleshoot files, config, and index health.
 - "Use OpenAI/Gemini/Anthropic/native/model": configure provider routing.
 - "PROJECT.md/USER.md/profile/review": configure advanced maintenance.
-- "skill/distill/extract a skill/memory-to-skill": procedural-memory distillation — enable or tune it here, or use the dedicated `/memory-to-skill` skill to review and install candidates.
+- "skill/distill/extract a skill/memory-to-skill": procedural-memory distillation — enable or tune it here, or use the dedicated `memory-to-skill` skill to review and install candidates.
 - "Prompt": explain or configure prompt overrides.
 
 Ask the user before enabling external or paid providers, changing output paths, re-indexing, deleting state, or broadening what gets indexed.
@@ -32,7 +56,7 @@ memsearch config list --global
 memsearch config list --project
 ```
 
-Check CLI and plugin versions before calling the setup healthy:
+Check the shared CLI version before calling the setup healthy:
 
 ```bash
 memsearch --version
@@ -43,42 +67,11 @@ curl -fsSL https://pypi.org/pypi/memsearch/json \
 
 If `memsearch` is unavailable, try `uvx --from memsearch[onnx] memsearch --version`.
 
-MemSearch has one shared Python CLI and platform plugins that may be installed
-from different channels:
+The MemSearch CLI comes from the PyPI package `memsearch`. Update with
+`uv tool install -U "memsearch[onnx]"` or `uv tool upgrade memsearch`.
 
-- CLI latest version comes from PyPI package `memsearch`. Update with
-  `uv tool install -U "memsearch[onnx]"` or `uv tool upgrade memsearch`.
-- Codex plugin has no independent package/version file. Inspect
-  `${CODEX_HOME:-$HOME/.codex}/hooks.json` to find the hook source path, then
-  compare that repository with the latest `zilliztech/memsearch` GitHub release:
-  `git -C <memsearch-repo> describe --tags --always --dirty` and
-  `gh release view --repo zilliztech/memsearch --json tagName,publishedAt,url`.
-  Update source installs with `git pull` plus
-  `bash plugins/codex/scripts/install.sh`.
-- Claude Code plugin latest marketplace/source version is in
-  `plugins/claude-code/.claude-plugin/plugin.json` and
-  `.claude-plugin/marketplace.json` in the `zilliztech/memsearch` repo. Check
-  the latest source manifest with
-  `curl -fsSL https://raw.githubusercontent.com/zilliztech/memsearch/main/plugins/claude-code/.claude-plugin/plugin.json`.
-  For marketplace installs, use `claude plugin marketplace update memsearch-plugins`
-  then `claude plugin update memsearch`, and restart Claude Code.
-- OpenClaw plugin latest published version comes from
-  `clawhub package inspect memsearch`; the source version is
-  `plugins/openclaw/package.json`. Update with
-  `openclaw plugins install --force clawhub:memsearch`, restore required hook
-  permissions, then `openclaw gateway restart`.
-- OpenCode plugin latest published version comes from
-  `npm view @zilliz/memsearch-opencode version dist-tags --json`; the source
-  version is `plugins/opencode/package.json`. If `~/.config/opencode/opencode.json`
-  pins a version, update the pin; otherwise restart OpenCode after package
-  refresh.
-
-For more detail, fetch the update sections from the public documentation:
-
-- Codex: https://zilliztech.github.io/memsearch/platforms/codex/installation/
-- Claude Code: https://zilliztech.github.io/memsearch/platforms/claude-code/installation/
-- OpenClaw: https://zilliztech.github.io/memsearch/platforms/openclaw/installation/
-- OpenCode: https://zilliztech.github.io/memsearch/platforms/opencode/installation/
+For the host platform's plugin version, update commands, and documentation
+link, see your platform reference file.
 
 Check memory files:
 
@@ -96,8 +89,6 @@ memsearch stats
 STATE_DIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"
 test -f "$STATE_DIR/.index-state.json" && cat "$STATE_DIR/.index-state.json"
 ```
-
-OpenCode transcript recall reads from OpenCode's SQLite database, while captured MemSearch memory lives as markdown under `.memsearch/memory/`.
 
 ## Background and Compatibility
 
@@ -139,9 +130,10 @@ config (`~/.memsearch/config.toml`) or pass explicit CLI flags instead:
 - provider/model/API endpoint/API key settings
 - `[llm]` and `[llm.providers.*]`
 - `[prompts]`
-- plugin automation such as `plugins.opencode.project_review.enabled`,
-  `plugins.opencode.user_profile.enabled`, and
-  `plugins.opencode.memory_to_skill.enabled`
+- plugin automation such as `plugins.<platform>.project_review.enabled`,
+  `plugins.<platform>.user_profile.enabled`, and
+  `plugins.<platform>.memory_to_skill.enabled` (see your platform reference file
+  for the exact key prefix).
 
 Default recommendation:
 
@@ -152,41 +144,18 @@ Default recommendation:
 
 Maintenance `input_dir` and `output_file` may be relative even when configured globally. They are resolved from the current project directory at runtime, so a global `output_file = ".memsearch/PROJECT.md"` writes to each project's own `.memsearch/PROJECT.md`. For custom prompt paths, prefer absolute paths in global config; project prompt paths are not trusted.
 
-OpenCode plugin keys:
+## Plugin keys
 
-```toml
-[plugins.opencode.summarize]
-enabled = true
-provider = ""      # empty/native = OpenCode native summarizer
-model = ""
+The plugin-specific TOML keys (`plugins.<platform>.summarize`,
+`plugins.<platform>.project_review`, `plugins.<platform>.user_profile`,
+`plugins.<platform>.memory_to_skill`) and the native summarizer/maintenance
+model defaults are in your platform reference file.
 
-[plugins.opencode.project_review]
-enabled = false
-provider = "native"
-model = ""
-min_interval_hours = 24
-input_dir = ".memsearch/memory"
-output_file = ".memsearch/PROJECT.md"
+## Provider rules
 
-[plugins.opencode.user_profile]
-enabled = false
-provider = "native"
-model = ""
-min_interval_hours = 24
-input_dir = ".memsearch/memory"
-output_file = ".memsearch/USER.md"
-
-[plugins.opencode.memory_to_skill]
-enabled = false
-min_occurrences = 3   # how many times a workflow must recur before it is distilled
-paths = []            # where installed skills are copied; empty = ask the user
-```
-
-Provider rules:
-
-- `provider = ""` or `native` uses OpenCode's non-interactive native path.
+- `provider = ""` or `native` uses the host agent's non-interactive native path (see your platform reference file).
 - Any other provider value is a name that must exist under `[llm.providers.<name>]`.
-- Model resolution order is task-level `plugins.opencode.<task>.model`, then named provider model, then built-in default.
+- Model resolution order is task-level `plugins.<platform>.<task>.model`, then named provider model, then built-in default.
 - API keys should be configured as env refs, not pasted into chat.
 - If a raw TOML field is blank, check resolved config before calling it unset or broken.
 
@@ -211,10 +180,10 @@ api_key = "env:GEMINI_API_KEY"
 
 Model guidance:
 
-- Normal turn summaries can use small/fast models. OpenCode native summarize uses OpenCode `small_model`, then its configured model/default behavior.
-- Advanced maintenance needs better judgment. OpenCode native maintenance uses OpenCode's default unless `plugins.opencode.<task>.model` is set.
+- Normal turn summaries can use small/fast models. See your platform reference file for the native summarize default.
+- Advanced maintenance needs better judgment. See your platform reference file for the native maintenance default.
 - For API providers, defaults are `openai -> gpt-5-mini`, `anthropic -> claude-sonnet-4-6`, and `gemini -> gemini-3-flash-preview`.
-- If quality matters more than cost for maintenance, set `plugins.opencode.project_review.model` and `plugins.opencode.user_profile.model` explicitly.
+- If quality matters more than cost for maintenance, set `plugins.<platform>.project_review.model` and `plugins.<platform>.user_profile.model` explicitly.
 
 Advanced maintenance runs after the plugin wakes it, only when enabled, journal input changed, and `min_interval_hours` elapsed. `PROJECT.md` and `USER.md` are maintenance artifacts by default and are not automatically indexed.
 
@@ -229,7 +198,7 @@ If advanced maintenance or `memory_to_skill` seems silent, check
 
 Before enabling advanced maintenance, ask which provider to use, whether the default 24-hour interval is acceptable, whether `.memsearch/PROJECT.md` / `.memsearch/USER.md` are acceptable output files, and whether the user wants the enablement global. Do not write plugin automation keys with `--project`; v0.4.11+ project config ignores or rejects them.
 
-Prompt overrides:
+## Prompt overrides
 
 ```toml
 [prompts]
@@ -241,8 +210,10 @@ memory_to_skill = ""
 
 Empty prompt paths mean use the built-in MemSearch prompts. Custom prompt files may use `{{AGENT_NAME}}`, `{{TASK_NAME}}`, `{{PROJECT_DIR}}`, `{{INPUT_DIR}}`, and `{{OUTPUT_FILE}}`; the runner appends existing output, recent journals, and digest automatically.
 
+## Applying changes
+
 Use `memsearch config set` for changes. For trusted keys such as `plugins.*`, `[llm.providers.*]`, `[prompts]`, `embedding.provider`, or `milvus.uri`, set global config by omitting `--project`. Use `--project` only for allowlisted local indexing keys. After changing anything, show the command, the resolved value, and whether a new session is needed.
 
-MemSearch TOML changes are read lazily by the CLI, capture daemon, and maintenance runner, so values such as `plugins.opencode.summarize.*`, `plugins.opencode.project_review.*`, `plugins.opencode.user_profile.*`, `[llm.providers.*]`, `[prompts]`, `milvus.*`, and `embedding.*` usually apply on the next capture, recall, index, or maintenance invocation. Restart OpenCode after `opencode.json` or plugin package changes; if capture behavior still looks stale after TOML edits, restart OpenCode or the capture daemon. In final diagnostic/change summaries, make clear that this is MemSearch memory configuration, not OpenCode's own memory/config system.
+MemSearch TOML changes are read lazily by the CLI and the plugin's capture/maintenance paths, so values such as `plugins.<platform>.summarize.*`, `plugins.<platform>.project_review.*`, `plugins.<platform>.user_profile.*`, `[llm.providers.*]`, `[prompts]`, `milvus.*`, and `embedding.*` usually apply on the next capture, recall, index, or maintenance invocation. See your platform reference file for whether a restart is required after plugin/skill/config file changes. In final diagnostic/change summaries, make clear that this is MemSearch memory configuration, not the host agent's own memory/config system.
 
 When useful, remind the user that they can either continue using this `memory-config` skill for guided configuration, or manually run `memsearch config init` for global interactive setup, `memsearch config init --project` for allowlisted project indexing setup, and `memsearch config set/get/list` for direct CLI changes.

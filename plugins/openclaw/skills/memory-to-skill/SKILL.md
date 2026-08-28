@@ -1,18 +1,30 @@
 ---
 name: memory-to-skill
-description: "Turn workflows from your MemSearch memory into reusable skills. Use when the user asks to make/create/extract/distill a skill from what they just did or from past work, review skill candidates, install a distilled skill, or 'turn this into a skill'. Manages MemSearch procedural-memory candidates under .memsearch/skill-candidates/, not OpenClaw's own skills system."
+description: "Turn workflows from your MemSearch memory into reusable skills. Use when the user asks to make/create/extract/distill a skill from what they just did or from past work, review skill candidates, install a distilled skill, or 'turn this into a skill'. Manages MemSearch procedural-memory candidates under .memsearch/skill-candidates/, not the host agent's own skills system."
+metadata:
+  openclaw:
+    emoji: "🧠"
 ---
 
 You manage MemSearch's **procedural memory**: skills distilled from the work you
 repeat — a third layer beside the daily journals (episodic) and PROJECT.md /
 USER.md (semantic). State once that this is MemSearch skill distillation, not
-OpenClaw's built-in skills system.
+the host agent's built-in skills system.
 
 Stages: **0** memory journals → **1** candidate (`.memsearch/skill-candidates/`,
 a git-tracked store that keeps evolving) → **2** installed (an agent skill dir).
 Candidates are never installed automatically; installing is always a human step.
 User requests may stop at candidate creation/review, or continue to installation
 in the same turn after explicit approval; match the requested stage.
+
+The `plugins.<platform>.memory_to_skill.*` config key prefix and the install-path
+notes are platform-specific — see your platform reference file:
+
+- Claude Code → `references/claude-code.md`
+- Codex → `references/codex.md`
+- OpenClaw → `references/openclaw.md`
+- OpenCode → `references/opencode.md`
+- DeepSeek Harness → `references/dsh.md`
 
 ## Intent routing
 
@@ -69,9 +81,11 @@ list, present those paths as the proposed destinations and pass each entry as a
 not silently fall back to a default path.
 
 ```bash
-memsearch config get plugins.openclaw.memory_to_skill.paths 2>/dev/null || echo "[]"
+memsearch config get plugins.<platform>.memory_to_skill.paths 2>/dev/null || echo "[]"
 memsearch skills install <name> --path <configured-or-user-approved-path>
 ```
+
+Replace `<platform>` with your platform key prefix (see the reference file).
 After installation, remind the user to start a fresh agent session or reopen the
 conversation so the newly installed skill is loaded.
 
@@ -88,20 +102,22 @@ reusable one and persist it with `memsearch skills add` (one call per skill), th
 same way as **A**. Use your own judgment: only propose procedures that recur and
 generalize, not one-offs from a single day.
 
-**Drill into the original before drafting.** The journal bullets are a lossy summary; the exact commands, flags, and paths live in the original transcript. Each journal entry has an anchor naming the transcript file (`session:<id>` and `transcript:<path>`). Run `memsearch transcript <file>` (add `--turn <id>` when the anchor has one) to get the original turns **with their tool calls** — it auto-detects the format and includes the executed commands and output. Write the skill from that. If the shown excerpt feels incomplete, skim nearby turns in the same original source before committing to exact commands or paths. Only if that command fails (unknown format) fall back to reading the JSONL directly. If you cannot confirm a detail, keep the step general or omit it — never fabricate.
+**Drill into the original before drafting.** The journal bullets are a lossy summary; the exact commands, flags, and paths live in the original transcript. Each journal entry has an anchor naming the transcript file. Run the transcript drill (see the memory-recall skill's platform reference for the exact command) to get the original turns **with their tool calls**. Write the skill from that. If the shown excerpt feels incomplete, skim nearby turns in the same original source before committing to exact commands or paths. Only if that command fails (unknown format) fall back to reading the raw file directly. If you cannot confirm a detail, keep the step general or omit it — never fabricate.
 
 The background pass mines automatically when enabled, starting from the summaries; doing it here on demand lets you inspect the original transcripts more deliberately, so the result can be more accurate.
 
 ## D. Configure
 
+See your platform reference file for the exact `plugins.<platform>.memory_to_skill.*` commands:
+
 ```bash
-memsearch config get plugins.openclaw.memory_to_skill.enabled 2>/dev/null || echo "false"
+memsearch config get plugins.<platform>.memory_to_skill.enabled 2>/dev/null || echo "false"
 # enable the background pass globally (do not enable silently)
-memsearch config set plugins.openclaw.memory_to_skill.enabled true
+memsearch config set plugins.<platform>.memory_to_skill.enabled true
 # how eagerly history-mining distils (default 3; lower = more eager)
-memsearch config set plugins.openclaw.memory_to_skill.min_occurrences 3
+memsearch config set plugins.<platform>.memory_to_skill.min_occurrences 3
 # pre-set install targets (otherwise you are asked at install time)
-memsearch config set plugins.openclaw.memory_to_skill.paths '[".openclaw/skills"]'
+memsearch config set plugins.<platform>.memory_to_skill.paths '[".agents/skills"]'
 ```
 
 Since v0.4.11, project-local `.memsearch.toml` accepts only allowlisted local
@@ -114,15 +130,8 @@ commands above (`skills add`, `skills install`) always work, and you can mine hi
 
 ## Install paths
 
-- `.openclaw/skills` — **project-local (recommended)**: a skill from this project's
-  memory is usually most relevant here.
-- `~/.openclaw/skills` — global: available across all your projects.
-- a custom path, or several (one skill can be installed to multiple dirs).
-
-Each agent reads skills from its own directory: Claude Code `.claude/skills/`;
-Codex and OpenCode `.agents/skills/` (the shared standard, also read by Cursor
-etc.); OpenClaw `.openclaw/skills/`. Claude Code does **not** read `.agents/skills/`.
-Install to multiple paths to cover several agents.
+See your platform reference file for the platform-specific skill directory and
+the recommended install target.
 
 ## Guardrails
 

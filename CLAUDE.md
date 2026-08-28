@@ -82,7 +82,7 @@ plugins/claude-code/
 **Three-layer progressive disclosure (all in subagent):**
 1. **L1 (search):** Subagent runs `memsearch search` to find relevant chunks
 2. **L2 (expand):** Subagent runs `memsearch expand <chunk_hash>` to get full markdown sections
-3. **L3 (transcript):** Subagent runs `python3 ${CLAUDE_PLUGIN_ROOT}/transcript.py <jsonl>` to drill into original conversations
+3. **L3 (transcript):** Subagent runs `memsearch transcript <jsonl> --turn <uuid> --context 3` to drill into original conversations (core CLI auto-detects the format; `transcript.py` remains as the plugin-local, Claude-specific parser exercised by `tests/test_transcript.py`)
 
 **Supporting hooks:**
 - `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists

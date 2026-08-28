@@ -1,0 +1,140 @@
+<!--
+  memsearch-dsh memory-to-skill skill body.
+  Registered at plugin load by plugins/dsh/index.js via ctx.skills.register()
+  with metadata (name: memory-to-skill, description, whenToUse) supplied in code.
+-->
+
+
+You manage MemSearch's **procedural memory**: skills distilled from the work you
+repeat — a third layer beside the daily journals (episodic) and PROJECT.md /
+USER.md (semantic). State once that this is MemSearch skill distillation, not
+the host agent's built-in skills system.
+
+Stages: **0** memory journals → **1** candidate (`.memsearch/skill-candidates/`,
+a git-tracked store that keeps evolving) → **2** installed (an agent skill dir).
+Candidates are never installed automatically; installing is always a human step.
+User requests may stop at candidate creation/review, or continue to installation
+in the same turn after explicit approval; match the requested stage.
+
+The `plugins.<platform>.memory_to_skill.*` config key prefix and the install-path
+notes are platform-specific — see your platform reference file:
+
+- Claude Code → `references/claude-code.md`
+- Codex → `references/codex.md`
+- OpenClaw → `references/openclaw.md`
+- OpenCode → `references/opencode.md`
+- DeepSeek Harness → `references/dsh.md`
+
+## Intent routing
+
+- "make/turn this into a skill", "from what we just did" → **A. Capture now**.
+- "what skills / review candidates / install X" → **B. Review & install**.
+- "mine my history / find recurring workflows" → **C. Distill from history**.
+- "enable / configure / how eager" → **D. Configure**.
+- Unclear or empty → run **B**'s `list`; if empty, offer A or C.
+
+## A. Capture what you just did (0→1→2)
+
+You already have the context, so **draft the skill yourself** — do not call the
+background distiller for this. Write a SKILL.md **body** (markdown, no
+frontmatter): imperative numbered steps for the recurring task, concrete commands
+and paths, no secrets, self-contained.
+
+**Be exact — do not guess.** You have the live session for what you just did, so use the real commands, paths, and output, not approximations. If a detail is uncertain, verify it (re-read the relevant files or the transcript) or keep that step general — a wrong command is worse than a vague one. Then persist it as a candidate:
+
+```bash
+printf '%s' "## <title>\n\n1. ...\n2. ..." | memsearch skills add \
+  --name "<short-slug>" \
+  --description "<what it does AND when it should trigger — lead with the verbs a user types>" \
+  --body-file -
+```
+
+`add` handles slugging, standard frontmatter, meta.json, and the git commit — no
+LLM is involved. Then show it to the user; install it only if the user asked for
+that or explicitly approves (see **B**). Finally, check whether background
+distillation is on; if not, offer to enable it (so recurring workflows get
+captured automatically going forward) — do not force it.
+
+## B. Review & install candidates (1→2)
+
+```bash
+memsearch skills status          # pending candidate versions needing install
+memsearch skills list            # add -j for sources / installed paths
+git -C .memsearch/skill-candidates log --oneline -5 2>/dev/null || true
+```
+
+`skills status` compares each candidate's current `SKILL.md` content hash with
+the hash recorded by the last `skills install`. It does not inspect live agent
+skill directories. A pending installed skill means the candidate source evolved
+after the last deliberate install; reinstall only after reviewing the candidate.
+
+Before recommending or installing, skim the candidate's body: if a step looks uncertain or loosely summarized, re-check it against the source (open the transcript if needed) or flag it to the user and let them decide — installing copies the candidate as-is, so this is the last chance to catch a wrong step.
+When showing candidates, mention the store's recent git history when it helps
+explain whether a candidate is new, evolved, removed, or re-created.
+
+Treat installation as an interactive checkpoint. Show the candidate, apply any
+requested tweaks before installing, and confirm the install destination with the
+user. Resolve install targets from config first: if `paths` is a non-empty
+list, present those paths as the proposed destinations and pass each entry as a
+`--path` after confirmation. If it is empty, ask the user where to install; do
+not silently fall back to a default path.
+
+```bash
+memsearch config get plugins.<platform>.memory_to_skill.paths 2>/dev/null || echo "[]"
+memsearch skills install <name> --path <configured-or-user-approved-path>
+```
+
+Replace `<platform>` with your platform key prefix (see the reference file).
+After installation, remind the user to start a fresh agent session or reopen the
+conversation so the newly installed skill is loaded.
+
+If the list is **empty**, background distillation is likely off or has not run.
+Offer the user a choice: capture from recent work now (**A**), distill from
+history (**C**), or enable the background pass (**D**).
+
+## C. Mine history for recurring workflows (0→1)
+
+To pull skills out of past work (not just the current session), read the recent
+journals yourself — they live in `.memsearch/memory/*.md` — and look for
+multi-step procedures that recur across several sessions. Draft each genuinely
+reusable one and persist it with `memsearch skills add` (one call per skill), the
+same way as **A**. Use your own judgment: only propose procedures that recur and
+generalize, not one-offs from a single day.
+
+**Drill into the original before drafting.** The journal bullets are a lossy summary; the exact commands, flags, and paths live in the original transcript. Each journal entry has an anchor naming the transcript file. Run the transcript drill (see the memory-recall skill's platform reference for the exact command) to get the original turns **with their tool calls**. Write the skill from that. If the shown excerpt feels incomplete, skim nearby turns in the same original source before committing to exact commands or paths. Only if that command fails (unknown format) fall back to reading the raw file directly. If you cannot confirm a detail, keep the step general or omit it — never fabricate.
+
+The background pass mines automatically when enabled, starting from the summaries; doing it here on demand lets you inspect the original transcripts more deliberately, so the result can be more accurate.
+
+## D. Configure
+
+See your platform reference file for the exact `plugins.<platform>.memory_to_skill.*` commands:
+
+```bash
+memsearch config get plugins.<platform>.memory_to_skill.enabled 2>/dev/null || echo "false"
+# enable the background pass globally (do not enable silently)
+memsearch config set plugins.<platform>.memory_to_skill.enabled true
+# how eagerly history-mining distils (default 3; lower = more eager)
+memsearch config set plugins.<platform>.memory_to_skill.min_occurrences 3
+# pre-set install targets (otherwise you are asked at install time)
+memsearch config set plugins.<platform>.memory_to_skill.paths '[".agents/skills"]'
+```
+
+Since v0.4.11, project-local `.memsearch.toml` accepts only allowlisted local
+indexing keys. Do not use `--project` for `plugins.*` settings such as
+`memory_to_skill.enabled`, `min_occurrences`, or `paths`; put them in global
+config instead.
+
+Note: `enabled` only gates the **background** (session-end) pass. The explicit
+commands above (`skills add`, `skills install`) always work, and you can mine history (C) directly.
+
+## Install paths
+
+See your platform reference file for the platform-specific skill directory and
+the recommended install target.
+
+## Guardrails
+
+- Never enable the feature, change install paths, or install a candidate without
+  the user's go-ahead.
+- Do not hand-edit the store; create candidates with `memsearch skills add` and let
+  the git-tracked store at `.memsearch/skill-candidates/` keep history.
