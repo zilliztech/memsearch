@@ -74,6 +74,7 @@ memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 |----------|---------|---------|-------|
 | **onnx** (default) | `pip install memsearch[onnx]` | No | Local, free, ~100MB model download |
 | openai | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
+| orcarouter | `pip install memsearch` | `ORCAROUTER_API_KEY` | OpenAI-compatible routing gateway |
 | google | `pip install memsearch[google]` | `GOOGLE_API_KEY` | Gemini embeddings |
 | voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | High quality |
 | jina | `pip install memsearch[jina]` | `JINA_API_KEY` | jina-embeddings-v4, multilingual, long context |
