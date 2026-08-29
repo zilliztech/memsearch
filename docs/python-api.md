@@ -33,6 +33,7 @@ MemSearch(
     milvus_token=None,
     collection="memsearch_chunks",
     max_chunk_size=1500,
+    min_chunk_size=0,
     overlap_lines=2,
     ignore_files=None,
     exclude=None,
@@ -51,6 +52,7 @@ MemSearch(
 | `milvus_token` | `str \| None` | `None` | Auth token for Milvus Server or Zilliz Cloud |
 | `collection` | `str` | `"memsearch_chunks"` | Milvus collection name. Use different names to isolate agents sharing the same backend |
 | `max_chunk_size` | `int` | `1500` | Maximum chunk size in characters |
+| `min_chunk_size` | `int` | `0` | Merge adjacent heading sections smaller than this many characters (0 = no merging). Changing it changes chunk IDs, so the next index run re-embeds affected files |
 | `overlap_lines` | `int` | `2` | Overlapping lines between adjacent chunks |
 | `ignore_files` | `list[str] \| None` | `None` | Ignore filenames discovered within each directory index root, for example `[".gitignore"]` |
 | `exclude` | `list[str] \| None` | `None` | Additional gitignore-style patterns relative to each directory index root |

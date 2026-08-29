@@ -108,6 +108,8 @@ We use JWT tokens...
 
 When a heading-delimited section exceeds `max_chunk_size` (default: 1500 characters), the chunker splits it further at paragraph boundaries (blank lines). A configurable `overlap_lines` (default: 2 lines) is carried forward between sub-chunks to preserve context continuity.
 
+At the other extreme, heading-dense documents (conversation transcripts, changelogs) can produce many near-empty chunks. Setting `chunking.min_chunk_size` (default: 0, disabled) merges adjacent sections until the combined content reaches that size, without ever exceeding `max_chunk_size`. A merged chunk keeps the heading of its first section and spans the line range of everything merged into it. Because merging changes chunk boundaries, enabling or changing this knob changes chunk IDs — the next index run re-embeds affected files once and cleans up the old chunks.
+
 ### Chunk Metadata
 
 Each chunk carries rich metadata for provenance tracking:

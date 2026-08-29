@@ -83,12 +83,19 @@ def chunk_markdown(
     *,
     max_chunk_size: int = 1500,
     overlap_lines: int = 2,
+    min_chunk_size: int = 0,
 ) -> list[Chunk]:
     """Split markdown *text* into chunks, breaking on headings.
 
     Chunks that exceed *max_chunk_size* characters are split further at
     paragraph boundaries.  A small *overlap_lines* context is carried
     forward to preserve continuity.
+
+    When *min_chunk_size* is positive, consecutive sections smaller than it
+    are merged (up to *max_chunk_size*) into a single chunk that carries the
+    first section's heading.  Heading-dense documents such as conversation
+    transcripts otherwise produce one tiny chunk per heading, multiplying
+    embedding cost.  ``0`` (the default) keeps one chunk per section.
     """
     lines = text.split("\n")
     # Find all heading positions
@@ -109,23 +116,43 @@ def chunk_markdown(
         sections.append((line_idx, next_start, title, level))
 
     chunks: list[Chunk] = []
+    # Sections accumulated toward min_chunk_size: (text, start, end, heading, level)
+    pending: list[tuple[str, int, int, str, int]] = []
+
+    def _pending_len() -> int:
+        return sum(len(p[0]) for p in pending) + 2 * (len(pending) - 1)
+
+    def _flush_pending() -> None:
+        if not pending:
+            return
+        content = "\n\n".join(p[0] for p in pending)
+        chunks.append(
+            Chunk(
+                content=content,
+                source=source,
+                heading=pending[0][3],
+                heading_level=pending[0][4],
+                start_line=pending[0][1] + 1,
+                end_line=pending[-1][2],
+            )
+        )
+        pending.clear()
+
     for start, end, heading, level in sections:
         section_text = "\n".join(lines[start:end]).strip()
         if not section_text or not _has_meaningful_content(section_text):
             continue
 
         if len(section_text) <= max_chunk_size:
-            chunks.append(
-                Chunk(
-                    content=section_text,
-                    source=source,
-                    heading=heading,
-                    heading_level=level,
-                    start_line=start + 1,
-                    end_line=end,
-                )
-            )
+            # Merging this section would push the pending chunk past
+            # max_chunk_size — flush what we have first.
+            if pending and _pending_len() + len(section_text) + 2 > max_chunk_size:
+                _flush_pending()
+            pending.append((section_text, start, end, heading, level))
+            if _pending_len() >= min_chunk_size:
+                _flush_pending()
         else:
+            _flush_pending()
             # Split large sections at paragraph boundaries
             chunks.extend(
                 _split_large_section(
@@ -138,6 +165,9 @@ def chunk_markdown(
                     overlap=overlap_lines,
                 )
             )
+
+    # Trailing accumulation below min_chunk_size still becomes a chunk.
+    _flush_pending()
 
     return chunks
 
