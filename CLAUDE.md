@@ -120,7 +120,8 @@ When modifying hooks/skills, keep in mind:
 | **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
 | **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`, trusted publishing via `release.yml`) |
 
-See `CLAUDE.local.md` for detailed release procedures, current versions, and operational details.
+Use the repository-local `$release-memsearch` skill for release operations. See
+`CLAUDE.local.md` for machine-specific development and published-artifact E2E rules.
 
 ## Project Conventions
 
