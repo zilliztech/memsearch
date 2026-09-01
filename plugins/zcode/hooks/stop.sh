@@ -208,14 +208,10 @@ TODAY=$(date +%Y-%m-%d)
 NOW=$(date +%H:%M)
 MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
 
-# Dedup: skip if this session is already captured today
-ANCHOR_PREFIX="<!-- session:${ZCODE_SESSION_ID} "
-if [ -f "$MEMORY_FILE" ] && grep -qF "$ANCHOR_PREFIX" "$MEMORY_FILE" 2>/dev/null; then
-  echo '{}'
-  exit 0
-fi
-
-# Parse the last turn from the ZCode session DB before going async
+# Parse the last turn from the ZCode session DB before going async.
+# No session-level dedup: the Stop hook fires per-turn and parse-session.py
+# always extracts the latest turn, so each fire captures a different exchange
+# (same approach as the codex plugin).
 CONTENT=""
 if [ -f "$ZCODE_DB_PATH" ]; then
   CONTENT=$(python3 "$SCRIPT_DIR/../scripts/parse-session.py" \
