@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -1272,6 +1274,82 @@ echo '{"info":{"version":"2.0.0"}}'
     assert curl_log.read_text(encoding="utf-8").count("called") == 1
 
 
+@pytest.mark.skipif(os.name != "posix", reason="hook process lifecycle is POSIX-only")
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_refresh_survives_abrupt_hook_exit(tmp_path: Path, script: str) -> None:
+    """The refresh child survives when the hook process itself is killed."""
+    curl_release = tmp_path / "release-curl"
+    curl_started = tmp_path / "curl-started"
+    curl_pid_file = tmp_path / "curl.pid"
+    blocker_release = tmp_path / "release-blocker"
+    blocker_started = tmp_path / "blocker-started"
+    blocker_pid_file = tmp_path / "blocker.pid"
+    home, env, _ = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash
+printf '%s' "$$" > "$CURL_PID_FILE"
+: > "$CURL_STARTED"
+i=0
+while [ ! -f "$CURL_RELEASE" ] && [ "$i" -lt 600 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+echo '{"info":{"version":"2.0.0"}}'
+""",
+    )
+    env.update(
+        {
+            "CURL_PID_FILE": str(curl_pid_file),
+            "CURL_STARTED": str(curl_started),
+            "CURL_RELEASE": str(curl_release),
+            "BLOCKER_PID_FILE": str(blocker_pid_file),
+            "BLOCKER_STARTED": str(blocker_started),
+            "BLOCKER_RELEASE": str(blocker_release),
+        }
+    )
+    state = tmp_path / ".memsearch" / ".index-state.json"
+    state.write_text('{"status":"error"}', encoding="utf-8")
+    fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+    _write_executable(
+        fake_bin / "python3",
+        """#!/usr/bin/env bash
+printf '%s' "$$" > "$BLOCKER_PID_FILE"
+: > "$BLOCKER_STARTED"
+i=0
+while [ ! -f "$BLOCKER_RELEASE" ] && [ "$i" -lt 600 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+""",
+    )
+
+    hook = subprocess.Popen(
+        ["bash", script], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env
+    )
+    child_pids: list[int] = []
+    try:
+        assert _wait_for(lambda: curl_started.exists() and blocker_started.exists())
+        child_pids = [int(curl_pid_file.read_text()), int(blocker_pid_file.read_text())]
+
+        hook.kill()
+        hook.wait(timeout=10)
+        assert hook.returncode == -signal.SIGKILL
+        os.kill(child_pids[0], 0)
+
+        curl_release.write_text("go", encoding="utf-8")
+        cache = home / ".memsearch" / ".pypi-latest"
+        assert _wait_for(lambda: cache.exists() and cache.read_text(encoding="utf-8") == "2.0.0")
+    finally:
+        curl_release.touch()
+        blocker_release.touch()
+        if hook.poll() is None:
+            hook.kill()
+            hook.wait(timeout=10)
+        for pid in child_pids:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGTERM)
+
+
 @pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
 def test_session_start_shows_the_stale_hint_while_refreshing(tmp_path: Path, script: str) -> None:
     """An expired cache is still worth showing; the refresh happens behind it."""
@@ -1292,6 +1370,136 @@ def test_session_start_shows_the_stale_hint_while_refreshing(tmp_path: Path, scr
 
 
 @pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_refreshes_an_expired_empty_cache(tmp_path: Path, script: str) -> None:
+    """An expired failed-lookup marker is retried without emitting a hint."""
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"2.0.0"}}'\n""",
+    )
+    cache = home / ".memsearch" / ".pypi-latest"
+    cache.write_text("", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(cache, (two_days_ago, two_days_ago))
+
+    run = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+
+    assert "UPDATE:" not in json.loads(run.stdout)["systemMessage"]
+    assert _wait_for(lambda: cache.read_text(encoding="utf-8") == "2.0.0")
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_serves_stale_then_caches_a_failed_refresh(tmp_path: Path, script: str) -> None:
+    """A stale answer is served once; a completed failed refresh is fresh-empty."""
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\nexit 6\n""",
+    )
+    cache = home / ".memsearch" / ".pypi-latest"
+    cache.write_text("2.0.0", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(cache, (two_days_ago, two_days_ago))
+
+    first = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+    assert "UPDATE: v2.0.0 available" in json.loads(first.stdout)["systemMessage"]
+    assert _wait_for(lambda: cache.read_text(encoding="utf-8") == "")
+
+    second = subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+    assert "UPDATE:" not in json.loads(second.stdout)["systemMessage"]
+    assert curl_log.read_text(encoding="utf-8").count("called") == 1
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_concurrent_refreshes_publish_atomically(tmp_path: Path, script: str) -> None:
+    """Concurrent starts may refresh, but each owns a temp file until atomic publish.
+
+    A durable single-flight lock would need stale-owner recovery if the detached
+    child dies. The bounded duplicate request is safer here; distinct temp files
+    and same-directory renames keep readers from observing partial contents.
+    """
+    home, env, curl_log = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"3.0.0"}}'\n""",
+    )
+    cache = home / ".memsearch" / ".pypi-latest"
+    cache.write_text("2.0.0", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(cache, (two_days_ago, two_days_ago))
+
+    move_log = tmp_path / "move-calls.txt"
+    move_release = tmp_path / "release-move"
+    fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+    _write_executable(
+        fake_bin / "mv",
+        """#!/usr/bin/env bash
+printf '%s\t%s\n' "$2" "$3" >> "$MOVE_CALL_LOG"
+i=0
+while [ ! -f "$MOVE_RELEASE" ] && [ "$i" -lt 600 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+exec /bin/mv "$@"
+""",
+    )
+    env["MOVE_CALL_LOG"] = str(move_log)
+    env["MOVE_RELEASE"] = str(move_release)
+
+    runs = [
+        subprocess.Popen(["bash", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        for _ in range(3)
+    ]
+    outputs = [run.communicate(timeout=60) for run in runs]
+
+    assert all(run.returncode == 0 for run in runs), outputs
+    assert _wait_for(lambda: move_log.exists() and len(move_log.read_text().splitlines()) == 3)
+    moves = [line.split("\t") for line in move_log.read_text(encoding="utf-8").splitlines()]
+    sources = [Path(source) for source, _ in moves]
+    destinations = [Path(destination) for _, destination in moves]
+    assert len(set(sources)) == 3
+    assert destinations == [cache, cache, cache]
+    assert all(source.parent == cache.parent for source in sources)
+    assert all(source.read_text(encoding="utf-8") == "3.0.0" for source in sources)
+    assert cache.read_text(encoding="utf-8") == "2.0.0"
+    assert curl_log.read_text(encoding="utf-8").count("called") == 3
+
+    move_release.write_text("go", encoding="utf-8")
+    assert _wait_for(lambda: cache.read_text(encoding="utf-8") == "3.0.0")
+    assert _wait_for(lambda: all(not source.exists() for source in sources))
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
+def test_session_start_removes_temp_file_when_publish_fails(tmp_path: Path, script: str) -> None:
+    """A failed atomic publish preserves stale data and removes its temp file."""
+    home, env, _ = _pypi_stand(
+        tmp_path,
+        """#!/usr/bin/env bash\necho '{"info":{"version":"3.0.0"}}'\n""",
+    )
+    cache = home / ".memsearch" / ".pypi-latest"
+    cache.write_text("2.0.0", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(cache, (two_days_ago, two_days_ago))
+
+    move_log = tmp_path / "move-calls.txt"
+    fake_bin = Path(env["PATH"].split(os.pathsep)[0])
+    _write_executable(
+        fake_bin / "mv",
+        """#!/usr/bin/env bash
+printf '%s\t%s\n' "$2" "$3" >> "$MOVE_CALL_LOG"
+exit 1
+""",
+    )
+    env["MOVE_CALL_LOG"] = str(move_log)
+
+    subprocess.run(["bash", script], capture_output=True, text=True, env=env, check=True)
+
+    assert _wait_for(lambda: move_log.exists())
+    source, destination = move_log.read_text(encoding="utf-8").strip().split("\t")
+    assert Path(destination) == cache
+    assert cache.read_text(encoding="utf-8") == "2.0.0"
+    assert _wait_for(lambda: not Path(source).exists())
+
+
+@pytest.mark.parametrize("script", SESSION_STARTS, ids=PLUGIN_IDS)
 def test_session_start_does_not_hint_a_downgrade_from_the_cache(tmp_path: Path, script: str) -> None:
     """A cached answer older than the installed build is not an update.
 
@@ -1300,7 +1508,7 @@ def test_session_start_does_not_hint_a_downgrade_from_the_cache(tmp_path: Path, 
     still on disk. Compared as strings it merely differs, and the hint would
     tell the user to "upgrade" to the version they just left.
     """
-    home, env, curl_log = _pypi_stand(
+    home, env, _ = _pypi_stand(
         tmp_path,
         """#!/usr/bin/env bash\nprintf 'called\\n' >> "$CURL_CALL_LOG"\necho '{"info":{"version":"1.0.0"}}'\n""",
         installed="1.0.0",
@@ -1319,9 +1527,8 @@ def test_session_start_does_not_hint_a_downgrade_from_the_cache(tmp_path: Path, 
 
 
 @pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
-def test_version_gt_orders_numeric_release_fields(common_sh: str) -> None:
-    """The comparison behind the hint orders fields numerically, and treats an
-    unrecognised shape as not-newer rather than as an upgrade."""
+def test_version_gt_orders_supported_versions(common_sh: str) -> None:
+    """Order the supported PEP 440 subset and reject unknown shapes safely."""
     cases = [
         ("0.4.14", "0.4.13", True),
         ("0.4.13", "0.4.14", False),
@@ -1336,12 +1543,25 @@ def test_version_gt_orders_numeric_release_fields(common_sh: str) -> None:
         ("0.4.13", "0.5", False),
         # A zero-padded field must not be read as octal.
         ("0.4.08", "0.4.7", True),
-        # Pre-release suffixes compare on their release fields only, so they can
-        # never claim to be newer than the release they precede.
+        # Development and pre-release builds sort before their final release.
+        ("1.2.0", "1.2.0.dev1", True),
+        ("1.2.0.dev2", "1.2.0.dev1", True),
+        ("1.2.0a1", "1.2.0.dev9", True),
+        ("1.2.0b1", "1.2.0a2", True),
+        ("1.2.0rc2", "1.2.0rc1", True),
+        ("1.2.0", "1.2.0rc1", True),
         ("1.2.0rc1", "1.2.0", False),
-        ("1.2.0", "1.2.0rc1", False),
-        # An unknown installed version keeps the old behaviour: hint anyway.
-        ("2.0.0", "", True),
+        # Post releases sort after the final release.
+        ("1.2.0.post1", "1.2.0", True),
+        ("1.2.0.post2", "1.2.0.post1", True),
+        ("1.2.0", "1.2.0.post1", False),
+        # Local labels describe the installed build, not a newer public release.
+        ("1.2.0", "1.2.0+local.1", False),
+        ("1.2.1", "1.2.0+local.1", True),
+        # Unknown shapes cannot be ordered safely, so neither side may hint.
+        ("2.0.0", "unknown", False),
+        ("unknown", "1.0.0", False),
+        ("2.0.0foo", "1.0.0", False),
     ]
     script = 'source "$1" < /dev/null; shift; while [ "$#" -gt 0 ]; do if _version_gt "$1" "$2"; then echo gt; else echo not; fi; shift 2; done'
     args = []
@@ -1357,4 +1577,4 @@ def test_version_gt_orders_numeric_release_fields(common_sh: str) -> None:
 
     got = result.stdout.split()
     want = ["gt" if expected else "not" for _, _, expected in cases]
-    assert got == want, [(c, g, w) for c, g, w in zip(cases, got, want) if g != w]
+    assert got == want, [(c, g, w) for c, g, w in zip(cases, got, want, strict=True) if g != w]
