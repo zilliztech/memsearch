@@ -1,8 +1,31 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
+
+
+def _resolve_bash() -> str:
+    """Locate a bash executable usable by subprocess.run.
+
+    See tests/test_claude_hooks.py::_resolve_bash for why "bash" alone
+    is unreliable on Windows outside a Git Bash session.
+    """
+    found = shutil.which("bash")
+    if found:
+        return found
+    git = shutil.which("git")
+    if git:
+        git_root = Path(git).resolve().parent.parent
+        for candidate in ("bin/bash.exe", "usr/bin/bash.exe"):
+            path = git_root / candidate
+            if path.exists():
+                return str(path)
+    return "bash"
+
+
+BASH = _resolve_bash()
 
 SCRIPT = Path("plugins/claude-code/hooks/parse-transcript.sh")
 
@@ -13,7 +36,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def _run_parse(path: Path) -> str:
     result = subprocess.run(
-        ["bash", str(SCRIPT), str(path)],
+        [BASH, str(SCRIPT), str(path)],
         check=True,
         capture_output=True,
         text=True,
