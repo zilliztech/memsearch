@@ -257,6 +257,7 @@ def test_plugin_summarize_model_config_roundtrip(tmp_path: Path, monkeypatch: py
     set_config_value("plugins.opencode.summarize.model", "anthropic/claude-haiku")
     set_config_value("plugins.openclaw.summarize.model", "qwen3-coder")
     set_config_value("plugins.dsh.summarize.model", "deepseek-v4-flash")
+    set_config_value("plugins.zcode.summarize.model", "haiku")
 
     cfg = resolve_config()
     assert cfg.plugins.claude_code.summarize.model == "claude-haiku-4-5"
@@ -264,6 +265,7 @@ def test_plugin_summarize_model_config_roundtrip(tmp_path: Path, monkeypatch: py
     assert cfg.plugins.opencode.summarize.model == "anthropic/claude-haiku"
     assert cfg.plugins.openclaw.summarize.model == "qwen3-coder"
     assert cfg.plugins.dsh.summarize.model == "deepseek-v4-flash"
+    assert cfg.plugins.zcode.summarize.model == "haiku"
     assert get_config_value("plugins.claude-code.summarize.model", cfg) == "claude-haiku-4-5"
 
     saved = load_config_file(cfg_path)

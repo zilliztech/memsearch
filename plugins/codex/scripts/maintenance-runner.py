@@ -26,6 +26,7 @@ DEFAULT_NATIVE_MODELS = {
     "opencode": "",
     "openclaw": "",
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
+    "zcode": "",  # zcode uses the same Stop-hook + native-LLM pattern as claude-code
 }
 
 
