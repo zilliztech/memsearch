@@ -62,6 +62,12 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 - **Cursor / ChatGPT / Gemini CLI users** → mem0, MemPalace, or claude-mem.
 - **Just need a local markdown search engine** → qmd.
 
+## Next Steps
+
+- **Ready to try memsearch quickly?** → [Getting Started](../getting-started.md)
+- **Evaluating as an end user?** → [For Agent Users](for-users.md)
+- **Evaluating as a builder/integrator?** → [For Agent Developers](for-developers.md)
+
 ## References
 
 - Claude Code native memory — [docs](https://docs.claude.com/en/docs/claude-code/memory)
