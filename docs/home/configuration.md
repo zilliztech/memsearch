@@ -2,6 +2,8 @@
 
 memsearch uses a layered TOML config system. Most users don't need to configure anything — the defaults work out of the box.
 
+If you are changing providers/backends and run into problems later, the top-level [Troubleshooting](../troubleshooting.md) guide and [FAQ](../faq.md) cover the most common recovery steps.
+
 ## Config Locations (priority low → high)
 
 1. `~/.memsearch/config.toml` — global defaults
