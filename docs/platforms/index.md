@@ -107,6 +107,14 @@ All plugins write standard markdown and derive collection names from the project
 | OpenCode user | [OpenCode plugin](opencode/index.md) -- npm package, SQLite-native capture |
 | Using multiple platforms | Install plugins on each -- they share the same memory backend |
 
+### Next steps after choosing a platform
+
+- **Claude Code** → [Claude Code Plugin](claude-code/index.md)
+- **OpenClaw** → [OpenClaw Plugin](openclaw/index.md)
+- **OpenCode** → [OpenCode Plugin](opencode/index.md)
+- **Codex CLI** → [Codex CLI Plugin](codex/index.md)
+- **Still need backend/setup basics?** → [Getting Started](../getting-started.md)
+
 ---
 
 ## Prerequisites (all platforms)
