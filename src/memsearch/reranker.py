@@ -4,11 +4,20 @@ Re-scores hybrid search results using a cross-encoder that reads query and
 document together, producing more accurate relevance scores than embedding
 similarity alone.
 
-Two backends are supported, auto-detected at runtime:
-  1. ONNX Runtime (preferred) — lightweight, CPU-only, included in ``memsearch[onnx]``
-  2. sentence-transformers CrossEncoder — PyTorch-based, included in ``memsearch[local]``
+Three backends are supported, chosen by the ``reranker.provider`` setting the
+same way ``embedding.provider`` selects an embedding backend:
+  1. ``"voyage"`` — Voyage AI hosted rerank API; needs ``memsearch[voyage]``
+     and ``VOYAGE_API_KEY``
+  2. ``""`` (default) — a local cross-encoder, auto-detecting the best runtime:
+     ONNX Runtime (``memsearch[onnx]``), else sentence-transformers
+     (``memsearch[local]``)
 
-If neither is installed, reranking is silently skipped.
+Local backends load a cross-encoder from HuggingFace, so the first call downloads
+weights and every process pays the load cost; the hosted backend has no local
+model to load, which keeps per-process search latency low for short-lived CLI
+invocations.
+
+If no backend is available, reranking is silently skipped.
 """
 
 from __future__ import annotations
@@ -229,6 +238,41 @@ def _rerank_torch(query: str, results: list[dict[str, Any]], model_name: str, to
 
 
 # ======================================================================
+# Voyage AI backend (hosted API)
+# ======================================================================
+
+DEFAULT_VOYAGE_RERANKER = "rerank-3"
+
+_voyage_client: Any = None
+_voyage_client_lock = threading.Lock()
+
+
+def _load_voyage_client() -> Any:
+    """Return a cached Voyage client (reads ``VOYAGE_API_KEY``)."""
+    global _voyage_client
+    with _voyage_client_lock:
+        if _voyage_client is None:
+            import voyageai
+
+            _voyage_client = voyageai.Client()
+            logger.info("Initialised Voyage AI reranker client")
+        return _voyage_client
+
+
+def _rerank_voyage(query: str, results: list[dict[str, Any]], model_name: str, top_k: int) -> list[dict[str, Any]]:
+    """Rerank using the Voyage AI rerank endpoint.
+
+    The API returns its results already ordered by relevance, each carrying the
+    index of the document it scored, so the original result dicts are looked up
+    by that index rather than re-sorted locally.
+    """
+    client = _load_voyage_client()
+    documents = [r["content"] for r in results]
+    response = client.rerank(query, documents, model=model_name, top_k=top_k or None)
+    return [{**results[item.index], "score": float(item.relevance_score)} for item in response.results]
+
+
+# ======================================================================
 # Public API
 # ======================================================================
 
@@ -239,12 +283,9 @@ def rerank(
     *,
     model_name: str = DEFAULT_RERANKER,
     top_k: int = 0,
+    provider: str = "",
 ) -> list[dict[str, Any]]:
     """Re-score search results with a cross-encoder.
-
-    Automatically selects the best available backend:
-      1. ONNX Runtime (``memsearch[onnx]``) — preferred, lightweight
-      2. sentence-transformers (``memsearch[local]``) — PyTorch fallback
 
     Parameters
     ----------
@@ -254,18 +295,40 @@ def rerank(
         Search results from MilvusStore.search(). Each dict must have
         a ``content`` key with the chunk text.
     model_name:
-        HuggingFace model ID for the cross-encoder.
+        The rerank model. For ``provider="voyage"`` a Voyage rerank id such as
+        ``rerank-3``; otherwise a HuggingFace ``org/name`` cross-encoder id.
     top_k:
         Return only the top-k results after reranking.
         0 means return all results (re-sorted).
+    provider:
+        ``"voyage"`` for the hosted Voyage rerank API, or ``""`` (default) for a
+        local cross-encoder, auto-detecting ONNX then sentence-transformers.
 
     Returns
     -------
     list[dict]
-        Results re-sorted by cross-encoder score.
+        Results re-sorted by relevance score. Returned unchanged when no
+        backend is available.
     """
     if not results:
         return []
+
+    if provider == "voyage":
+        try:
+            return _rerank_voyage(query, results, model_name or DEFAULT_VOYAGE_RERANKER, top_k)
+        except ImportError:
+            logger.warning(
+                'Reranker provider "voyage" requires the voyageai client '
+                '(pip install "memsearch[voyage]"); skipping reranking',
+            )
+            return results
+
+    if provider:
+        logger.warning(
+            'Unknown reranker provider %r; expected "voyage" or "" for a local cross-encoder. Skipping reranking',
+            provider,
+        )
+        return results
 
     backend = _detect_backend()
     if backend == "onnx":
