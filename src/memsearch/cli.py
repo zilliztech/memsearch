@@ -70,6 +70,7 @@ _PARAM_MAP = {
     "overlap_lines": "chunking.overlap_lines",
     "debounce_ms": "watch.debounce_ms",
     "reranker_model": "reranker.model",
+    "reranker_provider": "reranker.provider",
 }
 
 
@@ -109,6 +110,7 @@ def _cfg_to_memsearch_kwargs(
         "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),
         "exclude": _merge_unique(cfg.indexing.exclude, extra_exclude),
         "reranker_model": cfg.reranker.model,
+        "reranker_provider": cfg.reranker.provider,
     }
 
 
@@ -333,6 +335,11 @@ def index(
 )
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
+@click.option(
+    "--reranker-provider",
+    default=None,
+    help='Reranker backend: "voyage" for the hosted API, or empty for a local cross-encoder.',
+)
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 def search(
     query: str,
@@ -347,6 +354,7 @@ def search(
     milvus_uri: str | None,
     milvus_token: str | None,
     reranker_model: str | None,
+    reranker_provider: str | None,
     json_output: bool,
 ) -> None:
     """Search indexed memory for QUERY."""
@@ -363,6 +371,7 @@ def search(
             milvus_uri=milvus_uri,
             milvus_token=milvus_token,
             reranker_model=reranker_model,
+            reranker_provider=reranker_provider,
         )
     )
     ms = None

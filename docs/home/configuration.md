@@ -86,6 +86,34 @@ memsearch config set embedding.provider openai
 memsearch index --force   # re-index with new provider
 ```
 
+## Reranking
+
+Reranking re-scores search results with a cross-encoder that reads the query and
+each chunk *together*, which is more accurate than embedding similarity alone. It
+is disabled by default; set a provider or a model to enable it.
+
+| Provider | Install | API Key | Notes |
+|----------|---------|---------|-------|
+| *(empty, default)* | `pip install memsearch[onnx]` | No | Local cross-encoder, free, ~150MB model download |
+| voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | Hosted API, nothing to load per process |
+
+```bash
+# Hosted reranker (defaults to rerank-3)
+memsearch config set reranker.provider voyage
+
+# ...or pick the model explicitly
+memsearch config set reranker.provider voyage
+memsearch config set reranker.model rerank-3-lite
+
+# Local cross-encoder instead
+memsearch config set reranker.model Alibaba-NLP/gte-reranker-modernbert-base
+```
+
+Local backends load the model from HuggingFace on first use, and each process
+pays that load cost — noticeable for short-lived CLI invocations, where the
+hosted provider avoids it. No re-indexing is needed either way: reranking only
+affects query time.
+
 ## Milvus Backend
 
 | Backend | Config | Notes |
