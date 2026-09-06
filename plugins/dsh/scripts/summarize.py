@@ -92,7 +92,7 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
         reexec_env["MEMSEARCH_DSH_TRANSCRIPT"] = transcript
 
     memsearch_bin = _which("memsearch")
-    if memsearch_bin:
+    if memsearch_bin and not memsearch_bin.lower().endswith((".exe", ".cmd", ".bat", ".com")):
         try:
             first_line = Path(memsearch_bin).read_text(encoding="utf-8", errors="ignore").splitlines()[0]
             if first_line.startswith("#!"):
@@ -127,12 +127,20 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
 
 def _which(name: str) -> str | None:
     """Return the first PATH match for ``name`` (no shell involved)."""
+    candidates = [name]
+    if os.name == "nt" and not Path(name).suffix:
+        # Windows resolves bare names through PATHEXT; memsearch installs as
+        # memsearch.exe, uv as uv.exe. Insert the default set after any
+        # explicit suffix so the plain name is still tried first.
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        candidates.extend(f"{name}{ext}" for ext in pathext.split(os.pathsep) if ext)
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         if not directory:
             continue
-        candidate = Path(directory) / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
+        for candidate_name in candidates:
+            candidate = Path(directory) / candidate_name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
     return None
 
 

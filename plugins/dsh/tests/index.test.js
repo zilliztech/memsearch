@@ -3,8 +3,29 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
 
-import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
+import { detectDshCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
+
+test('resolveExecutable: Windows skips cmd and bat shims for direct spawn', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'msr-exe-'))
+  try {
+    fs.writeFileSync(path.join(tmp, 'tool.cmd'), '@echo off\n')
+    fs.writeFileSync(path.join(tmp, 'tool.bat'), '@echo off\n')
+    assert.equal(
+      resolveExecutable('tool', { platform: 'win32', path: tmp, pathExt: '.CMD;.BAT' }),
+      null,
+      'batch files need cmd.exe and cannot be used by execFile/spawn directly',
+    )
+    fs.writeFileSync(path.join(tmp, 'tool.exe'), '')
+    assert.equal(
+      resolveExecutable('tool', { platform: 'win32', path: tmp, pathExt: '.CMD;.EXE' }),
+      path.join(tmp, 'tool.exe'),
+    )
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+})
 
 async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
@@ -209,28 +230,28 @@ test('resolveSummarizeMode: unknown explicit mode logs a warning and treats as a
 })
 
 test('resolveSummarizeMode: auto with configured provider selects custom-llm', () => {
-  // Simulate `[plugins.dsh.summarize] provider = "x"` by pointing memsearchCmd
-  // at a shim that echoes the requested key.
-  const prevPath = process.env.PATH
+  // Simulate `[plugins.dsh.summarize] provider = "x"` with a Node shim passed
+  // as an argv spec — no PATH manipulation, works on every platform.
   const tmp = os.tmpdir()
-  const shimBin = `${tmp}/memsearch-config-shim-${process.pid}`
-  fs.mkdirSync(shimBin, { recursive: true })
-  const shim = `${shimBin}/memsearch`
+  const shim = `${tmp}/memsearch-config-shim-${process.pid}.mjs`
   fs.writeFileSync(
     shim,
-    `#!/bin/sh\ncase "$3" in\n  plugins.dsh.summarize.provider) echo "deepseek-zilliz" ;;\n  plugins.dsh.summarize.model) echo "deepseek-v4-flash" ;;\n  plugins.dsh.summarize.enabled) echo "true" ;;\nesac\n`,
+    'const key = process.argv[process.argv.indexOf("get") + 1];\n' +
+    'const values = {\n' +
+    '  "plugins.dsh.summarize.provider": "deepseek-zilliz",\n' +
+    '  "plugins.dsh.summarize.model": "deepseek-v4-flash",\n' +
+    '  "plugins.dsh.summarize.enabled": "true",\n' +
+    '};\n' +
+    'if (values[key] !== undefined) console.log(values[key]);\n',
     'utf-8',
   )
-  fs.chmodSync(shim, 0o755)
   try {
-    process.env.PATH = `${shimBin}:${prevPath}`
-    const r = resolveSummarizeMode('memsearch', { summarizeMode: undefined, summarizeProvider: '', summarizeModel: '' }, {})
+    const r = resolveSummarizeMode([process.execPath, shim], { summarizeMode: undefined, summarizeProvider: '', summarizeModel: '' }, {})
     assert.equal(r.mode, 'custom-llm')
     assert.equal(r.provider, 'deepseek-zilliz')
     assert.equal(r.model, 'deepseek-v4-flash')
   } finally {
-    fs.rmSync(shimBin, { recursive: true, force: true })
-    process.env.PATH = prevPath
+    fs.rmSync(shim, { force: true })
   }
 })
 
@@ -285,23 +306,22 @@ test('summarizeTurn: dsh-headless mode without CLI errors visibly', async () => 
 })
 
 test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', async () => {
-  // Point a fake `python3` (argv recorder) at the front of PATH so the spawn
-  // inside summarizeCustomLlm hits it; assert the provider/model options from
-  // plugin config reach summarize.py as CLI args.
-  const prevPath = process.env.PATH
-  const tmp = await import('node:os').then((os) => os.tmpdir())
-  const fs = await import('node:fs')
-  const fakeBin = `${tmp}/memsearch-py3bin-${process.pid}`
+  // Point MEMSEARCH_PYTHON at a Node argv recorder via a JSON argv spec; the
+  // spawn inside summarizeCustomLlm hits it on every platform.
+  const tmp = os.tmpdir()
   const argvFile = `${tmp}/memsearch-py3argv-${process.pid}.txt`
-  fs.mkdirSync(fakeBin, { recursive: true })
+  const shim = `${tmp}/memsearch-py3rec-${process.pid}.mjs`
   fs.writeFileSync(
-    `${fakeBin}/python3`,
-    `#!/bin/sh\nprintf "%s\\n" "$@" > "${argvFile}"\ncat > /dev/null\nexit 0\n`,
+    shim,
+    'import { writeFileSync } from "node:fs";\n' +
+    `writeFileSync(${JSON.stringify(argvFile)}, process.argv.slice(2).join("\\n"));\n` +
+    'process.stdin.resume();\n' +
+    'process.stdin.on("end", () => process.exit(0));\n',
     'utf-8',
   )
-  fs.chmodSync(`${fakeBin}/python3`, 0o755)
+  const prevPython = process.env.MEMSEARCH_PYTHON
   try {
-    process.env.PATH = `${fakeBin}:${prevPath}`
+    process.env.MEMSEARCH_PYTHON = JSON.stringify([process.execPath, shim])
     const opts = {
       summarizeMode: 'custom-llm',
       agentName: 'AgentX',
@@ -313,15 +333,16 @@ test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', as
     const summary = await summarizeTurn(ctx, opts, render, process.cwd())
     assert.equal(summary, null, 'recorder exits 0 with no stdout -> null summary')
     const recorded = fs.readFileSync(argvFile, 'utf-8').trim().split('\n')
-    assert.ok(recorded[0].endsWith('scripts/summarize.py'), `first arg = summarize.py, got: ${recorded[0]}`)
+    assert.ok(recorded[0].replaceAll('\\', '/').endsWith('scripts/summarize.py'), `first arg = summarize.py, got: ${recorded[0]}`)
     const joined = recorded.join(' ')
     assert.ok(joined.includes('--provider deepseek-zilliz'), `--provider forwarded: ${joined}`)
     assert.ok(joined.includes('--model deepseek-v4-pro'), `--model forwarded: ${joined}`)
     assert.ok(joined.includes('--agent-name AgentX'), `--agent-name forwarded: ${joined}`)
   } finally {
-    try { fs.rmSync(fakeBin, { recursive: true, force: true }) } catch { /* cleanup */ }
+    fs.rmSync(shim, { force: true })
     try { fs.unlinkSync(argvFile) } catch { /* cleanup */ }
-    process.env.PATH = prevPath
+    if (prevPython === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = prevPython
   }
 })
 
@@ -329,19 +350,18 @@ test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error'
   // A failing summarize.py must reject with its stderr message (visible), not
   // silently resolve null/empty — so the caller writes the unavailable note
   // with the real reason.
-  const prevPath = process.env.PATH
-  const tmp = await import('node:os').then((os) => os.tmpdir())
-  const fs = await import('node:fs')
-  const fakeBin = `${tmp}/memsearch-py3fail-${process.pid}`
-  fs.mkdirSync(fakeBin, { recursive: true })
+  const tmp = os.tmpdir()
+  const shim = `${tmp}/memsearch-py3fail-${process.pid}.mjs`
   fs.writeFileSync(
-    `${fakeBin}/python3`,
-    '#!/bin/sh\necho "provider deepseek-zilliz not found in config" >&2\ncat > /dev/null\nexit 3\n',
+    shim,
+    'process.stderr.write("provider deepseek-zilliz not found in config\\n");\n' +
+    'process.stdin.resume();\n' +
+    'process.stdin.on("end", () => process.exit(3));\n',
     'utf-8',
   )
-  fs.chmodSync(`${fakeBin}/python3`, 0o755)
+  const prevPython = process.env.MEMSEARCH_PYTHON
   try {
-    process.env.PATH = `${fakeBin}:${prevPath}`
+    process.env.MEMSEARCH_PYTHON = JSON.stringify([process.execPath, shim])
     const opts = {
       summarizeMode: 'custom-llm',
       agentName: 'X',
@@ -355,8 +375,9 @@ test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error'
       /provider deepseek-zilliz not found in config/,
     )
   } finally {
-    try { fs.rmSync(fakeBin, { recursive: true, force: true }) } catch { /* cleanup */ }
-    process.env.PATH = prevPath
+    fs.rmSync(shim, { force: true })
+    if (prevPython === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = prevPython
   }
 })
 
@@ -420,18 +441,31 @@ test('detectDshCmd: falls back to pnpm global bin directory', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
-  const tmp = await import('node:os').then((os) => os.tmpdir())
-  const fs = await import('node:fs')
+  const prevProfile = process.env.USERPROFILE
+  const tmp = os.tmpdir()
   const fakeHome = `${tmp}/memsearch-home-${process.pid}`
   fs.mkdirSync(`${fakeHome}/.local/share/pnpm`, { recursive: true })
-  fs.writeFileSync(`${fakeHome}/.local/share/pnpm/dsh`, '#!/bin/sh\nexit 0\n', 'utf-8')
-  fs.chmodSync(`${fakeHome}/.local/share/pnpm/dsh`, 0o755)
+  const isWin = process.platform === 'win32'
+  const fallbackName = isWin ? 'dsh.ps1' : 'dsh'
+  const fallback = `${fakeHome}/.local/share/pnpm/${fallbackName}`
+  fs.writeFileSync(fallback, isWin ? 'exit 0\n' : '#!/bin/sh\nexit 0\n', 'utf-8')
+  if (!isWin) fs.chmodSync(fallback, 0o755)
   try {
     delete process.env.DSH_CLI
     delete process.env.PATH
     process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
     const cmd = detectDshCmd()
-    assert.deepEqual(cmd, [`${fakeHome}/.local/share/pnpm/dsh`])
+    if (isWin) {
+      // Windows runs the PowerShell shim through pwsh/powershell; both may be
+      // absent in a stripped environment, in which case there is no safe launch.
+      if (cmd !== null) {
+        assert.ok(/pwsh|powershell/i.test(cmd[0]), `launched via PowerShell, got ${cmd[0]}`)
+        assert.equal(cmd[cmd.length - 1], fallback, 'runs the pnpm-global shim')
+      }
+    } else {
+      assert.deepEqual(cmd, [fallback])
+    }
   } finally {
     try { fs.rmSync(fakeHome, { recursive: true, force: true }) } catch { /* cleanup */ }
     if (prevCli === undefined) delete process.env.DSH_CLI
@@ -440,6 +474,8 @@ test('detectDshCmd: falls back to pnpm global bin directory', async () => {
     else process.env.PATH = prevPath
     if (prevHome === undefined) delete process.env.HOME
     else process.env.HOME = prevHome
+    if (prevProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = prevProfile
   }
 })
 
@@ -463,6 +499,15 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
     skills: { register: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
+  // Isolate executable discovery so background index spawns fail fast (ENOENT)
+  // instead of starting a real uvx/memsearch child that locks the temp dir on
+  // Windows until cleanup hits EBUSY.
+  const prevPath = process.env.PATH
+  const prevHome = process.env.HOME
+  const prevProfile = process.env.USERPROFILE
+  process.env.PATH = `${tmp}/memsearch-no-bin-${process.pid}`
+  process.env.HOME = `${tmp}/memsearch-no-home-${process.pid}`
+  process.env.USERPROFILE = process.env.HOME
   apply(ctx, { summarizeEnabled: false })
   const session = {
     id: 'session-raw-test',
@@ -487,6 +532,11 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
     assert.ok(content.includes('<!-- session:session-raw-test turn:1 '), 'anchor present')
   } finally {
     fs.rmSync(projDir, { recursive: true, force: true })
+    process.env.PATH = prevPath
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
+    if (prevProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = prevProfile
   }
 })
 
@@ -504,10 +554,12 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
+  const prevProfile = process.env.USERPROFILE
   try {
     delete process.env.DSH_CLI
     process.env.PATH = '/nonexistent'
     process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback (would boot a real agent)
+    process.env.USERPROFILE = '/nonexistent-home' // and mask uvx fallback on Windows
     apply(ctx, {})
     const session = {
       id: 'session-fail-test',
@@ -534,6 +586,8 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
     process.env.PATH = prevPath
     if (prevHome === undefined) delete process.env.HOME
     else process.env.HOME = prevHome
+    if (prevProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = prevProfile
   }
 })
 
@@ -549,9 +603,15 @@ test('apply: multi-project capture writes to each project memory dir', async () 
   }
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
+  const prevHome = process.env.HOME
+  const prevProfile = process.env.USERPROFILE
   try {
     delete process.env.DSH_CLI
     process.env.PATH = '/nonexistent'
+    // Mask both home variables so no real uvx/memsearch child starts and locks
+    // the temp project dirs on Windows.
+    process.env.HOME = '/nonexistent-home'
+    process.env.USERPROFILE = '/nonexistent-home'
     apply(ctx, { summarizeEnabled: false }) // raw writes, no CLI needed
     const mkSession = (id, cwd, marker) => ({
       id,
@@ -580,6 +640,10 @@ test('apply: multi-project capture writes to each project memory dir', async () 
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
     process.env.PATH = prevPath
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
+    if (prevProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = prevProfile
   }
 })
 
@@ -617,25 +681,22 @@ test('summarizeHeadless: does not build a --patch overlay for the model', async 
   // The DSH settings user layer (`agent-default-model` in ~/.dsh/settings.yaml)
   // outranks any `--patch` overlay, so headless summarize must NOT emit one:
   // a real dsh boot here should not carry a memsearch-generated overlay file.
-  // We point DSH_CLI at a recorder script that writes its argv to a file, then
+  // We point DSH_CLI at a Node recorder that writes its argv to a file, then
   // assert the recorded args contain no `--patch` (and no temp overlay path).
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevDshSummarize = process.env.MEMSEARCH_DSH_SUMMARIZE
-  const tmp = await import('node:os').then((os) => os.tmpdir())
-  const fs = await import('node:fs')
-  const recorder = `${tmp}/memsearch-dsh-argv-recorder-${process.pid}.sh`
+  const tmp = os.tmpdir()
+  const argvFile = `${tmp}/memsearch-dsh-argv-${process.pid}.txt`
+  const recorder = `${tmp}/memsearch-dsh-argv-recorder-${process.pid}.mjs`
   fs.writeFileSync(
     recorder,
-    '#!/bin/sh\nprintf "%s\\n" "$@" > "${MEMSEARCH_ARGV_FILE}"\nexit 0\n',
+    'import { writeFileSync } from "node:fs";\n' +
+    `writeFileSync(${JSON.stringify(argvFile)}, process.argv.slice(2).join("\\n"));\n`,
     'utf-8',
   )
-  fs.chmodSync(recorder, 0o755)
-  const argvFile = `${tmp}/memsearch-dsh-argv-${process.pid}.txt`
   try {
-    process.env.DSH_CLI = `sh ${recorder}`
-    process.env.PATH = '/usr/bin:/bin'
-    process.env.MEMSEARCH_ARGV_FILE = argvFile
+    process.env.DSH_CLI = `"${process.execPath}" "${recorder}"`
     const opts = {
       summarizeMode: 'dsh-headless',
       agentName: 'X',
@@ -658,7 +719,6 @@ test('summarizeHeadless: does not build a --patch overlay for the model', async 
   } finally {
     try { fs.unlinkSync(recorder) } catch { /* cleanup */ }
     try { fs.unlinkSync(argvFile) } catch { /* cleanup */ }
-    delete process.env.MEMSEARCH_ARGV_FILE
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
     process.env.PATH = prevPath
@@ -963,7 +1023,7 @@ test('memsearchDirFor: MEMSEARCH_DIR env wins (global scope)', () => {
     process.env.MEMSEARCH_DIR = '/global/memsearch'
     assert.equal(memsearchDirFor('/proj/x'), '/global/memsearch')
     delete process.env.MEMSEARCH_DIR
-    assert.equal(memsearchDirFor('/proj/x'), '/proj/x/.memsearch')
+    assert.equal(memsearchDirFor('/proj/x'), path.join('/proj/x', '.memsearch'))
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev
@@ -1125,10 +1185,22 @@ test('listSkillCandidates: malformed meta.json is skipped, not fatal', () => {
 })
 
 test('resolveSkillInstallTarget: paths config entry wins, relative resolves against project', () => {
-  
-  const target = resolveSkillInstallTarget('memsearch', '/proj')
-  // No configured paths on this machine → DSH default ~/.agents/skills.
-  assert.ok(target.endsWith('/.agents/skills'), `expected ~/.agents/skills default, got ${target}`)
+  const prevHome = process.env.HOME
+  const prevProfile = process.env.USERPROFILE
+  const fakeHome = path.join(os.tmpdir(), `msr-home-${process.pid}`)
+  try {
+    // Pin the home so the default target is deterministic on every platform.
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
+    const target = resolveSkillInstallTarget('definitely-not-a-real-cmd-xyz', '/proj')
+    // No configured paths on this machine → DSH default ~/.agents/skills.
+    assert.equal(target, path.join(fakeHome, '.agents', 'skills'), `expected ${fakeHome}/.agents/skills default, got ${target}`)
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME
+    else process.env.HOME = prevHome
+    if (prevProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = prevProfile
+  }
 })
 
 test('registerSkillReviewRoutes: GET candidates returns parsed list, pending first', async () => {
@@ -1261,6 +1333,9 @@ test('registerSkillReviewRoutes: POST open-memsearch opens existing dir, 404 for
     await done1
     assert.equal(res1.status, 200)
     assert.equal(res1.body.ok, true)
+    // opened is true when a platform file manager exists (Windows explorer,
+    // macOS open), false on headless systems without xdg-open — both valid.
+    assert.equal(typeof res1.body.opened, 'boolean')
     assert.equal(res1.body.path, tmp, 'path is the memsearch dir (MEMSEARCH_DIR override)')
 
     // missing dir
@@ -1286,7 +1361,15 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
   fs.writeFileSync(`${tmp}/memory/2026-08-22.md`, '# hello')
   fs.writeFileSync(`${tmp}/config.toml`, 'x = 1')
   fs.writeFileSync(`${tmp}/.hidden`, 'no')
-  fs.symlinkSync(outside, `${tmp}/outside-link`)
+  // Symlinks require privilege on Windows; skip the symlink-escape assertions
+  // when the platform refuses to create them.
+  let symlinkAvailable = true
+  try {
+    fs.symlinkSync(outside, `${tmp}/outside-link`)
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') symlinkAvailable = false
+    else throw error
+  }
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
@@ -1311,9 +1394,11 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
     assert.equal(res2.status, 400)
 
     // A symlink inside .memsearch must not expose an outside directory.
-    const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
-    assert.equal(res3.status, 400)
+    if (symlinkAvailable) {
+      const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
+      route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
+      assert.equal(res3.status, 400)
+    }
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev
@@ -1328,7 +1413,13 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
   fs.writeFileSync(`${tmp}/skill-candidates/foo/meta.json`, '{"name":"foo"}')
   fs.writeFileSync(`${tmp}/blob.bin`, Buffer.from([0, 1, 2, 3]))
   fs.writeFileSync(outside, 'outside secret')
-  fs.symlinkSync(outside, `${tmp}/escape.md`)
+  let symlinkAvailable = true
+  try {
+    fs.symlinkSync(outside, `${tmp}/escape.md`)
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') symlinkAvailable = false
+    else throw error
+  }
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
@@ -1357,9 +1448,11 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
     assert.equal(res3.status, 400)
 
     // A text-looking symlink must not expose a file outside .memsearch.
-    const res4 = { writeHead: (s) => { res4.status = s }, end: (b) => { res4.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
-    assert.equal(res4.status, 400)
+    if (symlinkAvailable) {
+      const res4 = { writeHead: (s) => { res4.status = s }, end: (b) => { res4.body = JSON.parse(b) } }
+      route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
+      assert.equal(res4.status, 400)
+    }
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev

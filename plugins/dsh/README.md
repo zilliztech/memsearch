@@ -23,6 +23,33 @@ review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list
 - A DSH profile (web / headless / tui) you want to attach memory to.
 - Node >= 22.19 (DSH's requirement).
 
+### Native Windows
+
+The plugin runs natively in Windows PowerShell: it does not require Git Bash or
+WSL at runtime. It resolves `memsearch.exe`, `uv.exe`, `python.exe`, and
+`dsh.ps1` without a shell, so installation paths containing spaces are
+supported.
+
+For local Ollama embeddings, configure the native CLI as usual:
+
+```powershell
+uv tool install "memsearch[ollama]"
+memsearch config set embedding.provider ollama
+memsearch config set embedding.model nomic-embed-text-v2-moe:latest
+memsearch config set embedding.base_url http://localhost:11434
+```
+
+The currently published `memsearch` 0.4.19 package still rejects Milvus Lite on
+Windows. Until the next release includes the upstream Windows support, install
+from `main` for a local Milvus Lite store, or set `[milvus] uri` to a remote
+Milvus server:
+
+```powershell
+uv tool install --force "memsearch[ollama] @ git+https://github.com/zilliztech/memsearch"
+```
+
+Native Windows configuration lives in `%USERPROFILE%\.memsearch\config.toml`.
+
 ## Install
 
 ### From npm (recommended)
@@ -80,11 +107,12 @@ Everything else — provider/model, Milvus, collection, memory dir — comes fro
 (no per-plugin config fields):
 
 - **Summarize provider/model** → `[plugins.dsh.summarize] provider` / `model`
-  in `~/.memsearch/config.toml` (or `[llm.providers.*]`; see the
-  `custom-llm` section below).
+  in `~/.memsearch/config.toml` (`%USERPROFILE%\.memsearch\config.toml` on
+  Windows), or `[llm.providers.*]`; see the `custom-llm` section below.
 - **Milvus** → `[milvus] uri` in memsearch config.
-- **Collection** → derived from the project path (`derive-collection.sh`),
-  or `--collection` passed to the memsearch CLI.
+- **Collection** → derived from the project path in JavaScript (matching the
+  legacy `derive-collection.sh` algorithm), or `--collection` passed to the
+  memsearch CLI.
 - **Memory dir** → `MEMSEARCH_DIR` env (explicit → global scope), else
   `<project>/.memsearch`.
 
