@@ -318,6 +318,75 @@ ensure_memory_dir() {
   mkdir -p "$MEMORY_DIR"
 }
 
+# _memsearch_config_get <dotted.key>
+# Print one resolved config value, or nothing when memsearch is unavailable.
+_memsearch_config_get() {
+  _memsearch config get "$1" 2>/dev/null || true
+}
+
+# --- Daily memory journal filename ---
+# Keep the block between the BEGIN/END markers byte-identical across plugins: a
+# plugin install only bundles its own directory, so it cannot source a shared
+# file at runtime. tests/test_claude_hooks.py enforces the copy-match invariant.
+# BEGIN shared: daily-memory-file
+
+# _sanitize_filename_suffix <raw>
+# Reduce an arbitrary string (typically a hostname) to a filesystem-safe token:
+# every byte outside [A-Za-z0-9_-] becomes "-", runs collapse, leading and
+# trailing "-" are dropped, and the result is capped at 32 characters. Prints
+# nothing when no safe character survives. Rewriting "." and "/" is what keeps
+# a hostile value from escaping the memory directory or hiding the journal.
+_sanitize_filename_suffix() {
+  printf '%s' "$1" |
+    LC_ALL=C tr -c 'A-Za-z0-9_-' '-' |
+    LC_ALL=C cut -c1-32 |
+    LC_ALL=C sed -e 's/--*/-/g' -e 's/^-//' -e 's/-$//'
+}
+
+# daily_memory_file <YYYY-MM-DD>
+# Absolute path of the daily memory journal for the given date.
+#
+# Default (no env var, no config) is the historical "$MEMORY_DIR/<date>.md".
+# When MEMSEARCH_MEMORY_FILE_SUFFIX (env, wins) or memory.filename_suffix
+# (config) is set, this writer's own token is appended: "<date>-<suffix>.md".
+# The literal value "hostname" expands to this machine's short hostname.
+#
+# Multi-writer memory directories need this: when .memsearch/memory/ is shared
+# through a file-level sync provider (iCloud, Dropbox, Syncthing), two machines
+# append to the same daily file, and those providers do not merge concurrent
+# plain-text appends -- one machine's turns are silently dropped, or a
+# "(conflicted copy)" duplicate appears. One file per writer removes the race.
+# Indexing is unaffected: memsearch indexes the directory, not one file name.
+daily_memory_file() {
+  local day="$1"
+  local raw="${MEMSEARCH_MEMORY_FILE_SUFFIX-}"
+  local suffix=""
+
+  if [ -z "$raw" ]; then
+    raw=$(_memsearch_config_get memory.filename_suffix) || true
+  fi
+  if [ "$raw" = "hostname" ]; then
+    raw=$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf '%s' "${HOSTNAME:-}") || true
+  fi
+  if [ -n "$raw" ]; then
+    suffix=$(_sanitize_filename_suffix "$raw") || true
+    # A value built only from rewritten bytes -- a non-ASCII hostname, say --
+    # must not collapse back to the shared name, because that is exactly the
+    # silent collision this knob exists to prevent. Fall back to a stable
+    # checksum of the raw value so the writer still owns a file of its own.
+    if [ -z "$suffix" ]; then
+      suffix=$(printf '%s' "$raw" | LC_ALL=C cksum 2>/dev/null | cut -d' ' -f1) || true
+    fi
+  fi
+
+  if [ -n "$suffix" ]; then
+    printf '%s/%s-%s.md' "$MEMORY_DIR" "$day" "$suffix"
+  else
+    printf '%s/%s.md' "$MEMORY_DIR" "$day"
+  fi
+}
+# END shared: daily-memory-file
+
 # Collection description (set by session-start.sh, empty by default)
 COLLECTION_DESC=""
 

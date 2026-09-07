@@ -660,3 +660,40 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
     assert cfg.embedding.provider == "openai"
     assert cfg.milvus.collection == "memsearch_chunks"
     assert cfg.watch.debounce_ms == 1500
+
+
+def test_memory_filename_suffix_defaults_to_empty():
+    """Regression guard, never red by design.
+
+    An empty suffix is what keeps the plugins writing the historical
+    ``memory/YYYY-MM-DD.md`` name for every single-machine user.
+    """
+    assert MemSearchConfig().memory.filename_suffix == ""
+    assert get_config_value("memory.filename_suffix", MemSearchConfig()) == ""
+
+
+def test_memory_filename_suffix_roundtrips_through_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    global_cfg = tmp_path / "global.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / ".memsearch.toml")
+
+    set_config_value("memory.filename_suffix", "hostname")
+
+    assert load_config_file(global_cfg)["memory"]["filename_suffix"] == "hostname"
+    assert resolve_config().memory.filename_suffix == "hostname"
+
+
+def test_memory_filename_suffix_is_allowed_in_project_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The knob names a file inside the project's own memory directory.
+
+    A checkout synced between two machines is where the multi-machine setup
+    this exists for keeps its settings, so the project layer may set it.
+    """
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "global.toml")
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    set_config_value("memory.filename_suffix", "hostname", project=True)
+
+    assert load_config_file(project_cfg)["memory"]["filename_suffix"] == "hostname"
+    assert resolve_config().memory.filename_suffix == "hostname"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import json
 import os
 import shutil
@@ -582,7 +583,9 @@ def test_session_start_recent_memory_selects_daily_journals() -> None:
         source = script.read_text(encoding="utf-8")
 
         assert "DAILY_JOURNAL_PATTERN" in source
-        assert "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md" in source
+        # The trailing "*" keeps per-writer journals (2026-01-02-laptop.md,
+        # written when memory.filename_suffix is set) inside cold-start recall.
+        assert "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md" in source
 
 
 def test_session_start_warns_when_index_state_is_unhealthy(tmp_path: Path) -> None:
@@ -1912,3 +1915,265 @@ def test_version_gt_orders_supported_versions(common_sh: str) -> None:
     got = result.stdout.split()
     want = ["gt" if expected else "not" for _, _, expected in cases]
     assert got == want, [(c, g, w) for c, g, w in zip(cases, got, want, strict=True) if g != w]
+
+
+# --- Daily memory journal filename (issue #720) ------------------------------
+#
+# A .memsearch/memory/ directory shared through a file-level sync provider has
+# more than one writer, and those providers do not merge concurrent plain-text
+# appends: two machines appending to the same "$TODAY.md" silently lose turn
+# summaries. memory.filename_suffix / MEMSEARCH_MEMORY_FILE_SUFFIX give each
+# writer its own daily file. The default stays the bare date.
+
+MARKER_BEGIN = "# BEGIN shared: daily-memory-file"
+MARKER_END = "# END shared: daily-memory-file"
+
+
+def _shared_daily_memory_block(common_sh: str) -> str:
+    text = Path(common_sh).read_text(encoding="utf-8")
+    start = text.index(MARKER_BEGIN)
+    end = text.index(MARKER_END) + len(MARKER_END)
+    return text[start:end]
+
+
+def _daily_memory_file(common_sh: str, suffixes: list[str], memory_dir: str = "/memdir") -> list[str]:
+    """Run ``daily_memory_file`` once per suffix and return the produced paths.
+
+    Every call sets MEMSEARCH_MEMORY_FILE_SUFFIX, so the config lookup is never
+    reached and no memsearch install is involved.
+    """
+    script = (
+        'source "$1" < /dev/null; shift; MEMORY_DIR="$1"; shift; '
+        'while [ "$#" -gt 0 ]; do '
+        'MEMSEARCH_MEMORY_FILE_SUFFIX="$1" daily_memory_file 2026-01-02; echo; shift; done'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script, "bash", common_sh, memory_dir, *suffixes],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "MEMSEARCH_DISABLE": ""},
+        check=True,
+    )
+    return result.stdout.splitlines()
+
+
+def test_daily_memory_block_is_byte_identical_across_plugins() -> None:
+    """A plugin install bundles only its own directory, so it cannot source a
+    shared file at runtime. Mirrors tests/test_skills_sync.py."""
+    blocks = {common_sh: _shared_daily_memory_block(common_sh) for common_sh in COMMON_SHS}
+    first = next(iter(blocks.values()))
+    for common_sh, block in blocks.items():
+        assert block == first, f"{common_sh} drifted from the shared daily-memory-file block"
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+def test_daily_memory_file_defaults_to_the_bare_date(common_sh: str, tmp_path: Path) -> None:
+    """Regression guard, never red by design: it pins the pre-#720 filename.
+
+    With no env var and no config the journal keeps its exact historical name,
+    so single-machine users see no change at all.
+    """
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    # An install that answers "" for every config key: the unset default.
+    _write_executable(fake_bin / "memsearch", "#!/usr/bin/env bash\nexit 0\n")
+
+    script = 'source "$1" < /dev/null; MEMORY_DIR=/memdir; daily_memory_file 2026-01-02'
+    result = subprocess.run(
+        ["bash", "-c", script, "bash", common_sh],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "MEMSEARCH_DISABLE": "",
+            "MEMSEARCH_MEMORY_FILE_SUFFIX": "",
+        },
+        check=True,
+    )
+
+    assert result.stdout == "/memdir/2026-01-02.md"
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+def test_daily_memory_file_sanitizes_the_suffix(common_sh: str) -> None:
+    """A hostname may carry dots, spaces, slashes or non-ASCII bytes."""
+    cases = [
+        # (raw suffix, expected filename)
+        ("laptop", "2026-01-02-laptop.md"),
+        ("Ada's MacBook.local", "2026-01-02-Ada-s-MacBook-local.md"),
+        # Path separators and dot segments must never leave the memory dir.
+        ("../../etc/passwd", "2026-01-02-etc-passwd.md"),
+        (".hidden", "2026-01-02-hidden.md"),
+        # Long values are capped so the filename stays reasonable.
+        ("abcdefghijklmnopqrstuvwxyz0123456789extra", "2026-01-02-abcdefghijklmnopqrstuvwxyz012345.md"),
+    ]
+
+    got = _daily_memory_file(common_sh, [raw for raw, _ in cases])
+
+    assert got == [f"/memdir/{expected}" for _, expected in cases]
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+def test_daily_memory_file_never_collapses_a_set_suffix_to_the_shared_name(common_sh: str) -> None:
+    """A suffix built only from rewritten bytes still has to own its own file.
+
+    Falling back to the bare date here would silently restore the collision the
+    knob was set to avoid, so an otherwise unusable value becomes a stable
+    checksum of the raw string instead.
+    """
+    cyrillic, punctuation = _daily_memory_file(common_sh, ["мак", "..."])
+
+    for path in (cyrillic, punctuation):
+        assert path != "/memdir/2026-01-02.md"
+        assert path.startswith("/memdir/2026-01-02-")
+        assert path.endswith(".md")
+    assert cyrillic != punctuation
+
+
+def _run_claude_stop_hook(tmp_path: Path, *, suffix_config: str = "", env_suffix: str = "") -> Path:
+    """Drive the Claude Code Stop hook once and return the memory directory."""
+    script = Path("plugins/claude-code/hooks/stop.sh")
+    plugin_root = Path("plugins/claude-code").resolve()
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    transcript = tmp_path / "session-720.jsonl"
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript, turn_uuid="turn-720")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "config" ] && [ "$2" = "get" ]; then\n'
+        '  case "$3" in\n'
+        "    embedding.provider) echo onnx ;;\n"
+        "    plugins.claude-code.summarize.enabled) echo true ;;\n"
+        f"    memory.filename_suffix) echo '{suffix_config}' ;;\n"
+        '    *) echo "" ;;\n'
+        "  esac\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n",
+    )
+    _write_executable(
+        fake_bin / "claude",
+        "#!/usr/bin/env bash\n"
+        'if [ "${1:-}" = "--help" ]; then\n'
+        '  echo "Usage: claude"\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "- User hit the synced-memory filename collision."\n',
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_MEMORY_FILE_SUFFIX": env_suffix,
+    }
+    subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    return memsearch_dir / "memory"
+
+
+def test_claude_stop_hook_keeps_the_bare_daily_journal_by_default(tmp_path: Path) -> None:
+    """Regression guard, never red by design: unconfigured installs must not move."""
+    memory = _run_claude_stop_hook(tmp_path)
+
+    today = datetime.date.today().isoformat()
+    assert [path.name for path in sorted(memory.glob("*.md"))] == [f"{today}.md"]
+
+
+def test_claude_stop_hook_writes_a_per_writer_journal_from_config(tmp_path: Path) -> None:
+    memory = _run_claude_stop_hook(tmp_path, suffix_config="Build Box.local")
+
+    today = datetime.date.today().isoformat()
+    journal = memory / f"{today}-Build-Box-local.md"
+    assert [path.name for path in sorted(memory.glob("*.md"))] == [journal.name]
+    assert "synced-memory filename collision" in journal.read_text(encoding="utf-8")
+
+
+def test_claude_stop_hook_env_suffix_overrides_config(tmp_path: Path) -> None:
+    memory = _run_claude_stop_hook(tmp_path, suffix_config="from-config", env_suffix="from-env")
+
+    today = datetime.date.today().isoformat()
+    assert [path.name for path in sorted(memory.glob("*.md"))] == [f"{today}-from-env.md"]
+
+
+def test_codex_session_start_writes_a_per_writer_journal(tmp_path: Path) -> None:
+    """The Codex SessionStart heading has to land in the same per-writer file
+    the Stop hook appends to, or the two hooks split one day in two."""
+    script = Path("plugins/codex/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    home.mkdir()
+    fake_bin.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "config" ] && [ "$2" = "get" ]; then\n'
+        '  case "$3" in\n'
+        "    embedding.provider) echo onnx ;;\n"
+        "    memory.filename_suffix) echo workstation ;;\n"
+        '    *) echo "" ;;\n'
+        "  esac\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n",
+    )
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "MEMSEARCH_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_MEMORY_FILE_SUFFIX": "",
+    }
+    subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"cwd": str(tmp_path)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    today = datetime.date.today().isoformat()
+    memory = memsearch_dir / "memory"
+    assert [path.name for path in sorted(memory.glob("*.md"))] == [f"{today}-workstation.md"]
+
+
+def test_claude_session_start_recall_includes_per_writer_journals(tmp_path: Path) -> None:
+    """Cold-start recall must still see the journals the other machine wrote."""
+    journal = "\n".join(
+        [
+            "# 2026-08-19",
+            "",
+            "## Session 09:00",
+            "### 09:00",
+            "- OTHER_MACHINE_MARKER",
+            "",
+        ]
+    )
+
+    context = _run_claude_session_start_with_memory(tmp_path, {"2026-08-19-otherbox.md": journal})
+
+    assert "OTHER_MACHINE_MARKER" in context

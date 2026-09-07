@@ -760,6 +760,13 @@ All memories are stored as plain markdown in `.memsearch/memory/`.
 
 **File format:** One file per day, named `YYYY-MM-DD.md`:
 
+> When `.memsearch/memory/` is shared between machines by a file-level sync
+> provider (iCloud, Dropbox, Syncthing), set
+> `memsearch config set memory.filename_suffix hostname` on each machine so
+> every writer owns its own `YYYY-MM-DD-<host>.md` and concurrent appends
+> stop overwriting each other. See the
+> [configuration reference](https://memsearch.dev/home/configuration/).
+
 ```markdown
 ## Session 14:30
 

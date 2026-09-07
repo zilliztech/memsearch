@@ -113,7 +113,10 @@ PROJECT_BASENAME=$(basename "$PROJECT_DIR")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
 # Capture preexisting memory files before writing the new session heading.
-DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'
+# Matches both the bare daily journal (2026-01-02.md) and the per-writer
+# variants a synced, multi-machine memory directory produces when
+# memory.filename_suffix is set (2026-01-02-laptop.md).
+DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md'
 EXISTING_MEMORY_FILES=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" 2>/dev/null | sort || true)
 EXISTING_MEMORY_COUNT=$(printf '%s\n' "$EXISTING_MEMORY_FILES" | sed '/^$/d' | wc -l | tr -d ' ')
 
@@ -121,7 +124,7 @@ EXISTING_MEMORY_COUNT=$(printf '%s\n' "$EXISTING_MEMORY_FILES" | sed '/^$/d' | w
 ensure_memory_dir
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
+MEMORY_FILE=$(daily_memory_file "$TODAY")
 if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
   echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
 fi

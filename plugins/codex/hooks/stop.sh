@@ -249,7 +249,7 @@ ensure_memory_dir
 # Determine today's date and current time
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
+MEMORY_FILE=$(daily_memory_file "$TODAY")
 
 # Extract session ID for progressive disclosure anchors
 SESSION_ID=$(_json_val "$INPUT" "session_id" "")

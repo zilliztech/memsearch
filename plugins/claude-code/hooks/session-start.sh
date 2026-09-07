@@ -274,7 +274,10 @@ fi
 context=""
 
 # Find the 2 most recent daily log files (sorted by filename descending).
-DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'
+# Matches both the bare daily journal (2026-01-02.md) and the per-writer
+# variants a synced, multi-machine memory directory produces when
+# memory.filename_suffix is set (2026-01-02-laptop.md).
+DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md'
 recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" -print 2>/dev/null | sort -r | head -2 || true)
 
 if [ -n "$recent_files" ]; then

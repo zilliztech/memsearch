@@ -42,6 +42,10 @@ _PROJECT_CONFIG_ALLOWED_PATHS = {
     ("indexing", "ignore_files"),
     ("indexing", "exclude"),
     ("watch", "debounce_ms"),
+    # Naming a file inside the project's own .memsearch/memory/ directory is
+    # local and low-risk, and a synced project checkout is exactly where the
+    # multi-machine setup this knob exists for keeps its settings.
+    ("memory", "filename_suffix"),
 }
 
 
@@ -91,6 +95,27 @@ class IndexingConfig:
 @dataclass
 class WatchConfig:
     debounce_ms: int = 1500
+
+
+@dataclass
+class MemoryConfig:
+    """Naming of the daily memory journal written by the platform plugins.
+
+    ``filename_suffix`` is empty by default, which keeps the historical
+    ``<memory_dir>/YYYY-MM-DD.md`` name and the single-writer behavior. Set it
+    when several machines append to one ``.memsearch/memory/`` directory shared
+    through a file-level sync provider (iCloud, Dropbox, Syncthing): those
+    providers do not merge concurrent plain-text appends, so both machines
+    writing the same daily file loses turns or produces conflicted copies.
+
+    The literal value ``"hostname"`` expands to the machine's short hostname;
+    any other value is used verbatim. Plugins sanitize the resolved value to a
+    filesystem-safe token before using it, so a hostname carrying dots, spaces
+    or non-ASCII characters is still safe. Indexing needs no change: plugins
+    index the whole memory directory, not one file name.
+    """
+
+    filename_suffix: str = ""
 
 
 @dataclass
@@ -214,6 +239,7 @@ class MemSearchConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     indexing: IndexingConfig = field(default_factory=IndexingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
@@ -228,6 +254,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "chunking": ChunkingConfig,
     "indexing": IndexingConfig,
     "watch": WatchConfig,
+    "memory": MemoryConfig,
     "reranker": RerankerConfig,
     "llm": LLMConfig,
     "prompts": PromptsConfig,

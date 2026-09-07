@@ -11,10 +11,10 @@ memsearch uses a layered TOML config system. Most users don't need to configure 
 Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
 before it is merged. It can only set low-risk local indexing keys:
 `milvus.collection`, `embedding.batch_size`, `chunking.max_chunk_size`,
-`chunking.overlap_lines`, `indexing.ignore_files`, `indexing.exclude`, and
-`watch.debounce_ms`. Put trusted settings such as provider routing, API
-endpoints, API keys, prompt files, and `plugins.*` automation in global config
-or pass them as explicit CLI flags.
+`chunking.overlap_lines`, `indexing.ignore_files`, `indexing.exclude`,
+`watch.debounce_ms`, and `memory.filename_suffix`. Put trusted settings such as
+provider routing, API endpoints, API keys, prompt files, and `plugins.*`
+automation in global config or pass them as explicit CLI flags.
 
 ## Quick Setup
 
@@ -122,6 +122,49 @@ memsearch config set milvus.token "your-api-key"
 memsearch config list          # show all settings
 memsearch config get milvus.uri  # show specific value
 ```
+
+## Shared Memory Directories (multi-machine)
+
+Plugins append each turn's summary to a daily journal named after the date:
+`.memsearch/memory/YYYY-MM-DD.md`. One machine, one writer, no problem.
+
+It becomes a problem when the project folder is synced between machines by a
+file-level sync provider (iCloud Drive, Dropbox, Syncthing, OneDrive). Both
+machines then append to the *same physical file* on the same day, and none of
+those providers merge concurrent plain-text appends. You get a
+`(conflicted copy)` duplicate, or last-writer-wins quietly drops one machine's
+turn summaries with no error at all.
+
+`memory.filename_suffix` gives each writer a daily file of its own:
+
+```bash
+# On every machine that shares the directory
+memsearch config set memory.filename_suffix hostname
+```
+
+Journals then look like `2026-01-02-studio.md` and `2026-01-02-laptop.md`, and
+the two machines never touch each other's file. Search is unaffected: plugins
+index the whole memory directory, so both machines still recall both histories.
+
+| Value | Result |
+|-------|--------|
+| _(empty, the default)_ | `2026-01-02.md` — unchanged behavior for everyone who does not opt in |
+| `hostname` | `2026-01-02-<short hostname>.md` |
+| any other string | `2026-01-02-<that string>.md` |
+
+Notes:
+
+- The resolved value is sanitized to a filesystem-safe token before use, so a
+  hostname carrying dots, spaces or non-ASCII characters is safe: anything
+  outside `A-Za-z0-9_-` becomes `-`, and the token is capped at 32 characters.
+- `MEMSEARCH_MEMORY_FILE_SUFFIX` overrides the config value for one process,
+  which is handy for a quick try before writing anything to disk.
+- Two machines that genuinely share a hostname need an explicit distinct value
+  rather than `hostname`.
+- This is one of the few keys a project-local `.memsearch.toml` may set, so a
+  synced checkout can carry the setting for every machine at once.
+- Implemented by the Claude Code and Codex plugins. The OpenClaw, OpenCode and
+  DeepSeek Harness plugins still write the bare `YYYY-MM-DD.md` name.
 
 ## Plugin Summarization Routing
 
