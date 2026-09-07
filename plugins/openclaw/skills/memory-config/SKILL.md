@@ -31,9 +31,9 @@ matching your current environment:
 - ZCode → `references/zcode.md`
 
 If you are unsure which agent you are, check these environment markers:
-`DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
+`~/.zcode` → ZCode; `DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
 `~/.openclaw` → OpenClaw; `~/.config/opencode` → OpenCode;
-`CLAUDE_PLUGIN_ROOT` → Claude Code; `~/.zcode` → ZCode.
+`CLAUDE_PLUGIN_ROOT` → Claude Code.
 
 Read that platform file before performing platform-specific diagnosis or
 configuration. Do not read the other platform files.

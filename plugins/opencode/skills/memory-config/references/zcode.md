@@ -12,8 +12,9 @@ git -C <memsearch-repo> describe --tags --always --dirty
 gh release view --repo zilliztech/memsearch --json tagName,publishedAt,url
 ```
 
-Update source installs with `git pull` plus
-`bash plugins/zcode/scripts/install.sh`.
+Update source installs with `git pull` — the plugin is installed via
+the ZCode marketplace, so source changes take effect after restarting
+the ZCode profile.
 
 Docs: https://zilliztech.github.io/memsearch/platforms/zcode/installation/
 
