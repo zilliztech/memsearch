@@ -69,6 +69,53 @@ _json_encode_str() {
   return 0
 }
 
+# _resolve_symlinks <path>
+# Follow a symlink chain to its target without `readlink -f`, which BSD
+# readlink (macOS) does not support.
+_resolve_symlinks() {
+  local target="$1" link dir hops=0
+  while [ -L "$target" ] && [ "$hops" -lt 40 ]; do
+    link=$(readlink "$target" 2>/dev/null) || break
+    case "$link" in
+      /*) target="$link" ;;
+      *) target="$(dirname "$target")/$link" ;;
+    esac
+    hops=$((hops + 1))
+  done
+  dir=$(cd "$(dirname "$target")" 2>/dev/null && pwd -P) || { printf '%s' "$target"; return 0; }
+  printf '%s/%s' "$dir" "${target##*/}"
+}
+
+# Resolve the installed memsearch version from its dist-info directory name.
+_installed_version_from_dist_info() {
+  local bin real candidate
+  bin=$(command -v memsearch 2>/dev/null) || return 0
+  [ -n "$bin" ] || return 0
+  real=$(_resolve_symlinks "$bin")
+  for candidate in "${real%/bin/memsearch}"/lib/python*/site-packages/memsearch-*.dist-info; do
+    [ -d "$candidate" ] || continue
+    candidate=${candidate##*/memsearch-}
+    candidate=${candidate%.dist-info}
+    case "$candidate" in
+      [0-9]*) printf '%s' "$candidate"; return 0 ;;
+    esac
+  done
+}
+
+# Latest memsearch version on PyPI, cached for 24h.
+_pypi_latest_version() {
+  local cache="$HOME/.memsearch/.pypi-latest" latest json
+  if [ -n "$(find "$cache" -mtime -1 2>/dev/null)" ]; then
+    cat "$cache" 2>/dev/null || true
+    return 0
+  fi
+  json=$(curl -s --max-time 2 https://pypi.org/pypi/memsearch/json 2>/dev/null || true)
+  latest=$(_json_val "$json" "info.version" "")
+  mkdir -p "$(dirname "$cache")" 2>/dev/null || true
+  printf '%s' "$latest" > "$cache" 2>/dev/null || true
+  printf '%s' "$latest"
+}
+
 # --- Project directory ---
 #
 # ZCode injects ZCODE_PROJECT_DIR (and CLAUDE_PROJECT_DIR as an alias).

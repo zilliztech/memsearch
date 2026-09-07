@@ -82,6 +82,7 @@ if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
         _memsearch index "$MEMORY_DIR" 2>/dev/null || true
       fi
     ) >/dev/null 2>&1 &
+    echo $! > "$INDEX_PIDFILE"
   fi
 fi
 # Build status message with warnings/hints

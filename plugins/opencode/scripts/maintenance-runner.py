@@ -549,7 +549,11 @@ def run_native_provider(ctx, prompt: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run plugin-local MemSearch maintenance tasks.")
-    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "dsh", "zcode"])
+    parser.add_argument(
+        "--platform",
+        required=True,
+        choices=["claude-code", "codex", "opencode", "openclaw", "dsh", "zcode"],
+    )
     parser.add_argument("--project-dir", default=None)
     parser.add_argument("--memsearch-dir", default=None)
     parser.add_argument("--force", action="store_true")
