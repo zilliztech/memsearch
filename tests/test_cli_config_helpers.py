@@ -28,6 +28,7 @@ def test_build_cli_overrides_maps_only_non_none_values() -> None:
         overlap_lines=3,
         debounce_ms=250,
         reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        reranker_provider="voyage",
     )
 
     assert overrides == {
@@ -57,6 +58,7 @@ def test_build_cli_overrides_maps_only_non_none_values() -> None:
         },
         "reranker": {
             "model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            "provider": "voyage",
         },
     }
 
@@ -97,6 +99,7 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "ignore_files": [".gitignore", ".cursorignore"],
         "exclude": ["generated/**", "drafts/**"],
         "reranker_model": "",
+        "reranker_provider": "",
     }
 
 
