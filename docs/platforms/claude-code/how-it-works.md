@@ -44,7 +44,7 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch`, inject recent memories as cold-start context, display config status |
-| **UserPromptSubmit** | command | no | 15s | Return `systemMessage` hint "[memsearch] Memory available" (skips prompts < 10 chars) |
+| **UserPromptSubmit** | command | no | 15s | Return `systemMessage` capability hint "[memsearch] Recall available if needed" (skips prompts < 10 chars) |
 | **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`, re-index |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process |
 
@@ -71,7 +71,7 @@ stateDiagram-v2
     state Prompting {
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
-        Hint --> ClaudeProcesses: "[memsearch] Memory available"
+        Hint --> ClaudeProcesses: "[memsearch] Recall available if needed"
         ClaudeProcesses --> MemoryRecall: needs context?
         MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
@@ -99,9 +99,9 @@ SessionStart prepares the memory directory but does not create a daily journal. 
 
 The cold-start injection is critical for early-session context. Without it, Claude would have no idea what happened yesterday until the memory-recall skill triggers -- but the skill only triggers when Claude judges it would help, which requires knowing that relevant history exists.
 
-### UserPromptSubmit -- The Memory Hint
+### UserPromptSubmit -- The Recall Capability Hint
 
-A lightweight hook that returns a `systemMessage` hint: `[memsearch] Memory available -- use /memory-recall if needed`. This keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke the memory-recall skill when a question benefits from historical context.
+A lightweight hook that returns a `systemMessage` capability hint: `[memsearch] Recall available if needed`. The hook does not search or imply a match; it keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke the memory-recall skill when a question benefits from historical context.
 
 The hook skips prompts shorter than 10 characters (e.g., "y", "ok") to avoid noise on trivial confirmations.
 

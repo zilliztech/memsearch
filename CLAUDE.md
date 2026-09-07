@@ -65,7 +65,7 @@ plugins/claude-code/
 ├── hooks/
 │   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
 │   ├── session-start.sh         # SessionStart: start watch and inject recent memories
-│   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
+│   ├── user-prompt-submit.sh    # UserPromptSubmit: recall capability hint
 │   ├── stop.sh                  # Stop: extract last turn → summarize → lazily create heading → append (async)
 │   ├── session-end.sh           # SessionEnd: stop watch process
 │   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats with role labels for LLM (Python 3, no jq)
@@ -86,7 +86,7 @@ plugins/claude-code/
 
 **Supporting hooks:**
 - `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists
-- `UserPromptSubmit` returns a lightweight `systemMessage` hint ("[memsearch] Memory available") to increase skill trigger awareness
+- `UserPromptSubmit` returns a lightweight `systemMessage` capability hint ("[memsearch] Recall available if needed") to increase skill trigger awareness
 - `Stop` hook is async and non-blocking — extracts last turn only, calls `claude -p --model haiku` (with `CLAUDECODE=` to bypass nested session detection) to summarize as third-person notes, appends to daily `.md`
 
 When modifying hooks/skills, keep in mind:

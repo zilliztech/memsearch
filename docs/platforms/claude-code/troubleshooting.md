@@ -189,7 +189,7 @@ The ONNX bge-m3 int8 model (~558 MB) downloads from HuggingFace Hub on first use
 
 - First session hangs after sending a prompt
 - `memsearch search` or `memsearch index` hang on first run
-- `[memsearch] Memory available` appears but recall returns no results
+- `[memsearch] Recall available if needed` appears but recall returns no results
 
 **Pre-download:**
 ```bash

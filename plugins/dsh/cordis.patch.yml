@@ -20,7 +20,7 @@
         # (summarize provider/model, Milvus, collection, memory dir) comes from
         # memsearch config / environment, mirroring the other platform plugins.
         #   captureEnabled (bool, default true)   — capture completed turns
-        #   injectEnabled (bool, default true)    — inject relevant memory
+        #   injectEnabled (bool, default true)    — inject returned memory candidates
         #   summarizeEnabled (bool, default true) — summarize turns before writing
         #   summarizeMode (string, default 'auto')
         #       -> 'auto'         if [plugins.dsh.summarize] provider is set in

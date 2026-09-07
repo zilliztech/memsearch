@@ -47,7 +47,7 @@ Use memory-recall to find what we decided about the deployment architecture.
 | Event | MemSearch behavior |
 |-------|--------------------|
 | **A turn completes** | Summarizes the user, assistant, and tool activity into the project's daily markdown journal |
-| **A new turn begins** | Searches the project memory and injects only relevant results before the first model step |
+| **A new turn begins** | Searches project memory and, when chunks are returned, injects candidate snippets before the first model step |
 | **The agent needs exact history** | Uses `memory-recall` to search, expand a section, and inspect the original DSH transcript |
 | **A DSH session closes** | Runs enabled maintenance tasks when their configured interval is due |
 | **You open the web dock** | Lists skill candidates and previews supported `.memsearch` files without modifying them |

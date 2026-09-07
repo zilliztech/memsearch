@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UserPromptSubmit hook: lightweight hint reminding Codex about the memory-recall skill.
+# UserPromptSubmit hook: capability hint reminding Codex about the memory-recall skill.
 # The actual search + expand is handled by the memory-recall skill.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,4 +18,4 @@ if ! memsearch_available; then
   exit 0
 fi
 
-echo '{"systemMessage": "[memsearch] Memory available"}'
+echo '{"systemMessage": "[memsearch] Recall available if needed"}'

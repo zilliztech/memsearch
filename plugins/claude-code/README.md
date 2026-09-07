@@ -126,7 +126,7 @@ stateDiagram-v2
     state Prompting {
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
-        Hint --> ClaudeProcesses: "[memsearch] Memory available"
+        Hint --> ClaudeProcesses: "[memsearch] Recall available if needed"
         ClaudeProcesses --> MemoryRecall: needs context?
         MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
@@ -146,7 +146,7 @@ stateDiagram-v2
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
-| **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
+| **UserPromptSubmit** | command | no | 15s | Capability hint: returns `systemMessage` "[memsearch] Recall available if needed" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
 | **Stop** | command | **yes** | 120s | Extract and summarize the last turn, lazily create its session heading, append the summary with session/turn anchors to the daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
@@ -170,7 +170,7 @@ Fires on every user prompt before Claude processes it. This hook:
 
 1. **Extracts the prompt** from the hook input JSON.
 2. **Skips short prompts** (under 10 characters) — greetings and single words don't need memory hints.
-3. **Returns a lightweight hint.** Outputs `systemMessage: "[memsearch] Memory available"` — a visible one-liner that keeps Claude aware of the memory system without performing any search.
+3. **Returns a lightweight capability hint.** Outputs `systemMessage: "[memsearch] Recall available if needed"` — a visible one-liner that keeps Claude aware of the memory system without performing a search or implying a match.
 
 The actual memory retrieval is handled by the **[memory-recall skill](#how-the-skill-works)**, which Claude invokes automatically when it judges the user's question needs historical context.
 
@@ -441,7 +441,7 @@ plugins/claude-code/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
 │   ├── session-start.sh         # Start watch + inject cold-start context
-│   ├── user-prompt-submit.sh    # Lightweight systemMessage hint ("[memsearch] Memory available")
+│   ├── user-prompt-submit.sh    # Capability hint ("[memsearch] Recall available if needed")
 │   ├── stop.sh                  # Extract last turn → summarize → lazily create heading → append to daily .md
 │   ├── parse-transcript.sh      # Extract last turn from JSONL, format with role labels (Python3, no jq)
 │   └── session-end.sh           # Stop watch process (cleanup)
@@ -522,7 +522,7 @@ Here is what a session looks like with the plugin installed:
 
 ❯ How does the caching layer work?
 
- ⎿  UserPromptSubmit says: [memsearch] Memory available    ← systemMessage
+ ⎿  UserPromptSubmit says: [memsearch] Recall available if needed    ← systemMessage
                                                              (UserPromptSubmit hook)
 ✶ Thinking…
 ```
@@ -746,7 +746,7 @@ This manually triggers the skill, bypassing Claude's judgment about whether memo
 **Skill not triggering automatically?** Possible reasons:
 
 - Claude judged that the question doesn't need historical context — this is by design
-- The `UserPromptSubmit` hint (`[memsearch] Memory available`) didn't fire — check that the prompt is ≥ 10 characters
+- The `UserPromptSubmit` hint (`[memsearch] Recall available if needed`) didn't fire — check that the prompt is ≥ 10 characters
 - `memsearch` is not installed or not in PATH — the `UserPromptSubmit` hook returns `{}` when `MEMSEARCH_CMD` is empty
 
 ---
@@ -808,7 +808,7 @@ The plugin defaults to the **ONNX bge-m3 int8** embedding model, which runs loca
 **Symptoms:**
 
 - First session appears to hang after sending a prompt (the background download is blocking Milvus Lite)
-- `[memsearch] Memory available` hint appears but memory recall returns no results
+- `[memsearch] Recall available if needed` hint appears but memory recall returns no results
 - `memsearch search` or `memsearch index` commands hang on first run
 
 **Pre-download the model manually:**

@@ -134,7 +134,7 @@ def test_skips_plugin_injected_user_messages(tmp_path: Path) -> None:
         tmp_path,
         [
             _turn_start(1, 1),
-            _user("[memsearch] Memory available.", 2, source_kind="plugin"),
+            _user("[memsearch] Retrieved memory context attached.", 2, source_kind="plugin"),
             _user("Real question?", 3),
             _assistant("Answer.", 1, 4),
             _turn_end(1, 5),
@@ -142,7 +142,7 @@ def test_skips_plugin_injected_user_messages(tmp_path: Path) -> None:
     )
     result = _run(db)
     assert result.returncode == 0, result.stderr
-    assert "[memsearch] Memory available." not in result.stdout
+    assert "[memsearch] Retrieved memory context attached." not in result.stdout
     assert "[User]: Real question?" in result.stdout
 
 

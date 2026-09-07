@@ -15,9 +15,10 @@
  *              exactly once even across restarts.
  *   inject   — before the first model step of each turn, `agent/pre-step`
  *              runs a bounded memsearch search over the user's question and,
- *              only when relevant results exist, injects them plus a
- *              `[memsearch] Memory available.` hint. When nothing is relevant
- *              the decision is returned unchanged — zero context cost.
+ *              only when search results exist, injects them plus a
+ *              `[memsearch] Retrieved memory context attached.` marker. When
+ *              search returns no chunks, the decision is returned unchanged —
+ *              zero context cost.
  *   recall   — registers a `memory-recall` skill (search → expand → transcript)
  *              that the model can invoke through the native `skill` tool.
  *
@@ -52,7 +53,7 @@ export const name = 'memsearch'
 export const inject = ['agents', 'skills', 'sessionPersistence']
 
 const DEFAULT_AGENT_NAME = 'DeepSeek Harness'
-const MEMSEARCH_MARKER = '[memsearch] Memory available.'
+const MEMSEARCH_MARKER = '[memsearch] Retrieved memory context attached.'
 const SEARCH_TOP_K = 5
 const SEARCH_TIMEOUT_MS = 15000
 const SUMMARIZE_TIMEOUT_MS = 30000
@@ -316,7 +317,7 @@ function milvusUriFlag(milvusUri) {
 /**
  * Run one bounded memsearch search over the project collection.
  * @returns the parsed result array, or null on any failure (caller treats
- *          null as "no relevant memory" and stays a no-op).
+ *          null as "no injectable context" and stays a no-op).
  */
 function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
   return new Promise((resolve) => {
@@ -714,7 +715,7 @@ function renderMemoryBlock(chunks) {
     const snippet = (chunk.content || '').trim().replace(/\s+/g, ' ').slice(0, INJECT_SNIPPET_CHARS)
     return `${index + 1}. [${source}] ${snippet}`
   })
-  return `${MEMSEARCH_MARKER}\n\nRelevant memories from past sessions:\n${lines.join('\n')}`
+  return `${MEMSEARCH_MARKER}\n\nRetrieved memory candidates from past sessions:\n${lines.join('\n')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -1142,7 +1143,7 @@ export function apply(ctx, config = {}) {
   registerMemoryConfigSkill(ctx)
   registerMemoryToSkillSkill(ctx)
 
-  // --- Pre-step injection: relevant memory only, zero context otherwise ---
+  // --- Pre-step injection: returned memory candidates, zero context otherwise ---
   ctx.on(
     'agent/pre-step',
     async ({ agent, turn, step, signal }, next) => {

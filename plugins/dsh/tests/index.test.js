@@ -1,9 +1,93 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 
 import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget } from '../index.js'
+
+async function withInjectionFixture(searchResults, assertion) {
+  const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
+  const projectDir = `${root}/project`
+  const memoryDir = `${root}/state/memory`
+  const fakeBin = `${root}/bin`
+  const resultFile = `${root}/search-result.json`
+  const callLog = `${root}/memsearch-calls.txt`
+  fs.mkdirSync(projectDir, { recursive: true })
+  fs.mkdirSync(memoryDir, { recursive: true })
+  fs.mkdirSync(fakeBin, { recursive: true })
+  fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
+  fs.writeFileSync(resultFile, JSON.stringify(searchResults), 'utf-8')
+  fs.writeFileSync(
+    `${fakeBin}/memsearch`,
+    '#!/bin/sh\n' +
+      'printf "%s\\n" "$*" >> "$MEMSEARCH_TEST_CALL_LOG"\n' +
+      'if [ "$1" = "config" ]; then exit 0; fi\n' +
+      'if [ "$1" = "search" ]; then\n' +
+      '  cat "$MEMSEARCH_TEST_RESULT"\n' +
+      '  exit 0\n' +
+      'fi\n' +
+      'exit 0\n',
+    'utf-8',
+  )
+  fs.chmodSync(`${fakeBin}/memsearch`, 0o755)
+  fs.writeFileSync(
+    `${fakeBin}/bash`,
+    '#!/bin/sh\n' +
+      'PATH="$MEMSEARCH_TEST_PATH"\n' +
+      'export PATH\n' +
+      'BASH_ENV=/dev/null\n' +
+      'export BASH_ENV\n' +
+      'exec /usr/bin/bash --noprofile --norc "$@"\n',
+    'utf-8',
+  )
+  fs.chmodSync(`${fakeBin}/bash`, 0o755)
+
+  try {
+    const childSource = `
+      const { apply } = await import(process.env.MEMSEARCH_PLUGIN_URL)
+      const listeners = {}
+      const registeredSkills = []
+      const ctx = {
+        logger: { warn: () => {}, debug: () => {} },
+        skills: { register: (skill) => registeredSkills.push(skill) },
+        on: (name, listener) => { listeners[name] = listener },
+      }
+      apply(ctx, { captureEnabled: false })
+      const decision = {
+        kind: 'enter',
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'What did we decide about the release?' }] }],
+      }
+      const result = await listeners['agent/pre-step'](
+        { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: 1, signal: {} },
+        async () => decision,
+      )
+      process.stdout.write(JSON.stringify({
+        unchanged: result === decision,
+        result,
+        registeredSkillNames: registeredSkills.map((skill) => skill.name),
+      }))
+    `
+    const stdout = execFileSync(process.execPath, ['--input-type=module', '--eval', childSource], {
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        BASH_ENV: '/dev/null',
+        MEMSEARCH_DIR: `${root}/state`,
+        MEMSEARCH_PLUGIN_URL: new URL('../index.js', import.meta.url).href,
+        MEMSEARCH_TEST_CALL_LOG: callLog,
+        MEMSEARCH_TEST_PATH: `${fakeBin}:/usr/bin:/bin`,
+        MEMSEARCH_TEST_PROJECT: projectDir,
+        MEMSEARCH_TEST_RESULT: resultFile,
+      },
+    })
+    await assertion({ ...JSON.parse(stdout), callLog })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+}
+
 test('detectDshCmd: prefers dsh on PATH as a plain argv', () => {
   // DSH_CLI is checked after PATH; simulate PATH hit by masking DSH_CLI.
   const prevCli = process.env.DSH_CLI
@@ -587,6 +671,47 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   const result = await listeners['agent/pre-step']({ agent: {}, turn: 1, step: 1, signal: {} }, async () => decision)
   assert.equal(result, decision, 'decision forwarded unchanged when injection disabled')
   assert.equal(result.messages.length, 1, 'no memory message injected')
+})
+
+test('apply: empty search result keeps pre-step context unchanged while recall stays available', async () => {
+  await withInjectionFixture([], async ({ result, unchanged, registeredSkillNames, callLog }) => {
+    assert.equal(unchanged, true, 'empty search result must not inject a marker')
+    assert.equal(result.messages.length, 1)
+    assert.ok(
+      registeredSkillNames.includes('memory-recall'),
+      'native recall skill remains registered independently of automatic injection',
+    )
+    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
+    assert.equal(calls.filter((call) => call.startsWith('search ')).length, 1)
+  })
+})
+
+test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', async () => {
+  await withInjectionFixture(
+    [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],
+    async ({ result, unchanged, registeredSkillNames, callLog }) => {
+      assert.equal(unchanged, false)
+      assert.equal(result.kind, 'enter')
+      assert.equal(result.messages.length, 2)
+      const injected = result.messages[1]
+      const text = injected.content[0].text
+      const marker = '[memsearch] Retrieved memory context attached.'
+      assert.equal(text.split(marker).length - 1, 1, 'exactly one retrieved-context marker')
+      assert.ok(text.includes('Retrieved memory candidates from past sessions:'))
+      assert.ok(text.includes('PINE-NEBULA-8643'))
+      assert.equal(injected.source.kind, 'plugin')
+      assert.equal(injected.source.plugin, 'memsearch')
+      assert.equal(injected.source.form, 'snapshot')
+      assert.equal(injected.source.sections[0].name, 'memsearch')
+      assert.equal(injected.source.sections[0].text, text)
+      assert.ok(
+        registeredSkillNames.includes('memory-recall'),
+        'native recall skill remains distinct from automatic injection',
+      )
+      const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
+      assert.equal(calls.filter((call) => call.startsWith('search ')).length, 1)
+    },
+  )
 })
 
 test('apply: registers a session/disposed maintenance listener', () => {

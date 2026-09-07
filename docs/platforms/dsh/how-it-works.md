@@ -11,8 +11,8 @@ flowchart LR
     MD --> INDEX[Milvus hybrid index]
 
     PROMPT[Next user prompt] --> SEARCH[Search project memory]
-    SEARCH -->|relevant results| INJECT[Inject before model step 1]
-    SEARCH -->|no relevant results| CLEAN[Leave context unchanged]
+    SEARCH -->|chunks returned| INJECT[Inject before model step 1]
+    SEARCH -->|no chunks returned| CLEAN[Leave context unchanged]
 
     QUESTION[History question] --> SKILL[memory-recall skill]
     SKILL --> SEARCH
@@ -34,7 +34,7 @@ Capture jobs are serialized so summarizers do not overlap. Session and turn anch
 
 ## Selective Pre-Step Injection
 
-At the first model step of a new turn, the plugin searches memory using the user's question. When useful matches exist, it injects a small set of relevant snippets and a `[memsearch] Memory available.` hint. When the search has no relevant result, the model context is left unchanged.
+At the first model step of a new turn, the plugin searches memory using the user's question. When the search returns chunks, it injects a small set of candidate snippets and a `[memsearch] Retrieved memory context attached.` marker. When the search returns no chunks, the model context is left unchanged. The model still evaluates whether each retrieved chunk is relevant.
 
 This keeps routine turns lightweight while still surfacing past decisions when they matter.
 

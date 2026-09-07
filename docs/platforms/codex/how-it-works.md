@@ -5,7 +5,7 @@
 | Event | What memsearch does |
 |-------|-------------------|
 | **Session starts** | Clean up orphaned processes, start watch (Server) or one-time index (Lite), write session heading, inject recent memories, check for updates |
-| **Each prompt** | Memory-recall skill hint displayed via `systemMessage` |
+| **Each prompt** | Recall capability hint displayed via `systemMessage`; no search runs in this hook |
 | **Each turn ends** | Conversation summarized via `codex exec` (async) and saved to daily `.md` |
 
 ---
@@ -17,8 +17,10 @@ The Codex plugin uses 3 shell hooks (Codex does not have a `SessionEnd` hook):
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 30s | Cleanup orphans, bootstrap memsearch, start watch/index, write session heading, inject memories, display status |
-| **UserPromptSubmit** | command | no | 10s | Return `systemMessage` hint "[memsearch] Memory available" |
+| **UserPromptSubmit** | command | no | 10s | Return `systemMessage` capability hint "[memsearch] Recall available if needed" |
 | **Stop** | command | **yes** | 30s | Summarize the last turn via `codex exec`, using a rollout transcript when available and `history.jsonl` + `last_assistant_message` otherwise |
+
+The `UserPromptSubmit` hook does not search memory or imply a match. Actual retrieval happens only when Codex invokes the `memory-recall` skill.
 
 ### Hook Lifecycle
 
@@ -34,7 +36,7 @@ stateDiagram-v2
     state Prompting {
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
-        Hint --> CodexProcesses: "[memsearch] Memory available"
+        Hint --> CodexProcesses: "[memsearch] Recall available if needed"
         CodexProcesses --> MemoryRecall: needs context?
         MemoryRecall --> SkillRun: $memory-recall skill
         SkillRun --> CodexResponds: search + expand results
@@ -270,7 +272,7 @@ plugins/codex/
 │   ├── common.sh                   # Shared setup: JSON helpers, process management, orphan cleanup
 │   ├── session-start.sh            # SessionStart: bootstrap, watch/index, cold-start injection
 │   ├── stop.sh                     # Stop: async capture via codex exec, local fallback
-│   └── user-prompt-submit.sh       # UserPromptSubmit: memory availability hint
+│   └── user-prompt-submit.sh       # UserPromptSubmit: recall capability hint
 ├── skills/
 │   └── memory-recall/
 │       └── SKILL.md                # Memory recall skill ($memory-recall)
