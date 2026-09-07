@@ -43,10 +43,10 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch`, inject recent memories as cold-start context, display config status |
+| **SessionStart** | command | no | 10s | Start `memsearch watch` for Server or a one-shot index for Lite, inject recent memories as cold-start context, display config and index status |
 | **UserPromptSubmit** | command | no | 15s | Return `systemMessage` capability hint "[memsearch] Recall available if needed" (skips prompts < 10 chars) |
-| **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`, re-index |
-| **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process |
+| **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`; re-index immediately only for Server |
+| **SessionEnd** | command | no | 10s | Stop `memsearch watch` and clean up plugin-owned background index processes |
 
 All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
 
@@ -57,14 +57,11 @@ This diagram shows how a complete session flows through all four hooks:
 ```mermaid
 stateDiagram-v2
     [*] --> SessionStart
-    SessionStart --> WatchRunning: start memsearch watch
-    SessionStart --> InjectRecent: load recent memories (cold start)
-
-    state WatchRunning {
-        [*] --> Watching
-        Watching --> Reindex: file changed
-        Reindex --> Watching: done
-    }
+    SessionStart --> Backend
+    Backend --> ServerWatcher: Server starts memsearch watch
+    Backend --> LiteOneShot: Lite starts one-shot index
+    ServerWatcher --> InjectRecent
+    LiteOneShot --> InjectRecent
 
     InjectRecent --> Prompting
 
@@ -79,6 +76,9 @@ stateDiagram-v2
         ClaudeResponds --> UserInput: next turn
         ClaudeResponds --> Summary: Stop hook (async)
         Summary --> WriteMD: create heading if needed, then append
+        WriteMD --> ServerIndex: Server indexes immediately
+        ServerIndex --> UserInput: done
+        WriteMD --> UserInput: Lite waits for next SessionStart
     }
 
     Prompting --> SessionEnd: user exits
@@ -91,7 +91,7 @@ stateDiagram-v2
 The SessionStart hook runs once when Claude Code opens a new session. It performs four steps:
 
 1. **Config validation** -- loads resolved config in one snapshot and validates the API key for the configured embedding provider (ONNX needs no key)
-2. **Start watcher** -- launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file at `.memsearch/.watch.pid` prevents duplicates)
+2. **Start backend-specific indexing** -- Server launches `memsearch watch .memsearch/memory/` as a singleton background process. Lite cannot share its local database with a watcher, so SessionStart launches one background `memsearch index` attempt instead. A persisted failed or stale index state is included in the visible status before the new attempt starts.
 3. **Cold-start injection** -- reads up to 40 lines from each of the 2 most recent daily logs and returns them as `additionalContext` so Claude has immediate awareness of recent work
 4. **Update check** -- queries PyPI (2s timeout) and shows an update banner if a newer version exists
 
@@ -118,7 +118,9 @@ graph TD
     C -->|Valid| D["parse-transcript.sh<br/>Extract last turn"]
     D --> E["claude -p --model haiku<br/>Summarize as 3rd-person notes"]
     E --> F["Create session heading if needed<br/>and append with anchors"]
-    F --> G["memsearch index<br/>Re-index immediately"]
+    F --> G{Milvus backend}
+    G -->|Server| H["memsearch index<br/>Re-index immediately"]
+    G -->|Lite| I["No Stop-time index<br/>Next SessionStart owns indexing"]
 ```
 
 Step by step:
@@ -150,11 +152,11 @@ Step by step:
     ```
     These anchors enable the L2→L3 drill-down: `memsearch expand` parses them to surface the transcript path, and the memory-recall skill can then use `memsearch transcript` to read the original conversation.
 
-6. **Re-index** -- runs `memsearch index` to ensure the new memory is immediately searchable (not just when the watcher picks up the file change).
+6. **Backend-specific indexing** -- Server runs `memsearch index` immediately after capture. Lite does not terminate or launch an index from Stop; the next SessionStart one-shot indexes newly captured memory without repeatedly restarting a slow full index.
 
 ### SessionEnd -- Cleanup
 
-Calls `stop_watch` to terminate the background `memsearch watch` process and clean up the PID file. Also kills any orphaned `memsearch index` processes.
+Calls `stop_watch` to terminate the background `memsearch watch` process and clean up the PID file. It also cleans up plugin-owned background index processes, including a Lite one-shot that is still running when the session ends.
 
 ---
 
@@ -254,11 +256,11 @@ plugins/claude-code/
 | `plugin.json` | Claude Code plugin manifest. Declares the plugin name (`memsearch`), version, and description. |
 | `hooks.json` | Defines the 4 lifecycle hooks with their types, timeouts, and async flags. |
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). Changes here affect all hooks. |
-| `session-start.sh` | Starts the watcher, reads recent memory files for cold-start injection, and checks for updates. |
+| `session-start.sh` | Starts the Server watcher or Lite one-shot index, reports persisted index health, reads recent memory files for cold-start injection, and checks for updates. |
 | `user-prompt-submit.sh` | Returns lightweight `systemMessage` hint. No search -- retrieval is handled by the memory-recall skill. |
-| `stop.sh` | Extracts and validates the transcript, calls `parse-transcript.sh`, summarizes via native Haiku by default or a configured API provider, creates the session heading on the first captured turn, and appends with anchors. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
+| `stop.sh` | Extracts and validates the transcript, calls `parse-transcript.sh`, summarizes via native Haiku by default or a configured API provider, creates the session heading on the first captured turn, and appends with anchors. Server indexes immediately; Lite defers indexing to the next SessionStart. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
-| `session-end.sh` | Calls `stop_watch` to terminate background watcher and clean up. |
+| `session-end.sh` | Stops the Server watcher and cleans up plugin-owned background index processes. |
 | `derive-collection.sh` | Generates a deterministic per-project Milvus collection name from the project path (e.g., `ms_myproject_a1b2c3`). |
 | `SKILL.md` | The memory-recall skill definition. Uses `context: fork` to run in an isolated subagent. |
 | `transcript.py` | Python JSONL parser for Claude Code conversations. Plugin-specific (not in core library); exercised by `tests/test_transcript.py`. The `memory-recall` skill's L3 drill-down uses the core `memsearch transcript` CLI (which auto-detects the format) rather than calling this file directly. |

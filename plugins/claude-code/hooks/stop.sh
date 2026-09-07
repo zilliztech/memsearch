@@ -201,10 +201,13 @@ fi
   echo ""
 } >> "$MEMORY_FILE"
 
-# Kill any previous background index before re-indexing to avoid process accumulation
-kill_orphaned_index
-
-# Index immediately — don't rely on watch (which may be killed by SessionEnd before debounce fires)
-run_memsearch index "$MEMORY_DIR"
+# Server mode indexes immediately instead of relying on the watch debounce.
+# Lite mode keeps the SessionStart one-shot index: restarting it after every
+# turn can permanently starve a slow index before it completes.
+_uri="${MILVUS_URI:-$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")}"
+if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]]; then
+  kill_orphaned_index
+  run_memsearch index "$MEMORY_DIR"
+fi
 
 echo '{}'

@@ -662,6 +662,105 @@ exit 0
         assert "memory-config skill" in status
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the controlled one-shot index uses a FIFO")
+@pytest.mark.parametrize("final_status", ["ok", "error"])
+def test_claude_session_start_lite_one_shot_persists_visible_state(tmp_path: Path, final_status: str) -> None:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    state = memsearch_dir / ".index-state.json"
+    started = tmp_path / "index-started"
+    release = tmp_path / "index-release"
+    uri_file = tmp_path / "milvus-uri"
+    home.mkdir()
+    fake_bin.mkdir()
+    memsearch_dir.mkdir()
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (home / ".memsearch" / ".pypi-latest").write_text("0.4.14", encoding="utf-8")
+    uri_file.write_text(str(tmp_path / "lite.db"), encoding="utf-8")
+    os.mkfifo(release)
+
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+uri=$(cat "$TEST_URI_FILE")
+write_state() {
+  printf '%s\n' "$1" > "$TEST_STATE_FILE.$$"
+  mv "$TEST_STATE_FILE.$$" "$TEST_STATE_FILE"
+}
+if [ "$1" = config ] && [ "$2" = list ]; then
+  printf '{"embedding":{"provider":"onnx","model":"test-model","api_key":""},"milvus":{"uri":"%s"}}\n' "$uri"
+  exit 0
+fi
+if [ "$1" = config ] && [ "$2" = get ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    embedding.model) echo test-model ;;
+    milvus.uri) echo "$uri" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = --version ]; then
+  echo 'memsearch, version 0.4.14'
+  exit 0
+fi
+if [ "$1" = index ]; then
+  write_state '{"schema_version":1,"status":"running"}'
+  : > "$TEST_STARTED_FILE"
+  IFS= read -r _ < "$TEST_RELEASE_FIFO"
+  if [ "$TEST_FINAL_STATUS" = ok ]; then
+    write_state '{"schema_version":1,"status":"ok","indexed_chunks":1}'
+    exit 0
+  fi
+  write_state '{"schema_version":1,"status":"error","last_error":"controlled failure"}'
+  exit 23
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "pgrep", "#!/usr/bin/env bash\nexit 1\n")
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "TEST_URI_FILE": str(uri_file),
+        "TEST_STATE_FILE": str(state),
+        "TEST_STARTED_FILE": str(started),
+        "TEST_RELEASE_FIFO": str(release),
+        "TEST_FINAL_STATUS": final_status,
+    }
+
+    first = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, check=True)
+    assert str(tmp_path / "lite.db") in json.loads(first.stdout)["systemMessage"]
+    assert _wait_for(started.exists)
+    release.write_text("complete\n", encoding="utf-8")
+    assert _wait_for(lambda: state.exists() and json.loads(state.read_text())["status"] == final_status)
+    persisted = json.loads(state.read_text(encoding="utf-8"))
+    assert persisted["status"] == final_status
+    if final_status == "ok":
+        assert persisted["indexed_chunks"] == 1
+    else:
+        assert persisted["last_error"] == "controlled failure"
+
+    # A fresh Lite SessionStart surfaces the previous result before launching its
+    # own one-shot index. Keep process cleanup disabled for this controlled child;
+    # the Lite indexing branch still runs and is released below.
+    started.unlink()
+    inspect_env = {**env, "MEMSEARCH_NO_WATCH": "1"}
+    second = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=inspect_env, check=True)
+    status = json.loads(second.stdout)["systemMessage"]
+    assert str(tmp_path / "lite.db") in status
+    assert ("WARNING: memory index may be stale" in status) is (final_status == "error")
+    assert _wait_for(started.exists)
+    release.write_text("complete\n", encoding="utf-8")
+    assert _wait_for(lambda: state.exists() and json.loads(state.read_text())["status"] == final_status)
+
+
 def test_session_start_shows_skill_candidate_hint(tmp_path: Path) -> None:
     hint = "SKILLS: 2 candidate skill version(s) pending install - run the memory-to-skill skill to review and install."
     for name, script in (
@@ -826,6 +925,94 @@ echo "- User discussed a macOS stop hook regression."
     assert captured_args[:4] == ["-p", "--strict-mcp-config", "--tools", ""]
     assert "--safe-mode" not in captured_args
     assert captured_args[captured_args.index("--model") + 1] == "haiku"
+
+
+@pytest.mark.parametrize(
+    ("milvus_uri", "expected_index_calls", "expected_pgrep_calls"),
+    [
+        ("/tmp/memsearch-lite.db", 0, 0),
+        ("http://127.0.0.1:19530", 1, 2),
+        ("tcp://127.0.0.1:19530", 1, 2),
+    ],
+    ids=["lite", "http-server", "tcp-server"],
+)
+def test_claude_stop_indexes_only_server(
+    tmp_path: Path,
+    milvus_uri: str,
+    expected_index_calls: int,
+    expected_pgrep_calls: int,
+) -> None:
+    script = Path("plugins/claude-code/hooks/stop.sh")
+    transcript = tmp_path / "session.jsonl"
+    fake_bin = tmp_path / "bin"
+    call_log = tmp_path / "calls.log"
+    pgrep_log = tmp_path / "pgrep.log"
+    (tmp_path / "home").mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript, turn_uuid="turn-index-backend")
+
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = config ] && [ "$2" = get ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    milvus.uri) echo "$TEST_MILVUS_URI" ;;
+    plugins.claude-code.summarize.enabled) echo true ;;
+    plugins.claude-code.summarize.provider) echo native ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = index ]; then
+  exit 0
+fi
+""",
+    )
+    _write_executable(
+        fake_bin / "claude",
+        """#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then
+  exit 0
+fi
+cat >/dev/null
+echo '- Captured a backend-specific summary.'
+""",
+    )
+    _write_executable(
+        fake_bin / "pgrep",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PGREP_CALL_LOG"
+exit 1
+""",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "PGREP_CALL_LOG": str(pgrep_log),
+        "TEST_MILVUS_URI": milvus_uri,
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    pgrep_calls = pgrep_log.read_text(encoding="utf-8").splitlines() if pgrep_log.exists() else []
+    assert result.stdout.strip() == "{}"
+    assert len([call for call in calls if call.startswith("index ")]) == expected_index_calls
+    assert len(pgrep_calls) == expected_pgrep_calls
 
 
 def test_claude_stop_hook_sends_large_native_prompt_on_stdin(tmp_path: Path) -> None:
