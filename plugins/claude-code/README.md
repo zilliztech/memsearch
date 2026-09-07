@@ -105,21 +105,18 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 
 ## How It Works
 
-The plugin hooks into **4 Claude Code lifecycle events** and provides a **memory-recall skill**. A singleton `memsearch watch` process runs in the background, keeping the vector index in sync with markdown files as they change. (Milvus Lite falls back to one-time indexing at session start.)
+The plugin hooks into **4 Claude Code lifecycle events** and provides a **memory-recall skill**. With Milvus Server, a singleton `memsearch watch` process keeps the vector index in sync and Stop indexes newly captured memory immediately. Milvus Lite instead starts one one-shot index at SessionStart and does not index from Stop.
 
 ### Lifecycle Diagram
 
 ```mermaid
 stateDiagram-v2
     [*] --> SessionStart
-    SessionStart --> WatchRunning: start memsearch watch
-    SessionStart --> InjectRecent: load recent memories (cold start)
-
-    state WatchRunning {
-        [*] --> Watching
-        Watching --> Reindex: file changed
-        Reindex --> Watching: done
-    }
+    SessionStart --> Backend
+    Backend --> ServerWatcher: Server starts memsearch watch
+    Backend --> LiteOneShot: Lite starts one-shot index
+    ServerWatcher --> InjectRecent
+    LiteOneShot --> InjectRecent
 
     InjectRecent --> Prompting
 
@@ -134,21 +131,25 @@ stateDiagram-v2
         ClaudeResponds --> UserInput: next turn
         ClaudeResponds --> Summary: Stop hook (async, non-blocking)
         Summary --> WriteMD: append to YYYY-MM-DD.md
+        WriteMD --> ServerIndex: Server indexes immediately
+        ServerIndex --> UserInput: done
+        WriteMD --> UserInput: Lite waits for next SessionStart
     }
 
     Prompting --> SessionEnd: user exits
-    SessionEnd --> StopWatch: stop memsearch watch
-    StopWatch --> [*]
+    SessionEnd --> StopWatch: async cleanup stops Server watcher
+    StopWatch --> StopIndexes: stop plugin-owned indexes
+    StopIndexes --> [*]
 ```
 
 ### Hook Summary
 
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
-| **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
+| **SessionStart** | command | no | 10s | Start the Server `memsearch watch` singleton or a Lite one-shot index, inject recent daily logs as cold-start context via `additionalContext`, display config and index status in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Capability hint: returns `systemMessage` "[memsearch] Recall available if needed" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
-| **Stop** | command | **yes** | 120s | Extract and summarize the last turn, lazily create its session heading, append the summary with session/turn anchors to the daily `.md` |
-| **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
+| **Stop** | command | **yes** | 120s | Extract and summarize the last turn, lazily create its session heading, append the summary with session/turn anchors to the daily `.md`; index immediately only for Server |
+| **SessionEnd** | command | **yes** | 10s | Asynchronously stop the Server watcher and clean up plugin-owned background indexes, including a running Lite one-shot |
 
 ### What Each Hook Does
 
@@ -157,7 +158,7 @@ stateDiagram-v2
 Fires once when a Claude Code session begins. This hook:
 
 1. **Reads config and checks API key.** Loads the resolved provider, model, API key, and Milvus URI in one `memsearch config list --resolved --json-output` snapshot. Older CLI versions automatically fall back to per-key `config get` calls. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`, `JINA_API_KEY`, `MISTRAL_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
-2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce. Milvus Lite falls back to a one-time `memsearch index` at session start.
+2. **Starts backend-specific indexing.** With Milvus Server, launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce. Milvus Lite cannot share its local database with a watcher, so SessionStart launches one background `memsearch index` attempt instead.
 3. **Injects cold-start context.** Reads up to 40 lines from each of the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
 4. **Checks for updates.** Queries PyPI (2s timeout) and compares with the installed version. If a newer version is available, appends an `UPDATE` hint to the status line.
 5. **Displays config status.** Every exit path returns a `systemMessage` showing the active configuration, e.g. `[memsearch v0.1.10] embedding: openai/text-embedding-3-small | milvus: ~/.memsearch/milvus.db` (with `| UPDATE: v0.1.12 available` when outdated).
@@ -186,7 +187,7 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
 
 #### SessionEnd
 
-Fires when the user exits Claude Code. Calls `stop_watch` to kill the `memsearch watch` process and clean up the PID file, including a sweep for any orphaned processes.
+Fires asynchronously when the user exits Claude Code. It calls `stop_watch` to terminate the Server `memsearch watch` process and clean up the PID file, then cleans up plugin-owned background index processes, including a Lite one-shot that is still running.
 
 ---
 
@@ -440,11 +441,11 @@ plugins/claude-code/
 ├── hooks/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
-│   ├── session-start.sh         # Start watch + inject cold-start context
+│   ├── session-start.sh         # Start Server watch or Lite one-shot + inject context
 │   ├── user-prompt-submit.sh    # Capability hint ("[memsearch] Recall available if needed")
 │   ├── stop.sh                  # Extract last turn → summarize → lazily create heading → append to daily .md
 │   ├── parse-transcript.sh      # Extract last turn from JSONL, format with role labels (Python3, no jq)
-│   └── session-end.sh           # Stop watch process (cleanup)
+│   └── session-end.sh           # Async watcher and owned-index cleanup
 └── skills/
     └── memory-recall/
         └── SKILL.md             # Memory retrieval skill (context: fork subagent)
@@ -698,7 +699,7 @@ echo $! > .memsearch/.watch.pid
 pgrep -f "memsearch watch" && echo "found orphans" || echo "clean"
 ```
 
-The watch process is started by `SessionStart` and stopped by `SessionEnd`. If Claude Code crashes or is killed with SIGKILL, the `SessionEnd` hook won't fire and the process may become orphaned. The next `SessionStart` always stops any existing watch before starting a new one.
+In Server mode, the watch process is started by `SessionStart` and stopped asynchronously by `SessionEnd`. If Claude Code crashes or is killed with SIGKILL, the `SessionEnd` hook won't fire and the process may become orphaned. The next Server `SessionStart` always stops any existing watch before starting a new one. In Lite mode, SessionEnd instead cleans up a one-shot index that is still running.
 
 > **Note:** Milvus Lite does not support concurrent access, so the plugin falls back to one-time indexing at session start instead of a persistent watcher.
 >

@@ -46,7 +46,7 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 | **SessionStart** | command | no | 10s | Start `memsearch watch` for Server or a one-shot index for Lite, inject recent memories as cold-start context, display config and index status |
 | **UserPromptSubmit** | command | no | 15s | Return `systemMessage` capability hint "[memsearch] Recall available if needed" (skips prompts < 10 chars) |
 | **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`; re-index immediately only for Server |
-| **SessionEnd** | command | no | 10s | Stop `memsearch watch` and clean up plugin-owned background index processes |
+| **SessionEnd** | command | **yes** | 10s | Asynchronously stop any Server watcher and clean up plugin-owned background index processes |
 
 All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
 
@@ -82,8 +82,9 @@ stateDiagram-v2
     }
 
     Prompting --> SessionEnd: user exits
-    SessionEnd --> StopWatch: stop memsearch watch
-    StopWatch --> [*]
+    SessionEnd --> StopWatch: async cleanup stops Server watcher
+    StopWatch --> StopIndexes: stop plugin-owned indexes
+    StopIndexes --> [*]
 ```
 
 ### SessionStart -- Bootstrapping the Session
@@ -156,7 +157,7 @@ Step by step:
 
 ### SessionEnd -- Cleanup
 
-Calls `stop_watch` to terminate the background `memsearch watch` process and clean up the PID file. It also cleans up plugin-owned background index processes, including a Lite one-shot that is still running when the session ends.
+Runs asynchronously when the session exits. It calls `stop_watch` to terminate the Server `memsearch watch` process and clean up the PID file, then cleans up plugin-owned background index processes, including a Lite one-shot that is still running.
 
 ---
 
@@ -238,11 +239,11 @@ plugins/claude-code/
 ├── hooks/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
-│   ├── session-start.sh         # Start watch + inject cold-start context
+│   ├── session-start.sh         # Start Server watch or Lite one-shot + inject context
 │   ├── user-prompt-submit.sh    # Lightweight systemMessage hint
 │   ├── stop.sh                  # Parse transcript -> summarize -> lazily create heading -> append
 │   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser
-│   └── session-end.sh           # Stop watch process (cleanup)
+│   └── session-end.sh           # Async watcher and owned-index cleanup
 ├── scripts/
 │   └── derive-collection.sh     # Derive per-project collection name from project path
 ├── skills/
@@ -260,7 +261,7 @@ plugins/claude-code/
 | `user-prompt-submit.sh` | Returns lightweight `systemMessage` hint. No search -- retrieval is handled by the memory-recall skill. |
 | `stop.sh` | Extracts and validates the transcript, calls `parse-transcript.sh`, summarizes via native Haiku by default or a configured API provider, creates the session heading on the first captured turn, and appends with anchors. Server indexes immediately; Lite defers indexing to the next SessionStart. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
-| `session-end.sh` | Stops the Server watcher and cleans up plugin-owned background index processes. |
+| `session-end.sh` | Asynchronously stops the Server watcher and cleans up plugin-owned background index processes. |
 | `derive-collection.sh` | Generates a deterministic per-project Milvus collection name from the project path (e.g., `ms_myproject_a1b2c3`). |
 | `SKILL.md` | The memory-recall skill definition. Uses `context: fork` to run in an isolated subagent. |
 | `transcript.py` | Python JSONL parser for Claude Code conversations. Plugin-specific (not in core library); exercised by `tests/test_transcript.py`. The `memory-recall` skill's L3 drill-down uses the core `memsearch transcript` CLI (which auto-detects the format) rather than calling this file directly. |
