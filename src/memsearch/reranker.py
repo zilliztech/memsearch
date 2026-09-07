@@ -259,6 +259,19 @@ def _load_voyage_client() -> Any:
         return _voyage_client
 
 
+def _voyage_error_types() -> tuple[type[BaseException], ...]:
+    """Voyage's error hierarchy, or an empty tuple when voyageai is absent.
+
+    ``except ()`` never matches, so ``rerank()`` can name this unconditionally;
+    a missing client is already covered by its ImportError branch.
+    """
+    try:
+        from voyageai.error import VoyageError
+    except ImportError:
+        return ()
+    return (VoyageError,)
+
+
 def _rerank_voyage(query: str, results: list[dict[str, Any]], model_name: str, top_k: int) -> list[dict[str, Any]]:
     """Rerank using the Voyage AI rerank endpoint.
 
@@ -307,8 +320,8 @@ def rerank(
     Returns
     -------
     list[dict]
-        Results re-sorted by relevance score. Returned unchanged when no
-        backend is available.
+        Results re-sorted by relevance score, at most ``top_k`` of them. When no
+        backend is available the original order is kept, still capped at ``top_k``.
     """
     if not results:
         return []
@@ -321,14 +334,24 @@ def rerank(
                 'Reranker provider "voyage" requires the voyageai client '
                 '(pip install "memsearch[voyage]"); skipping reranking',
             )
-            return results
+            return results[:top_k] if top_k > 0 else results
+        except _voyage_error_types() as e:
+            # A missing VOYAGE_API_KEY surfaces here as AuthenticationError, and
+            # transient API trouble as one of its siblings. Degrade to unranked
+            # results the way a missing client does, rather than failing the search.
+            logger.warning(
+                "Voyage rerank failed (%s: %s); skipping reranking",
+                type(e).__name__,
+                e,
+            )
+            return results[:top_k] if top_k > 0 else results
 
     if provider:
         logger.warning(
             'Unknown reranker provider %r; expected "voyage" or "" for a local cross-encoder. Skipping reranking',
             provider,
         )
-        return results
+        return results[:top_k] if top_k > 0 else results
 
     backend = _detect_backend()
     if backend == "onnx":
@@ -341,4 +364,4 @@ def rerank(
         "sentence-transformers is installed; skipping reranking",
         model_name,
     )
-    return results
+    return results[:top_k] if top_k > 0 else results

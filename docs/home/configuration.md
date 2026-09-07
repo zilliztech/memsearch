@@ -114,6 +114,11 @@ pays that load cost — noticeable for short-lived CLI invocations, where the
 hosted provider avoids it. No re-indexing is needed either way: reranking only
 affects query time.
 
+Reranking never fails a search. If the configured backend is unavailable, or the
+Voyage API rejects the call (an unset `VOYAGE_API_KEY`, for instance), memsearch
+logs a warning and returns the unranked results, still capped at the requested
+`--top-k`.
+
 ## Milvus Backend
 
 | Backend | Config | Notes |
