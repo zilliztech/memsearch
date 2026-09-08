@@ -14,14 +14,14 @@ bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash __INSTALL_DIR__/scripts/deriv
 
 ## Steps
 
-1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name from above>` to find relevant chunks.
+1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --default-collection <collection name from above>` to find relevant chunks.
    - If `memsearch` is not found, try `uvx memsearch` instead.
    - Choose a search query that captures the core intent of the user's question.
 
 2. **Evaluate**: Look at the search results. Skip chunks that are clearly irrelevant or too generic.
 
 3. **Expand**: For each relevant result, get the full context using one of these methods:
-   - **Primary**: Run `memsearch expand <chunk_hash> --collection <collection name from above>` to get the full markdown section.
+   - **Primary**: Run `memsearch expand <chunk_hash> --default-collection <collection name from above>` to get the full markdown section.
    - **Fallback** (if expand fails with a lock/permission error due to sandbox): Read the source file directly. The search results include `source` (file path) and `start_line`/`end_line` — use `cat <source_file>` or read the relevant line range to get the full context. This avoids the Milvus lock file issue.
 
 4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session/rollout info), and the original conversation seems critical:

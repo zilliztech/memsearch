@@ -846,7 +846,10 @@ def main() -> None:
                 )
 
             if any_new:
-                os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
+                os.system(
+                    f"{args.memsearch_cmd} index '{memory_dir}' "
+                    f"--default-collection {args.collection_name} &"
+                )
                 wake_maintenance(args.project_dir)
         except Exception:
             pass

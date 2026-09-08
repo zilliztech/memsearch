@@ -71,6 +71,28 @@ function deriveCollectionName(projectDir: string): string {
   return deriveCollectionNameFromScript(script, projectDir);
 }
 
+function requireDefaultCollectionSupport(
+  projectDir: string,
+  collectionName: string,
+  memsearchCmd: string
+): void {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      `${memsearchCmd} config get milvus.collection ` +
+        `--default-collection '${shellEscape(collectionName)}'`,
+    ],
+    { cwd: projectDir, encoding: "utf-8", timeout: 5000 }
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      "Installed memsearch CLI is incompatible with this plugin; " +
+        "--default-collection support is required. Upgrade memsearch core and the plugin together."
+    );
+  }
+}
+
 /**
  * Start the capture daemon as a background process.
  * The daemon polls OpenCode's SQLite for completed turns and writes to daily .md files.
@@ -117,6 +139,7 @@ function startCaptureDaemon(
         String(process.pid),
       ],
       {
+        cwd: projectDir,
         detached: true,
         stdio: "ignore",
         env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
@@ -152,6 +175,7 @@ function wakeMaintenance(projectDir: string, memsearchDir: string): void {
     `python3 '${shellEscape(runner)}' --platform opencode ` +
       `--project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(memsearchDir)}' &`,
     {
+      cwd: projectDir,
       timeout: 5000,
       env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
     },
@@ -168,6 +192,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   const projectDir = (worktree && worktree !== "/") ? worktree : (directory || process.cwd());
   const memsearchCmd = detectMemsearchCmd();
   const collectionName = deriveCollectionName(projectDir);
+  requireDefaultCollectionSupport(projectDir, collectionName, memsearchCmd);
   const memsearchDir = join(projectDir, ".memsearch");
   const memoryDir = join(memsearchDir, "memory");
   const skillCandidateHint = getSkillCandidateHint(memsearchDir, memsearchCmd);
@@ -185,6 +210,7 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
     if (!existsSync(configFile) && !existsSync(localConfig)) {
       try {
         execSync(`${memsearchCmd} config set embedding.provider onnx`, {
+          cwd: projectDir,
           timeout: 5000,
           stdio: "ignore",
         });
@@ -196,8 +222,8 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
   if (existsSync(memoryDir)) {
     exec(
       `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
-        `--collection ${collectionName}`,
-      { timeout: 120000 },
+        `--default-collection ${collectionName}`,
+      { cwd: projectDir, timeout: 120000 },
       () => { /* ignore */ }
     );
   }
@@ -235,9 +261,9 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
               [
                 "-c",
                 `${memsearchCmd} search '${shellEscape(args.query)}' ` +
-                  `--top-k ${topK} --json-output --collection ${col}`,
+                  `--top-k ${topK} --json-output --default-collection ${col}`,
               ],
-              { encoding: "utf-8", timeout: 30000 }
+              { cwd: dir, encoding: "utf-8", timeout: 30000 }
             );
             return result.stdout || result.stderr || "No results found.";
           } catch (e: any) {
@@ -264,9 +290,9 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
               [
                 "-c",
                 `${memsearchCmd} expand '${shellEscape(args.chunk_hash)}' ` +
-                  `--collection ${col}`,
+                  `--default-collection ${col}`,
               ],
-              { encoding: "utf-8", timeout: 15000 }
+              { cwd: dir, encoding: "utf-8", timeout: 15000 }
             );
             return result.stdout || result.stderr || "No content found.";
           } catch (e: any) {

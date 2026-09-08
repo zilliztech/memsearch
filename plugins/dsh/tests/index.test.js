@@ -6,7 +6,7 @@ import os from 'node:os'
 
 import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget } from '../index.js'
 
-async function withInjectionFixture(searchResults, assertion) {
+async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
   const projectDir = `${root}/project`
   const memoryDir = `${root}/state/memory`
@@ -22,6 +22,10 @@ async function withInjectionFixture(searchResults, assertion) {
     `${fakeBin}/memsearch`,
     '#!/bin/sh\n' +
       'printf "%s\\n" "$*" >> "$MEMSEARCH_TEST_CALL_LOG"\n' +
+      'if [ "$MEMSEARCH_TEST_OLD_CORE" = "1" ] && echo " $* " | grep -q " --default-collection "; then\n' +
+      '  echo "Error: No such option: --default-collection" >&2\n' +
+      '  exit 2\n' +
+      'fi\n' +
       'if [ "$1" = "config" ]; then exit 0; fi\n' +
       'if [ "$1" = "search" ]; then\n' +
       '  cat "$MEMSEARCH_TEST_RESULT"\n' +
@@ -58,13 +62,20 @@ async function withInjectionFixture(searchResults, assertion) {
         kind: 'enter',
         messages: [{ role: 'user', content: [{ type: 'text', text: 'What did we decide about the release?' }] }],
       }
-      const result = await listeners['agent/pre-step'](
-        { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: 1, signal: {} },
-        async () => decision,
-      )
+      let result = null
+      let error = ''
+      try {
+        result = await listeners['agent/pre-step'](
+          { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: 1, signal: {} },
+          async () => decision,
+        )
+      } catch (caught) {
+        error = caught.message
+      }
       process.stdout.write(JSON.stringify({
         unchanged: result === decision,
         result,
+        error,
         registeredSkillNames: registeredSkills.map((skill) => skill.name),
       }))
     `
@@ -80,6 +91,7 @@ async function withInjectionFixture(searchResults, assertion) {
         MEMSEARCH_TEST_PATH: `${fakeBin}:/usr/bin:/bin`,
         MEMSEARCH_TEST_PROJECT: projectDir,
         MEMSEARCH_TEST_RESULT: resultFile,
+        MEMSEARCH_TEST_OLD_CORE: oldCore ? '1' : '0',
       },
     })
     await assertion({ ...JSON.parse(stdout), callLog })
@@ -682,7 +694,10 @@ test('apply: empty search result keeps pre-step context unchanged while recall s
       'native recall skill remains registered independently of automatic injection',
     )
     const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-    assert.equal(calls.filter((call) => call.startsWith('search ')).length, 1)
+    const searches = calls.filter((call) => call.startsWith('search '))
+    assert.equal(searches.length, 1)
+    assert.ok(searches[0].includes('--default-collection '))
+    assert.ok(!searches[0].includes('--collection '))
   })
 })
 
@@ -709,9 +724,20 @@ test('apply: returned chunks inject one retrieved-context marker with plugin sou
         'native recall skill remains distinct from automatic injection',
       )
       const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-      assert.equal(calls.filter((call) => call.startsWith('search ')).length, 1)
+      const searches = calls.filter((call) => call.startsWith('search '))
+      assert.equal(searches.length, 1)
+      assert.ok(searches[0].includes('--default-collection '))
+      assert.ok(!searches[0].includes('--collection '))
     },
   )
+})
+
+test('apply: rejects an old core before a memory search', async () => {
+  await withInjectionFixture([], async ({ error, callLog }) => {
+    assert.match(error, /--default-collection support is required/)
+    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
+    assert.ok(!calls.some((call) => call.startsWith('search ')))
+  }, true)
 })
 
 test('apply: registers a session/disposed maintenance listener', () => {

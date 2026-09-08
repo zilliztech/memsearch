@@ -182,6 +182,30 @@ function deriveCollection(projectDir, override) {
   }
 }
 
+function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
+  try {
+    execFileSync(
+      'bash',
+      [
+        '-c',
+        `${memsearchCmd} config get milvus.collection ` +
+          `--default-collection '${shellEscape(collection)}'`,
+      ],
+      {
+        cwd: projectDir,
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    )
+  } catch {
+    throw new Error(
+      'Installed memsearch CLI is incompatible with this plugin; ' +
+        '--default-collection support is required. Upgrade memsearch core and the plugin together.',
+    )
+  }
+}
+
 /**
  * Read a dotted value from the memsearch config (e.g. `plugins.dsh.summarize.provider`).
  *
@@ -325,7 +349,7 @@ function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
       `${memsearchCmd} search '${shellEscape(query)}' ` +
       `--top-k ${SEARCH_TOP_K} --json-output ` +
       `${milvusUriFlag(milvusUri)}` +
-      `--collection '${shellEscape(collection)}'`
+      `--default-collection '${shellEscape(collection)}'`
     execFile(
       'bash',
       ['-c', command],
@@ -349,7 +373,7 @@ function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvu
   const command =
     `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
     `${milvusUriFlag(milvusUri)}` +
-    `--collection '${shellEscape(collection)}'`
+    `--default-collection '${shellEscape(collection)}'`
   // Detached + unref so the index survives the DSH process: a headless or
   // one-shot session can exit right after the turn that wrote the memory, and
   // an ordinary child would be torn down with the parent before indexing.
@@ -1126,13 +1150,20 @@ export function apply(ctx, config = {}) {
   const memoryDirFor = (projectDir) => join(memsearchDirFor(projectDir), 'memory')
 
   const collectionCache = new Map()
+  const compatibleCollectionCache = new Set()
   const bootProjectDir = process.cwd()
   const bootCollection = deriveCollection(bootProjectDir, '')
 
   const resolveCollection = (projectDir) => {
-    if (collectionCache.has(projectDir)) return collectionCache.get(projectDir)
-    const resolved = deriveCollection(projectDir, '')
-    collectionCache.set(projectDir, resolved)
+    let resolved = collectionCache.get(projectDir)
+    if (!collectionCache.has(projectDir)) {
+      resolved = deriveCollection(projectDir, '')
+      collectionCache.set(projectDir, resolved)
+    }
+    if (resolved && !compatibleCollectionCache.has(projectDir)) {
+      requireDefaultCollectionSupport(memsearchCmd, projectDir, resolved)
+      compatibleCollectionCache.add(projectDir)
+    }
     return resolved
   }
 

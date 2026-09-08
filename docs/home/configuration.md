@@ -2,11 +2,30 @@
 
 memsearch uses a layered TOML config system. Most users don't need to configure anything — the defaults work out of the box.
 
-## Config Locations (priority low → high)
+## Config Sources (priority low → high)
 
-1. `~/.memsearch/config.toml` — global defaults
-2. `<project>/.memsearch.toml` — project-level overrides
-3. CLI flags — highest priority
+1. Built-in defaults
+2. Integration defaults such as a plugin's directory-derived collection
+3. `~/.memsearch/config.toml` — global defaults
+4. `<project>/.memsearch.toml` — project-level overrides
+5. Explicit CLI flags or Python call arguments — highest priority
+
+Plugins pass their derived collection through `--default-collection`, so an
+explicit `[milvus].collection` in the project config overrides the derived
+name, and an explicit global collection overrides it when the project does not
+set one. An explicit `--collection` remains highest priority.
+
+The current Claude Code, Codex, OpenCode, OpenClaw, and DSH plugins require a
+memsearch core that exposes `--default-collection`. If that capability is not
+available, the plugin reports an incompatibility before running collection
+data operations; upgrade the core and plugin together. Existing CLI commands
+that do not use this integration-only flag remain unchanged.
+
+By default, ordinary repositories and linked Git worktrees use different
+directory-derived collections. To share indexed memory, set the same
+`[milvus].collection` value explicitly in each project's `.memsearch.toml` (or
+in global config when all projects should share it). Memsearch does not merge
+worktree scopes or migrate previously derived collections automatically.
 
 Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
 before it is merged. It can only set low-risk local indexing keys:

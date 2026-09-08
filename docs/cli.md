@@ -50,10 +50,12 @@ Commands:
 Manage memsearch configuration. Configuration is stored in TOML files and follows a layered priority chain:
 
 ```
-dataclass defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> CLI flags
+dataclass defaults -> integration defaults -> ~/.memsearch/config.toml -> .memsearch.toml -> explicit CLI flags
 ```
 
-Higher-priority sources override lower-priority ones.
+Higher-priority sources override lower-priority ones. Platform integrations use
+`--default-collection` for a directory-derived fallback. Unlike the explicit
+`--collection` flag, this fallback stays below both global and project config.
 
 ### Subcommands
 
@@ -173,6 +175,10 @@ Supported plugin platforms are `claude-code`, `codex`, `opencode`, and
 
 Read a single resolved configuration value (merged from all sources).
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--default-collection` | *(none)* | Supply a collection fallback below explicit global and project configuration |
+
 ```bash
 $ memsearch config get milvus.uri
 http://localhost:19530
@@ -194,6 +200,7 @@ Display configuration in TOML format by default, or JSON for scripting.
 | `--global` | | Show only the global config file (`~/.memsearch/config.toml`) |
 | `--project` | | Show only the project config file (`.memsearch.toml`) |
 | `--json-output`, `-j` | `false` | Output the selected configuration as JSON |
+| `--default-collection` | *(none)* | Supply a collection fallback for resolved output, below explicit configuration |
 
 ```bash
 $ memsearch config list --resolved
@@ -326,6 +333,7 @@ Scan one or more directories (or files) and index all markdown files (`.md`, `.m
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token (for server or Zilliz Cloud) |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
@@ -409,6 +417,7 @@ Run a semantic search query against indexed chunks. Uses [hybrid search](https:/
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 | `--json-output` | `-j` | `false` | Output results as JSON |
@@ -485,6 +494,7 @@ Start a long-running file watcher that monitors directories for markdown file ch
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 | `--max-chunk-size` | | config value | Override `chunking.max_chunk_size` for this run |
@@ -542,6 +552,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 
@@ -624,6 +635,7 @@ Look up a chunk by its hash in the index and return the surrounding context from
 | `--base-url` | | *(none)* | OpenAI-compatible API base URL |
 | `--api-key` | | *(none)* | API key for the embedding provider |
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 
@@ -752,6 +764,7 @@ Show statistics about the current index, including the total number of stored ch
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 
@@ -784,6 +797,7 @@ Drop the entire Milvus collection, permanently deleting all indexed chunks. A co
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
 | `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
 | `--milvus-token` | | *(none)* | Milvus auth token |
 | `--yes` | `-y` | | Skip the confirmation prompt |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -100,6 +101,54 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
     }
 
 
+def test_search_default_collection_respects_config_and_explicit_cli(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The integration fallback must stay below config and explicit CLI input."""
+    from memsearch import config as config_module
+    from memsearch import core as core_module
+
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    save_config({"milvus": {"collection": "global_collection"}}, global_cfg)
+    save_config({"milvus": {"collection": "project_collection"}}, project_cfg)
+    monkeypatch.setattr(config_module, "GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr(config_module, "PROJECT_CONFIG_PATH", project_cfg)
+
+    created_collections: list[str] = []
+
+    class FakeMemSearch:
+        def __init__(self, **kwargs) -> None:
+            created_collections.append(kwargs["collection"])
+
+        async def search(self, _query, *, top_k, source_prefix):
+            return []
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(core_module, "MemSearch", FakeMemSearch)
+    runner = CliRunner()
+
+    configured = runner.invoke(cli, ["search", "query", "--default-collection", "derived_collection"])
+    explicit = runner.invoke(
+        cli,
+        [
+            "search",
+            "query",
+            "--default-collection",
+            "derived_collection",
+            "--collection",
+            "explicit_collection",
+        ],
+    )
+
+    assert configured.exit_code == 0, configured.output
+    assert explicit.exit_code == 0, explicit.output
+    assert created_collections == ["project_collection", "explicit_collection"]
+
+
 def test_config_init_project_writes_only_allowlisted_keys(monkeypatch) -> None:
     cfg = MemSearchConfig()
     cfg.milvus.collection = "notes"
@@ -153,6 +202,25 @@ def test_config_get_prints_lowercase_booleans(monkeypatch) -> None:
     assert result.output.strip() == "false"
 
 
+def test_config_get_default_collection_respects_explicit_config(tmp_path: Path, monkeypatch) -> None:
+    from memsearch import config as config_module
+
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    save_config({"milvus": {"collection": "global_collection"}}, global_cfg)
+    save_config({"milvus": {"collection": "project_collection"}}, project_cfg)
+    monkeypatch.setattr(config_module, "GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr(config_module, "PROJECT_CONFIG_PATH", project_cfg)
+
+    result = CliRunner().invoke(
+        cli,
+        ["config", "get", "milvus.collection", "--default-collection", "derived_collection"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "project_collection"
+
+
 def test_config_list_json_output_preserves_config_types(monkeypatch) -> None:
     cfg = MemSearchConfig()
     cfg.embedding.provider = "onnx"
@@ -169,3 +237,22 @@ def test_config_list_json_output_preserves_config_types(monkeypatch) -> None:
     assert data["embedding"]["batch_size"] == 32
     assert data["indexing"]["ignore_files"] == [".gitignore"]
     assert data["plugins"]["claude-code"]["summarize"]["enabled"] is False
+
+
+def test_config_list_default_collection_uses_resolved_priority(tmp_path: Path, monkeypatch) -> None:
+    from memsearch import config as config_module
+
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    save_config({}, global_cfg)
+    save_config({}, project_cfg)
+    monkeypatch.setattr(config_module, "GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr(config_module, "PROJECT_CONFIG_PATH", project_cfg)
+
+    result = CliRunner().invoke(
+        cli,
+        ["config", "list", "--resolved", "--json-output", "--default-collection", "derived_collection"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["milvus"]["collection"] == "derived_collection"

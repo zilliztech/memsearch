@@ -444,7 +444,7 @@ def test_claude_session_start_reads_resolved_config_once(tmp_path: Path) -> None
         """#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
 if [ "$1" = "config" ] && [ "$2" = "list" ]; then
-  echo '{"embedding":{"provider":"voyage","model":"voyage-3-lite","api_key":"configured-key"},"milvus":{"uri":"http://localhost:19530"}}'
+  echo '{"embedding":{"provider":"voyage","model":"voyage-3-lite","api_key":"configured-key"},"milvus":{"uri":"http://localhost:19530","collection":"project_collection"}}'
   exit 0
 fi
 if [ "$1" = "--version" ]; then
@@ -483,9 +483,13 @@ exit 0
     status = json.loads(result.stdout)["systemMessage"]
     calls = call_log.read_text(encoding="utf-8").splitlines()
     assert "embedding: voyage/voyage-3-lite" in status
+    assert "collection: project_collection" in status
     assert "ERROR: VOYAGE_API_KEY not set" not in status
-    assert calls.count("config list --resolved --json-output") == 1
-    assert not any(call.startswith("config get ") for call in calls)
+    assert sum(call.startswith("config list --resolved --json-output --default-collection ") for call in calls) == 1
+    assert calls.count(next(call for call in calls if call.startswith("config get milvus.collection"))) == 1
+    assert not any(
+        call.startswith("config get ") and not call.startswith("config get milvus.collection") for call in calls
+    )
     assert not any(call.startswith("skills status ") for call in calls)
 
 
@@ -554,7 +558,7 @@ exit 0
     calls = call_log.read_text(encoding="utf-8").splitlines()
     assert "embedding: voyage/voyage-3-lite" in status
     assert "ERROR: VOYAGE_API_KEY not set" not in status
-    assert calls.count("config list --resolved --json-output") == 1
+    assert sum(call.startswith("config list --resolved --json-output --default-collection ") for call in calls) == 1
     assert "config get embedding.provider" in calls
     assert "config get embedding.model" in calls
     assert "config get milvus.uri" in calls
@@ -1288,6 +1292,52 @@ def _session_start_env(tmp_path: Path, home: Path, fake_bin: Path, call_log: Pat
     }
 
 
+def test_codex_session_start_reports_resolved_collection(tmp_path: Path) -> None:
+    script = Path("plugins/codex/hooks/session-start.sh")
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".memsearch").mkdir()
+    call_log = tmp_path / "memsearch-calls.txt"
+
+    fake_bin = _install_layout(tmp_path / "opt", "9.9.9")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    embedding.model) echo "tiny" ;;
+    milvus.uri) echo "/tmp/x.db" ;;
+    milvus.collection) echo "project_collection" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", """#!/usr/bin/env bash\necho '{"info":{"version":"9.9.9"}}'\n""")
+    env = _session_start_env(tmp_path, home, fake_bin, call_log)
+    env["MEMSEARCH_PROJECT_DIR"] = str(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"cwd": str(tmp_path)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert "collection: project_collection" in status
+    collection_call = next(call for call in calls if call.startswith("config get milvus.collection"))
+    assert "--default-collection " in collection_call
+
+
 def test_claude_session_start_reads_version_from_dist_info(tmp_path: Path) -> None:
     """The status version comes from dist-info, without a second CLI start."""
     script = Path("plugins/claude-code/hooks/session-start.sh")
@@ -1492,6 +1542,230 @@ exit 0
 SESSION_STARTS = ["plugins/claude-code/hooks/session-start.sh", "plugins/codex/hooks/session-start.sh"]
 COMMON_SHS = ["plugins/claude-code/hooks/common.sh", "plugins/codex/hooks/common.sh"]
 PLUGIN_IDS = ["claude-code", "codex"]
+
+
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+def test_plugin_commands_pass_derived_collection_as_default(tmp_path: Path, common_sh: str) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    call_log = tmp_path / "calls.txt"
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+""",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "MEMSEARCH_NO_WATCH": "1",
+    }
+    common = Path(common_sh).resolve()
+
+    subprocess.run(
+        ["bash", "-c", f'source "{common}"; run_memsearch search "test query"'],
+        input="{}",
+        text=True,
+        cwd=tmp_path,
+        env=env,
+        check=True,
+    )
+
+    call = call_log.read_text(encoding="utf-8").strip()
+    assert "--default-collection " in call
+    assert " --collection " not in f" {call} "
+
+
+def _write_project_aware_memsearch(fake_bin: Path) -> None:
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s|%s\n' "$PWD" "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$PWD" = "$MEMSEARCH_TEST_PROJECT" ]; then
+  resolved_collection="project_collection"
+elif [ "$PWD" = "$MEMSEARCH_TEST_UNRELATED" ]; then
+  resolved_collection="unrelated_collection"
+else
+  resolved_collection="global_collection"
+fi
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  printf '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"http://127.0.0.1:19530","collection":"%s"}}\n' "$resolved_collection"
+  exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    embedding.model) echo "tiny" ;;
+    milvus.uri) echo "http://127.0.0.1:19530" ;;
+    milvus.collection) echo "$resolved_collection" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 9.9.9"
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", '#!/usr/bin/env bash\necho \'{"info":{"version":"9.9.9"}}\'\n')
+
+
+@pytest.mark.parametrize(
+    ("platform", "script", "project_var"),
+    [
+        ("claude-code", "plugins/claude-code/hooks/session-start.sh", "CLAUDE_PROJECT_DIR"),
+        ("codex", "plugins/codex/hooks/session-start.sh", "MEMSEARCH_PROJECT_DIR"),
+    ],
+)
+@pytest.mark.parametrize("outside_kind", ["plain-directory", "unrelated-git-repository"])
+def test_session_start_and_data_commands_are_scoped_to_host_project(
+    tmp_path: Path, platform: str, script: str, project_var: str, outside_kind: str
+) -> None:
+    project = tmp_path / "target-project"
+    outside = tmp_path / "outside"
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    for directory in (project / ".memsearch", outside, home / ".memsearch", fake_bin):
+        directory.mkdir(parents=True, exist_ok=True)
+    if outside_kind == "unrelated-git-repository":
+        subprocess.run(["git", "init", "-q", str(outside)], check=True)
+
+    (home / ".memsearch" / "config.toml").write_text('[milvus]\ncollection = "global_collection"\n', encoding="utf-8")
+    (project / ".memsearch.toml").write_text('[milvus]\ncollection = "project_collection"\n', encoding="utf-8")
+    (outside / ".memsearch.toml").write_text('[milvus]\ncollection = "unrelated_collection"\n', encoding="utf-8")
+    call_log = tmp_path / f"{platform}-{outside_kind}.log"
+    _write_project_aware_memsearch(fake_bin)
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        project_var: str(project),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "MEMSEARCH_TEST_PROJECT": str(project),
+        "MEMSEARCH_TEST_UNRELATED": str(outside),
+    }
+    result = subprocess.run(
+        ["bash", str(Path(script).resolve())],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=outside,
+        env=env,
+        check=True,
+    )
+    status = json.loads(result.stdout)["systemMessage"]
+    assert "collection: project_collection" in status
+
+    common = Path(script).with_name("common.sh").resolve()
+    data = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{common}"; before=$PWD; run_memsearch search query --collection explicit_collection; printf "%s" "$before|$PWD"',
+        ],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=outside,
+        env=env,
+        check=True,
+    )
+    assert data.stdout == f"{outside}|{outside}"
+
+    assert _wait_for(
+        lambda: call_log.exists() and "|watch " in call_log.read_text(encoding="utf-8"),
+        timeout=5.0,
+    )
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert calls
+    assert all(call.startswith(f"{project}|") for call in calls)
+    assert any("|config " in call for call in calls)
+    assert any("|search query --collection explicit_collection " in call for call in calls)
+    assert any(" --default-collection " in call for call in calls if "|search " in call)
+    assert any("|watch " in call for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("script", "project_var"),
+    [
+        ("plugins/claude-code/hooks/session-start.sh", "CLAUDE_PROJECT_DIR"),
+        ("plugins/codex/hooks/session-start.sh", "MEMSEARCH_PROJECT_DIR"),
+    ],
+    ids=PLUGIN_IDS,
+)
+def test_old_core_is_rejected_before_collection_actions(tmp_path: Path, script: str, project_var: str) -> None:
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    for directory in (project / ".memsearch", home / ".memsearch", fake_bin):
+        directory.mkdir(parents=True, exist_ok=True)
+    (home / ".memsearch" / "config.toml").write_text('[milvus]\ncollection = "global_collection"\n', encoding="utf-8")
+    call_log = tmp_path / "old-core-calls.log"
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+case " $* " in
+  *" --default-collection "*)
+    echo "Error: No such option: --default-collection" >&2
+    exit 2
+    ;;
+esac
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  echo '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"http://127.0.0.1:19530","collection":"global_collection"}}'
+  exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    embedding.model) echo tiny ;;
+    milvus.uri) echo http://127.0.0.1:19530 ;;
+    milvus.collection) echo global_collection ;;
+  esac
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", '#!/usr/bin/env bash\necho \'{"info":{"version":"0.4.19"}}\'\n')
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        project_var: str(project),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+    }
+    result = subprocess.run(
+        ["bash", str(Path(script).resolve())],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=project,
+        env=env,
+        check=True,
+    )
+    assert "ERROR: installed memsearch CLI is incompatible" in json.loads(result.stdout)["systemMessage"]
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert not any(call.startswith(("index ", "watch ", "search ", "expand ")) for call in calls)
+
+    common = Path(script).with_name("common.sh").resolve()
+    data = subprocess.run(
+        ["bash", "-c", f'source "{common}"; run_memsearch search query'],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=project,
+        env=env,
+    )
+    assert data.returncode == 2
+    assert "--default-collection support is required" in data.stderr
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert not any(call.startswith("search ") for call in calls)
 
 
 def _pypi_stand(tmp_path: Path, curl_body: str, installed: str = "1.0.0"):

@@ -28,10 +28,23 @@ fi
 
 # Read resolved config and version for status display
 PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
+EFFECTIVE_COLLECTION="$COLLECTION_NAME"
+CORE_COMPATIBLE=true
 if memsearch_available; then
+  if ! memsearch_supports_default_collection; then
+    CORE_COMPATIBLE=false
+  fi
   PROVIDER=$(_memsearch config get embedding.provider 2>/dev/null || echo "onnx")
   MODEL=$(_memsearch config get embedding.model 2>/dev/null || echo "")
   MILVUS_URI=$(_memsearch config get milvus.uri 2>/dev/null || echo "")
+  if [ "$CORE_COMPATIBLE" = true ]; then
+    _resolved_collection=$(
+      _memsearch config get milvus.collection --default-collection "$COLLECTION_NAME" 2>/dev/null || true
+    )
+  else
+    _resolved_collection=$(_memsearch config get milvus.collection 2>/dev/null || true)
+  fi
+  [ -n "$_resolved_collection" ] && EFFECTIVE_COLLECTION="$_resolved_collection"
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$(_installed_version_from_dist_info)
   [ -n "$VERSION" ] || VERSION=$(_memsearch --version 2>/dev/null | sed 's/.*version //' || echo "")
@@ -90,11 +103,13 @@ fi
 # Build status line: version | provider/model | milvus | optional update/error
 VERSION_TAG="${VERSION:+ v${VERSION}}"
 COLLECTION_HINT=""
-if [ -n "$COLLECTION_NAME" ]; then
-  COLLECTION_HINT=" | collection: ${COLLECTION_NAME}"
+if [ -n "$EFFECTIVE_COLLECTION" ]; then
+  COLLECTION_HINT=" | collection: ${EFFECTIVE_COLLECTION}"
 fi
 status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${COLLECTION_HINT}${UPDATE_HINT}"
-if [ "$KEY_MISSING" = true ]; then
+if [ "$CORE_COMPATIBLE" != true ]; then
+  status+=" | ERROR: installed memsearch CLI is incompatible; --default-collection support is required"
+elif [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
   status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
 else
@@ -127,7 +142,7 @@ if [ ! -f "$MEMORY_FILE" ] || ! grep -qF "## Session $NOW" "$MEMORY_FILE"; then
 fi
 
 # If API key is missing, show status and exit early (watch/search would fail)
-if [ "$KEY_MISSING" = true ]; then
+if [ "$CORE_COMPATIBLE" != true ] || [ "$KEY_MISSING" = true ]; then
   json_status=$(_json_encode_str "$status")
   echo "{\"systemMessage\": $json_status}"
   exit 0
@@ -142,12 +157,12 @@ if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
   kill_orphaned_index
   (
     _index_args=("$MEMORY_DIR")
-    [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
+    [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
     [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
     INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
     if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
       _reset_args=(--yes)
-      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
+      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
       _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
       _memsearch index "${_index_args[@]}" 2>/dev/null || true
     fi

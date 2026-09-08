@@ -71,6 +71,10 @@ run_worker() {
   export MEMSEARCH_SKIP_HOOK_STDIN=1
   source "$SCRIPT_DIR/common.sh"
 
+  if memsearch_available && ! require_default_collection_support; then
+    exit 0
+  fi
+
   local work_input
   work_input=$(cat "$work_file" 2>/dev/null || echo "")
   rm -f "$work_file"
@@ -104,8 +108,9 @@ run_worker() {
   # Load summarization prompt: user custom (via config) > plugin built-in template
   local AGENT_NAME="Codex"
   local PROMPT_FILE=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
-    PROMPT_FILE=$($MEMSEARCH_CMD config get prompts.summarize 2>/dev/null || true)
+  if memsearch_available; then
+    PROMPT_FILE=$(_memsearch config get prompts.summarize 2>/dev/null || true)
+    [ -n "$PROMPT_FILE" ] && PROMPT_FILE=$(project_path "$PROMPT_FILE")
   fi
   local SYSTEM_PROMPT=""
   if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
@@ -118,12 +123,12 @@ run_worker() {
 
   local SUMMARY=""
   local SUMMARIZE_PROVIDER=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
-    SUMMARIZE_PROVIDER=$($MEMSEARCH_CMD config get plugins.codex.summarize.provider 2>/dev/null || true)
+  if memsearch_available; then
+    SUMMARIZE_PROVIDER=$(_memsearch config get plugins.codex.summarize.provider 2>/dev/null || true)
   fi
 
-  if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && [ -n "$MEMSEARCH_CMD" ]; then
-    SUMMARY=$(printf '%s' "$CONTENT" | MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 $MEMSEARCH_CMD summarize \
+  if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && memsearch_available; then
+    SUMMARY=$(printf '%s' "$CONTENT" | MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _memsearch summarize \
       --plugin codex \
       --agent-name "$AGENT_NAME" \
       2>/dev/null || true)
@@ -135,16 +140,16 @@ Here is the transcript:
 
 ${CONTENT}"
     local SUMMARIZE_MODEL="gpt-5.1-codex-mini"
-    if [ -n "$MEMSEARCH_CMD" ]; then
+    if memsearch_available; then
       local CONFIG_MODEL
-      CONFIG_MODEL=$($MEMSEARCH_CMD config get plugins.codex.summarize.model 2>/dev/null || true)
+      CONFIG_MODEL=$(_memsearch config get plugins.codex.summarize.model 2>/dev/null || true)
       if [ -n "$CONFIG_MODEL" ]; then
         SUMMARIZE_MODEL="$CONFIG_MODEL"
       fi
     fi
 
     if command -v timeout &>/dev/null; then
-      SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 timeout 30 codex exec \
+      SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _run_in_project timeout 30 codex exec \
         --ephemeral \
         --skip-git-repo-check \
         -s read-only \
@@ -153,7 +158,7 @@ ${CONTENT}"
         -m "$SUMMARIZE_MODEL" \
         "$LLM_PROMPT" 2>/dev/null || true)
     else
-      SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 codex exec \
+      SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _run_in_project codex exec \
         --ephemeral \
         --skip-git-repo-check \
         -s read-only \
@@ -223,6 +228,11 @@ fi
 # Prevent infinite loop: if this Stop was triggered by a previous Stop hook, bail out
 STOP_HOOK_ACTIVE=$(_json_val "$INPUT" "stop_hook_active" "false")
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
+  echo '{}'
+  exit 0
+fi
+
+if memsearch_available && ! require_default_collection_support; then
   echo '{}'
   exit 0
 fi

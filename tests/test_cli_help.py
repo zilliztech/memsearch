@@ -45,3 +45,22 @@ def test_chunk_size_flag_appears_in_help(args: list[str]) -> None:
     assert "--max-chunk-size" in result.output
     assert "--ignore-file" in result.output
     assert "--exclude" in result.output
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["index", "search", "expand", "watch", "compact", "stats", "reset"],
+)
+def test_collection_commands_expose_default_collection(command: str) -> None:
+    result = CliRunner().invoke(cli, [command, "--help"])
+
+    assert result.exit_code == 0
+    assert "--default-collection" in result.output
+
+
+@pytest.mark.parametrize("command", ["get", "list"])
+def test_config_resolution_commands_expose_default_collection(command: str) -> None:
+    result = CliRunner().invoke(cli, ["config", command, "--help"])
+
+    assert result.exit_code == 0
+    assert "--default-collection" in result.output

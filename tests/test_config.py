@@ -131,6 +131,32 @@ def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert cfg.chunking.max_chunk_size == 1500
 
 
+def test_collection_priority_includes_caller_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Caller defaults must not mask global, project, or explicit call values."""
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+    caller_default = {"milvus": {"collection": "derived_collection"}}
+
+    cfg = resolve_config(default_overrides=caller_default)
+    assert cfg.milvus.collection == "derived_collection"
+
+    save_config({"milvus": {"collection": "global_collection"}}, global_cfg)
+    cfg = resolve_config(default_overrides=caller_default)
+    assert cfg.milvus.collection == "global_collection"
+
+    save_config({"milvus": {"collection": "project_collection"}}, project_cfg)
+    cfg = resolve_config(default_overrides=caller_default)
+    assert cfg.milvus.collection == "project_collection"
+
+    cfg = resolve_config(
+        {"milvus": {"collection": "explicit_collection"}},
+        default_overrides=caller_default,
+    )
+    assert cfg.milvus.collection == "explicit_collection"
+
+
 def test_project_config_cannot_override_trusted_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Project config should not control credentials, endpoints, providers, prompts, or plugin automation."""
     global_cfg = tmp_path / "global.toml"

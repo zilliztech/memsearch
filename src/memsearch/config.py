@@ -1,7 +1,8 @@
 """Configuration system for memsearch.
 
 Priority chain (lowest to highest):
-  dataclass defaults → ~/.memsearch/config.toml → restricted .memsearch.toml → CLI flags
+  dataclass defaults → caller defaults → ~/.memsearch/config.toml
+  → restricted .memsearch.toml → explicit caller overrides
 """
 
 from __future__ import annotations
@@ -431,13 +432,23 @@ def _has_legacy_compact(global_cfg: dict[str, Any], project_cfg: dict[str, Any])
     return "compact" in global_cfg or "compact" in project_cfg
 
 
-def resolve_config(cli_overrides: dict[str, Any] | None = None) -> MemSearchConfig:
+def resolve_config(
+    cli_overrides: dict[str, Any] | None = None,
+    *,
+    default_overrides: dict[str, Any] | None = None,
+) -> MemSearchConfig:
     """Layer all config sources and return the final MemSearchConfig.
 
     Priority (lowest → highest):
-      defaults → global TOML → project TOML → cli_overrides
+      defaults → default_overrides → global TOML → project TOML → cli_overrides
+
+    ``default_overrides`` lets integrations provide context-derived defaults
+    without masking values explicitly configured by the user. Direct call or
+    CLI overrides remain the highest-priority layer.
     """
     result = _default_dict()
+    if default_overrides:
+        result = deep_merge(result, default_overrides)
     global_cfg = load_config_file(GLOBAL_CONFIG_PATH)
     project_cfg = load_config_file(PROJECT_CONFIG_PATH)
     result = deep_merge(result, global_cfg)

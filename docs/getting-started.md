@@ -492,9 +492,10 @@ graph TD
 memsearch uses a layered configuration system. Settings are resolved in priority order (lowest to highest):
 
 1. **Built-in defaults** -- sensible out-of-the-box values
-2. **Global config** -- `~/.memsearch/config.toml`
-3. **Project config** -- `.memsearch.toml` in your working directory
-4. **CLI flags** -- `--milvus-uri`, `--provider`, etc.
+2. **Integration defaults** -- for example, a plugin's directory-derived collection
+3. **Global config** -- `~/.memsearch/config.toml`
+4. **Project config** -- `.memsearch.toml` in your working directory
+5. **Explicit CLI flags** -- `--milvus-uri`, `--provider`, `--collection`, etc.
 
 Higher-priority sources override lower ones. This means you can set defaults globally, customize per project, and override on the fly with CLI flags.
 
@@ -667,7 +668,9 @@ $ memsearch config list --project     # Show .memsearch.toml only
 
 ### CLI flag overrides
 
-CLI flags always take the highest priority:
+Explicit CLI flags always take the highest priority. The
+`--default-collection` integration flag is the exception: it is a fallback
+below global and project config, so plugins do not mask configured collections.
 
 ```bash
 $ memsearch index ./memory/ --provider google --milvus-uri http://localhost:19530

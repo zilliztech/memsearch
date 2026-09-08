@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,6 +17,54 @@ test("plugin entry exposes only the default plugin function", async () => {
 
   assert.deepEqual(Object.keys(mod), ["default"]);
   assert.equal(typeof mod.default, "function");
+});
+
+test("collection entrypoints pass derived names as project-scoped defaults", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf-8");
+
+  assert.match(source, /index '[^`]*' ` \+\s*`--default-collection /);
+  assert.match(source, /search '[^`]*' ` \+\s*`--top-k [^`]* --default-collection /);
+  assert.match(source, /expand '[^`]*' ` \+\s*`--default-collection /);
+  assert.doesNotMatch(source, /--collection \$\{(?:collectionName|col)\}/);
+  assert.match(source, /\{ cwd: dir, encoding: "utf-8", timeout: 30000 \}/);
+});
+
+test("plugin rejects a core without integration-default support before data actions", async () => {
+  const root = mkdtempSync(join(tmpdir(), "memsearch-opencode-old-core-"));
+  const bin = join(root, "bin");
+  const project = join(root, "project");
+  const previousPath = process.env.PATH;
+  const previousHome = process.env.HOME;
+  try {
+    mkdirSync(bin);
+    mkdirSync(project);
+    const fakeMemsearch = join(bin, "memsearch");
+    writeFileSync(
+      fakeMemsearch,
+      "#!/usr/bin/env bash\n" +
+        "if [[ \" $* \" == *\" --default-collection \"* ]]; then\n" +
+        "  echo 'Error: No such option: --default-collection' >&2\n" +
+        "  exit 2\n" +
+        "fi\n" +
+        "exit 0\n",
+      "utf-8"
+    );
+    chmodSync(fakeMemsearch, 0o755);
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    process.env.HOME = root;
+
+    const mod = await import("./index.ts");
+    await assert.rejects(
+      () => mod.default({ project: {}, directory: project, worktree: project } as any),
+      /--default-collection support is required/
+    );
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("appends memory context when no system entry exists yet", () => {

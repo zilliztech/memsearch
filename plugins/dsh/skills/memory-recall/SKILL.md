@@ -20,7 +20,7 @@ Use this skill when the user's question could benefit from historical context: t
 Run a semantic search over the project's memsearch collection. The collection is derived from the project directory (see `derive-collection.sh`); the plugin normally injects the resolved value as `{{COLLECTION}}`:
 
 ```bash
-{{MEMSEARCH_CMD}} search "{{QUERY}}" --top-k 5 --json-output {{MILVUS_FLAG}}--collection "{{COLLECTION}}"
+{{MEMSEARCH_CMD}} search "{{QUERY}}" --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
 ```
 
 Replace `{{QUERY}}` with a concise natural-language summary of what the user needs. The `--json-output` results contain `content`, `source`, `heading`, `score`, and `chunk_hash`.
@@ -30,7 +30,7 @@ Replace `{{QUERY}}` with a concise natural-language summary of what the user nee
 For the most promising results, expand the full markdown section to see surrounding context:
 
 ```bash
-{{MEMSEARCH_CMD}} expand <chunk_hash> {{MILVUS_FLAG}}--collection "{{COLLECTION}}"
+{{MEMSEARCH_CMD}} expand <chunk_hash> {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
 ```
 
 ### 3. Drill into the original conversation (optional)

@@ -13,7 +13,7 @@ if [ -z "$PROMPT" ] || [ "${#PROMPT}" -lt 10 ]; then
 fi
 
 # Need memsearch available
-if [ -z "$MEMSEARCH_CMD" ]; then
+if ! memsearch_available; then
   echo '{}'
   exit 0
 fi

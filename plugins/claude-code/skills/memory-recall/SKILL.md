@@ -17,13 +17,13 @@ Search for memories relevant to: $ARGUMENTS
 
 ## Steps
 
-1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --collection <collection name above>` to find relevant chunks.
+1. **Search**: Run `memsearch search "<query>" --top-k 5 --json-output --default-collection <collection name above>` to find relevant chunks.
    - If `memsearch` is not found, try `uvx memsearch` instead.
    - Choose a search query that captures the core intent of the user's question.
 
 2. **Evaluate**: Look at the search results. Skip chunks that are clearly irrelevant or too generic.
 
-3. **Expand**: For each relevant result, run `memsearch expand <chunk_hash> --collection <collection name above>` to get the full markdown section with surrounding context.
+3. **Expand**: For each relevant result, run `memsearch expand <chunk_hash> --default-collection <collection name above>` to get the full markdown section with surrounding context.
 
 4. **Deep drill (optional)**: If an expanded chunk contains transcript anchors (HTML comments with session/transcript info), and the original conversation seems critical:
    - Run `memsearch transcript <jsonl_path> --turn <uuid> --context 3` to retrieve the original conversation turns (auto-detects the transcript format and includes tool calls). If `memsearch` is not found, use `uvx memsearch` instead.

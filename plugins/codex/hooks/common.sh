@@ -253,7 +253,7 @@ PY
 
 skill_candidate_hint() {
   memsearch_available || return 0
-  MEMSEARCH_DIR="$MEMSEARCH_DIR" "${MEMSEARCH_CMD[@]}" skills status --hint 2>/dev/null || true
+  MEMSEARCH_DIR="$MEMSEARCH_DIR" _memsearch skills status --hint 2>/dev/null || true
 }
 
 # --- Project directory ---
@@ -270,6 +270,11 @@ else
     PROJECT_DIR="$(pwd)"
   fi
 fi
+
+case "$PROJECT_DIR" in
+  /*) ;;
+  *) PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
+esac
 
 _GIT_ROOT="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then
@@ -298,11 +303,20 @@ memsearch_available() {
   [ "${#MEMSEARCH_CMD[@]}" -gt 0 ]
 }
 
+_run_in_project() {
+  (cd "$PROJECT_DIR" && "$@")
+}
+
+project_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s/%s\n' "$PROJECT_DIR" "$1" ;;
+  esac
+}
+
 _memsearch() {
-  if ! memsearch_available; then
-    return 127
-  fi
-  "${MEMSEARCH_CMD[@]}" "$@"
+  memsearch_available || return 127
+  _run_in_project "${MEMSEARCH_CMD[@]}" "$@"
 }
 
 # Derive collection name: from MEMSEARCH_DIR when explicitly set (global scope),
@@ -312,6 +326,28 @@ if [ "$_MEMSEARCH_DIR_EXPLICIT" = "true" ]; then
 else
   COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$PROJECT_DIR" 2>/dev/null || true)
 fi
+
+_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT=""
+
+memsearch_supports_default_collection() {
+  memsearch_available || return 1
+  if [ -z "$_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT" ]; then
+    if _memsearch config get milvus.collection --default-collection "$COLLECTION_NAME" >/dev/null 2>&1; then
+      _MEMSEARCH_DEFAULT_COLLECTION_SUPPORT="true"
+    else
+      _MEMSEARCH_DEFAULT_COLLECTION_SUPPORT="false"
+    fi
+  fi
+  [ "$_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT" = "true" ]
+}
+
+require_default_collection_support() {
+  if memsearch_supports_default_collection; then
+    return 0
+  fi
+  printf '%s\n' '[memsearch] ERROR: installed memsearch CLI is incompatible with this plugin; --default-collection support is required.' >&2
+  return 2
+}
 
 # Helper: ensure memory directory exists
 ensure_memory_dir() {
@@ -323,20 +359,24 @@ COLLECTION_DESC=""
 
 # Helper: run memsearch with arguments, silently fail if not available
 run_memsearch() {
-  if memsearch_available && [ -n "$COLLECTION_NAME" ]; then
-    _memsearch "$@" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
-  elif memsearch_available; then
+  memsearch_available || return 0
+  require_default_collection_support || return $?
+  if [ -n "$COLLECTION_NAME" ]; then
+    _memsearch "$@" --default-collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
+  else
     _memsearch "$@" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
   fi
 }
 
 run_maintenance() {
   if command -v python3 >/dev/null 2>&1; then
-    MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
-      --platform codex \
-      --project-dir "$PROJECT_DIR" \
-      --memsearch-dir "$MEMSEARCH_DIR" \
-      >/dev/null 2>&1 || true
+    (
+      cd "$PROJECT_DIR"
+      MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
+        --platform codex \
+        --project-dir "$PROJECT_DIR" \
+        --memsearch-dir "$MEMSEARCH_DIR"
+    ) >/dev/null 2>&1 || true
   fi
 }
 
@@ -435,19 +475,22 @@ start_watch() {
     return 0
   fi
 
-  if [ -n "$COLLECTION_NAME" ]; then
-    if command -v setsid &>/dev/null; then
-      setsid "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
+  require_default_collection_support || return $?
+
+  (
+    cd "$PROJECT_DIR"
+    if [ -n "$COLLECTION_NAME" ]; then
+      if command -v setsid &>/dev/null; then
+        exec setsid "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" --default-collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
+      else
+        exec nohup "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" --default-collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
+      fi
+    elif command -v setsid &>/dev/null; then
+      exec setsid "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
     else
-      nohup "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
+      exec nohup "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
     fi
-  else
-    if command -v setsid &>/dev/null; then
-      setsid "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
-    else
-      nohup "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
-    fi
-  fi
+  ) </dev/null &>/dev/null &
   echo $! > "$WATCH_PIDFILE"
 }
 

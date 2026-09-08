@@ -26,14 +26,21 @@ for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
   [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
 done
 
-# Memory directory and memsearch state directory are project-scoped.
-# Prefer git root to avoid .memsearch scattered in subdirectories when
-# CLAUDE_PROJECT_DIR is unset (child claude -p) or points to a subdir.
-_GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+# Memory directory and memsearch state directory are project-scoped. A valid
+# host-provided project directory must win over the hook process cwd, which may
+# belong to an unrelated repository. Resolve a subdirectory to its own git root.
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
+  _PROJECT_DIR="$CLAUDE_PROJECT_DIR"
+else
+  _PROJECT_DIR="$(pwd)"
+fi
+case "$_PROJECT_DIR" in
+  /*) ;;
+  *) _PROJECT_DIR="$(pwd)/$_PROJECT_DIR" ;;
+esac
+_GIT_ROOT="$(git -C "$_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then
   _PROJECT_DIR="$_GIT_ROOT"
-else
-  _PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 fi
 # When MEMSEARCH_DIR is explicitly set, use global scope (shared dir + collection).
 # Otherwise, default to per-project isolation.
@@ -41,19 +48,62 @@ _MEMSEARCH_DIR_EXPLICIT="${MEMSEARCH_DIR:+true}"
 MEMSEARCH_DIR="${MEMSEARCH_DIR:-$_PROJECT_DIR/.memsearch}"
 MEMORY_DIR="$MEMSEARCH_DIR/memory"
 
-# Find memsearch binary: prefer PATH, fallback to uvx
+# Find memsearch binary: prefer PATH, fallback to uvx. Keep argv boundaries so
+# the uvx fallback and scoped execution do not depend on shell word splitting.
 _detect_memsearch() {
-  MEMSEARCH_CMD=""
+  MEMSEARCH_CMD=()
   if command -v memsearch &>/dev/null; then
-    MEMSEARCH_CMD="memsearch"
+    MEMSEARCH_CMD=(memsearch)
   elif command -v uvx &>/dev/null; then
-    MEMSEARCH_CMD="uvx --from memsearch[onnx] memsearch"
+    MEMSEARCH_CMD=(uvx --from "memsearch[onnx]" memsearch)
   fi
 }
 _detect_memsearch
 
 # Short command prefix for injected instructions (falls back to "memsearch" even if unavailable)
-MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD:-memsearch}"
+MEMSEARCH_CMD_PREFIX="${MEMSEARCH_CMD[*]:-memsearch}"
+
+memsearch_available() {
+  [ "${#MEMSEARCH_CMD[@]}" -gt 0 ]
+}
+
+_run_in_project() {
+  (cd "$_PROJECT_DIR" && "$@")
+}
+
+project_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s/%s\n' "$_PROJECT_DIR" "$1" ;;
+  esac
+}
+
+_memsearch() {
+  memsearch_available || return 127
+  _run_in_project "${MEMSEARCH_CMD[@]}" "$@"
+}
+
+_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT=""
+
+memsearch_supports_default_collection() {
+  memsearch_available || return 1
+  if [ -z "$_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT" ]; then
+    if _memsearch config get milvus.collection --default-collection "$COLLECTION_NAME" >/dev/null 2>&1; then
+      _MEMSEARCH_DEFAULT_COLLECTION_SUPPORT="true"
+    else
+      _MEMSEARCH_DEFAULT_COLLECTION_SUPPORT="false"
+    fi
+  fi
+  [ "$_MEMSEARCH_DEFAULT_COLLECTION_SUPPORT" = "true" ]
+}
+
+require_default_collection_support() {
+  if memsearch_supports_default_collection; then
+    return 0
+  fi
+  printf '%s\n' '[memsearch] ERROR: installed memsearch CLI is incompatible with this plugin; --default-collection support is required.' >&2
+  return 2
+}
 
 # Derive collection name: from MEMSEARCH_DIR when explicitly set (global scope),
 # otherwise from project directory (per-project isolation).
@@ -295,9 +345,9 @@ PY
 }
 
 skill_candidate_hint() {
-  [ -n "$MEMSEARCH_CMD" ] || return 0
+  memsearch_available || return 0
   [ -d "$MEMSEARCH_DIR/skill-candidates" ] || return 0
-  MEMSEARCH_DIR="$MEMSEARCH_DIR" $MEMSEARCH_CMD skills status --hint 2>/dev/null || true
+  MEMSEARCH_DIR="$MEMSEARCH_DIR" _memsearch skills status --hint 2>/dev/null || true
 }
 
 # Helper: ensure memory directory exists
@@ -310,20 +360,24 @@ COLLECTION_DESC=""
 
 # Helper: run memsearch with arguments, silently fail if not available
 run_memsearch() {
-  if [ -n "$MEMSEARCH_CMD" ] && [ -n "$COLLECTION_NAME" ]; then
-    $MEMSEARCH_CMD "$@" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
-  elif [ -n "$MEMSEARCH_CMD" ]; then
-    $MEMSEARCH_CMD "$@" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
+  memsearch_available || return 0
+  require_default_collection_support || return $?
+  if [ -n "$COLLECTION_NAME" ]; then
+    _memsearch "$@" --default-collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
+  else
+    _memsearch "$@" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} 2>/dev/null || true
   fi
 }
 
 run_maintenance() {
   if command -v python3 >/dev/null 2>&1; then
-    MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
-      --platform claude-code \
-      --project-dir "$_PROJECT_DIR" \
-      --memsearch-dir "$MEMSEARCH_DIR" \
-      >/dev/null 2>&1 || true
+    (
+      cd "$_PROJECT_DIR"
+      MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
+        --platform claude-code \
+        --project-dir "$_PROJECT_DIR" \
+        --memsearch-dir "$MEMSEARCH_DIR"
+    ) >/dev/null 2>&1 || true
   fi
 }
 
@@ -416,7 +470,7 @@ start_watch() {
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
     return 0
   fi
-  if [ -z "$MEMSEARCH_CMD" ]; then
+  if ! memsearch_available; then
     return 0
   fi
   ensure_memory_dir
@@ -425,7 +479,7 @@ start_watch() {
   stop_watch
 
   # Detect Milvus backend from URI
-  local _uri="${MILVUS_URI:-$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")}"
+  local _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
 
   # Lite (local .db): skip watch entirely — file lock prevents concurrent access.
   # Session-start does a one-time index() instead.
@@ -433,14 +487,19 @@ start_watch() {
     return 0
   fi
 
+  require_default_collection_support || return $?
+
   # Server (http/tcp): setsid — watch runs persistently for real-time indexing.
   local launch_prefix="nohup"
   command -v setsid &>/dev/null && launch_prefix="setsid"
 
-  if [ -n "$COLLECTION_NAME" ]; then
-    $launch_prefix $MEMSEARCH_CMD watch "$MEMORY_DIR" --collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
-  else
-    $launch_prefix $MEMSEARCH_CMD watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"} </dev/null &>/dev/null &
-  fi
+  (
+    cd "$_PROJECT_DIR"
+    if [ -n "$COLLECTION_NAME" ]; then
+      exec $launch_prefix "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" --default-collection "$COLLECTION_NAME" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
+    else
+      exec $launch_prefix "${MEMSEARCH_CMD[@]}" watch "$MEMORY_DIR" ${COLLECTION_DESC:+--description "$COLLECTION_DESC"}
+    fi
+  ) </dev/null &>/dev/null &
   echo $! > "$WATCH_PIDFILE"
 }

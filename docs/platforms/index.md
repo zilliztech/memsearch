@@ -92,7 +92,8 @@ All plugins write standard markdown and derive collection names from the project
 
 - Memories written in **Claude Code** are searchable from **Codex**, **DSH**, **OpenClaw**, or **OpenCode**
 - Same project directory = same collection name = shared memories
-- Different project directories are naturally isolated
+- Different project directories, including linked worktrees, are naturally isolated
+- Different directories share memory only when configured with the same explicit `[milvus].collection`
 
 ---
 

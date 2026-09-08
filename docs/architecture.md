@@ -233,7 +233,7 @@ graph TD
 
 ### Physical Isolation
 
-Each platform plugin derives a collection name from the project path (e.g., `ms_claude_code_myproject`). This keeps memories from different projects separate within the same Milvus instance, avoiding the complexity of multi-tenant collection management while keeping the schema simple.
+Each platform plugin derives a collection name from the project path (e.g., `ms_claude_code_myproject`) and supplies it as a low-priority integration default. This keeps memories from different projects, including linked worktrees in different directories, separate within the same Milvus instance. An explicit collection in project/global config or the current call overrides that default, allowing intentional sharing without automatic scope merging.
 
 ---
 
@@ -277,21 +277,23 @@ The L3 transcript format varies by platform (Claude Code JSONL, Codex rollout JS
 
 ## Configuration System
 
-memsearch uses a 4-layer configuration system. Each layer overrides the one before it:
+memsearch uses a 5-layer configuration system. Each layer overrides the one before it:
 
 ```mermaid
 graph LR
-    D["1. Defaults"] --> G["2. Global Config<br>~/.memsearch/config.toml"]
-    G --> P["3. Project Config<br>.memsearch.toml"]
-    P --> C["4. CLI Flags<br>--milvus-uri, etc."]
+    D["1. Defaults"] --> I["2. Integration Defaults<br>derived collection"]
+    I --> G["3. Global Config<br>~/.memsearch/config.toml"]
+    G --> P["4. Project Config<br>.memsearch.toml"]
+    P --> C["5. Explicit Call/CLI<br>--collection, etc."]
 ```
 
 | Priority | Source | Scope | Example |
 |----------|--------|-------|---------|
 | 1 (lowest) | Built-in defaults | Hardcoded | `milvus.uri = ~/.memsearch/milvus.db` |
-| 2 | `~/.memsearch/config.toml` | User-global | Shared across all projects |
-| 3 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
-| 4 (highest) | CLI flags | Per-command | `--milvus-uri http://...` |
+| 2 | Integration defaults | Caller context | A plugin's directory-derived collection |
+| 3 | `~/.memsearch/config.toml` | User-global | Shared across all projects |
+| 4 | `.memsearch.toml` | Per-project | Committed to the repo or gitignored |
+| 5 (highest) | Explicit call or CLI overrides | Per-command | `--milvus-uri http://...` |
 
 > **Note:** API keys for embedding and LLM providers (e.g. `OPENAI_API_KEY`, `GOOGLE_API_KEY`) are read from environment variables by their respective SDKs. They are not part of the memsearch configuration system and are never written to config files.
 

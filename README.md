@@ -668,7 +668,7 @@ memsearch reset --yes                              # drop all indexed data and r
 
 Embedding and Milvus backend settings → [Configuration (all platforms)](#️-configuration-all-platforms)
 
-Settings priority: Built-in defaults → `~/.memsearch/config.toml` → `.memsearch.toml` → CLI flags.
+Collection priority: integration-derived default → `~/.memsearch/config.toml` → `.memsearch.toml` → explicit `--collection` or Python argument. Without an integration-derived default, the built-in collection is used.
 
 > 📖 Full config guide: [Configuration](https://zilliztech.github.io/memsearch/home/configuration/)
 

@@ -11,6 +11,11 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
 
+if memsearch_available && ! require_default_collection_support; then
+  echo '{}'
+  exit 0
+fi
+
 # Skip summarization when the required API key is missing — embedding/search
 # would fail, and the session likely only contains the "key not set" warning.
 _required_env_var() {
@@ -23,13 +28,13 @@ _required_env_var() {
     *) echo "" ;;  # onnx, ollama, local — no API key needed
   esac
 }
-_PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
+_PROVIDER=$(_memsearch config get embedding.provider 2>/dev/null || echo "onnx")
 _REQ_KEY=$(_required_env_var "$_PROVIDER")
 if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
   # Env var not set — check if API key is configured in memsearch config file
   _CONFIG_API_KEY=""
-  if [ -n "$MEMSEARCH_CMD" ]; then
-    _CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
+  if memsearch_available; then
+    _CONFIG_API_KEY=$(_memsearch config get embedding.api_key 2>/dev/null || echo "")
   fi
   if [ -z "$_CONFIG_API_KEY" ]; then
     echo '{}'
@@ -54,7 +59,7 @@ fi
 
 ensure_memory_dir
 
-SUMMARIZE_ENABLED=$($MEMSEARCH_CMD config get plugins.claude-code.summarize.enabled 2>/dev/null || echo "true")
+SUMMARIZE_ENABLED=$(_memsearch config get plugins.claude-code.summarize.enabled 2>/dev/null || echo "true")
 if [ "$SUMMARIZE_ENABLED" = "false" ]; then
   echo '{}'
   exit 0
@@ -100,8 +105,9 @@ print(uuid)
 # Load summarization prompt: user custom (via config) > plugin built-in template
 AGENT_NAME="Claude Code"
 PROMPT_FILE=""
-if [ -n "$MEMSEARCH_CMD" ]; then
-  PROMPT_FILE=$($MEMSEARCH_CMD config get prompts.summarize 2>/dev/null || true)
+if memsearch_available; then
+  PROMPT_FILE=$(_memsearch config get prompts.summarize 2>/dev/null || true)
+  [ -n "$PROMPT_FILE" ] && PROMPT_FILE=$(project_path "$PROMPT_FILE")
 fi
 if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
   SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$PROMPT_FILE")
@@ -119,21 +125,24 @@ SUMMARY=""
 SUMMARY_STATUS=0
 SUMMARY_FAILURE=""
 SUMMARIZE_PROVIDER=""
-if [ -n "$MEMSEARCH_CMD" ]; then
-  SUMMARIZE_PROVIDER=$($MEMSEARCH_CMD config get plugins.claude-code.summarize.provider 2>/dev/null || true)
+if memsearch_available; then
+  SUMMARIZE_PROVIDER=$(_memsearch config get plugins.claude-code.summarize.provider 2>/dev/null || true)
 fi
 
 _run_summarizer() {
-  if command -v timeout &>/dev/null; then
-    timeout 110 "$@"
-  else
-    perl -e 'alarm shift; exec @ARGV' 110 "$@"
-  fi
+  (
+    cd "$_PROJECT_DIR"
+    if command -v timeout &>/dev/null; then
+      timeout 110 "$@"
+    else
+      perl -e 'alarm shift; exec @ARGV' 110 "$@"
+    fi
+  )
 }
 
-if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && [ -n "$MEMSEARCH_CMD" ]; then
+if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && memsearch_available; then
   set +e
-  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 _run_summarizer $MEMSEARCH_CMD summarize \
+  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 _run_summarizer "${MEMSEARCH_CMD[@]}" summarize \
     --plugin claude-code \
     --agent-name "$AGENT_NAME" \
     2>/dev/null)
@@ -141,8 +150,8 @@ if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && [ -n
   set -e
 elif command -v claude &>/dev/null; then
   SUMMARIZE_MODEL="haiku"
-  if [ -n "$MEMSEARCH_CMD" ]; then
-    CONFIG_MODEL=$($MEMSEARCH_CMD config get plugins.claude-code.summarize.model 2>/dev/null || true)
+  if memsearch_available; then
+    CONFIG_MODEL=$(_memsearch config get plugins.claude-code.summarize.model 2>/dev/null || true)
     if [ -n "$CONFIG_MODEL" ]; then
       SUMMARIZE_MODEL="$CONFIG_MODEL"
     fi
@@ -204,7 +213,7 @@ fi
 # Server mode indexes immediately instead of relying on the watch debounce.
 # Lite mode keeps the SessionStart one-shot index: restarting it after every
 # turn can permanently starve a slow index before it completes.
-_uri="${MILVUS_URI:-$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")}"
+_uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
 if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]]; then
   kill_orphaned_index
   run_memsearch index "$MEMORY_DIR"

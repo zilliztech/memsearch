@@ -11,7 +11,7 @@ exec < /dev/null
 source "$SCRIPT_DIR/common.sh"
 
 # Bootstrap: if memsearch not available, install uv and warm up uvx cache
-if [ -z "$MEMSEARCH_CMD" ]; then
+if ! memsearch_available; then
   if ! command -v uvx &>/dev/null; then
     curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null
     export PATH="$HOME/.local/bin:$PATH"
@@ -25,33 +25,43 @@ fi
 # First-time setup: if no config file exists, default to onnx provider.
 # This avoids requiring an OPENAI_API_KEY for new plugin users.
 # Existing users (who already have a config file) are not affected.
-if [ -n "$MEMSEARCH_CMD" ]; then
-  if [ ! -f "$HOME/.memsearch/config.toml" ] && [ ! -f "${CLAUDE_PROJECT_DIR:-.}/.memsearch.toml" ]; then
-    $MEMSEARCH_CMD config set embedding.provider onnx 2>/dev/null || true
+if memsearch_available; then
+  if [ ! -f "$HOME/.memsearch/config.toml" ] && [ ! -f "$_PROJECT_DIR/.memsearch.toml" ]; then
+    _memsearch config set embedding.provider onnx 2>/dev/null || true
   fi
 fi
 
 # Read resolved config in one CLI call. Older CLI versions do not support
 # --json-output, so keep the existing per-key reads as a compatibility fallback.
 PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; CONFIG_API_KEY=""; VERSION=""
+EFFECTIVE_COLLECTION="$COLLECTION_NAME"
 CONFIG_SNAPSHOT_LOADED=false
-if [ -n "$MEMSEARCH_CMD" ]; then
-  CONFIG_JSON=$($MEMSEARCH_CMD config list --resolved --json-output 2>/dev/null || true)
+CORE_COMPATIBLE=true
+if memsearch_available; then
+  if ! memsearch_supports_default_collection; then
+    CORE_COMPATIBLE=false
+  fi
+  _config_list_args=(config list --resolved --json-output)
+  if [ "$CORE_COMPATIBLE" = true ] && [ -n "$COLLECTION_NAME" ]; then
+    _config_list_args+=(--default-collection "$COLLECTION_NAME")
+  fi
+  CONFIG_JSON=$(_memsearch "${_config_list_args[@]}" 2>/dev/null || true)
   SNAPSHOT_PROVIDER=$(_json_val "$CONFIG_JSON" "embedding.provider" "")
   if [ -n "$SNAPSHOT_PROVIDER" ]; then
     PROVIDER="$SNAPSHOT_PROVIDER"
     MODEL=$(_json_val "$CONFIG_JSON" "embedding.model" "")
     MILVUS_URI=$(_json_val "$CONFIG_JSON" "milvus.uri" "")
+    EFFECTIVE_COLLECTION=$(_json_val "$CONFIG_JSON" "milvus.collection" "$COLLECTION_NAME")
     CONFIG_API_KEY=$(_json_val "$CONFIG_JSON" "embedding.api_key" "")
     CONFIG_SNAPSHOT_LOADED=true
   else
-    PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
-    MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
-    MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
+    PROVIDER=$(_memsearch config get embedding.provider 2>/dev/null || echo "onnx")
+    MODEL=$(_memsearch config get embedding.model 2>/dev/null || echo "")
+    MILVUS_URI=$(_memsearch config get milvus.uri 2>/dev/null || echo "")
   fi
   # "memsearch, version 0.1.10" → "0.1.10"
   VERSION=$(_installed_version_from_dist_info)
-  [ -n "$VERSION" ] || VERSION=$($MEMSEARCH_CMD --version 2>/dev/null | sed 's/.*version //' || echo "")
+  [ -n "$VERSION" ] || VERSION=$(_memsearch --version 2>/dev/null | sed 's/.*version //' || echo "")
 fi
 
 # Determine required API key for the configured provider
@@ -70,8 +80,8 @@ REQUIRED_KEY=$(_required_env_var "$PROVIDER")
 KEY_MISSING=false
 if [ -n "$REQUIRED_KEY" ] && [ -z "${!REQUIRED_KEY:-}" ]; then
   # Env var not set — check if API key is configured in memsearch config file
-  if [ "$CONFIG_SNAPSHOT_LOADED" != true ] && [ -n "$MEMSEARCH_CMD" ]; then
-    CONFIG_API_KEY=$($MEMSEARCH_CMD config get embedding.api_key 2>/dev/null || echo "")
+  if [ "$CONFIG_SNAPSHOT_LOADED" != true ] && memsearch_available; then
+    CONFIG_API_KEY=$(_memsearch config get embedding.api_key 2>/dev/null || echo "")
   fi
   if [ -z "$CONFIG_API_KEY" ]; then
     KEY_MISSING=true
@@ -90,7 +100,7 @@ if [ -n "$VERSION" ]; then
     if [ -n "$_MS_BIN" ]; then
       _MS_REAL=$(_resolve_symlinks "$_MS_BIN")
     fi
-    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]]; then
+    if [ "${MEMSEARCH_CMD[0]:-}" = "uvx" ]; then
       UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
     elif [[ "$_MS_REAL" == *"uv/tools"* ]]; then
       UPGRADE_CMD="uv tool upgrade memsearch"
@@ -106,11 +116,13 @@ fi
 # Build status line: version | provider/model | milvus | optional update/error
 VERSION_TAG="${VERSION:+ v${VERSION}}"
 COLLECTION_HINT=""
-if [ -n "$COLLECTION_NAME" ]; then
-  COLLECTION_HINT=" | collection: ${COLLECTION_NAME}"
+if [ -n "$EFFECTIVE_COLLECTION" ]; then
+  COLLECTION_HINT=" | collection: ${EFFECTIVE_COLLECTION}"
 fi
 status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${COLLECTION_HINT}${UPDATE_HINT}"
-if [ "$KEY_MISSING" = true ]; then
+if [ "$CORE_COMPATIBLE" != true ]; then
+  status+=" | ERROR: installed memsearch CLI is incompatible; --default-collection support is required"
+elif [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
   status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
 else
@@ -125,7 +137,7 @@ if [ -n "$SKILL_HINT" ]; then
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"
-PROJECT_BASENAME=$(basename "${CLAUDE_PROJECT_DIR:-.}")
+PROJECT_BASENAME=$(basename "$_PROJECT_DIR")
 COLLECTION_DESC="${PROJECT_BASENAME} | ${PROVIDER}/${MODEL:-default}"
 
 RECENT_MEMORY_MAX_LINES=40
@@ -231,7 +243,7 @@ _recent_memory_preview() {
 ensure_memory_dir
 
 # If API key is missing, show status and exit early (watch/search would fail)
-if [ "$KEY_MISSING" = true ]; then
+if [ "$CORE_COMPATIBLE" != true ] || [ "$KEY_MISSING" = true ]; then
   json_status=$(_json_encode_str "$status")
   echo "{\"systemMessage\": $json_status}"
   exit 0
@@ -249,14 +261,14 @@ if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
   kill_orphaned_index
   (
     _index_args=("$MEMORY_DIR")
-    [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
+    [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
     [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
-    INDEX_OUTPUT=$($MEMSEARCH_CMD index "${_index_args[@]}" 2>&1) || true
+    INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
     if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
       _reset_args=(--yes)
-      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
-      $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
-      $MEMSEARCH_CMD index "${_index_args[@]}" 2>/dev/null || true
+      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
+      _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
+      _memsearch index "${_index_args[@]}" 2>/dev/null || true
     fi
   ) >/dev/null 2>&1 &
   echo $! > "$INDEX_PIDFILE"

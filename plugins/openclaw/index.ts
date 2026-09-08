@@ -19,7 +19,7 @@ import {
   writeFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
@@ -339,7 +339,7 @@ export default {
       const cmd = await getMemsearchCmd();
       const r = await runCmd(
         ["bash", "-c", `${cmd} config get '${shellEscape(key)}'`],
-        { timeoutMs: 5000 }
+        { timeoutMs: 5000, cwd: projectDir }
       );
       return r.stdout?.trim() || "";
     }
@@ -352,7 +352,7 @@ export default {
             "bash", "-c",
             `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`,
           ],
-          { timeoutMs: 5000 }
+          { timeoutMs: 5000, cwd: projectDir }
         );
         if (r.code !== 0) return "";
         return r.stdout?.trim().split("\n")[0] || "";
@@ -373,6 +373,7 @@ export default {
           ],
           {
             timeoutMs: 120000,
+            cwd: projectDir,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
           }
         ).catch(() => { /* ignore */ });
@@ -384,22 +385,49 @@ export default {
     // --- Lazy-cached collection name derivation ---
     let _collectionNameFor = "";
     let _collectionName = "ms_openclaw_default";
+    let _compatibleCollectionFor = "";
+
+    async function requireDefaultCollectionSupport(
+      scopeDir: string,
+      collection: string
+    ): Promise<void> {
+      if (_compatibleCollectionFor === scopeDir) return;
+      const cmd = await getMemsearchCmd();
+      const r = await runCmd(
+        [
+          "bash",
+          "-c",
+          `${cmd} config get milvus.collection ` +
+            `--default-collection '${shellEscape(collection)}'`,
+        ],
+        { timeoutMs: 5000, cwd: projectDir }
+      );
+      if (r.code !== 0) {
+        throw new Error(
+          "Installed memsearch CLI is incompatible with this plugin; " +
+            "--default-collection support is required. Upgrade memsearch core and the plugin together."
+        );
+      }
+      _compatibleCollectionFor = scopeDir;
+    }
 
     async function getCollectionName(): Promise<string> {
       const scopeDir = getCollectionScopeDir(projectDir);
-      if (_collectionNameFor === scopeDir) return _collectionName;
-      const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
-      try {
-        const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5000 });
-        if (r.code === 0 && r.stdout?.trim()) {
-          _collectionName = r.stdout.trim();
-        } else {
+      if (_collectionNameFor !== scopeDir) {
+        const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
+        try {
+          const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5000 });
+          if (r.code === 0 && r.stdout?.trim()) {
+            _collectionName = r.stdout.trim();
+          } else {
+            _collectionName = "ms_openclaw_default";
+          }
+        } catch {
           _collectionName = "ms_openclaw_default";
         }
-      } catch {
-        _collectionName = "ms_openclaw_default";
+        _collectionNameFor = scopeDir;
       }
-      _collectionNameFor = scopeDir;
+      await requireDefaultCollectionSupport(scopeDir, _collectionName);
       return _collectionName;
     }
 
@@ -423,6 +451,7 @@ export default {
         memoryDir = getMemoryDir(projectDir);
         // Invalidate cached collection name — will be re-derived on next getCollectionName()
         _collectionNameFor = "";
+        _compatibleCollectionFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
         );
@@ -469,9 +498,9 @@ export default {
                 [
                   "bash", "-c",
                   `${cmd} search '${shellEscape(params.query)}' ` +
-                    `--top-k ${topK} --json-output --collection ${collection}`,
+                    `--top-k ${topK} --json-output --default-collection ${collection}`,
                 ],
-                { timeoutMs: 30000 }
+                { timeoutMs: 30000, cwd: projectDir }
               );
               const output = result.stdout || result.stderr || "No results";
               return { content: [{ type: "text" as const, text: output }] };
@@ -522,9 +551,9 @@ export default {
                 [
                   "bash", "-c",
                   `${cmd} expand '${shellEscape(params.chunk_hash)}' ` +
-                    `--collection ${collection}`,
+                    `--default-collection ${collection}`,
                 ],
-                { timeoutMs: 15000 }
+                { timeoutMs: 15000, cwd: projectDir }
               );
               const output = result.stdout || result.stderr || "No content";
               return { content: [{ type: "text" as const, text: output }] };
@@ -635,6 +664,9 @@ export default {
         try {
           customPromptFile = await getMemsearchConfigValue("prompts.summarize");
         } catch { /* ignore */ }
+        if (customPromptFile && !isAbsolute(customPromptFile)) {
+          customPromptFile = join(projectDir, customPromptFile);
+        }
 
         if (customPromptFile && existsSync(customPromptFile)) {
           systemPrompt = readFileSync(customPromptFile, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
@@ -672,6 +704,7 @@ export default {
               `--plugin openclaw --agent-name OpenClaw`;
             const result = await runCmd(["bash", "-c", shellCmd], {
               timeoutMs: 60000,
+              cwd: projectDir,
               env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
             });
             try { unlinkSync(tmpInput); } catch { /* ignore cleanup errors */ }
@@ -694,6 +727,7 @@ export default {
           const shellCmd = `openclaw agent --local --session-id memsearch-summarize${modelArg} -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
           await runCmd(["bash", "-c", shellCmd], {
             timeoutMs: 60000,
+            cwd: projectDir,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
           });
           if (existsSync(tmpFile)) {
@@ -767,9 +801,9 @@ export default {
           runCmd(
             [
               "bash", "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --collection ${collection}`,
+              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`,
             ],
-            { timeoutMs: 60000 }
+            { timeoutMs: 60000, cwd: projectDir }
           ).catch((err: any) => {
             logger?.warn?.(`[memsearch] Index failed: ${err.message}`);
           });
@@ -816,7 +850,7 @@ export default {
           try {
             await runCmd(
               ["bash", "-c", `${cmd} config set embedding.provider onnx`],
-              { timeoutMs: 5000 }
+              { timeoutMs: 5000, cwd: projectDir }
             );
           } catch {
             /* ignore */
@@ -828,9 +862,9 @@ export default {
           runCmd(
             [
               "bash", "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --collection ${collection}`,
+              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`,
             ],
-            { timeoutMs: 120000 }
+            { timeoutMs: 120000, cwd: projectDir }
           ).catch((err: any) => {
             logger?.warn?.(
               `[memsearch] Initial index failed: ${err.message}`
@@ -860,9 +894,9 @@ export default {
               [
                 "bash", "-c",
                 `${memsearch} search '${shellEscape(query)}' ` +
-                  `--top-k ${opts.topK || 5} --collection ${collection}`,
+                  `--top-k ${opts.topK || 5} --default-collection ${collection}`,
               ],
-              { timeoutMs: 30000 }
+              { timeoutMs: 30000, cwd: projectDir }
             );
             if (result.stdout) process.stdout.write(result.stdout);
             if (result.stderr) process.stderr.write(result.stderr);
@@ -882,9 +916,9 @@ export default {
             const result = await runCmd(
               [
                 "bash", "-c",
-                `${memsearch} index '${shellEscape(dir)}' --collection ${collection}`,
+                `${memsearch} index '${shellEscape(dir)}' --default-collection ${collection}`,
               ],
-              { timeoutMs: 120000 }
+              { timeoutMs: 120000, cwd: projectDir }
             );
             if (result.stdout) process.stdout.write(result.stdout);
             if (result.stderr) process.stderr.write(result.stderr);
@@ -899,8 +933,21 @@ export default {
         .action(async () => {
           const memsearch = await getMemsearchCmd();
           const collection = await getCollectionName();
+          let effectiveCollection = collection;
+          try {
+            const result = await runCmd(
+              [
+                "bash", "-c",
+                `${memsearch} config get milvus.collection --default-collection '${shellEscape(collection)}'`,
+              ],
+              { timeoutMs: 10000, cwd: projectDir }
+            );
+            effectiveCollection = result.stdout.trim() || collection;
+          } catch {
+            // Older CLI versions do not expose integration defaults on config get.
+          }
           console.log(`Agent:       ${agentId}`);
-          console.log(`Collection:  ${collection}`);
+          console.log(`Collection:  ${effectiveCollection}`);
           console.log(`Memory dir:  ${memoryDir}`);
           console.log(`Provider:    ${pluginConfig.provider || "onnx"}`);
           console.log(`CLI:         ${memsearch}`);
@@ -908,8 +955,8 @@ export default {
           console.log(`AutoRecall:  ${autoRecall}`);
           try {
             const result = await runCmd(
-              ["bash", "-c", `${memsearch} stats --collection ${collection}`],
-              { timeoutMs: 10000 }
+              ["bash", "-c", `${memsearch} stats --default-collection ${collection}`],
+              { timeoutMs: 10000, cwd: projectDir }
             );
             if (result.stdout) process.stdout.write(result.stdout);
           } catch {
@@ -932,9 +979,9 @@ export default {
             `autoCapture: ${autoCapture}, autoRecall: ${autoRecall}`
         );
       })
-      .catch(() => {
-        logger?.info?.(
-          `[memsearch] Plugin loaded. autoCapture: ${autoCapture}, autoRecall: ${autoRecall}`
+      .catch((error: any) => {
+        logger?.error?.(
+          `[memsearch] Plugin initialization failed: ${error.message}`
         );
       });
   },
