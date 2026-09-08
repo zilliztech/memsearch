@@ -1081,12 +1081,13 @@ function summarizeCustomLlm(opts, render, projectDir) {
 /**
  * Resolve the dsh CLI command for one-shot headless summarization.
  *
- * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). We check
- * PATH first, then `DSH_CLI` as an explicit override, then the pnpm global
- * bin directory. Returns the command as an argv array (`[cmd, ...args]`),
- * or null when not found. The array form is required because `DSH_CLI` may
- * be an interpreter invocation (e.g. `node /path/to/bin.js`), which `spawn`
- * cannot treat as a single executable.
+ * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). Explicit
+ * environment overrides win first — `MEMSEARCH_DSH_COMMAND_JSON` (a JSON argv
+ * array), then `DSH_CLI` (a quoted shell-style command line) — then executable
+ * discovery on PATH, then the pnpm global bin directory. Returns the command
+ * as an argv array (`[cmd, ...args]`), or null when not found. The array form
+ * is required because the overrides may be an interpreter invocation (e.g.
+ * `node /path/to/bin.js`), which `spawn` cannot treat as a single executable.
  */
 function detectDshCmd() {
   const json = process.env.MEMSEARCH_DSH_COMMAND_JSON
@@ -1232,7 +1233,7 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     .replaceAll('{{PYTHON_CMD}}', commandForSkill(detectPythonCmd() ?? ['python3']))
     .replaceAll('{{PLUGIN_DIR}}', PLUGIN_DIR)
     .replaceAll('{{PROJECT_DIR}}', projectDir)
-    .replaceAll('{{COLLECTION}}', collection || deriveCollection(PLUGIN_DIR, ''))
+    .replaceAll('{{COLLECTION}}', collection || deriveCollection(projectDir, ''))
     .replaceAll('{{MILVUS_FLAG}}', opts.milvusUri ? `--milvus-uri "${opts.milvusUri}" ` : '')
   ctx.skills.register({
     name: 'memory-recall',

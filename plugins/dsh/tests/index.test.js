@@ -4,8 +4,9 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { detectDshCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
+import { detectDshCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
 
 test('resolveExecutable: Windows skips cmd and bat shims for direct spawn', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'msr-exe-'))
@@ -121,8 +122,39 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   }
 }
 
+test('deriveCollection: JavaScript port matches derive-collection.sh', {
+  skip: process.platform === 'win32' && 'the bash script uses POSIX path semantics; the win32 runtime derivation is JavaScript-only',
+}, () => {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'derive-collection.sh')
+  for (const projectDir of [
+    '/tmp/project',
+    '/tmp/project with spaces',
+    "/tmp/project's",
+    String.raw`/tmp/project\segment`,
+    '/tmp/项目-α',
+    '/tmp/project/',
+  ]) {
+    const expected = execFileSync('bash', [script, projectDir], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    assert.equal(deriveCollection(projectDir), expected, `diverged for ${JSON.stringify(projectDir)}`)
+  }
+})
+
+test('deriveCollection: sanitizes representative Windows project paths', {
+  skip: process.platform !== 'win32' && 'asserts win32 path semantics',
+}, () => {
+  assert.match(deriveCollection('D:\\CODE-AI\\my 项目'), /^ms_my_[0-9a-f]{8}$/, 'spaces and non-ASCII sanitize to underscores')
+  assert.match(deriveCollection('D:\\CODE-AI\\项目'), /^ms__[0-9a-f]{8}$/, 'a fully non-ASCII basename sanitizes to empty')
+  assert.equal(deriveCollection('D:\\x'), deriveCollection('D:\\x'), 'stable for the same input')
+  assert.notEqual(deriveCollection('D:\\x'), deriveCollection('D:\\y'), 'distinct paths derive distinct hashes')
+})
+
 test('detectDshCmd: prefers dsh on PATH as a plain argv', () => {
-  // DSH_CLI is checked after PATH; simulate PATH hit by masking DSH_CLI.
+  // Environment overrides (MEMSEARCH_DSH_COMMAND_JSON, then DSH_CLI) are
+  // checked before PATH; mask DSH_CLI so this test exercises PATH discovery.
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   try {
@@ -1047,7 +1079,9 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   assert.equal(result.messages.length, 1, 'no memory message injected')
 })
 
-test('apply: empty search result keeps pre-step context unchanged while recall stays available', async () => {
+test('apply: empty search result keeps pre-step context unchanged while recall stays available', {
+  skip: process.platform === 'win32' && 'fixture routes the fake CLI through /bin/sh and /usr/bin/bash shims',
+}, async () => {
   await withInjectionFixture([], async ({ result, unchanged, registeredSkillNames, callLog }) => {
     assert.equal(unchanged, true, 'empty search result must not inject a marker')
     assert.equal(result.messages.length, 1)
@@ -1063,7 +1097,9 @@ test('apply: empty search result keeps pre-step context unchanged while recall s
   })
 })
 
-test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', async () => {
+test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', {
+  skip: process.platform === 'win32' && 'fixture routes the fake CLI through /bin/sh and /usr/bin/bash shims',
+}, async () => {
   await withInjectionFixture(
     [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],
     async ({ result, unchanged, registeredSkillNames, callLog }) => {
