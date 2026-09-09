@@ -24,6 +24,7 @@ class EmbeddingProvider(Protocol):
 # Provider registry: name -> (module_path, class_name)
 _PROVIDERS: dict[str, tuple[str, str]] = {
     "openai": ("memsearch.embeddings.openai", "OpenAIEmbedding"),
+    "orcarouter": ("memsearch.embeddings.orcarouter", "OrcaRouterEmbedding"),
     "google": ("memsearch.embeddings.google", "GoogleEmbedding"),
     "voyage": ("memsearch.embeddings.voyage", "VoyageEmbedding"),
     "jina": ("memsearch.embeddings.jina", "JinaEmbedding"),
@@ -37,6 +38,7 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
 # Kept here so callers can resolve the effective model without importing heavy deps.
 DEFAULT_MODELS: dict[str, str] = {
     "openai": "text-embedding-3-small",
+    "orcarouter": "openai/text-embedding-3-small",
     "google": "gemini-embedding-001",
     "voyage": "voyage-3-lite",
     "jina": "jina-embeddings-v4",
@@ -48,6 +50,7 @@ DEFAULT_MODELS: dict[str, str] = {
 
 _INSTALL_HINTS: dict[str, str] = {
     "openai": "pip install memsearch  (or: uv add memsearch)",
+    "orcarouter": "pip install memsearch  (or: uv add memsearch)",
     "google": 'pip install "memsearch[google]"  (or: uv add "memsearch[google]")',
     "voyage": 'pip install "memsearch[voyage]"  (or: uv add "memsearch[voyage]")',
     "jina": 'pip install "memsearch[jina]"  (or: uv add "memsearch[jina]")',
@@ -71,16 +74,18 @@ def get_provider(
     Parameters
     ----------
     name:
-        One of "openai", "google", "voyage", "ollama", "local", "onnx".
+        One of "openai", "orcarouter", "google", "voyage", "ollama", "local", "onnx".
     model:
         Override the default model for the provider.
     batch_size:
         Maximum number of texts per embedding API call.
         ``0`` means use the provider's built-in default.
     base_url:
-        Override the API base URL (currently only used by the openai provider).
+        Override the API base URL (currently only used by the openai and
+        orcarouter providers).
     api_key:
-        Override the API key (currently only used by the openai provider).
+        Override the API key (currently only used by the openai and
+        orcarouter providers).
     """
     if name not in _PROVIDERS:
         raise ValueError(f"Unknown embedding provider {name!r}. Available: {', '.join(sorted(_PROVIDERS))}")
@@ -100,7 +105,7 @@ def get_provider(
         kwargs["model"] = model
     if batch_size > 0:
         kwargs["batch_size"] = batch_size
-    if name == "openai":
+    if name in ("openai", "orcarouter"):
         if base_url:
             kwargs["base_url"] = base_url
         if api_key:
