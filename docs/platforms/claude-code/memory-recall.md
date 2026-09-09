@@ -126,6 +126,26 @@ memsearch index .memsearch/memory/ --force
 
 ---
 
+## Which Model Runs the Skill
+
+The plugin's three skills (`memory-recall`, `memory-config`, and `memory-to-skill`) use `context: fork` and leave `model` unset in their frontmatter. By default, they use `CLAUDE_CODE_SUBAGENT_MODEL` when set, or your main conversation's model otherwise.
+
+For example, to use Sonnet as the default for subagents, add this entry to the `env` object in your Claude Code `settings.json`:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+  }
+}
+```
+
+Start a new session to use the setting. It also affects other subagents, so it is not specific to this plugin.
+
+In Claude Code 2.1.251 and later, a per-invocation model or a frontmatter `model` takes precedence over this default. The plugin leaves `model` unset to preserve your choice of default. Claude Code also provides `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` to override model selections; see [the subagent model rules](https://code.claude.com/docs/en/sub-agents#choose-a-model) for details and exceptions.
+
+---
+
 ## Comparison with claude-mem's Recall
 
 Both memsearch and [claude-mem](https://github.com/thedotmack/claude-mem) provide memory recall for Claude Code, but the retrieval architecture differs significantly:

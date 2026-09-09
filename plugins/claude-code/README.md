@@ -222,6 +222,18 @@ When Claude detects that a user's question could benefit from past context, it a
 
 The main agent only sees the final summary — all intermediate search results, raw expand output, and transcript parsing happen inside the subagent.
 
+**Which model runs the skill.** The plugin's three skills leave `model` unset in their frontmatter. By default, they use `CLAUDE_CODE_SUBAGENT_MODEL` when set, or your main conversation's model otherwise. For example, to default subagents to Sonnet, add this entry to the `env` object in your Claude Code `settings.json`, then start a new session:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+  }
+}
+```
+
+This setting also affects other subagents. See [model selection](../../docs/platforms/claude-code/memory-recall.md#which-model-runs-the-skill) for precedence and overrides.
+
 Users can manually invoke the skill:
 
 ```

@@ -95,6 +95,7 @@ When modifying hooks/skills, keep in mind:
 - The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior. Milvus Lite falls back to one-time `index()` at session start
 - `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally, and sets `MEMSEARCH_NO_WATCH=1` to prevent the child process from interfering with the main session's watch
 - The `memory-recall` skill uses `context: fork` — the subagent has its own context window and does not see main conversation history
+- Leave `model` unset in the Claude Code skills' frontmatter so users can choose a default through `CLAUDE_CODE_SUBAGENT_MODEL`. See [skill model selection](docs/platforms/claude-code/memory-recall.md#which-model-runs-the-skill) for precedence and overrides
 - `transcript.py` lives in the plugin directory (not in core library) since it is entirely Claude Code JSONL-specific
 
 ## Key Design Decisions

@@ -263,5 +263,5 @@ plugins/claude-code/
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
 | `session-end.sh` | Asynchronously stops the Server watcher and cleans up plugin-owned background index processes. |
 | `derive-collection.sh` | Generates a deterministic per-project Milvus collection name from the project path (e.g., `ms_myproject_a1b2c3`). |
-| `SKILL.md` | The memory-recall skill definition. Uses `context: fork` to run in an isolated subagent. |
+| `SKILL.md` | The memory-recall skill definition. Uses `context: fork` to run in an isolated subagent and leaves `model` unset. See [model selection](memory-recall.md#which-model-runs-the-skill). |
 | `transcript.py` | Python JSONL parser for Claude Code conversations. Plugin-specific (not in core library); exercised by `tests/test_transcript.py`. The `memory-recall` skill's L3 drill-down uses the core `memsearch transcript` CLI (which auto-detects the format) rather than calling this file directly. |
