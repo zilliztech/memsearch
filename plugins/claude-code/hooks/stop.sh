@@ -194,6 +194,27 @@ if [ -n "$SUMMARY_FAILURE" ]; then
   SUMMARY="- Memory summary unavailable: ${SUMMARY_FAILURE}; transcript content was omitted. Use the transcript anchor for progressive disclosure."
 fi
 
+# Pre-write quality gate (Proposal 002): score the summary before appending.
+# Reject skips the write (the transcript itself retains the turn); any gate
+# failure — older memsearch without the `quality` subcommand, timeout, config
+# unreadable — fails open and writes normally.
+QUALITY_TAG=""
+if memsearch_available; then
+  QUALITY_ENABLED=$(_memsearch config get quality_filter.enabled 2>/dev/null || echo "")
+  if [ "$QUALITY_ENABLED" != "false" ]; then
+    QUALITY_JSON=$(printf '%s' "$SUMMARY" | timeout 5 _run_summarizer "${MEMSEARCH_CMD[@]}" quality --json-output --recent-file "$MEMORY_FILE" 2>/dev/null || true)
+    QUALITY_ACTION=$(printf '%s' "$QUALITY_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('action',''))" 2>/dev/null || true)
+    if [ "$QUALITY_ACTION" = "reject" ]; then
+      echo '{}'
+      exit 0
+    fi
+    if [ "$QUALITY_ACTION" = "degrade" ]; then
+      QUALITY_SCORE=$(printf '%s' "$QUALITY_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('score',''))" 2>/dev/null || true)
+      [ -n "$QUALITY_SCORE" ] && QUALITY_TAG=" quality:${QUALITY_SCORE}"
+    fi
+  fi
+fi
+
 # Append under a session heading, writing the heading lazily on the first
 # content-bearing Stop of this session (SessionStart no longer writes it
 # eagerly, so sessions without summaries leave no stub journals). The
@@ -204,7 +225,7 @@ fi
   fi
   echo "### $NOW"
   if [ -n "$SESSION_ID" ]; then
-    echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
+    echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID}${QUALITY_TAG} transcript:${TRANSCRIPT_PATH} -->"
   fi
   echo "$SUMMARY"
   echo ""

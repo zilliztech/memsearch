@@ -1497,3 +1497,48 @@ def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool)
         click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         click.echo(transcript_mod.format_turns(turns))
+
+
+@cli.command("quality")
+@click.option("--file", "-f", "file", default=None, type=click.Path(exists=True), help="Read candidate text from a file instead of stdin.")
+@click.option("--recent-file", "-r", default=None, type=click.Path(exists=True), help="Daily journal file to check for near-duplicate sections.")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON (default). Plain output is human-readable.")
+def quality_cmd(file: str | None, recent_file: str | None, json_output: bool) -> None:
+    """Score a candidate memory section before it is written (quality filter).
+
+    Reads the candidate section text from stdin (or --file), applies the
+    [quality_filter] penalties, and prints score/action/reasons (JSON with
+    --json-output, human-readable otherwise). Capture hooks append only when
+    action is "write" or "degrade". Pass --recent-file with the current day's
+    journal for near-duplicate detection.
+    """
+    from . import quality as quality_mod
+    from .io import read_utf8_text_replace
+
+    if file:
+        text = read_utf8_text_replace(file)
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        click.echo("Error: provide candidate text via stdin or --file.", err=True)
+        raise SystemExit(1)
+
+    recent_sections: list[str] = []
+    if recent_file:
+        recent_sections = quality_mod.extract_sections(read_utf8_text_replace(recent_file))
+
+    cfg = _safe_resolve_config()
+    settings = quality_mod.QualityFilterSettings(
+        enabled=cfg.quality_filter.enabled,
+        min_content_length=cfg.quality_filter.min_content_length,
+        degrade_threshold=cfg.quality_filter.degrade_threshold,
+        reject_threshold=cfg.quality_filter.reject_threshold,
+    )
+    verdict = quality_mod.evaluate_section(text, recent_sections, settings)
+    if json_output:
+        click.echo(json.dumps(verdict.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        click.echo(f"score:   {verdict.score}")
+        click.echo(f"action:  {verdict.action}")
+        for reason in verdict.reasons:
+            click.echo(f"reason:  {reason}")

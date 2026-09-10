@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 
-import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget } from '../index.js'
+import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, runQualityGate, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget } from '../index.js'
 
 async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
@@ -650,6 +650,107 @@ test('writeCapture + captureExists: writes shared format and dedups', () => {
     // dedup: same turn already captured
     assert.equal(captureExists(memoryDir, 'session-abc', 3), true)
     assert.equal(captureExists(memoryDir, 'session-abc', 4), false)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeCapture: quality tag lands in the anchor without breaking dedup', () => {
+  const tmp = os.tmpdir()
+  const dir = `${tmp}/memsearch-capture-quality-${process.pid}`
+  const memoryDir = `${dir}/memory`
+  try {
+    writeCapture(memoryDir, '- degraded note', 'session-q', 7, '/path/db.jsonl', 45)
+    const files = fs.readdirSync(memoryDir)
+    const content = fs.readFileSync(`${memoryDir}/${files[0]}`, 'utf-8')
+    assert.ok(content.includes('<!-- session:session-q turn:7 quality:45 db:/path/db.jsonl -->'), 'quality anchor')
+    assert.equal(captureExists(memoryDir, 'session-q', 7), true, 'dedup still matches')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('runQualityGate: parses verdict, passes --recent-file when the journal exists', (t) => {
+  // The gate shells out through bash; when no usable bash exists (e.g. the
+  // WSL default distro has no coreutils), skip — the pre-existing
+  // bash-dependent tests fail the same way on such hosts.
+  try {
+    execFileSync('bash', ['-c', 'true'], { stdio: 'ignore' })
+  } catch {
+    t.skip('bash unavailable')
+    return
+  }
+  const tmp = os.tmpdir()
+  const dir = `${tmp}/memsearch-quality-${process.pid}`
+  const memoryDir = `${dir}/memory`
+  try {
+    fs.mkdirSync(memoryDir, { recursive: true })
+    // Fake memsearch CLI: a shell script on PATH that records its argv and
+    // echoes a canned verdict.
+    const binDir = `${dir}/bin`
+    fs.mkdirSync(binDir, { recursive: true })
+    fs.writeFileSync(
+      `${binDir}/fake-memsearch`,
+      [
+        '#!/usr/bin/env bash',
+        'echo "$@" >> "$CAPTURE_ARGS"',
+        `echo '{"score":45,"action":"degrade","reasons":["meta"]}'`,
+      ].join('\n'),
+    )
+    fs.chmodSync(`${binDir}/fake-memsearch`, 0o755)
+    const argsFile = `${dir}/args.txt`
+    fs.writeFileSync(argsFile, '')
+    const prevPath = process.env.PATH
+    process.env.PATH = `${binDir}:${prevPath}`
+    process.env.CAPTURE_ARGS = argsFile
+    let sawRecent = false
+    try {
+      const verdict = runQualityGate('fake-memsearch', 'candidate body', memoryDir, undefined)
+      assert.deepEqual(verdict, { action: 'degrade', score: 45 })
+      const args = fs.readFileSync(argsFile, 'utf-8')
+      // No journal yet → no --recent-file flag.
+      assert.ok(!args.includes('--recent-file'), 'no recent flag without journal')
+      // Create today's journal and gate again.
+      const today = new Date().toISOString().slice(0, 10)
+      fs.writeFileSync(`${memoryDir}/${today}.md`, '# journal\n', 'utf-8')
+      fs.writeFileSync(argsFile, '')
+      const verdict2 = runQualityGate('fake-memsearch', 'candidate body', memoryDir, undefined)
+      assert.equal(verdict2.action, 'degrade')
+      sawRecent = fs.readFileSync(argsFile, 'utf-8').includes('--recent-file')
+    } finally {
+      process.env.PATH = prevPath
+      delete process.env.CAPTURE_ARGS
+    }
+    assert.ok(sawRecent, 'recent flag passed once journal exists')
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('runQualityGate: fails open (null) when the CLI has no quality subcommand', (t) => {
+  try {
+    execFileSync('bash', ['-c', 'true'], { stdio: 'ignore' })
+  } catch {
+    t.skip('bash unavailable')
+    return
+  }
+  const tmp = os.tmpdir()
+  const dir = `${tmp}/memsearch-quality-fail-${process.pid}`
+  const memoryDir = `${dir}/memory`
+  try {
+    const binDir = `${dir}/bin`
+    fs.mkdirSync(binDir, { recursive: true })
+    fs.writeFileSync(`${binDir}/old-memsearch`, '#!/usr/bin/env bash\nexit 1\n')
+    fs.chmodSync(`${binDir}/old-memsearch`, 0o755)
+    const prevPath = process.env.PATH
+    process.env.PATH = `${binDir}:${prevPath}`
+    try {
+      const warnings = []
+      assert.equal(runQualityGate('old-memsearch', 'body', memoryDir, { warn: (m) => warnings.push(m) }), null)
+      assert.equal(warnings.length, 1, 'warns once on gate failure')
+    } finally {
+      process.env.PATH = prevPath
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }

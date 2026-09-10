@@ -815,8 +815,44 @@ function captureExists(memoryDir, sessionId, turn) {
   return false
 }
 
+/**
+ * Run the pre-write quality gate (`memsearch quality`, Proposal 002) for a
+ * candidate capture body.
+ *
+ * Returns `{ action, score }`, or `null` to fail open (write normally) when
+ * the installed memsearch predates the `quality` subcommand, the config is
+ * unreadable, the call times out, or the filter is disabled in config. A
+ * gating failure must never lose a turn: the transcript anchor is the only
+ * durable record, so reject requires an authoritative `reject` action.
+ */
+function runQualityGate(memsearchCmd, body, memoryDir, logger) {
+  const enabled = readMemsearchConfigValue(memsearchCmd, 'quality_filter.enabled')
+  if (enabled.ok && enabled.value === 'false') return null
+  const todayFile = join(memoryDir, `${todayStr()}.md`)
+  const recentFlag = existsSync(todayFile) ? ` --recent-file '${shellEscape(todayFile)}'` : ''
+  try {
+    const result = execFileSync(
+      'bash',
+      ['-c', `${memsearchCmd} quality --json-output${recentFlag}`],
+      {
+        encoding: 'utf-8',
+        timeout: 5000,
+        input: body,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      },
+    )
+    const verdict = JSON.parse(result)
+    if (typeof verdict?.action !== 'string') return null
+    return { action: verdict.action, score: Number(verdict.score) }
+  } catch (error) {
+    // Older memsearch without the `quality` subcommand exits non-zero here.
+    logger?.warn?.(`[memsearch] quality gate unavailable (${error.message}); writing without scoring`)
+    return null
+  }
+}
+
 /** Append a captured turn to the daily memory file (shared 4-platform format). */
-function writeCapture(memoryDir, body, sessionId, turn, dbPath) {
+function writeCapture(memoryDir, body, sessionId, turn, dbPath, quality) {
   mkdirSync(memoryDir, { recursive: true })
   const today = todayStr()
   const hhmm = hhmmStr()
@@ -824,7 +860,10 @@ function writeCapture(memoryDir, body, sessionId, turn, dbPath) {
   if (!existsSync(file)) {
     writeFileSync(file, `# ${today}\n\n## Session ${hhmm}\n\n`, 'utf-8')
   }
-  const anchor = `<!-- session:${sessionId} turn:${turn} db:${dbPath} -->\n`
+  // `quality:` (when the gate degraded a section) sits after `turn:` so the
+  // `captureExists` prefix match on `<!-- session:… turn:… ` keeps working.
+  const qualityTag = quality !== undefined ? ` quality:${quality}` : ''
+  const anchor = `<!-- session:${sessionId} turn:${turn}${qualityTag} db:${dbPath} -->\n`
   const entry = `### ${hhmm}\n${anchor}${body}\n\n`
   appendFileSync(file, entry, 'utf-8')
 }
@@ -1248,7 +1287,22 @@ export function apply(ctx, config = {}) {
         body = `- Memory summary unavailable: ${reason}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
       }
     }
-    writeCapture(memoryDir, body, sessionId, turn, dbPath)
+    // Pre-write quality gate (Proposal 002): score the candidate section
+    // before appending. Reject skips the write entirely — the transcript
+    // anchor in the session log keeps the raw turn reachable — and degrade
+    // records the score in the section anchor.
+    let quality
+    const verdict = runQualityGate(memsearchCmd, body, memoryDir, ctx.logger)
+    if (verdict) {
+      if (verdict.action === 'reject') {
+        ctx.logger.warn(
+          `[memsearch] quality gate rejected turn capture (score ${verdict.score}); transcript anchor retains the turn`,
+        )
+        return
+      }
+      if (verdict.action === 'degrade') quality = verdict.score
+    }
+    writeCapture(memoryDir, body, sessionId, turn, dbPath, quality)
     // Index right after the write so the memory is searchable by the next
     // session (or by this one's later turns) instead of waiting for a future
     // boot-time index. The index is idempotent via chunk_hash dedup.
@@ -1351,6 +1405,9 @@ export { renderTurn }
 
 /** True when a session/turn anchor already exists in the memory dir. */
 export { captureExists }
+
+/** Run the pre-write quality gate against a candidate capture body. */
+export { runQualityGate }
 
 /** Append a captured turn to the daily memory file (shared format). */
 export { writeCapture }
