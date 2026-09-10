@@ -142,7 +142,17 @@ For example, to use Sonnet as the default for subagents, add this entry to the `
 
 Start a new session to use the setting. It also affects other subagents, so it is not specific to this plugin.
 
-In Claude Code 2.1.251 and later, a per-invocation model or a frontmatter `model` takes precedence over this default. The plugin leaves `model` unset to preserve your choice of default. Claude Code also provides `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` to override model selections; see [the subagent model rules](https://code.claude.com/docs/en/sub-agents#choose-a-model) for details and exceptions.
+In Claude Code 2.1.251 and later, an ordinary subagent's model is selected in this order: a per-invocation `model`, the agent or forked skill's frontmatter `model`, `CLAUDE_CODE_SUBAGENT_MODEL`, then the main conversation's model. Before 2.1.251, the environment variable came first, even over `model: inherit`. The plugin leaves `model` unset, so its forked skills use your configured default. Setting only `CLAUDE_CODE_SUBAGENT_MODEL` does not change the built-in Explore or Plan subagents.
+
+Every requested model is still checked against your organization's `availableModels` allowlist. If a blocked value is a model-family alias, Claude Code substitutes the newest allowed model in that family. Other blocked values, providers where substitution is unavailable, and families with no allowed model fall back to the inherited model.
+
+Claude Code 2.1.257 and later also supports `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`:
+
+- With both variables set, ordinary subagents and the built-in Explore and Plan subagents use `CLAUDE_CODE_SUBAGENT_MODEL`, ignoring per-invocation and frontmatter choices.
+- With only `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` set, subagents use the main conversation's model, although Explore keeps its model cap.
+- Conversation forks always use the main conversation's model. A `context: fork` skill with an explicit `model: inherit` does too, even when both variables are set. The MemSearch skills do not declare `model: inherit`; they omit `model`, so this exception does not apply to them.
+
+See [the Claude Code subagent model rules](https://code.claude.com/docs/en/sub-agents#choose-a-model) and [forked skill rules](https://code.claude.com/docs/en/skills#run-skills-in-a-subagent) for the authoritative behavior.
 
 ---
 
