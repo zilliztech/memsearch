@@ -622,26 +622,30 @@ def watch(
 ) -> None:
     """Watch PATHS for markdown changes and auto-index."""
     from .core import MemSearch
+    from .watcher_registry import WatcherRegistry
 
     state_path = resolve_index_state_path(paths)
-    cfg = _safe_resolve_config(
-        _build_cli_overrides(
-            provider=provider,
-            model=model,
-            batch_size=batch_size,
-            base_url=base_url,
-            api_key=api_key,
-            collection=collection,
-            milvus_uri=milvus_uri,
-            milvus_token=milvus_token,
-            debounce_ms=debounce_ms,
-            max_chunk_size=max_chunk_size,
-        ),
-        default_overrides=_build_cli_overrides(collection=default_collection),
-    )
+    registry = WatcherRegistry(paths)
+    if not registry.acquire():
+        click.echo("A watcher is already running for these paths.")
+        return
     ms = None
     watcher = None
     try:
+        cfg = _safe_resolve_config(
+            _build_cli_overrides(
+                provider=provider,
+                model=model,
+                batch_size=batch_size,
+                base_url=base_url,
+                api_key=api_key,
+                collection=collection,
+                milvus_uri=milvus_uri,
+                milvus_token=milvus_token,
+                debounce_ms=debounce_ms,
+                max_chunk_size=max_chunk_size,
+            )
+        )
         record_index_started(
             state_path,
             operation="watch",
@@ -721,6 +725,7 @@ def watch(
             watcher.stop()
         if ms is not None:
             ms.close()
+        registry.release()
 
 
 @cli.command()
