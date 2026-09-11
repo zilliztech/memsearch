@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 from contextlib import suppress
@@ -264,7 +265,11 @@ def index(
     description: str | None,
 ) -> None:
     """Index markdown files from PATHS."""
+    from .audit import prune
     from .core import MemSearch
+
+    with contextlib.suppress(Exception):  # retention pruning is best-effort
+        prune(retention_days=_safe_resolve_config().llm_audit.retention_days)
 
     state_path = resolve_index_state_path(paths)
     cfg = _safe_resolve_config(
@@ -859,6 +864,7 @@ def summarize(plugin: str, agent_name: str) -> None:
                 model=model,
                 base_url=provider_cfg.base_url or None,
                 api_key=provider_cfg.api_key or None,
+                audit_source=f"{plugin}-summarize",
             )
         )
     except (ConfigEnvVarError, ValueError) as e:
@@ -911,6 +917,57 @@ def stats(
     finally:
         if store is not None:
             store.close()
+
+
+@cli.command("audit")
+@click.option("--days", "-d", default=30, type=int, help="Window in days to aggregate (0 = all).")
+@click.option("--source", "-s", default=None, help="Only this source (e.g. dsh-summarize).")
+@click.option("--errors", "only_errors", is_flag=True, help="List recent failures with causes instead of aggregating.")
+@click.option("--limit", "-n", default=20, type=int, help="Max failure entries with --errors.")
+@click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
+def audit_cmd(
+    days: int,
+    source: str | None,
+    only_errors: bool,
+    limit: int,
+    json_output: bool,
+) -> None:
+    """Report background LLM usage recorded in the audit log."""
+    from . import audit as audit_mod
+
+    window = days or None
+    if only_errors:
+        entries = audit_mod.read_entries(
+            days=window, source=source, only_errors=True
+        )[-limit:]
+        if json_output:
+            click.echo(json.dumps(entries, indent=2, ensure_ascii=False))
+            return
+        if not entries:
+            click.echo("No failed background LLM calls recorded.")
+            return
+        for e in reversed(entries):
+            click.echo(
+                f"{e.get('ts')}  {e.get('source')}  [{e.get('provider')}]  {e.get('duration_ms')}ms\n"
+                f"    {e.get('error')}"
+            )
+        return
+
+    agg = audit_mod.report(days=window)
+    if source:
+        agg = {k: v for k, v in agg.items() if k == source}
+    if json_output:
+        click.echo(json.dumps(agg, indent=2, ensure_ascii=False))
+        return
+    if not agg:
+        click.echo("No background LLM calls recorded.")
+        return
+    click.echo(f"{'source':24} {'calls':>6} {'fail':>5} {'in_tok':>8} {'out_tok':>8} {'dur_ms':>9}")
+    for src, row in sorted(agg.items()):
+        click.echo(
+            f"{src:24} {row['calls']:>6} {row['failures']:>5} {row['input_tokens']:>8} "
+            f"{row['output_tokens']:>8} {row['total_duration_ms']:>9}"
+        )
 
 
 @cli.command()
