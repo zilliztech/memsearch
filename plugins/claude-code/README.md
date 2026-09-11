@@ -147,7 +147,7 @@ stateDiagram-v2
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start the Server `memsearch watch` singleton or a Lite one-shot index, inject recent daily logs as cold-start context via `additionalContext`, display config and index status in `systemMessage` |
-| **UserPromptSubmit** | command | no | 15s | Capability hint: returns `systemMessage` "[memsearch] Recall available if needed" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
+| **UserPromptSubmit** | command | no | 15s | Capability hint: returns "[memsearch] Recall available if needed" as `systemMessage` (visible to you) and as `additionalContext` (visible to Claude); skip if < 10 chars. No search — recall is handled by the memory-recall skill |
 | **Stop** | command | **yes** | 120s | Extract and summarize the last turn, lazily create its session heading, append the summary with session/turn anchors to the daily `.md`; index immediately only for Server |
 | **SessionEnd** | command | **yes** | 10s | Asynchronously stop the Server watcher and clean up plugin-owned background indexes, including a running Lite one-shot |
 
@@ -171,7 +171,7 @@ Fires on every user prompt before Claude processes it. This hook:
 
 1. **Extracts the prompt** from the hook input JSON.
 2. **Skips short prompts** (under 10 characters) — greetings and single words don't need memory hints.
-3. **Returns a lightweight capability hint.** Outputs `systemMessage: "[memsearch] Recall available if needed"` — a visible one-liner that keeps Claude aware of the memory system without performing a search or implying a match.
+3. **Returns a lightweight capability hint.** Outputs "[memsearch] Recall available if needed" twice: as `systemMessage`, the visible one-liner in your terminal, and as `hookSpecificOutput.additionalContext`, which is what actually reaches Claude on `UserPromptSubmit` (`systemMessage` alone is shown to the user only). This keeps Claude aware of the memory system without performing a search or implying a match.
 
 The actual memory retrieval is handled by the **[memory-recall skill](#how-the-skill-works)**, which Claude invokes automatically when it judges the user's question needs historical context.
 
