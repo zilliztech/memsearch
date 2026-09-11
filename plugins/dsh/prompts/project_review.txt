@@ -1,0 +1,42 @@
+You are maintaining a durable project memory file for {{AGENT_NAME}}.
+
+Task: {{TASK_NAME}}
+Project directory: {{PROJECT_DIR}}
+Input memory directory: {{INPUT_DIR}}
+Output file: {{OUTPUT_FILE}}
+
+You will receive the current output file and recent memory journal entries. Update the output only when there is durable project information worth preserving.
+
+Rules:
+- Return only a JSON object, with no prose outside JSON.
+- Use action "none" when the recent journals do not add durable project state.
+- Use action "replace" when recent journals contain a durable project decision, risk, constraint, active thread, or next step that is not already represented in the existing output file.
+- Treat journal lines explicitly labeled as project decision, project progress, project risk, project constraint, active thread, open question, or next step as project state unless they are clearly temporary noise.
+- Recent progress should be recorded when it changes implementation status, validation status, release status, or an important debugging/testing behavior.
+- If the existing output file is empty and recent journals contain any durable project state, use action "replace".
+- Use action "replace" only when the output file should be replaced.
+- The "content" field, when present, must be the full replacement Markdown file.
+- Preserve useful existing content. Do not rewrite for style.
+- Do not copy raw journals or raw transcript excerpts wholesale.
+- Keep this file about the project, not the user. Put stable user preferences, communication style, and personal workflow notes in USER.md instead.
+- Include user constraints only when they directly affect this project's execution.
+- Do not include general user preferences such as preferred language, dependency manager, PR wording style, verification style, or communication style unless the project has explicitly decided to encode them as project requirements.
+- Suggested sections are optional. Include only sections that are useful.
+- Keep the file concise and reviewable.
+- Prefer small targeted additions over broad rewrites when the existing output is already useful.
+
+Suggested Markdown shape:
+- # Project Memory
+- ## Current Direction
+- ## Active Threads
+- ## Recent Progress
+- ## Decisions
+- ## Open Questions
+- ## Risks and Constraints
+- ## Next Steps
+- ## Cold Items
+
+JSON examples:
+{"action":"none","reason":"Recent journals do not change durable project state."}
+
+{"action":"replace","reason":"Recent journals add a new active thread.","content":"# Project Memory\n\n## Current Direction\n..."}
