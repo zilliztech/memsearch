@@ -6,7 +6,29 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { detectDshCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
+import { detectDshCmd, detectMemsearchCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
+
+test('detectMemsearchCmd: explicit JSON argv override wins over PATH discovery', () => {
+  const previous = process.env.MEMSEARCH_CMD
+  try {
+    process.env.MEMSEARCH_CMD = JSON.stringify([process.execPath, 'fake-cli.cjs'])
+    assert.deepEqual(detectMemsearchCmd(), [process.execPath, 'fake-cli.cjs'])
+  } finally {
+    if (previous === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = previous
+  }
+})
+
+test('detectMemsearchCmd: malformed JSON argv override fails visibly', () => {
+  const previous = process.env.MEMSEARCH_CMD
+  try {
+    process.env.MEMSEARCH_CMD = '[invalid'
+    assert.throws(() => detectMemsearchCmd(), /must be valid JSON/)
+  } finally {
+    if (previous === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = previous
+  }
+})
 
 test('resolveExecutable: Windows skips cmd and bat shims for direct spawn', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'msr-exe-'))
@@ -32,42 +54,24 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
   const projectDir = `${root}/project`
   const memoryDir = `${root}/state/memory`
-  const fakeBin = `${root}/bin`
+  const recorder = `${root}/memsearch.cjs`
   const resultFile = `${root}/search-result.json`
   const callLog = `${root}/memsearch-calls.txt`
   fs.mkdirSync(projectDir, { recursive: true })
   fs.mkdirSync(memoryDir, { recursive: true })
-  fs.mkdirSync(fakeBin, { recursive: true })
+
   fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
   fs.writeFileSync(resultFile, JSON.stringify(searchResults), 'utf-8')
-  fs.writeFileSync(
-    `${fakeBin}/memsearch`,
-    '#!/bin/sh\n' +
-      'printf "%s\\n" "$*" >> "$MEMSEARCH_TEST_CALL_LOG"\n' +
-      'if [ "$MEMSEARCH_TEST_OLD_CORE" = "1" ] && echo " $* " | grep -q " --default-collection "; then\n' +
-      '  echo "Error: No such option: --default-collection" >&2\n' +
-      '  exit 2\n' +
-      'fi\n' +
-      'if [ "$1" = "config" ]; then exit 0; fi\n' +
-      'if [ "$1" = "search" ]; then\n' +
-      '  cat "$MEMSEARCH_TEST_RESULT"\n' +
-      '  exit 0\n' +
-      'fi\n' +
-      'exit 0\n',
-    'utf-8',
-  )
-  fs.chmodSync(`${fakeBin}/memsearch`, 0o755)
-  fs.writeFileSync(
-    `${fakeBin}/bash`,
-    '#!/bin/sh\n' +
-      'PATH="$MEMSEARCH_TEST_PATH"\n' +
-      'export PATH\n' +
-      'BASH_ENV=/dev/null\n' +
-      'export BASH_ENV\n' +
-      'exec /usr/bin/bash --noprofile --norc "$@"\n',
-    'utf-8',
-  )
-  fs.chmodSync(`${fakeBin}/bash`, 0o755)
+  fs.writeFileSync(recorder, `
+    const fs = require('node:fs')
+    const args = process.argv.slice(2)
+    fs.appendFileSync(process.env.MEMSEARCH_TEST_CALL_LOG, args.join(' ') + '\\n')
+    if (process.env.MEMSEARCH_TEST_OLD_CORE === '1' && args.includes('--default-collection')) {
+      console.error('Error: No such option: --default-collection')
+      process.exit(2)
+    }
+    if (args[0] === 'search') process.stdout.write(fs.readFileSync(process.env.MEMSEARCH_TEST_RESULT))
+  `, 'utf-8')
 
   try {
     const childSource = `
@@ -105,12 +109,11 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
       encoding: 'utf-8',
       env: {
         ...process.env,
-        PATH: `${fakeBin}:${process.env.PATH}`,
-        BASH_ENV: '/dev/null',
+        MEMSEARCH_CMD: JSON.stringify([process.execPath, recorder]),
+        MEMSEARCH_DSH_SUMMARIZE: '',
         MEMSEARCH_DIR: `${root}/state`,
         MEMSEARCH_PLUGIN_URL: new URL('../index.js', import.meta.url).href,
         MEMSEARCH_TEST_CALL_LOG: callLog,
-        MEMSEARCH_TEST_PATH: `${fakeBin}:/usr/bin:/bin`,
         MEMSEARCH_TEST_PROJECT: projectDir,
         MEMSEARCH_TEST_RESULT: resultFile,
         MEMSEARCH_TEST_OLD_CORE: oldCore ? '1' : '0',
@@ -200,8 +203,11 @@ test('detectDshCmd: DSH_CLI with trailing spaces is trimmed', () => {
 })
 
 test('summarizeTurn: explicit custom-llm mode dispatches to the LLM path', async () => {
-  // custom-llm mode spawns python3 summarize.py; without a real transcript we
-  // only assert it picks that branch (no crash before spawn).
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'msr-dispatch-'))
+  const shim = path.join(tmp, 'summary.cjs')
+  fs.writeFileSync(shim, "process.stdin.resume(); process.stdin.on('end', () => { console.error('custom-llm-recorder'); process.exitCode = 2 })", 'utf-8')
+  const previous = process.env.MEMSEARCH_PYTHON
+  process.env.MEMSEARCH_PYTHON = JSON.stringify([process.execPath, shim])
   const opts = { summarizeMode: 'custom-llm', agentName: 'X', summarizeProvider: '', summarizeModel: '' }
   const ctx = { logger: { warn: () => {} } }
   const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
@@ -211,16 +217,11 @@ test('summarizeTurn: explicit custom-llm mode dispatches to the LLM path', async
     await summarizeTurn(ctx, opts, render, process.cwd())
     assert.fail('expected custom-llm summarizer to fail (no provider configured)')
   } catch (error) {
-    // custom-llm path failure: summarize.py exits non-zero or times out, or
-    // python3 is missing — never a "dsh CLI not found" error.
-    assert.ok(
-      !/dsh CLI not found/.test(error.message),
-      `unexpected dsh CLI error: ${error.message}`,
-    )
-    assert.ok(
-      !/spawn .* ENOENT/.test(error.message),
-      `unexpected spawn ENOENT: ${error.message}`,
-    )
+    assert.match(error.message, /custom-llm-recorder/)
+  } finally {
+    if (previous === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = previous
+    fs.rmSync(tmp, { recursive: true, force: true })
   }
 })
 
@@ -1080,7 +1081,6 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
 })
 
 test('apply: empty search result keeps pre-step context unchanged while recall stays available', {
-  skip: process.platform === 'win32' && 'fixture routes the fake CLI through /bin/sh and /usr/bin/bash shims',
 }, async () => {
   await withInjectionFixture([], async ({ result, unchanged, registeredSkillNames, callLog }) => {
     assert.equal(unchanged, true, 'empty search result must not inject a marker')
@@ -1098,7 +1098,6 @@ test('apply: empty search result keeps pre-step context unchanged while recall s
 })
 
 test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', {
-  skip: process.platform === 'win32' && 'fixture routes the fake CLI through /bin/sh and /usr/bin/bash shims',
 }, async () => {
   await withInjectionFixture(
     [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],

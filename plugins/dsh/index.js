@@ -259,6 +259,22 @@ async function createMemoryMessage(ctx, text) {
 
 /** Detect the memsearch CLI as an executable plus fixed leading arguments. */
 function detectMemsearchCmd() {
+  const explicit = process.env.MEMSEARCH_CMD
+  if (explicit) {
+    if (explicit.trim().startsWith('[')) {
+      let argv
+      try {
+        argv = JSON.parse(explicit)
+      } catch {
+        throw new Error('MEMSEARCH_CMD must be valid JSON when specified as an argv array')
+      }
+      if (!Array.isArray(argv) || argv.length === 0 || argv.some((value) => typeof value !== 'string') || !argv[0]) {
+        throw new Error('MEMSEARCH_CMD must be a nonempty executable argv array')
+      }
+      return argv
+    }
+    return [explicit]
+  }
   const onPath = resolveExecutable('memsearch')
   if (onPath) return [onPath]
   const localUvx = join(runtimeHome(), '.local', 'bin', process.platform === 'win32' ? 'uvx.exe' : 'uvx')
@@ -288,13 +304,9 @@ function deriveCollection(projectDir, override) {
 
 function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
   try {
-    execFileSync(
-      'bash',
-      [
-        '-c',
-        `${memsearchCmd} config get milvus.collection ` +
-          `--default-collection '${shellEscape(collection)}'`,
-      ],
+    execCommandSync(
+      memsearchCmd,
+      ['config', 'get', 'milvus.collection', '--default-collection', collection],
       {
         cwd: projectDir,
         encoding: 'utf-8',
