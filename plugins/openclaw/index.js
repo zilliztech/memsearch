@@ -449,7 +449,7 @@ var index_default = {
       { name: "memory_transcript" }
     );
     if (autoRecall) {
-      api.on("before_agent_start", async () => {
+      api.on("before_prompt_build", async () => {
         try {
           const context = getRecentMemories(memoryDir);
           const skillHint = await getSkillCandidateHint();

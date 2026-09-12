@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +29,59 @@ function withEnv(key: string, value: string | undefined, fn: () => void): void {
       process.env[key] = prev;
     }
   }
+}
+
+async function withEnvAsync(
+  values: Record<string, string | undefined>,
+  fn: () => Promise<void>
+): Promise<void> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+function registerPluginHooks(pluginConfig: Record<string, unknown> = {}): Map<string, (...args: any[]) => any> {
+  const hooks = new Map<string, (...args: any[]) => any>();
+  plugin.register({
+    logger: {},
+    pluginConfig,
+    runtime: {
+      system: {
+        async runCommandWithTimeout(argv: string[]) {
+          if (argv[0] === "which") {
+            return { stdout: "/tmp/memsearch\n", stderr: "", code: 0 };
+          }
+          if (argv[0] === "bash" && argv[1]?.endsWith("derive-collection.sh")) {
+            return { stdout: "ms_hook_test\n", stderr: "", code: 0 };
+          }
+          return { stdout: "", stderr: "", code: 0 };
+        },
+      },
+    },
+    registerTool() {},
+    registerCli() {},
+    on(name: string, handler: (...args: any[]) => any) {
+      hooks.set(name, handler);
+    },
+  });
+  return hooks;
 }
 
 test("getMemsearchDir: defaults to <projectDir>/.memsearch", () => {
@@ -249,4 +308,95 @@ test("an old core fails clearly before a memory search is attempted", async () =
     else process.env.MEMSEARCH_NO_WATCH = previousNoWatch;
     rmSync(projectDir, { recursive: true, force: true });
   }
+});
+
+test("default registration uses the supported prompt hook and injects memory context", async () => {
+  const home = mkdtempSync(join(tmpdir(), "memsearch-openclaw-hooks-"));
+  const previousEnv = {
+    HOME: process.env.HOME,
+    MEMSEARCH_DIR: process.env.MEMSEARCH_DIR,
+    MEMSEARCH_NO_WATCH: process.env.MEMSEARCH_NO_WATCH,
+  };
+  const memoryDir = join(home, ".openclaw", "workspace", ".memsearch", "memory");
+  mkdirSync(memoryDir, { recursive: true });
+  writeFileSync(
+    join(memoryDir, "2026-09-12.md"),
+    "# 2026-09-12\n\n## Session 14:00\n\n### 14:01\n- Compatibility memory fixture.\n",
+    "utf-8"
+  );
+
+  try {
+    await withEnvAsync(
+      { HOME: home, MEMSEARCH_DIR: undefined, MEMSEARCH_NO_WATCH: undefined },
+      async () => {
+        const hooks = registerPluginHooks();
+        const retiredHook = "before_" + "agent_start";
+        assert.deepEqual(
+          [...hooks.keys()].sort(),
+          ["agent_end", "before_prompt_build", "session_start"]
+        );
+        assert.equal(hooks.has(retiredHook), false);
+
+        const result = await hooks.get("before_prompt_build")?.();
+        assert.match(result.prependContext, /Recent memories/);
+        assert.match(result.prependContext, /Compatibility memory fixture/);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    );
+    assert.deepEqual(
+      {
+        HOME: process.env.HOME,
+        MEMSEARCH_DIR: process.env.MEMSEARCH_DIR,
+        MEMSEARCH_NO_WATCH: process.env.MEMSEARCH_NO_WATCH,
+      },
+      previousEnv
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("autoRecall false omits the prompt hook", async () => {
+  const home = mkdtempSync(join(tmpdir(), "memsearch-openclaw-no-recall-"));
+  const previousEnv = {
+    HOME: process.env.HOME,
+    MEMSEARCH_DIR: process.env.MEMSEARCH_DIR,
+    MEMSEARCH_NO_WATCH: process.env.MEMSEARCH_NO_WATCH,
+  };
+  try {
+    await withEnvAsync(
+      { HOME: home, MEMSEARCH_DIR: undefined, MEMSEARCH_NO_WATCH: undefined },
+      async () => {
+        const hooks = registerPluginHooks({ autoRecall: false });
+        const retiredHook = "before_" + "agent_start";
+        assert.equal(hooks.has("before_prompt_build"), false);
+        assert.equal(hooks.has(retiredHook), false);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    );
+    assert.deepEqual(
+      {
+        HOME: process.env.HOME,
+        MEMSEARCH_DIR: process.env.MEMSEARCH_DIR,
+        MEMSEARCH_NO_WATCH: process.env.MEMSEARCH_NO_WATCH,
+      },
+      previousEnv
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("source and generated entrypoints contain only the supported prompt hook literal", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf-8");
+  const generated = readFileSync(new URL("./index.js", import.meta.url), "utf-8");
+  const retiredHook = "before_" + "agent_start";
+  const supportedHook = "before_prompt_build";
+  const literalCount = (text: string, hook: string) =>
+    [...text.matchAll(new RegExp(`api\\.on\\([\\s\\n]*[\"']${hook}[\"']`, "g"))].length;
+
+  assert.equal(literalCount(source, retiredHook), 0);
+  assert.equal(literalCount(source, supportedHook), 1);
+  assert.equal(literalCount(generated, retiredHook), 0);
+  assert.equal(literalCount(generated, supportedHook), 1);
 });

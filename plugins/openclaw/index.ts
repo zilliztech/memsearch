@@ -5,7 +5,7 @@
  * - memory_search tool: semantic search over past memories
  * - memory_get tool: expand a chunk to full context
  * - memory_transcript tool: parse original conversation from JSONL transcript
- * - before_agent_start hook: inject recent memories as cold-start context
+ * - before_prompt_build hook: inject recent memories as cold-start context
  * - agent_end hook: auto-capture per-turn summary (extract → summarize → write)
  * - CLI: `memsearch` subcommand (search, index, status)
  */
@@ -619,9 +619,9 @@ export default {
       { name: "memory_transcript" }
     );
 
-    // ----- Hook: before_agent_start — inject recent memories -----
+    // ----- Hook: before_prompt_build — inject recent memories -----
     if (autoRecall) {
-      api.on("before_agent_start", async () => {
+      api.on("before_prompt_build", async () => {
         try {
           const context = getRecentMemories(memoryDir);
           const skillHint = await getSkillCandidateHint();
