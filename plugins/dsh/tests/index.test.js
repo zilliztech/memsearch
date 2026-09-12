@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { detectDshCmd, detectMemsearchCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
+import { detectDshCmd, detectMemsearchCmd, detectPythonCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
 
 test('detectMemsearchCmd: explicit JSON argv override wins over PATH discovery', () => {
   const previous = process.env.MEMSEARCH_CMD
@@ -16,6 +16,29 @@ test('detectMemsearchCmd: explicit JSON argv override wins over PATH discovery',
   } finally {
     if (previous === undefined) delete process.env.MEMSEARCH_CMD
     else process.env.MEMSEARCH_CMD = previous
+  }
+})
+
+test('detectPythonCmd: uses the checkout venv next to MEMSEARCH_CMD on Windows', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'memsearch-python-'))
+  const scripts = path.join(root, 'Scripts')
+  const memsearch = path.join(scripts, 'memsearch.exe')
+  const python = path.join(scripts, 'python.exe')
+  const previousPython = process.env.MEMSEARCH_PYTHON
+  const previousMemsearch = process.env.MEMSEARCH_CMD
+  fs.mkdirSync(scripts)
+  fs.writeFileSync(memsearch, '')
+  fs.writeFileSync(python, '')
+  try {
+    delete process.env.MEMSEARCH_PYTHON
+    process.env.MEMSEARCH_CMD = memsearch
+    assert.deepEqual(detectPythonCmd(), [python])
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    if (previousPython === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = previousPython
+    if (previousMemsearch === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = previousMemsearch
   }
 })
 
@@ -347,7 +370,7 @@ test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', as
   fs.writeFileSync(
     shim,
     'import { writeFileSync } from "node:fs";\n' +
-    `writeFileSync(${JSON.stringify(argvFile)}, process.argv.slice(2).join("\\n"));\n` +
+    `writeFileSync(${JSON.stringify(argvFile)}, JSON.stringify({ args: process.argv.slice(2), agentName: process.env.MEMSEARCH_DSH_AGENT_NAME }));\n` +
     'process.stdin.resume();\n' +
     'process.stdin.on("end", () => process.exit(0));\n',
     'utf-8',
@@ -357,7 +380,7 @@ test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', as
     process.env.MEMSEARCH_PYTHON = JSON.stringify([process.execPath, shim])
     const opts = {
       summarizeMode: 'custom-llm',
-      agentName: 'AgentX',
+      agentName: 'Agent X',
       summarizeProvider: 'deepseek-zilliz',
       summarizeModel: 'deepseek-v4-pro',
     }
@@ -365,12 +388,13 @@ test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', as
     const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
     const summary = await summarizeTurn(ctx, opts, render, process.cwd())
     assert.equal(summary, null, 'recorder exits 0 with no stdout -> null summary')
-    const recorded = fs.readFileSync(argvFile, 'utf-8').trim().split('\n')
-    assert.ok(recorded[0].replaceAll('\\', '/').endsWith('scripts/summarize.py'), `first arg = summarize.py, got: ${recorded[0]}`)
-    const joined = recorded.join(' ')
-    assert.ok(joined.includes('--provider deepseek-zilliz'), `--provider forwarded: ${joined}`)
-    assert.ok(joined.includes('--model deepseek-v4-pro'), `--model forwarded: ${joined}`)
-    assert.ok(joined.includes('--agent-name AgentX'), `--agent-name forwarded: ${joined}`)
+    const recorded = JSON.parse(fs.readFileSync(argvFile, 'utf-8'))
+    assert.ok(recorded.args[0].replaceAll('\\', '/').endsWith('scripts/summarize.py'), `first arg = summarize.py, got: ${recorded.args[0]}`)
+    const joined = recorded.args.join(' ')
+    assert.ok(joined.includes('--provider=deepseek-zilliz'), `--provider forwarded: ${joined}`)
+    assert.ok(joined.includes('--model=deepseek-v4-pro'), `--model forwarded: ${joined}`)
+    assert.ok(!joined.includes('--agent-name'), `agent name must stay out of Windows-reparsed argv: ${joined}`)
+    assert.equal(recorded.agentName, 'Agent X', 'agent name is passed through the environment')
   } finally {
     fs.rmSync(shim, { force: true })
     try { fs.unlinkSync(argvFile) } catch { /* cleanup */ }
@@ -538,6 +562,8 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
   const prevProfile = process.env.USERPROFILE
+  const prevMemsearchCmd = process.env.MEMSEARCH_CMD
+  delete process.env.MEMSEARCH_CMD
   process.env.PATH = `${tmp}/memsearch-no-bin-${process.pid}`
   process.env.HOME = `${tmp}/memsearch-no-home-${process.pid}`
   process.env.USERPROFILE = process.env.HOME
@@ -551,6 +577,8 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
       { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'ok' }] } } },
       { type: 'turn/end', data: { turn: 1 } },
     ],
+    // DSH's current Session API exposes a durable log only through this method.
+    snapshotEvents() { return this.events },
   }
   try {
     // session/event fires with (session, event); capture drains asynchronously.
@@ -566,6 +594,8 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
   } finally {
     fs.rmSync(projDir, { recursive: true, force: true })
     process.env.PATH = prevPath
+    if (prevMemsearchCmd === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = prevMemsearchCmd
     if (prevHome === undefined) delete process.env.HOME
     else process.env.HOME = prevHome
     if (prevProfile === undefined) delete process.env.USERPROFILE
@@ -889,15 +919,16 @@ test('summarizeHeadless: spawn errors reject without a timeout race', async () =
   }
 })
 
-test('renderTurn: renders user/assistant/tool events into the shared format', () => {
+test('renderTurn: reads current DSH snapshotEvents into the shared format', () => {
+  const events = [
+    { type: 'turn/start', data: { turn: 7 } },
+    { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'hello there' }] } },
+    { type: 'tool/call', data: { name: 'bash' } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'hi back' }] } } },
+    { type: 'turn/end', data: { turn: 7 } },
+  ]
   const session = {
-    events: [
-      { type: 'turn/start', data: { turn: 7 } },
-      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'hello there' }] } },
-      { type: 'tool/call', data: { name: 'bash' } },
-      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'hi back' }] } } },
-      { type: 'turn/end', data: { turn: 7 } },
-    ],
+    snapshotEvents: () => events,
   }
   const render = renderTurn(session, { data: { turn: 7 } })
   assert.ok(render.includes('=== Turn 7 ==='), 'turn header')

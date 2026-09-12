@@ -35,9 +35,9 @@ import os
 import sys
 from pathlib import Path
 
-# The child inherits the host's console code page (e.g. cp1251 on ru-RU
-# Windows); summaries legitimately contain multiplication/approximation signs and CJK.
-# Force UTF-8 with replacement so printing the summary never crashes.
+# The child inherits the host console code page (for example cp1251 on a
+# Russian Windows installation), while model output is Unicode. Force UTF-8 so
+# valid summaries do not fail while crossing the Python-to-Node stdout pipe.
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
@@ -247,7 +247,11 @@ async def _summarize(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Summarize a DSH turn with memsearch-managed LLM.")
-    parser.add_argument("--agent-name", default="DeepSeek Harness", help="Agent display name.")
+    parser.add_argument(
+        "--agent-name",
+        default=os.environ.get("MEMSEARCH_DSH_AGENT_NAME", "DeepSeek Harness"),
+        help="Agent display name.",
+    )
     parser.add_argument("--provider", default="", help="Named [llm.providers.*] entry to use.")
     parser.add_argument("--model", default="", help="Override the LLM model.")
     parser.add_argument("--project-dir", default="", help="Project directory (config resolution anchor).")

@@ -130,6 +130,25 @@ function pythonLauncherAvailable(launcher, version) {
   }
 }
 
+/** Resolve the Python next to an explicitly configured MemSearch executable. */
+function pythonFromMemsearchCmd() {
+  if (process.platform !== 'win32') return null
+  const configured = process.env.MEMSEARCH_CMD
+  if (!configured) return null
+  let executable = configured
+  if (configured.trim().startsWith('[')) {
+    try {
+      const argv = JSON.parse(configured)
+      executable = Array.isArray(argv) && argv.length > 0 ? argv[0] : ''
+    } catch {
+      return null
+    }
+  }
+  if (!executable || basename(executable).toLowerCase() !== 'memsearch.exe') return null
+  const candidate = join(dirname(executable), 'python.exe')
+  return existsSync(candidate) ? [candidate] : null
+}
+
 /** Resolve Python for plugin helper scripts. */
 function detectPythonCmd() {
   const explicit = process.env.MEMSEARCH_PYTHON
@@ -145,6 +164,8 @@ function detectPythonCmd() {
       return [explicit]
     }
   }
+  const memsearchPython = pythonFromMemsearchCmd()
+  if (memsearchPython) return memsearchPython
   const python3 = resolveExecutable('python3')
   if (python3 && !(process.platform === 'win32' && /WindowsApps[\\/]python3\.exe$/i.test(python3))) {
     return [python3]
@@ -1070,16 +1091,20 @@ function collectSummarizerChild(child, {
 function summarizeCustomLlm(opts, render, projectDir) {
   const python = detectPythonCmd()
   if (!python) return Promise.reject(new Error('Python 3 not found; set MEMSEARCH_PYTHON to its executable path'))
+  // Native Windows Python reparses a spawned command line and splits a
+  // value such as "DeepSeek Harness" even when supplied as --key=value.
+  // Pass the display name through the environment instead of argv so argparse
+  // cannot exit before it reads stdin or writes a summary.
   const args = [
     join(PLUGIN_DIR, 'scripts', 'summarize.py'),
-    '--agent-name', opts.agentName,
-    '--project-dir', projectDir,
+    `--project-dir=${projectDir}`,
   ]
-  if (opts.summarizeProvider) args.push('--provider', opts.summarizeProvider)
-  if (opts.summarizeModel) args.push('--model', opts.summarizeModel)
+  if (opts.summarizeProvider) args.push(`--provider=${opts.summarizeProvider}`)
+  if (opts.summarizeModel) args.push(`--model=${opts.summarizeModel}`)
   const spec = commandSpec(python)
   const child = spawn(spec.file, [...spec.args, ...args], {
     cwd: projectDir,
+    env: { ...process.env, MEMSEARCH_DSH_AGENT_NAME: opts.agentName },
     detached: process.platform !== 'win32',
   })
   return collectSummarizerChild(child, {
