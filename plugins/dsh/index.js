@@ -30,6 +30,7 @@
  */
 
 import { execFile, execFileSync, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   appendFileSync,
   existsSync,
@@ -41,7 +42,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
@@ -66,9 +68,146 @@ const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h; runner's due-state gat
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Shell-escape a string for safe use inside single quotes. */
-function shellEscape(s) {
-  return String(s).replace(/'/g, "'\\''")
+/** User home used for cross-platform executable and skill-path fallbacks. */
+function runtimeHome() {
+  return process.env.HOME || process.env.USERPROFILE || homedir()
+}
+
+/** Resolve one executable without invoking a shell. */
+function resolveExecutable(command, options = {}) {
+  const platform = options.platform || process.platform
+  const pathValue = options.path === undefined ? process.env.PATH || '' : options.path
+  const pathExt = options.pathExt === undefined ? process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD' : options.pathExt
+  const extensions = platform === 'win32' && !extname(command)
+    ? pathExt.split(';')
+      .filter(Boolean)
+      // Node's direct process APIs cannot launch cmd/bat files. PowerShell
+      // shims are handled explicitly by detectDshCmd().
+      .filter((value) => !/^\.(?:bat|cmd)$/i.test(value))
+      .map((value) => value.toLowerCase())
+    : ['']
+  const roots = isAbsolute(command) || command.includes('/') || command.includes('\\')
+    ? ['']
+    : pathValue.split(delimiter).filter(Boolean)
+  for (const root of roots) {
+    const base = root ? join(root.replace(/^"|"$/g, ''), command) : command
+    for (const extension of extensions) {
+      const candidates = extension ? [base + extension, base + extension.toUpperCase()] : [base]
+      for (const candidate of candidates) {
+        if (existsSync(candidate)) return candidate
+      }
+    }
+  }
+  return null
+}
+
+/** Normalize a command string, argv array, or command spec. */
+function commandSpec(command) {
+  if (Array.isArray(command)) return { file: command[0], args: command.slice(1) }
+  if (command && typeof command === 'object') return { file: command.file, args: command.args || [] }
+  return { file: String(command), args: [] }
+}
+
+/** Execute a command spec synchronously without shell parsing. */
+function execCommandSync(command, args, options) {
+  const spec = commandSpec(command)
+  return execFileSync(spec.file, [...spec.args, ...args], options)
+}
+
+/** Execute a command spec asynchronously without shell parsing. */
+function execCommand(command, args, options, callback) {
+  const spec = commandSpec(command)
+  return execFile(spec.file, [...spec.args, ...args], options, callback)
+}
+
+/** Return whether a Python Launcher version selector can start an interpreter. */
+function pythonLauncherAvailable(launcher, version) {
+  try {
+    execFileSync(launcher, [version, '-c', 'import sys'], { stdio: 'ignore', timeout: 3000 })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Resolve the Python next to an explicitly configured MemSearch executable. */
+function pythonFromMemsearchCmd() {
+  if (process.platform !== 'win32') return null
+  const configured = process.env.MEMSEARCH_CMD
+  if (!configured) return null
+  let executable = configured
+  if (configured.trim().startsWith('[')) {
+    try {
+      const argv = JSON.parse(configured)
+      executable = Array.isArray(argv) && argv.length > 0 ? argv[0] : ''
+    } catch {
+      return null
+    }
+  }
+  if (!executable || basename(executable).toLowerCase() !== 'memsearch.exe') return null
+  const candidate = join(dirname(executable), 'python.exe')
+  return existsSync(candidate) ? [candidate] : null
+}
+
+/** Resolve Python for plugin helper scripts. */
+function detectPythonCmd() {
+  const explicit = process.env.MEMSEARCH_PYTHON
+  if (explicit) {
+    if (explicit.trim().startsWith('[')) {
+      try {
+        const argv = JSON.parse(explicit)
+        if (Array.isArray(argv) && argv.length > 0 && argv.every((value) => typeof value === 'string')) return argv
+      } catch {
+        // Fall through to executable discovery below.
+      }
+    } else {
+      return [explicit]
+    }
+  }
+  const memsearchPython = pythonFromMemsearchCmd()
+  if (memsearchPython) return memsearchPython
+  const python3 = resolveExecutable('python3')
+  if (python3 && !(process.platform === 'win32' && /WindowsApps[\\/]python3\.exe$/i.test(python3))) {
+    return [python3]
+  }
+  if (process.platform === 'win32') {
+    const launcher = resolveExecutable('py')
+    if (launcher) {
+      for (const version of ['-3.12', '-3']) {
+        if (pythonLauncherAvailable(launcher, version)) return [launcher, version]
+      }
+    }
+  }
+  const python = resolveExecutable('python')
+  return python ? [python] : null
+}
+
+/** Render a command spec for runtime skill instructions. */
+function commandForSkill(command) {
+  const spec = commandSpec(command)
+  const quote = (value) => `"${String(value).replace(/"/g, '\\"')}"`
+  return [spec.file, ...spec.args].map((value) => /\s/.test(value) ? quote(value) : value).join(' ')
+}
+
+/** Open a directory with the platform file manager and report launch errors. */
+function openDirectory(dir) {
+  const opener = process.platform === 'win32'
+    ? 'explorer.exe'
+    : process.platform === 'darwin'
+      ? 'open'
+      : 'xdg-open'
+  // A headless server may have no desktop opener at all; that is not an error
+  // (the response still carries the path for the client to show).
+  const executable = resolveExecutable(opener)
+  if (!executable) return Promise.resolve(false)
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, [dir], { detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve(true)
+    })
+  })
 }
 
 let dshLlmModule = null
@@ -139,58 +278,56 @@ async function createMemoryMessage(ctx, text) {
   })
 }
 
-/**
- * Detect the memsearch CLI command: installed binary on PATH first, then the
- * uvx fallback, then a bare `memsearch` best effort.
- *
- * `command -v` is resolved through bash so the check sees the same PATH the
- * later `bash -c` invocations use; calling `which` as a direct executable
- * bypasses shell built-ins and can miss the installed tool.
- */
+/** Detect the memsearch CLI as an executable plus fixed leading arguments. */
 function detectMemsearchCmd() {
-  const home = process.env.HOME || ''
-  const onPath = (cmd) => {
-    try {
-      execFileSync('bash', ['-c', `command -v ${cmd} >/dev/null 2>&1`], { stdio: 'pipe' })
-      return true
-    } catch {
-      return false
+  const explicit = process.env.MEMSEARCH_CMD
+  if (explicit) {
+    if (explicit.trim().startsWith('[')) {
+      let argv
+      try {
+        argv = JSON.parse(explicit)
+      } catch {
+        throw new Error('MEMSEARCH_CMD must be valid JSON when specified as an argv array')
+      }
+      if (!Array.isArray(argv) || argv.length === 0 || argv.some((value) => typeof value !== 'string') || !argv[0]) {
+        throw new Error('MEMSEARCH_CMD must be a nonempty executable argv array')
+      }
+      return argv
     }
+    return [explicit]
   }
-  if (onPath('memsearch')) return 'memsearch'
-  const uvxPath = join(home, '.local', 'bin', 'uvx')
-  const uvxBin = existsSync(uvxPath) ? uvxPath : (onPath('uvx') ? 'uvx' : '')
-  if (uvxBin) {
-    return `${uvxBin} --from 'memsearch[onnx]' memsearch`
-  }
-  return 'memsearch'
+  const onPath = resolveExecutable('memsearch')
+  if (onPath) return [onPath]
+  const localUvx = join(runtimeHome(), '.local', 'bin', process.platform === 'win32' ? 'uvx.exe' : 'uvx')
+  const uvx = existsSync(localUvx) ? localUvx : resolveExecutable('uvx')
+  if (uvx) return [uvx, '--from', 'memsearch[onnx]', 'memsearch']
+  return ['memsearch']
 }
 
-/** Derive the per-project Milvus collection name via the shared script. */
+/** Derive the per-project Milvus collection name without a platform shell. */
 function deriveCollection(projectDir, override) {
   if (override) return override
-  const script = join(PLUGIN_DIR, 'scripts', 'derive-collection.sh')
+  let absolute = resolve(projectDir)
   try {
-    const result = execFileSync('bash', [script, projectDir], {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return result.trim() || undefined
+    absolute = realpathSync(absolute)
   } catch {
-    return undefined
+    // Nonexistent paths keep their resolved absolute spelling, matching realpath -m.
   }
+  const sanitized = basename(absolute)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40)
+  const hash = createHash('sha256').update(absolute).digest('hex').slice(0, 8)
+  return `ms_${sanitized}_${hash}`
 }
 
 function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
   try {
-    execFileSync(
-      'bash',
-      [
-        '-c',
-        `${memsearchCmd} config get milvus.collection ` +
-          `--default-collection '${shellEscape(collection)}'`,
-      ],
+    execCommandSync(
+      memsearchCmd,
+      ['config', 'get', 'milvus.collection', '--default-collection', collection],
       {
         cwd: projectDir,
         encoding: 'utf-8',
@@ -223,9 +360,7 @@ function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
  */
 function readMemsearchConfigValue(memsearchCmd, key) {
   try {
-    // memsearchCmd may be a full command line (e.g. `uvx --from 'memsearch[onnx]' memsearch`),
-    // so route through bash rather than execFileSync's single executable.
-    const result = execFileSync('bash', ['-c', `${memsearchCmd} config get '${key}'`], {
+    const result = execCommandSync(memsearchCmd, ['config', 'get', key], {
       encoding: 'utf-8',
       timeout: 5000,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -330,12 +465,9 @@ function hhmmStr() {
 // Search / index (memsearch CLI)
 // ---------------------------------------------------------------------------
 
-/**
- * `--milvus-uri '<uri>'` CLI flag when a dedicated Milvus is configured for the
- * profile; empty otherwise (memsearch falls back to its own config).
- */
-function milvusUriFlag(milvusUri) {
-  return milvusUri ? `--milvus-uri '${shellEscape(milvusUri)}' ` : ''
+/** CLI arguments for a dedicated Milvus URI, or none for MemSearch config. */
+function milvusUriArgs(milvusUri) {
+  return milvusUri ? ['--milvus-uri', milvusUri] : []
 }
 
 /**
@@ -345,14 +477,16 @@ function milvusUriFlag(milvusUri) {
  */
 function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
   return new Promise((resolve) => {
-    const command =
-      `${memsearchCmd} search '${shellEscape(query)}' ` +
-      `--top-k ${SEARCH_TOP_K} --json-output ` +
-      `${milvusUriFlag(milvusUri)}` +
-      `--default-collection '${shellEscape(collection)}'`
-    execFile(
-      'bash',
-      ['-c', command],
+    const args = [
+      'search', query,
+      '--top-k', String(SEARCH_TOP_K),
+      '--json-output',
+      ...milvusUriArgs(milvusUri),
+      '--default-collection', collection,
+    ]
+    execCommand(
+      memsearchCmd,
+      args,
       { cwd: projectDir, timeout: SEARCH_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
       (error, stdout) => {
         if (error) return resolve(null)
@@ -370,14 +504,11 @@ function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
 /** Fire-and-forget `memsearch index` refresh for a project. */
 function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvusUri) {
   if (!existsSync(memoryDir)) return
-  const command =
-    `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
-    `${milvusUriFlag(milvusUri)}` +
-    `--default-collection '${shellEscape(collection)}'`
+  const args = ['index', memoryDir, ...milvusUriArgs(milvusUri), '--default-collection', collection]
   // Detached + unref so the index survives the DSH process: a headless or
   // one-shot session can exit right after the turn that wrote the memory, and
   // an ordinary child would be torn down with the parent before indexing.
-  const child = execFile('bash', ['-c', command], {
+  const child = execCommand(memsearchCmd, args, {
     cwd: projectDir,
     timeout: 120000,
     maxBuffer: 4 * 1024 * 1024,
@@ -390,24 +521,17 @@ function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvu
   child.unref()
 }
 
-/**
- * Run the shared maintenance runner (PROJECT.md / USER.md upkeep and
- * memory-to-skill distillation) for a project, fire-and-forget.
- *
- * Mirrors the other platform plugins: the runner is a due-state machine —
- * each task runs at most once per `min_interval_hours` and only when
- * `[plugins.dsh.<task>].enabled` is true in memsearch config. A missing
- * memsearch CLI or python3 is a no-op (the runner also checks internally).
- */
+/** Run optional PROJECT.md, USER.md, and memory-to-skill upkeep. */
 function runMaintenance(ctx, projectDir, memsearchDir) {
   const runner = join(PLUGIN_DIR, 'scripts', 'maintenance-runner.py')
-  if (!existsSync(runner)) return
-  const command =
-    `MEMSEARCH_NO_WATCH=1 python3 '${shellEscape(runner)}' ` +
-    `--platform dsh ` +
-    `--project-dir '${shellEscape(projectDir)}' ` +
-    `--memsearch-dir '${shellEscape(memsearchDir)}'`
-  const child = execFile('bash', ['-c', command], {
+  const python = detectPythonCmd()
+  if (!existsSync(runner) || !python) return
+  const child = execCommand(python, [
+    runner,
+    '--platform', 'dsh',
+    '--project-dir', projectDir,
+    '--memsearch-dir', memsearchDir,
+  ], {
     cwd: projectDir,
     timeout: 180000,
     maxBuffer: 4 * 1024 * 1024,
@@ -488,11 +612,11 @@ function resolveSkillInstallTarget(memsearchCmd, projectDir) {
       const paths = JSON.parse(read.value)
       if (Array.isArray(paths) && paths.length > 0) {
         const first = String(paths[0])
-        return join(first.startsWith('/') ? first : projectDir, first)
+        return isAbsolute(first) ? first : resolve(projectDir, first)
       }
     } catch { /* fall through to the DSH default */ }
   }
-  return join(process.env.HOME || '', '.agents', 'skills')
+  return join(runtimeHome(), '.agents', 'skills')
 }
 
 /** Hard cap for read-file payloads (protects the browser from huge files). */
@@ -604,10 +728,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       // skill-filesystem watcher picks up the new SKILL.md automatically.
       const projectDir = projectDirForSession(sessionId)
       const target = resolveSkillInstallTarget(memsearchCmd, projectDir)
-      const command =
-        `${memsearchCmd} skills install '${shellEscape(name)}' ` +
-        `--path '${shellEscape(target)}'`
-      const child = execFile('bash', ['-c', command], {
+      const child = execCommand(memsearchCmd, ['skills', 'install', name, '--path', target], {
         cwd: projectDir,
         timeout: 60000,
         maxBuffer: 4 * 1024 * 1024,
@@ -635,18 +756,13 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       if (!existsSync(dir)) {
         return sendJson(res, 404, { ok: false, error: `no such directory: ${dir}`, path: dir })
       }
-      // Open the directory in the local file manager (xdg-open on Linux). The
-      // response is success regardless of whether a desktop is present; the
-      // path is returned so the client can show it if nothing opens.
-      const child = execFile('xdg-open', [dir], {
-        detached: true,
-        stdio: 'ignore',
-        timeout: 10000,
-      }, (error) => {
-        if (error) ctx.logger.warn(`[memsearch] open dir failed: ${error.message}`)
-      })
-      child.unref()
-      return sendJson(res, 200, { ok: true, path: dir })
+      try {
+        const opened = await openDirectory(dir)
+        return sendJson(res, 200, { ok: true, opened, path: dir })
+      } catch (error) {
+        ctx.logger.warn(`[memsearch] open dir failed: ${error.message}`)
+        return sendJson(res, 500, { ok: false, error: error.message, path: dir })
+      }
     },
   })
 
@@ -973,15 +1089,22 @@ function collectSummarizerChild(child, {
  * `resolveSummarizeMode` into `opts.summarizeProvider` / `opts.summarizeModel`.
  */
 function summarizeCustomLlm(opts, render, projectDir) {
+  const python = detectPythonCmd()
+  if (!python) return Promise.reject(new Error('Python 3 not found; set MEMSEARCH_PYTHON to its executable path'))
+  // Native Windows Python reparses a spawned command line and splits a
+  // value such as "DeepSeek Harness" even when supplied as --key=value.
+  // Pass the display name through the environment instead of argv so argparse
+  // cannot exit before it reads stdin or writes a summary.
   const args = [
     join(PLUGIN_DIR, 'scripts', 'summarize.py'),
-    '--agent-name', opts.agentName,
-    '--project-dir', projectDir,
+    `--project-dir=${projectDir}`,
   ]
-  if (opts.summarizeProvider) args.push('--provider', opts.summarizeProvider)
-  if (opts.summarizeModel) args.push('--model', opts.summarizeModel)
-  const child = spawn('python3', args, {
+  if (opts.summarizeProvider) args.push(`--provider=${opts.summarizeProvider}`)
+  if (opts.summarizeModel) args.push(`--model=${opts.summarizeModel}`)
+  const spec = commandSpec(python)
+  const child = spawn(spec.file, [...spec.args, ...args], {
     cwd: projectDir,
+    env: { ...process.env, MEMSEARCH_DSH_AGENT_NAME: opts.agentName },
     detached: process.platform !== 'win32',
   })
   return collectSummarizerChild(child, {
@@ -995,28 +1118,48 @@ function summarizeCustomLlm(opts, render, projectDir) {
 /**
  * Resolve the dsh CLI command for one-shot headless summarization.
  *
- * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). We check
- * PATH first, then `DSH_CLI` as an explicit override, then the pnpm global
- * bin directory. Returns the command as an argv array (`[cmd, ...args]`),
- * or null when not found. The array form is required because `DSH_CLI` may
- * be an interpreter invocation (e.g. `node /path/to/bin.js`), which `spawn`
- * cannot treat as a single executable.
+ * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). Explicit
+ * environment overrides win first — `MEMSEARCH_DSH_COMMAND_JSON` (a JSON argv
+ * array), then `DSH_CLI` (a quoted shell-style command line) — then executable
+ * discovery on PATH, then the pnpm global bin directory. Returns the command
+ * as an argv array (`[cmd, ...args]`), or null when not found. The array form
+ * is required because the overrides may be an interpreter invocation (e.g.
+ * `node /path/to/bin.js`), which `spawn` cannot treat as a single executable.
  */
 function detectDshCmd() {
-  const onPath = (cmd) => {
+  const json = process.env.MEMSEARCH_DSH_COMMAND_JSON
+  if (json) {
     try {
-      execFileSync('bash', ['-c', `command -v ${cmd} >/dev/null 2>&1`], { stdio: 'pipe' })
-      return true
+      const argv = JSON.parse(json)
+      if (Array.isArray(argv) && argv.length > 0 && argv.every((value) => typeof value === 'string')) return argv
     } catch {
-      return false
+      // Fall through to the legacy override and executable discovery.
     }
   }
-  if (onPath('dsh')) return ['dsh']
   const fromEnv = process.env.DSH_CLI
-  if (fromEnv) return fromEnv.split(/\s+/).filter(Boolean)
-  const home = process.env.HOME || ''
-  const pnpmBin = join(home, '.local', 'share', 'pnpm')
-  if (existsSync(join(pnpmBin, 'dsh'))) return [join(pnpmBin, 'dsh')]
+  if (fromEnv) {
+    const argv = []
+    for (const match of fromEnv.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) {
+      argv.push(match[1] ?? match[2] ?? match[3])
+    }
+    if (argv.length > 0) return argv
+  }
+  if (process.platform === 'win32') {
+    const script = resolveExecutable('dsh.ps1')
+    const shell = resolveExecutable('pwsh') || resolveExecutable('powershell')
+    if (script && shell) return [shell, '-NoProfile', '-File', script]
+  }
+  const executable = resolveExecutable('dsh')
+  if (executable && !/\.(cmd|bat)$/i.test(executable)) return [executable]
+  const pnpmBin = join(runtimeHome(), '.local', 'share', 'pnpm')
+  const fallback = join(pnpmBin, process.platform === 'win32' ? 'dsh.ps1' : 'dsh')
+  if (existsSync(fallback)) {
+    if (process.platform === 'win32') {
+      const shell = resolveExecutable('pwsh') || resolveExecutable('powershell')
+      return shell ? [shell, '-NoProfile', '-File', fallback] : null
+    }
+    return [fallback]
+  }
   return null
 }
 
@@ -1123,10 +1266,11 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     .replace(/^﻿?---[\s\S]*?---\s*/u, '') // strip optional YAML frontmatter
     .replace(/^<!--[\s\S]*?-->\s*/u, '') // strip the human-facing metadata comment
     .replaceAll('{{AGENT_NAME}}', agentName)
-    .replaceAll('{{MEMSEARCH_CMD}}', memsearchCmd)
+    .replaceAll('{{MEMSEARCH_CMD}}', typeof memsearchCmd === 'string' ? memsearchCmd : commandForSkill(memsearchCmd))
+    .replaceAll('{{PYTHON_CMD}}', commandForSkill(detectPythonCmd() ?? ['python3']))
     .replaceAll('{{PLUGIN_DIR}}', PLUGIN_DIR)
     .replaceAll('{{PROJECT_DIR}}', projectDir)
-    .replaceAll('{{COLLECTION}}', collection || `$(bash "${PLUGIN_DIR}/scripts/derive-collection.sh")`)
+    .replaceAll('{{COLLECTION}}', collection || deriveCollection(projectDir, ''))
     .replaceAll('{{MILVUS_FLAG}}', opts.milvusUri ? `--milvus-uri "${opts.milvusUri}" ` : '')
   ctx.skills.register({
     name: 'memory-recall',
@@ -1442,6 +1586,18 @@ export function apply(ctx, config = {}) {
 // ---------------------------------------------------------------------------
 // Exports for tests / external use
 // ---------------------------------------------------------------------------
+
+/** Resolve an executable through PATH without shell parsing. */
+export { resolveExecutable }
+
+/** Detect the memsearch CLI as an argv spec. */
+export { detectMemsearchCmd }
+
+/** Derive the per-project Milvus collection name. */
+export { deriveCollection }
+
+/** Detect the Python interpreter used for plugin helper scripts. */
+export { detectPythonCmd }
 
 /** Detect the dsh CLI command used by `summarizeMode: dsh-headless`. */
 export { detectDshCmd }

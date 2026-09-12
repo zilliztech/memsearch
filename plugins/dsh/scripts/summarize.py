@@ -35,9 +35,9 @@ import os
 import sys
 from pathlib import Path
 
-# The child inherits the host's console code page (e.g. cp1251 on ru-RU
-# Windows); summaries legitimately contain multiplication/approximation signs and CJK.
-# Force UTF-8 with replacement so printing the summary never crashes.
+# The child inherits the host console code page (for example cp1251 on a
+# Russian Windows installation), while model output is Unicode. Force UTF-8 so
+# valid summaries do not fail while crossing the Python-to-Node stdout pipe.
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
@@ -92,7 +92,7 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
         reexec_env["MEMSEARCH_DSH_TRANSCRIPT"] = transcript
 
     memsearch_bin = _which("memsearch")
-    if memsearch_bin:
+    if memsearch_bin and not memsearch_bin.lower().endswith((".exe", ".cmd", ".bat", ".com")):
         try:
             first_line = Path(memsearch_bin).read_text(encoding="utf-8", errors="ignore").splitlines()[0]
             if first_line.startswith("#!"):
@@ -127,12 +127,20 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
 
 def _which(name: str) -> str | None:
     """Return the first PATH match for ``name`` (no shell involved)."""
+    candidates = [name]
+    if os.name == "nt" and not Path(name).suffix:
+        # Windows resolves bare names through PATHEXT; memsearch installs as
+        # memsearch.exe, uv as uv.exe. Insert the default set after any
+        # explicit suffix so the plain name is still tried first.
+        pathext = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
+        candidates.extend(f"{name}{ext}" for ext in pathext.split(os.pathsep) if ext)
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         if not directory:
             continue
-        candidate = Path(directory) / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
+        for candidate_name in candidates:
+            candidate = Path(directory) / candidate_name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
     return None
 
 
@@ -239,7 +247,11 @@ async def _summarize(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Summarize a DSH turn with memsearch-managed LLM.")
-    parser.add_argument("--agent-name", default="DeepSeek Harness", help="Agent display name.")
+    parser.add_argument(
+        "--agent-name",
+        default=os.environ.get("MEMSEARCH_DSH_AGENT_NAME", "DeepSeek Harness"),
+        help="Agent display name.",
+    )
     parser.add_argument("--provider", default="", help="Named [llm.providers.*] entry to use.")
     parser.add_argument("--model", default="", help="Override the LLM model.")
     parser.add_argument("--project-dir", default="", help="Project directory (config resolution anchor).")
