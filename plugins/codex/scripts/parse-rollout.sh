@@ -11,6 +11,10 @@
 #   response_item + function_call_output → tool result (skipped)
 #   response_item + message (role=user)  → user content blocks
 #   response_item + message (role=assistant) → assistant content blocks
+#
+# codex-cli >= 0.153 stopped writing the event_msg user_message/agent_message
+# duplicates, so response_item messages are the ONLY place a turn's text lives
+# there. Both shapes are read, and a text seen in both is emitted once.
 #   event_msg + task_started   → turn boundary
 #   event_msg + task_complete  → turn end
 #
@@ -51,15 +55,52 @@ def find_last_turn_start(lines):
             pass
     return None
 
+def message_text(payload):
+    """The text of a response_item message, or "" when it carries none."""
+    blocks = payload.get("content") or []
+    parts = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text") or ""
+        if text.strip():
+            parts.append(text)
+    return "\n".join(parts).strip()
+
+
+# The harness injects its own instructions as a user-role message. They are not
+# part of the conversation, and a summary built from them describes the system
+# prompt instead of the turn.
+INJECTED_PREFIXES = (
+    "# AGENTS.md instructions",
+    "<user_instructions>",
+    "<environment_context>",
+)
+
+
+def is_injected_instruction(text):
+    return text.startswith(INJECTED_PREFIXES) or "<INSTRUCTIONS>" in text[:200]
+
+
 def find_last_user_message(lines):
-    """Fallback: find the last user_message event."""
+    """Fallback: find the last user message, in either rollout shape."""
     for i in range(len(lines) - 1, -1, -1):
         try:
             obj = json.loads(lines[i])
-            if obj.get("type") == "event_msg":
-                payload = obj.get("payload", {})
-                if payload.get("type") == "user_message":
-                    return i
+            payload = obj.get("payload", {})
+            line_type = obj.get("type")
+            if line_type == "event_msg" and payload.get("type") == "user_message":
+                return i
+            # codex-cli >= 0.153 writes no user_message event, so a rollout
+            # without task_started would otherwise report no user message at
+            # all and the turn would never be summarized.
+            if (
+                line_type == "response_item"
+                and payload.get("type") == "message"
+                and payload.get("role") == "user"
+                and not is_injected_instruction(message_text(payload))
+            ):
+                return i
         except Exception:
             pass
     return None
@@ -67,6 +108,16 @@ def find_last_user_message(lines):
 def format_turn(lines):
     """Format a turn into structured text for LLM summarization."""
     output = ["=== Transcript of a conversation between User and Codex CLI ==="]
+    # (role, text) pairs already emitted. Versions that dual-write a message as
+    # both an event_msg and a response_item must not produce it twice.
+    seen = set()
+
+    def emit(role, text):
+        key = (role, text)
+        if not text or key in seen:
+            return
+        seen.add(key)
+        output.append(("[User]: " if role == "user" else "[Codex]: ") + text)
 
     for raw_line in lines:
         try:
@@ -81,22 +132,24 @@ def format_turn(lines):
             msg_type = payload.get("type", "")
 
             if msg_type == "user_message":
-                message = payload.get("message", "")
-                if message.strip():
-                    output.append(f"[User]: {message.strip()}")
+                emit("user", payload.get("message", "").strip())
 
             elif msg_type == "agent_message":
-                message = payload.get("message", "")
-                if message.strip():
-                    output.append(f"[Codex]: {message.strip()}")
+                emit("assistant", payload.get("message", "").strip())
 
             # Skip: task_started, task_complete, token_count, agent_reasoning
 
         elif line_type == "response_item":
             item_type = payload.get("type", "")
 
-            # Skip tool calls/results and response_item "message" duplicates.
-            # Skip: reasoning, session_meta, turn_context, web_search_call
+            if item_type == "message" and payload.get("role") in ("user", "assistant"):
+                text = message_text(payload)
+                if text and not is_injected_instruction(text):
+                    emit(payload["role"], text)
+
+            # Skip tool calls/results (function_call, function_call_output),
+            # developer-role messages, reasoning, session_meta, turn_context
+            # and web_search_call.
 
     return "\n".join(output)
 
