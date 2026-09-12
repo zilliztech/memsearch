@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { detectDshCmd, detectMemsearchCmd, detectPythonCmd, resolveExecutable, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, deriveCollection } from '../index.js'
+import { withIsolatedEnv } from './env.js'
 
 test('detectMemsearchCmd: explicit JSON argv override wins over PATH discovery', () => {
   const previous = process.env.MEMSEARCH_CMD
@@ -314,13 +315,11 @@ test('resolveSummarizeMode: auto with configured provider selects custom-llm', (
 test('summarizeTurn: default (no mode configured) dispatches to dsh-headless', async () => {
   // The default is dsh-headless: an omitted summarizeMode must boot the dsh
   // agent, so without a CLI it errors with "dsh CLI not found".
-  const prevCli = process.env.DSH_CLI
-  const prevPath = process.env.PATH
-  const prevHome = process.env.HOME
-  try {
-    delete process.env.DSH_CLI
-    process.env.PATH = '/nonexistent'
-    process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback
+  await withIsolatedEnv({
+    PATH: '/nonexistent',
+    HOME: '/nonexistent-home',
+    USERPROFILE: '/nonexistent-home',
+  }, async () => {
     const opts = { agentName: 'X', summarizeProvider: '', summarizeModel: '' } // no summarizeMode
     const ctx = { logger: { warn: () => {} } }
     const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
@@ -328,23 +327,15 @@ test('summarizeTurn: default (no mode configured) dispatches to dsh-headless', a
       summarizeTurn(ctx, opts, render, process.cwd()),
       /dsh CLI not found/,
     )
-  } finally {
-    if (prevCli === undefined) delete process.env.DSH_CLI
-    else process.env.DSH_CLI = prevCli
-    process.env.PATH = prevPath
-    if (prevHome === undefined) delete process.env.HOME
-    else process.env.HOME = prevHome
-  }
+  })
 })
 
 test('summarizeTurn: dsh-headless mode without CLI errors visibly', async () => {
-  const prevCli = process.env.DSH_CLI
-  const prevPath = process.env.PATH
-  const prevHome = process.env.HOME
-  try {
-    delete process.env.DSH_CLI
-    process.env.PATH = '/nonexistent'
-    process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback
+  await withIsolatedEnv({
+    PATH: '/nonexistent',
+    HOME: '/nonexistent-home',
+    USERPROFILE: '/nonexistent-home',
+  }, async () => {
     const opts = { summarizeMode: 'dsh-headless', agentName: 'X', summarizeProvider: '', summarizeModel: '' }
     const ctx = { logger: { warn: () => {} } }
     const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
@@ -352,13 +343,7 @@ test('summarizeTurn: dsh-headless mode without CLI errors visibly', async () => 
       summarizeTurn(ctx, opts, render, process.cwd()),
       /dsh CLI not found/,
     )
-  } finally {
-    if (prevCli === undefined) delete process.env.DSH_CLI
-    else process.env.DSH_CLI = prevCli
-    process.env.PATH = prevPath
-    if (prevHome === undefined) delete process.env.HOME
-    else process.env.HOME = prevHome
-  }
+  })
 })
 
 test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', async () => {
@@ -440,11 +425,8 @@ test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error'
 
 test('summarizeTurn: custom-llm normalizes stdin and preserves split UTF-8 stdout', async () => {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-custom-unicode-`)
-  const fakeBin = `${root}/bin`
   const recorder = `${root}/recorder.mjs`
   const stdinFile = `${root}/stdin.txt`
-  const prevPath = process.env.PATH
-  fs.mkdirSync(fakeBin)
   fs.writeFileSync(
     recorder,
     'import { writeFileSync } from "node:fs";\n' +
@@ -454,43 +436,34 @@ test('summarizeTurn: custom-llm normalizes stdin and preserves split UTF-8 stdou
       `process.stdin.on("end", () => { writeFileSync(${JSON.stringify(stdinFile)}, input, "utf8"); const bytes = Buffer.from("总结 × 😀", "utf8"); process.stdout.write(bytes.subarray(0, 2)); setImmediate(() => { process.stdout.write(bytes.subarray(2)); process.exit(0); }); });\n`,
     'utf-8',
   )
-  fs.writeFileSync(
-    `${fakeBin}/python3`,
-    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(recorder)}\n`,
-    'utf-8',
-  )
-  fs.chmodSync(`${fakeBin}/python3`, 0o755)
   try {
-    process.env.PATH = `${fakeBin}:/usr/bin:/bin`
-    const opts = { summarizeMode: 'custom-llm', agentName: 'X' }
-    const ctx = { logger: { warn: () => {} } }
-    const summary = await summarizeTurn(ctx, opts, `low:\udc98 pair:😀`, process.cwd())
-    assert.equal(summary, '总结 × 😀')
-    assert.equal(fs.readFileSync(stdinFile, 'utf-8'), 'low:� pair:😀')
+    await withIsolatedEnv({ MEMSEARCH_PYTHON: JSON.stringify([process.execPath, recorder]) }, async () => {
+      const opts = { summarizeMode: 'custom-llm', agentName: 'X' }
+      const ctx = { logger: { warn: () => {} } }
+      const summary = await summarizeTurn(ctx, opts, `low:\udc98 pair:😀`, process.cwd())
+      assert.equal(summary, '总结 × 😀')
+      assert.equal(fs.readFileSync(stdinFile, 'utf-8'), 'low:� pair:😀')
+    })
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
-    process.env.PATH = prevPath
   }
 })
 
 test('summarizeTurn: custom-llm rejects an early stdin close', async () => {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-custom-epipe-`)
-  const fakeBin = `${root}/bin`
-  const prevPath = process.env.PATH
-  fs.mkdirSync(fakeBin)
-  fs.writeFileSync(`${fakeBin}/python3`, '#!/bin/sh\nexit 0\n', 'utf-8')
-  fs.chmodSync(`${fakeBin}/python3`, 0o755)
+  const recorder = `${root}/exit.mjs`
+  fs.writeFileSync(recorder, 'process.exit(0)\n', 'utf-8')
   try {
-    process.env.PATH = `${fakeBin}:/usr/bin:/bin`
-    const opts = { summarizeMode: 'custom-llm', agentName: 'X', summarizeTimeoutMs: 1000 }
-    const ctx = { logger: { warn: () => {} } }
-    await assert.rejects(
-      summarizeTurn(ctx, opts, 'x'.repeat(8 * 1024 * 1024), process.cwd()),
-      /EPIPE|write/i,
-    )
+    await withIsolatedEnv({ MEMSEARCH_PYTHON: JSON.stringify([process.execPath, recorder]) }, async () => {
+      const opts = { summarizeMode: 'custom-llm', agentName: 'X', summarizeTimeoutMs: 1000 }
+      const ctx = { logger: { warn: () => {} } }
+      await assert.rejects(
+        summarizeTurn(ctx, opts, 'x'.repeat(8 * 1024 * 1024), process.cwd()),
+        /EPIPE|write/i,
+      )
+    })
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
-    process.env.PATH = prevPath
   }
 })
 
@@ -615,11 +588,15 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
   // Default summarizeEnabled:true + auto resolves headless with no CLI → error
   // path in processTurn → unavailable note.
   const prevCli = process.env.DSH_CLI
+  const prevDshCommandJson = process.env.MEMSEARCH_DSH_COMMAND_JSON
+  const prevMemsearchCmd = process.env.MEMSEARCH_CMD
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
   const prevProfile = process.env.USERPROFILE
   try {
     delete process.env.DSH_CLI
+    delete process.env.MEMSEARCH_DSH_COMMAND_JSON
+    delete process.env.MEMSEARCH_CMD
     process.env.PATH = '/nonexistent'
     process.env.HOME = '/nonexistent-home' // mask pnpm-global dsh fallback (would boot a real agent)
     process.env.USERPROFILE = '/nonexistent-home' // and mask uvx fallback on Windows
@@ -646,6 +623,10 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
     fs.rmSync(projDir, { recursive: true, force: true })
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
+    if (prevDshCommandJson === undefined) delete process.env.MEMSEARCH_DSH_COMMAND_JSON
+    else process.env.MEMSEARCH_DSH_COMMAND_JSON = prevDshCommandJson
+    if (prevMemsearchCmd === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = prevMemsearchCmd
     process.env.PATH = prevPath
     if (prevHome === undefined) delete process.env.HOME
     else process.env.HOME = prevHome
@@ -665,11 +646,15 @@ test('apply: multi-project capture writes to each project memory dir', async () 
     on: (name, fn) => { listeners[name] = fn },
   }
   const prevCli = process.env.DSH_CLI
+  const prevDshCommandJson = process.env.MEMSEARCH_DSH_COMMAND_JSON
+  const prevMemsearchCmd = process.env.MEMSEARCH_CMD
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
   const prevProfile = process.env.USERPROFILE
   try {
     delete process.env.DSH_CLI
+    delete process.env.MEMSEARCH_DSH_COMMAND_JSON
+    delete process.env.MEMSEARCH_CMD
     process.env.PATH = '/nonexistent'
     // Mask both home variables so no real uvx/memsearch child starts and locks
     // the temp project dirs on Windows.
@@ -702,6 +687,10 @@ test('apply: multi-project capture writes to each project memory dir', async () 
     fs.rmSync(projB, { recursive: true, force: true })
     if (prevCli === undefined) delete process.env.DSH_CLI
     else process.env.DSH_CLI = prevCli
+    if (prevDshCommandJson === undefined) delete process.env.MEMSEARCH_DSH_COMMAND_JSON
+    else process.env.MEMSEARCH_DSH_COMMAND_JSON = prevDshCommandJson
+    if (prevMemsearchCmd === undefined) delete process.env.MEMSEARCH_CMD
+    else process.env.MEMSEARCH_CMD = prevMemsearchCmd
     process.env.PATH = prevPath
     if (prevHome === undefined) delete process.env.HOME
     else process.env.HOME = prevHome
