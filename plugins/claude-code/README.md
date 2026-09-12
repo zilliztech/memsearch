@@ -123,7 +123,7 @@ stateDiagram-v2
     state Prompting {
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
-        Hint --> ClaudeProcesses: "[memsearch] Recall available if needed"
+        Hint --> ClaudeProcesses: systemMessage and additionalContext carry "[memsearch] Recall available if needed"
         ClaudeProcesses --> MemoryRecall: needs context?
         MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
