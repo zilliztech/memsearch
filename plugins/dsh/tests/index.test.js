@@ -388,6 +388,34 @@ test('summarizeTurn: custom-llm forwards --provider/--model to summarize.py', as
   }
 })
 
+test('summarizeTurn: custom-llm honors summarizeTimeoutMs overrides', async () => {
+  const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-custom-timeout-`)
+  const shim = `${root}/slow-summary.mjs`
+  fs.writeFileSync(
+    shim,
+    'process.stdin.resume();\n' +
+      'process.stdin.on("end", () => setTimeout(() => { process.stdout.write("summary"); process.exit(0); }, 100));\n',
+    'utf-8',
+  )
+  const ctx = { logger: { warn: () => {} } }
+  const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
+  try {
+    await withIsolatedEnv({ MEMSEARCH_PYTHON: JSON.stringify([process.execPath, shim]) }, async () => {
+      const base = { summarizeMode: 'custom-llm', agentName: 'X' }
+      await assert.rejects(
+        summarizeTurn(ctx, { ...base, summarizeTimeoutMs: 30 }, render, process.cwd()),
+        /summarization timed out/,
+      )
+      assert.equal(
+        await summarizeTurn(ctx, { ...base, summarizeTimeoutMs: 500 }, render, process.cwd()),
+        'summary',
+      )
+    })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error', async () => {
   // A failing summarize.py must reject with its stderr message (visible), not
   // silently resolve null/empty — so the caller writes the unavailable note

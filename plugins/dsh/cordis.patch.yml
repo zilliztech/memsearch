@@ -22,6 +22,8 @@
         #   captureEnabled (bool, default true)   — capture completed turns
         #   injectEnabled (bool, default true)    — inject returned memory candidates
         #   summarizeEnabled (bool, default true) — summarize turns before writing
+        #   summarizeTimeoutMs (integer, default 30000) — timeout for one summary;
+        #       increase for slower cloud models (e.g. 120000)
         #   summarizeMode (string, default 'auto')
         #       -> 'auto'         if [plugins.dsh.summarize] provider is set in
         #                          memsearch config → custom-llm, else

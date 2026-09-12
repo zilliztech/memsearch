@@ -101,6 +101,7 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | `injectEnabled` | bool | `true` | Inject returned memory candidates before each turn's first step. |
 | `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
 | `summarizeMode` | string | `auto` | Summarizer backend. `auto` (default) mirrors the other platform plugins: if `[plugins.dsh.summarize] provider` is set in memsearch config, it uses `custom-llm`; otherwise `dsh-headless` (zero-config DSH agent). Explicit `dsh-headless` / `custom-llm` pin the backend. |
+| `summarizeTimeoutMs` | integer | `30000` | Maximum time for one summary. Set a larger value (for example `120000`) in the profile patch for slower cloud providers. |
 
 Everything else — provider/model, Milvus, collection, memory dir — comes from
 **memsearch config / environment**, exactly like the other platform plugins
@@ -142,7 +143,8 @@ Example override layer (add this to the profile's own `cordis.patch.yml`):
 ```yaml
 - id: memsearch
   config:
-    summarizeMode: dsh-headless   # pin the headless backend (default is auto)
+    summarizeMode: dsh-headless       # pin the headless backend (default is auto)
+    summarizeTimeoutMs: 120000        # allow slower cloud models up to two minutes
 ```
 
 ### Summarization modes
