@@ -190,8 +190,7 @@ class MilvusStore:
         from pymilvus import AnnSearchRequest, RRFRanker
 
         # BM25 crashes on empty collections (avgdl=0 → NaN). See #306.
-        stats = self._client.get_collection_stats(self._collection)
-        if int(stats.get("row_count", 0)) == 0:
+        if self.count() == 0:
             return []
 
         req_kwargs: dict[str, Any] = {}
@@ -287,9 +286,19 @@ class MilvusStore:
         )
 
     def count(self) -> int:
-        """Return total number of stored chunks."""
-        stats = self._client.get_collection_stats(self._collection)
-        return stats.get("row_count", 0)
+        """Return total number of stored chunks.
+
+        ``get_collection_stats()["row_count"]`` only counts sealed segments, so
+        on Milvus Server freshly upserted rows read as 0 until Milvus seals them
+        (#534). Count stored rows with a strong-consistency query instead.
+        """
+        results = self._client.query(
+            collection_name=self._collection,
+            filter="",
+            output_fields=["count(*)"],
+            consistency_level="Strong",
+        )
+        return int(results[0]["count(*)"]) if results else 0
 
     def drop(self) -> None:
         """Drop the entire collection."""

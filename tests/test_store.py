@@ -49,6 +49,36 @@ def test_upsert_and_search(store: MilvusStore):
     assert results[0]["content"] == "Hello world"
 
 
+def test_unsealed_rows_are_counted_and_searchable(store: MilvusStore, monkeypatch):
+    """On Milvus Server, get_collection_stats()["row_count"] only counts sealed
+    segments, so freshly upserted rows read as 0 until Milvus seals them (#534).
+    Search and count must still see stored rows."""
+    store.upsert(
+        [
+            {
+                "embedding": [1.0, 0.0, 0.0, 0.0],
+                "content": "Fresh unsealed chunk",
+                "source": "fresh.md",
+                "heading": "",
+                "chunk_hash": "fresh1",
+                "heading_level": 0,
+                "start_line": 1,
+                "end_line": 1,
+            }
+        ]
+    )
+    monkeypatch.setattr(store._client, "get_collection_stats", lambda *a, **k: {"row_count": 0})
+
+    assert store.count() == 1
+    results = store.search([1.0, 0.0, 0.0, 0.0], query_text="fresh", top_k=1)
+    assert [r["content"] for r in results] == ["Fresh unsealed chunk"]
+
+
+def test_search_empty_collection_returns_empty(store: MilvusStore):
+    assert store.count() == 0
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="anything", top_k=5) == []
+
+
 def test_delete_by_source(store: MilvusStore):
     chunks = [
         {
