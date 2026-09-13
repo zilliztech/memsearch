@@ -117,6 +117,23 @@ Everything else — provider/model, Milvus, collection, memory dir — comes fro
 - **Memory dir** → `MEMSEARCH_DIR` env (explicit → global scope), else
   `<project>/.memsearch`.
 
+### LLM audit and fallback triage
+
+MemSearch writes best-effort background-LLM records to
+`<project>/.memsearch/.llm-audit.jsonl`. DSH records both `custom-llm` and
+`dsh-headless` calls, including a session/turn context, duration, backend, and
+failure cause. Audit writes never change capture or fallback behavior.
+
+```toml
+[llm_audit]
+enabled = true
+retention_days = 90
+```
+
+Use `memsearch audit --days 30` for grouped usage, or
+`memsearch audit --errors --days 1` to triage unavailable summaries. Token
+counts are omitted when the invoked provider does not return them.
+
 ### Maintenance tasks (PROJECT.md / USER.md / skills)
 
 Optional background upkeep, aligned with the other platform plugins. Each task

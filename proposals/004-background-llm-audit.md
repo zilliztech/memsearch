@@ -1,7 +1,7 @@
 # Proposal 004: Background LLM call audit
 
-> Status: **in progress — core (Python) implemented**; remaining: DSH JS-side
-> hook for `dsh-headless` mode, web dock widget.
+> Status: **core and DSH implemented**; remaining: hooks for the other platform
+> plugins and the optional web dock widget.
 > Scope: core library + all platform plugins
 > Inspired by dsh-mneme `llmAudit` (v0.4.6, on by default there).
 
