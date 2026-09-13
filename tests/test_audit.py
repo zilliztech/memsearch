@@ -74,8 +74,14 @@ def test_report_aggregates_by_source(tmp_path: Path) -> None:
     _write(
         audit.audit_path(tmp_path),
         [
-            {"ts": "2026-09-09T00:00:00+00:00", "source": "s", "status": "ok", "duration_ms": 100,
-             "input_tokens": 10, "output_tokens": 5},
+            {
+                "ts": "2026-09-09T00:00:00+00:00",
+                "source": "s",
+                "status": "ok",
+                "duration_ms": 100,
+                "input_tokens": 10,
+                "output_tokens": 5,
+            },
             {"ts": "2026-09-09T01:00:00+00:00", "source": "s", "status": "error", "duration_ms": 50},
             {"ts": "2026-09-09T02:00:00+00:00", "source": "t", "status": "ok"},
         ],

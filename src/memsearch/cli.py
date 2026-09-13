@@ -937,9 +937,7 @@ def audit_cmd(
 
     window = days or None
     if only_errors:
-        entries = audit_mod.read_entries(
-            days=window, source=source, only_errors=True
-        )[-limit:]
+        entries = audit_mod.read_entries(days=window, source=source, only_errors=True)[-limit:]
         if json_output:
             click.echo(json.dumps(entries, indent=2, ensure_ascii=False))
             return
