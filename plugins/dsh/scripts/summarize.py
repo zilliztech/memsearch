@@ -232,7 +232,12 @@ def _resolve_llm_settings(config, provider_arg: str, model_arg: str) -> tuple[st
 
 
 async def _summarize(
-    prompt: str, llm_provider: str, model: str | None, base_url: str | None, api_key: str | None
+    prompt: str,
+    llm_provider: str,
+    model: str | None,
+    base_url: str | None,
+    api_key: str | None,
+    audit_context: str | None = None,
 ) -> str:
     from memsearch.compact import summarize_text
 
@@ -242,6 +247,8 @@ async def _summarize(
         model=model,
         base_url=base_url,
         api_key=api_key,
+        audit_source="dsh-summarize",
+        audit_context=audit_context,
     )
 
 
@@ -256,6 +263,7 @@ def main() -> int:
     parser.add_argument("--model", default="", help="Override the LLM model.")
     parser.add_argument("--project-dir", default="", help="Project directory (config resolution anchor).")
     parser.add_argument("--plugin-dir", default="", help="Plugin directory (prompt template location).")
+    parser.add_argument("--audit-context", default="", help="Optional session/turn correlation for the audit log.")
     args = parser.parse_args()
 
     # Read the transcript from stdin BEFORE any exec-based bootstrap: the uv
@@ -287,7 +295,7 @@ def main() -> int:
         system_prompt = _load_summarize_prompt(config, args.agent_name, plugin_dir)
         provider_type, model, base_url, api_key = _resolve_llm_settings(config, args.provider, args.model)
         prompt = f"{system_prompt}\n\nTranscript:\n{transcript}"
-        summary = asyncio.run(_summarize(prompt, provider_type, model, base_url, api_key))
+        summary = asyncio.run(_summarize(prompt, provider_type, model, base_url, api_key, args.audit_context or None))
     except Exception as error:  # report provider errors instead of hiding them
         print(f"Error: {error}", file=sys.stderr)
         return 1

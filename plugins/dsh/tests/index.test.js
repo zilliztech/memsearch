@@ -936,6 +936,30 @@ test('summarizeHeadless: spawn errors reject without a timeout race', async () =
   }
 })
 
+test('summarizeHeadless: records a failed headless invocation without changing the error', async () => {
+  const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-audit-`)
+  const config = `${root}/config.mjs`
+  const prevCli = process.env.DSH_CLI
+  const prevDir = process.env.MEMSEARCH_DIR
+  fs.writeFileSync(config, 'process.stdout.write("true\\n")', 'utf-8')
+  try {
+    process.env.DSH_CLI = '/definitely/not/a/dsh-command'
+    process.env.MEMSEARCH_DIR = root
+    const opts = { summarizeMode: 'dsh-headless', agentName: 'X', memsearchCmd: [process.execPath, config], auditContext: 'session-a/7' }
+    await assert.rejects(summarizeTurn({ logger: { warn: () => {} } }, opts, 'render', root), /ENOENT/)
+    const entries = fs.readFileSync(path.join(root, '.llm-audit.jsonl'), 'utf-8').trim().split('\n').map(JSON.parse)
+    assert.equal(entries.at(-1).status, 'error')
+    assert.equal(entries.at(-1).context, 'session-a/7')
+    assert.equal(entries.at(-1).mode, 'dsh-headless')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+    if (prevCli === undefined) delete process.env.DSH_CLI
+    else process.env.DSH_CLI = prevCli
+    if (prevDir === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prevDir
+  }
+})
+
 test('renderTurn: reads current DSH snapshotEvents into the shared format', () => {
   const events = [
     { type: 'turn/start', data: { turn: 7 } },

@@ -157,8 +157,9 @@ class TestMainTranscriptRecovery:
 
         seen = {}
 
-        async def fake_summarize(prompt, provider_type, model, base_url, api_key):
+        async def fake_summarize(prompt, provider_type, model, base_url, api_key, audit_context=None):
             seen["prompt"] = prompt
+            seen["audit_context"] = audit_context
             return "- remembered"
 
         monkeypatch.setattr(summarize, "_summarize", fake_summarize)

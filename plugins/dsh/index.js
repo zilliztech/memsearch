@@ -1101,6 +1101,7 @@ function summarizeCustomLlm(opts, render, projectDir) {
   ]
   if (opts.summarizeProvider) args.push(`--provider=${opts.summarizeProvider}`)
   if (opts.summarizeModel) args.push(`--model=${opts.summarizeModel}`)
+  if (opts.auditContext) args.push(`--audit-context=${opts.auditContext}`)
   const spec = commandSpec(python)
   const child = spawn(spec.file, [...spec.args, ...args], {
     cwd: projectDir,
@@ -1163,6 +1164,23 @@ function detectDshCmd() {
   return null
 }
 
+/** Best-effort audit writer for a DSH-native headless invocation. */
+function recordHeadlessAudit(memsearchCmd, projectDir, context, started, error = null) {
+  if (!memsearchCmd) return
+  try {
+    const enabled = readMemsearchConfigValue(memsearchCmd, 'llm_audit.enabled')
+    if (enabled.ok && /^(false|0|no)$/i.test(enabled.value || '')) return
+    const file = join(memsearchDirFor(projectDir), '.llm-audit.jsonl')
+    mkdirSync(dirname(file), { recursive: true })
+    appendFileSync(file, `${JSON.stringify({
+      ts: new Date().toISOString(), source: 'dsh-summarize', provider: 'dsh-headless',
+      mode: 'dsh-headless', status: error ? 'error' : 'ok',
+      duration_ms: Date.now() - started, input_tokens: null, output_tokens: null,
+      error: error ? String(error.message || error).slice(0, 500) : null, context: context || null,
+    })}\n`, 'utf8')
+  } catch { /* audit must never affect capture */ }
+}
+
 /**
  * Summarize one rendered turn by booting a one-shot DSH headless agent
  * (`dsh --profile headless`), mirroring how the Claude Code / Codex / OpenCode
@@ -1186,9 +1204,12 @@ function detectDshCmd() {
  * gets re-captured and re-summarized in an infinite loop.
  */
 function summarizeHeadless(ctx, opts, render, projectDir) {
+  const started = Date.now()
   const dshCmd = detectDshCmd()
   if (!dshCmd) {
-    return Promise.reject(new Error('dsh CLI not found; set DSH_CLI or install dsh on PATH for summarizeMode=dsh-headless'))
+    const error = new Error('dsh CLI not found; set DSH_CLI or install dsh on PATH for summarizeMode=dsh-headless')
+    recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, error)
+    return Promise.reject(error)
   }
   try {
     const promptFile = join(PLUGIN_DIR, 'prompts', 'summarize.txt')
@@ -1215,7 +1236,16 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
       timeoutMs: opts.summarizeTimeoutMs ?? SUMMARIZE_TIMEOUT_MS,
       timeoutMessage: 'dsh headless summarization timed out',
       exitMessage: 'dsh headless summarize exited with status',
-    })
+    }).then(
+      (summary) => {
+        recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started)
+        return summary
+      },
+      (error) => {
+        recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, error)
+        throw error
+      },
+    )
   } catch (error) {
     return Promise.reject(error)
   }
@@ -1489,7 +1519,7 @@ export function apply(ctx, config = {}) {
     let body = render
     if (opts.summarizeEnabled) {
       try {
-        const summary = await summarizeTurn(ctx, opts, render, projectDir)
+        const summary = await summarizeTurn(ctx, { ...opts, memsearchCmd, auditContext: `${sessionId}/${turn}` }, render, projectDir)
         if (summary) {
           body = summary
         } else {
