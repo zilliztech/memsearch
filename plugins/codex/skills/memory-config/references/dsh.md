@@ -68,8 +68,9 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
   config:
     captureEnabled: true     # capture completed turns
     injectEnabled: true      # inject returned memory candidates
-    summarizeEnabled: true   # summarize turns before writing
-    summarizeMode: auto      # auto | dsh-headless | custom-llm
+    summarizeEnabled: true        # summarize turns before writing
+    summarizeMode: auto           # auto | dsh-headless | custom-llm
+    summarizeTimeoutMs: 30000     # increase for slower cloud models (e.g. 120000)
 ```
 
 ## Summarizer backends
