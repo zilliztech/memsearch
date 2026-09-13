@@ -1430,6 +1430,7 @@ export function apply(ctx, config = {}) {
     injectEnabled: config.injectEnabled !== false,
     summarizeEnabled: config.summarizeEnabled !== false,
     summarizeMode: config.summarizeMode,
+    summarizeTimeoutMs: config.summarizeTimeoutMs,
   }
 
   const memsearchCmd = detectMemsearchCmd()

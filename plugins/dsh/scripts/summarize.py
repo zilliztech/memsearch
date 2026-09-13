@@ -231,6 +231,11 @@ def _resolve_llm_settings(config, provider_arg: str, model_arg: str) -> tuple[st
     return provider_type, model or None, base_url, api_key
 
 
+def _sanitize_surrogates(text: str) -> str:
+    """Replace lone UTF-16 surrogates before an HTTP client encodes the prompt."""
+    return text.encode("utf-16", errors="surrogatepass").decode("utf-16", errors="replace")
+
+
 async def _summarize(
     prompt: str,
     llm_provider: str,
@@ -294,7 +299,7 @@ def main() -> int:
     try:
         system_prompt = _load_summarize_prompt(config, args.agent_name, plugin_dir)
         provider_type, model, base_url, api_key = _resolve_llm_settings(config, args.provider, args.model)
-        prompt = f"{system_prompt}\n\nTranscript:\n{transcript}"
+        prompt = _sanitize_surrogates(f"{system_prompt}\n\nTranscript:\n{transcript}")
         summary = asyncio.run(_summarize(prompt, provider_type, model, base_url, api_key, args.audit_context or None))
     except Exception as error:  # report provider errors instead of hiding them
         print(f"Error: {error}", file=sys.stderr)

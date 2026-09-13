@@ -58,6 +58,10 @@ def make_config(**overrides) -> SimpleNamespace:
     return config
 
 
+def test_sanitize_surrogates_replaces_lone_units_and_preserves_unicode() -> None:
+    assert summarize._sanitize_surrogates("bad:\udc98 good:😀") == "bad:� good:😀"
+
+
 class TestResolveLlmSettings:
     def test_explicit_provider_uses_named_entry(self) -> None:
         config = make_config()
