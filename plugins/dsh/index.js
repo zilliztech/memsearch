@@ -1089,8 +1089,15 @@ function collectSummarizerChild(child, {
  * `resolveSummarizeMode` into `opts.summarizeProvider` / `opts.summarizeModel`.
  */
 function summarizeCustomLlm(opts, render, projectDir) {
+  const started = Date.now()
   const python = detectPythonCmd()
-  if (!python) return Promise.reject(new Error('Python 3 not found; set MEMSEARCH_PYTHON to its executable path'))
+  if (!python) {
+    const error = new Error('Python 3 not found; set MEMSEARCH_PYTHON to its executable path')
+    recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+      provider: opts.summarizeProvider || 'custom-llm', mode: 'custom-llm', error,
+    })
+    return Promise.reject(error)
+  }
   // Native Windows Python reparses a spawned command line and splits a
   // value such as "DeepSeek Harness" even when supplied as --key=value.
   // Pass the display name through the environment instead of argv so argparse
@@ -1113,7 +1120,20 @@ function summarizeCustomLlm(opts, render, projectDir) {
     timeoutMs: opts.summarizeTimeoutMs ?? SUMMARIZE_TIMEOUT_MS,
     timeoutMessage: 'summarization timed out',
     exitMessage: 'summarize.py exited with status',
-  })
+  }).then(
+    (summary) => {
+      recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+        provider: opts.summarizeProvider || 'custom-llm', mode: 'custom-llm',
+      })
+      return summary
+    },
+    (error) => {
+      recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+        provider: opts.summarizeProvider || 'custom-llm', mode: 'custom-llm', error,
+      })
+      throw error
+    },
+  )
 }
 
 /**
@@ -1165,7 +1185,7 @@ function detectDshCmd() {
 }
 
 /** Best-effort audit writer for a DSH-native headless invocation. */
-function recordHeadlessAudit(memsearchCmd, projectDir, context, started, error = null) {
+function recordDshAudit(memsearchCmd, projectDir, context, started, { provider, mode, error = null }) {
   if (!memsearchCmd) return
   try {
     const enabled = readMemsearchConfigValue(memsearchCmd, 'llm_audit.enabled')
@@ -1173,9 +1193,9 @@ function recordHeadlessAudit(memsearchCmd, projectDir, context, started, error =
     const file = join(memsearchDirFor(projectDir), '.llm-audit.jsonl')
     mkdirSync(dirname(file), { recursive: true })
     appendFileSync(file, `${JSON.stringify({
-      ts: new Date().toISOString(), source: 'dsh-summarize', provider: 'dsh-headless',
-      mode: 'dsh-headless', status: error ? 'error' : 'ok',
-      duration_ms: Date.now() - started, input_tokens: null, output_tokens: null,
+      ts: new Date().toISOString(), source: 'dsh-summarize', provider, mode,
+      status: error ? 'error' : 'ok', duration_ms: Date.now() - started,
+      input_tokens: null, output_tokens: null,
       error: error ? String(error.message || error).slice(0, 500) : null, context: context || null,
     })}\n`, 'utf8')
   } catch { /* audit must never affect capture */ }
@@ -1208,7 +1228,9 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
   const dshCmd = detectDshCmd()
   if (!dshCmd) {
     const error = new Error('dsh CLI not found; set DSH_CLI or install dsh on PATH for summarizeMode=dsh-headless')
-    recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, error)
+    recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+          provider: 'dsh-headless', mode: 'dsh-headless', error,
+        })
     return Promise.reject(error)
   }
   try {
@@ -1238,11 +1260,15 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
       exitMessage: 'dsh headless summarize exited with status',
     }).then(
       (summary) => {
-        recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started)
+        recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+          provider: 'dsh-headless', mode: 'dsh-headless',
+        })
         return summary
       },
       (error) => {
-        recordHeadlessAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, error)
+        recordDshAudit(opts.memsearchCmd, projectDir, opts.auditContext, started, {
+          provider: 'dsh-headless', mode: 'dsh-headless', error,
+        })
         throw error
       },
     )
