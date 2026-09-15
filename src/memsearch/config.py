@@ -27,7 +27,17 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
+_INT_FIELDS = {
+    "max_chunk_size",
+    "overlap_lines",
+    "debounce_ms",
+    "batch_size",
+    "min_interval_hours",
+    "min_occurrences",
+    "min_content_length",
+    "degrade_threshold",
+    "reject_threshold",
+}
 _BOOL_FIELDS = {"enabled"}
 _LIST_FIELDS = {"paths", "ignore_files", "exclude"}
 
@@ -97,6 +107,16 @@ class WatchConfig:
 @dataclass
 class RerankerConfig:
     model: str = ""  # empty = disabled; set to model ID to enable
+
+
+@dataclass
+class QualityFilterConfig:
+    """Pre-write captured-memory quality policy ([quality_filter] section)."""
+
+    enabled: bool = True
+    min_content_length: int = 40
+    degrade_threshold: int = 60
+    reject_threshold: int = 30
 
 
 @dataclass
@@ -217,6 +237,7 @@ class MemSearchConfig:
     watch: WatchConfig = field(default_factory=WatchConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    quality_filter: QualityFilterConfig = field(default_factory=QualityFilterConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
 
@@ -231,6 +252,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "watch": WatchConfig,
     "reranker": RerankerConfig,
     "llm": LLMConfig,
+    "quality_filter": QualityFilterConfig,
     "prompts": PromptsConfig,
     "plugins": PluginsConfig,
 }

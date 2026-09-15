@@ -869,6 +869,54 @@ def summarize(plugin: str, agent_name: str) -> None:
         click.echo(summary)
 
 
+@cli.command("quality")
+@click.option(
+    "--recent-file",
+    "recent_files",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Recent journal file to compare for near-duplicates (repeatable).",
+)
+@click.option("--json-output", is_flag=True, help="Emit a machine-readable quality verdict.")
+def quality_cmd(recent_files: tuple[Path, ...], json_output: bool) -> None:
+    """Score a candidate memory section read from standard input.
+
+    This command is intentionally side-effect free.  Capture plugins pass their
+    current/prior daily journals with ``--recent-file`` and decide whether to
+    append based on the returned ``write``, ``degrade``, or ``reject`` action.
+    """
+    from .quality import score_section
+
+    candidate = sys.stdin.read()
+    if not candidate.strip():
+        raise click.UsageError("Candidate section is required on standard input.")
+
+    cfg = _safe_resolve_config()
+    try:
+        recent_sections = [read_utf8_text_replace(path) for path in recent_files]
+    except OSError as error:
+        raise click.ClickException(f"Could not read a recent journal: {error}") from error
+
+    quality = cfg.quality_filter
+    try:
+        verdict = score_section(
+            candidate,
+            recent_sections,
+            enabled=quality.enabled,
+            min_content_length=quality.min_content_length,
+            degrade_threshold=quality.degrade_threshold,
+            reject_threshold=quality.reject_threshold,
+        )
+    except ValueError as error:
+        raise click.ClickException(f"Invalid [quality_filter] configuration: {error}") from error
+
+    payload = verdict.to_dict()
+    if json_output:
+        click.echo(json.dumps(payload, ensure_ascii=False))
+    else:
+        click.echo(f"{payload['action']} quality={payload['score']} reasons={','.join(payload['reasons']) or '-'}")
+
+
 @cli.command()
 @click.option("--collection", "-c", default=None, help="Milvus collection name.")
 @click.option(
