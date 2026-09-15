@@ -21,6 +21,8 @@ from typing import Any
 
 import numpy as np
 
+from .onnx_telemetry import disable_telemetry
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RERANKER = "Alibaba-NLP/gte-reranker-modernbert-base"
@@ -131,6 +133,10 @@ def _load_onnx_model(model_name: str) -> _OnnxCachedModel:
     tokenizer.no_padding()
 
     import onnxruntime as ort
+
+    # Before any session exists: onnxruntime's telemetry uploader runs on its own thread
+    # and can abort the process at exit, after a successful run.  See onnx_telemetry.
+    disable_telemetry(ort)
 
     session = ort.InferenceSession(model_path)
     input_names = {inp.name for inp in session.get_inputs()}
