@@ -77,11 +77,56 @@ def test_find_turn_context_supports_uuid_prefix() -> None:
     assert idx == 1
 
 
+def test_find_turn_context_supports_full_uuid_matching_short_prefix_turn() -> None:
+    turns = [
+        type("T", (), {"uuid": "aaaabbbb-1111"})(),
+        type("T", (), {"uuid": "ccccdddd-2222"})(),
+        type("T", (), {"uuid": "eeeeffff-3333"})(),
+    ]
+
+    context, idx = find_turn_context(turns, "ccccdddd-2222-extra", context=1)
+
+    assert len(context) == 3
+    assert idx == 1
+
+
 def test_helpers_format_and_summarize() -> None:
     assert _strip_hook_tags("<command-x>rm</command-x>keep") == "keep"
     assert _extract_time("2026-03-07T05:10:11.123Z") == "05:10:11"
     assert _summarize_tool_input("Read", {"file_path": "a.md"}) == "Read(a.md)"
     assert _summarize_tool_input("Unknown", {"k": "v"}) == "Unknown(k=v)"
+
+
+def test_parse_transcript_skips_assistant_entries_with_non_list_content(tmp_path: Path) -> None:
+    transcript = tmp_path / "assistant-non-list.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u1",
+                        "timestamp": "2026-03-07T05:00:01Z",
+                        "message": {"content": "Hello"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {"content": "not-a-list"},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    turns = parse_transcript(transcript)
+
+    assert len(turns) == 1
+    assert turns[0].uuid == "u1"
+    assert turns[0].content == "Hello"
+    assert turns[0].tool_calls == []
 
 
 def test_format_turn_index_includes_tool_count() -> None:
