@@ -2,6 +2,11 @@
 
 This page explains the technical architecture and key implementation decisions behind memsearch. For design principles, competitor comparison, and the "why" behind these decisions, see [Design Philosophy](design-philosophy.md).
 
+Need a different level of detail?
+- Use [Getting Started](getting-started.md) if you want a working local setup first
+- Use [CLI Reference](cli.md) if you want command-level usage
+- Use [Python API](python-api.md) if you are integrating memsearch into your own code
+
 ---
 
 ## Cross-Platform Memory Sharing
