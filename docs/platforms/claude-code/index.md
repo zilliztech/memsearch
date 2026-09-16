@@ -74,7 +74,7 @@ sequenceDiagram
 - **Semantic recall** -- Claude automatically searches past sessions when your question needs historical context
 - **Three-layer progressive disclosure** -- search, expand, and drill into original transcripts ([details](memory-recall.md))
 - **Forked subagent** -- memory recall runs in an isolated context, keeping your main conversation clean
-- **ONNX embedding by default** -- no API key required, runs locally on CPU
+- **ONNX embedding by default** -- no API key required, runs locally on CPU ([why this default](evaluation.md))
 - **Markdown is the source of truth** -- human-readable, git-friendly, portable ([details](how-it-works.md#markdown-is-the-source-of-truth))
 
 ---
