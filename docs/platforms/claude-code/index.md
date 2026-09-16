@@ -83,6 +83,7 @@ sequenceDiagram
 
 - [Installation](installation.md) -- install from marketplace or source, first-time setup
 - [How It Works](how-it-works.md) -- architecture, hooks, capture mechanism, memory storage
+- [Memory Surface](memory-tools.md) -- the practical recall/debugging surface: skill entry point, CLI commands, observability
 - [Memory Recall](memory-recall.md) -- three-layer progressive disclosure, comparisons, tips
 - [Troubleshooting](troubleshooting.md) -- debug mode, common issues, diagnostic commands
 
