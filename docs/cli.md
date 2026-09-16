@@ -2,6 +2,10 @@
 
 memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases.
 
+New here?
+- Use [Getting Started](getting-started.md) if you want the fastest working setup before reading every command
+- Use [Configuration](home/configuration.md) if you need to switch embedding providers or Milvus backends
+
 ```bash
 $ memsearch --version
 memsearch, version 0.1.3
