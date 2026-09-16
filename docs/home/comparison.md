@@ -2,6 +2,11 @@
 
 memsearch is both a CLI engine and a set of native plugins for four coding CLIs, so we compare it against projects along that whole spectrum, plus Claude Code's built-in memory as a baseline: [Claude Code native memory](https://docs.claude.com/en/docs/claude-code/memory), [claude-mem](https://github.com/thedotmack/claude-mem), [qmd](https://github.com/tobi/qmd), [MemPalace](https://github.com/milla-jovovich/mempalace), [mem0](https://github.com/mem0ai/mem0), [Letta / MemGPT](https://github.com/letta-ai/letta).
 
+Need a different level of detail?
+- Use [Getting Started](../getting-started.md) if you want a working local setup first
+- Use [Design Philosophy](../design-philosophy.md) if you want the principles behind the project
+- Use [Architecture](../architecture.md) if you want the implementation/data-flow view
+
 > Verified against each project's README / official docs. The space moves fast — [open an issue](https://github.com/zilliztech/memsearch/issues) if anything looks stale.
 
 ## At a glance
