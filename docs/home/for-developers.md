@@ -61,3 +61,10 @@ Plugin Recall:   memsearch search → memsearch expand → parse-transcript
 ```
 
 If you're building a plugin for a new platform, see the [Architecture](../architecture.md) and existing plugin source code in `plugins/`.
+
+## Next Steps
+
+- **Want command-level usage?** → [CLI Reference](../cli.md)
+- **Want the full library surface?** → [Python API](../python-api.md)
+- **Want the indexing / recall model?** → [Architecture](../architecture.md)
+- **Still need the fastest first setup?** → [Getting Started](../getting-started.md)
