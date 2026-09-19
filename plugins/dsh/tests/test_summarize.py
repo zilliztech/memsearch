@@ -58,6 +58,10 @@ def make_config(**overrides) -> SimpleNamespace:
     return config
 
 
+def test_sanitize_surrogates_replaces_lone_units_and_preserves_unicode() -> None:
+    assert summarize._sanitize_surrogates("bad:\udc98 good:😀") == "bad:� good:😀"
+
+
 class TestResolveLlmSettings:
     def test_explicit_provider_uses_named_entry(self) -> None:
         config = make_config()
@@ -157,8 +161,9 @@ class TestMainTranscriptRecovery:
 
         seen = {}
 
-        async def fake_summarize(prompt, provider_type, model, base_url, api_key):
+        async def fake_summarize(prompt, provider_type, model, base_url, api_key, audit_context=None):
             seen["prompt"] = prompt
+            seen["audit_context"] = audit_context
             return "- remembered"
 
         monkeypatch.setattr(summarize, "_summarize", fake_summarize)

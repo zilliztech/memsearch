@@ -36,6 +36,7 @@ Commands:
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
+| `memsearch audit` | Report background LLM usage and recent failures |
 | `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
 | `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
 | `memsearch stats` | Display index statistics (total chunk count) |
@@ -613,6 +614,30 @@ $ memsearch compact --prompt-file ./prompts/compress.txt
 - **Output location.** The summary is appended to `<first-path>/memory/YYYY-MM-DD.md`. This file is then automatically eligible for future indexing.
 - **The `{chunks}` placeholder is required.** Whether using `--prompt` or `--prompt-file`, the template must contain `{chunks}` which will be replaced with the concatenated chunk contents.
 - **API key required.** The chosen LLM provider requires its corresponding API key in the environment (see [Environment Variables](#environment-variables)).
+
+---
+
+## `memsearch audit`
+
+Report best-effort records of background LLM calls from
+`.memsearch/.llm-audit.jsonl`. Records are grouped by source by default; use
+`--errors` to inspect recent fallback causes.
+
+```bash
+# Aggregate the last 30 days (default)
+memsearch audit --days 30
+
+# Show recent failures with the provider and error cause
+memsearch audit --errors --days 1 --limit 20
+
+# Machine-readable aggregate or failure entries
+memsearch audit --json-output
+memsearch audit --errors --json-output
+```
+
+The `[llm_audit]` TOML section controls collection and retention. Missing or
+unreadable audit files report no records; audit I/O never blocks the background
+operation being observed.
 
 ---
 

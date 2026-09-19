@@ -64,3 +64,33 @@ jobs:
 
       - name: Pack package
         run: npm pack --dry-run
+
+  dsh:
+    name: DSH plugin (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: plugins/dsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Check package entrypoints
+        run: |
+          node --check index.js
+          node --check client.js
+
+      - name: Test package
+        run: npm test
+
+      - name: Pack package
+        run: npm pack --dry-run
