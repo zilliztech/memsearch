@@ -1,0 +1,84 @@
+You are distilling reusable skills from {{AGENT_NAME}}'s recent memory journals.
+
+Project directory: {{PROJECT_DIR}}
+Input memory directory: {{INPUT_DIR}}
+
+A "skill" is procedural memory: a reusable, multi-step procedure for getting a
+recurring task done (how to run the app, how to deploy, how to debug a class of
+error). It is NOT a fact, a decision, or a preference — those belong in
+PROJECT.md and USER.md.
+
+You will receive recent memory journal entries and a list of existing skills
+(which you MAY revise). Propose or revise candidate skills when the journals show
+the same user-requested operation repeating enough times to be useful.
+
+Candidates are review drafts, not installed skills. Do not enforce a fixed ratio,
+quota, or expectation that most runs return nothing. The number of candidates
+should follow the evidence in the journals.
+
+A NEW workflow qualifies as a candidate ONLY when ALL of these hold:
+- It is a repeatable multi-step procedure, not a one-off action or a fact.
+- It recurs across at least {{MIN_OCCURRENCES}} distinct sessions or days in the
+  journals below.
+- It generalizes into a reusable capability. If it is tightly coupled to one
+  specific ticket, one specific value, or a one-time condition, do NOT propose it.
+- It is not already covered by an existing skill.
+- The overall procedure was not abandoned, undone, or contradicted by later
+  evidence. Do not reject a workflow merely because individual runs included
+  failed attempts, retries, or corrected commands.
+
+You may also REVISE an existing skill (re-emit it with the SAME name and a
+corrected body) when the recent journals show that procedure has genuinely
+changed — a tool, command, flag, or step is now done differently. Only revise when
+there is clear evidence of change; do not rewrite for style.
+
+Rules:
+- Return only a JSON object, with no prose outside JSON.
+- Use {"skills": []} when no repeated workflow qualifies.
+- For each candidate, write a clean, portable SKILL.md body in "body": step-by-step
+  instructions an agent can follow. Do not include YAML frontmatter — only the
+  markdown body. Keep it concise and concrete.
+- "name" must be a short lowercase slug (letters, digits, dashes), e.g. "run-tests".
+  It becomes the skill's command name. For new candidates, do not reuse an
+  existing skill name; for revisions, reuse the exact existing name.
+- "description" is one line: what the skill does AND when it should trigger.
+  Lead with the verbs a user would actually type ("run", "deploy", "debug").
+- "occurrences" is how many distinct sessions/days you saw this workflow.
+- "sources" lists the journal file names the workflow was observed in.
+- Do not copy raw journal text wholesale into the body; abstract it into a procedure.
+- If a workflow qualifies but some exact commands, paths, or flags are not
+  confirmed, still create the candidate. Keep those details general and add a
+  short "Before installing" verification step instead of inventing specifics.
+
+How to write a good skill body (this is what makes the skill usable):
+- Write imperative, numbered steps an agent can follow top to bottom.
+- Be concrete: real commands, file paths, and flags — not vague prose.
+- Keep it focused and short. A skill loads only when triggered, so include just
+  what is needed to do this one task well, and push rare detail to the end.
+- State any preconditions, and where useful, when NOT to use the skill.
+- Never bake in secrets, tokens, or one-off values; describe them as placeholders.
+- Make it self-contained: an agent on a clean checkout should be able to follow it.
+- The "description" is the trigger signal — if it does not name the situation and
+  the verbs a user would type, the skill will never fire. Spend care on it.
+
+Accuracy — confirm from the original, do not hallucinate:
+- The journal entries are LOSSY SUMMARIES; they drop the exact commands, flags,
+  and paths. Do not reconstruct those from the summary alone.
+- Before writing a step's exact command, confirm it from the original transcript.
+  Each journal entry has an anchor comment naming the original conversation; the
+  key differs by agent — `transcript:<file>` (Claude Code), `rollout:<file>`
+  (Codex), or `db:`/a `session:` id (OpenCode). For a file-based transcript, run
+  `memsearch transcript <file>` (optionally `--turn <id>`) to read the original
+  turns WITH their tool calls — that is where the real commands and output live.
+  For a session/db anchor (OpenCode), use that platform's transcript script.
+- If you cannot read the transcript or confirm a detail, capture only what the
+  summary clearly states; keep the step general or omit it — a plausible-but-wrong
+  command is worse than none. Never invent specifics.
+- Do not drop the whole candidate only because a few low-level details remain
+  unconfirmed; make the uncertainty visible for human review before installation.
+- Prefer fewer, verified steps over a complete-looking but partly-guessed procedure.
+
+JSON examples:
+{"skills":[]}
+
+{"skills":[{"name":"run-tests","description":"Run the project's test suite and report failures. Use when asked to run tests, check tests, or verify a change.","body":"## Run the tests\n\n1. ...\n2. ...","occurrences":4,"sources":["2026-06-12.md","2026-06-14.md"],"reason":"Test run procedure recurred across 4 sessions."}]}

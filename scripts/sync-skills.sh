@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sync the canonical skill sources under plugins/_shared/skills/ to all five
+# Sync the canonical skill sources under plugins/_shared/skills/ to all six
 # platform plugin directories, prepending each platform's own frontmatter.
 #
 # Run this after editing plugins/_shared/skills/**; the copies are committed so
@@ -28,7 +28,7 @@ SHARED_DIR="$REPO_ROOT/plugins/_shared/skills"
 
 SKILLS=(memory-config memory-to-skill)
 # Platforms that ship a standard filesystem skill (SKILL.md + frontmatter).
-PLATFORMS=(claude-code codex openclaw opencode)
+PLATFORMS=(claude-code codex openclaw opencode zcode)
 
 # Frontmatter lines to insert after the shared `description:` line, per platform.
 gen_frontmatter() {

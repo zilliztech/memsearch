@@ -18,7 +18,7 @@ change, route the request using the flows below.
 
 ## Which agent am I running as?
 
-This skill is shared by five agent platforms, but platform-specific details
+This skill is shared by six agent platforms, but platform-specific details
 (version-check commands, `plugins.<platform>.*` keys, native model defaults,
 restart guidance) live in per-platform reference files. Read ONLY the one file
 matching your current environment:
@@ -28,9 +28,10 @@ matching your current environment:
 - OpenClaw → `references/openclaw.md`
 - OpenCode → `references/opencode.md`
 - DeepSeek Harness → `references/dsh.md`
+- ZCode → `references/zcode.md`
 
 If you are unsure which agent you are, check these environment markers:
-`DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
+`~/.zcode` → ZCode; `DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
 `~/.openclaw` → OpenClaw; `~/.config/opencode` → OpenCode;
 `CLAUDE_PLUGIN_ROOT` → Claude Code.
 
