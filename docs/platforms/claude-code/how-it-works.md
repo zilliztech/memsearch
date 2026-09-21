@@ -92,7 +92,7 @@ stateDiagram-v2
 The SessionStart hook runs once when Claude Code opens a new session. It performs four steps:
 
 1. **Config validation** -- loads resolved config in one snapshot and validates the API key for the configured embedding provider (ONNX needs no key)
-2. **Start backend-specific indexing** -- Server launches `memsearch watch .memsearch/memory/` as a singleton background process. Lite cannot share its local database with a watcher, so SessionStart launches one background `memsearch index` attempt instead. A persisted failed or stale index state is included in the visible status before the new attempt starts.
+2. **Start backend-specific indexing** -- Server launches `memsearch watch .memsearch/memory/` as a singleton background process. The watcher holds a filesystem ownership lock, so duplicate starts exit even when `pgrep` and `kill -0` are unavailable. Lite cannot share its local database with a watcher, so SessionStart launches one background `memsearch index` attempt instead. A persisted failed or stale index state is included in the visible status before the new attempt starts.
 3. **Cold-start injection** -- reads up to 40 lines from each of the 2 most recent daily logs and returns them as `additionalContext` so Claude has immediate awareness of recent work
 4. **Update check** -- queries PyPI (2s timeout) and shows an update banner if a newer version exists
 
