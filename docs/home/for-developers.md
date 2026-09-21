@@ -2,6 +2,8 @@
 
 Build memory into your own agents using the memsearch CLI and Python API.
 
+If you're still evaluating options, start with [Comparison with Alternatives](comparison.md) before committing to an integration path.
+
 ## Install
 
 ```bash
