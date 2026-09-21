@@ -1066,6 +1066,7 @@ def config_init(project: bool) -> None:
     result["embedding"] = {}
     _embedding_defaults = {
         "openai": "text-embedding-3-small",
+        "orcarouter": "openai/text-embedding-3-small",
         "google": "gemini-embedding-001",
         "voyage": "voyage-3-lite",
         "jina": "jina-embeddings-v4",
@@ -1075,7 +1076,7 @@ def config_init(project: bool) -> None:
         "onnx": "gpahal/bge-m3-onnx-int8",
     }
     result["embedding"]["provider"] = click.prompt(
-        "  Provider (openai/google/voyage/jina/mistral/ollama/local/onnx)",
+        "  Provider (openai/orcarouter/google/voyage/jina/mistral/ollama/local/onnx)",
         default=current.embedding.provider,
     )
     _emb_provider = result["embedding"]["provider"]
