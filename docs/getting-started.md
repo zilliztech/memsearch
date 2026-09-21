@@ -1,5 +1,7 @@
 # Getting Started
 
+> **Choose your path:** setting up a plugin? Start with [For Agent Users](home/for-users.md). Building your own integration? Start with [For Agent Developers](home/for-developers.md). Comparing platforms first? See the [Platform Comparison](platforms/index.md).
+
 ## Installation
 
 Install memsearch with pip (OpenAI embeddings are included by default):
