@@ -27,7 +27,7 @@ GLOBAL_CONFIG_PATH = Path("~/.memsearch/config.toml").expanduser()
 PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 
 # Fields that should be parsed as int when set via CLI strings
-_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
+_INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences", "min_content_length", "degrade_threshold", "reject_threshold"}
 _BOOL_FIELDS = {"enabled"}
 _LIST_FIELDS = {"paths", "ignore_files", "exclude"}
 
@@ -92,6 +92,21 @@ class IndexingConfig:
 @dataclass
 class WatchConfig:
     debounce_ms: int = 1500
+
+
+@dataclass
+class QualityFilterConfig:
+    """Pre-write memory quality filter settings (Proposal 002).
+
+    Capture paths score candidate memory sections before appending them to
+    ``memory/YYYY-MM-DD.md``; ``degrade`` sections are written with a recorded
+    quality score and ``reject`` sections are skipped entirely.
+    """
+
+    enabled: bool = True
+    min_content_length: int = 40
+    degrade_threshold: int = 60
+    reject_threshold: int = 30
 
 
 @dataclass
@@ -215,6 +230,7 @@ class MemSearchConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     indexing: IndexingConfig = field(default_factory=IndexingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
+    quality_filter: QualityFilterConfig = field(default_factory=QualityFilterConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
@@ -229,6 +245,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "chunking": ChunkingConfig,
     "indexing": IndexingConfig,
     "watch": WatchConfig,
+    "quality_filter": QualityFilterConfig,
     "reranker": RerankerConfig,
     "llm": LLMConfig,
     "prompts": PromptsConfig,

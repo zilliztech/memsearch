@@ -298,6 +298,36 @@ The same maintenance state file records `memory_to_skill` failures under
 `<platform>.memory_to_skill.last_error`, which is the first place to check if
 background distillation is enabled but no candidates appear.
 
+## Memory Quality Filter
+
+Since v0.4.20, capture paths can score candidate memory sections **before**
+they are appended to `memory/YYYY-MM-DD.md`. The scorer is a pure function
+(no I/O, no LLM): it starts at 100 and subtracts penalties for meta-memory
+vocabulary (notes about the memory system itself), agent-verbosity
+boilerplate, ultra-short content, high token repetition, and near-duplicates
+of sections already in the current day's journal.
+
+```toml
+[quality_filter]
+enabled = true
+min_content_length = 40
+degrade_threshold = 60   # score >= this → write normally
+reject_threshold = 30    # score < this → skip; between → write, marked low-quality
+```
+
+You can score any text without writing anything:
+
+```bash
+echo "candidate summary text" | memsearch quality --json-output
+echo "candidate summary text" | memsearch quality --recent-file .memsearch/memory/$(date +%F).md
+```
+
+The command prints `score`, `action` (`write` / `degrade` / `reject`), and the
+triggered `reasons`, so shell-based capture hooks can gate appends on the
+action without reimplementing the rules. Rejected sections are simply not
+written — the transcript anchor keeps the raw turn reachable via
+`memsearch transcript`, so no information is lost.
+
 ## Platform-Specific Config
 
 Each plugin may have additional configuration. See:
