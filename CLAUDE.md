@@ -86,11 +86,11 @@ plugins/claude-code/
 
 **Supporting hooks:**
 - `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists
-- `UserPromptSubmit` returns a lightweight `systemMessage` capability hint ("[memsearch] Recall available if needed") to increase skill trigger awareness
+- `UserPromptSubmit` returns the lightweight capability hint ("[memsearch] Recall available if needed") in `systemMessage` for the user and in `hookSpecificOutput.additionalContext` for the model, to increase skill trigger awareness
 - `Stop` hook is async and non-blocking — extracts last turn only, calls `claude -p --model haiku` (with `CLAUDECODE=` to bypass nested session detection) to summarize as third-person notes, appends to daily `.md`
 
 When modifying hooks/skills, keep in mind:
-- All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`)
+- All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`); `systemMessage` is user-visible only, so a hint that also has to reach the model is returned in both fields
 - `common.sh` is sourced by every hook — changes there affect all hooks. It derives a per-project `COLLECTION_NAME` via `derive-collection.sh` and passes `--collection` automatically through `run_memsearch()` and `start_watch()`
 - The watch process uses a PID file (`.memsearch/.watch.pid`) for singleton behavior. Milvus Lite falls back to one-time `index()` at session start
 - `stop.sh` has a recursion guard (`stop_hook_active`) since it calls `claude -p` internally, and sets `MEMSEARCH_NO_WATCH=1` to prevent the child process from interfering with the main session's watch
