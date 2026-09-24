@@ -44,6 +44,34 @@ async def test_compact_chunks_dispatches_to_openai(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_compact_chunks_dispatches_atlascloud_to_openai_compatible(monkeypatch) -> None:
+    captured: dict[str, str | None] = {}
+
+    async def fake_openai(prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None) -> str:
+        captured["prompt"] = prompt
+        captured["model"] = model
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
+        return "atlas-summary"
+
+    monkeypatch.setenv("ATLAS_CLOUD_API_KEY", "atlas-key")
+    monkeypatch.setattr(compact_module, "_compact_openai", fake_openai)
+
+    result = await compact_module.compact_chunks(
+        [{"content": "atlas memory"}],
+        llm_provider="atlascloud",
+    )
+
+    assert result == "atlas-summary"
+    assert captured == {
+        "prompt": compact_module.COMPACT_PROMPT.format(chunks="atlas memory"),
+        "model": "qwen/qwen3.5-flash",
+        "base_url": "https://api.atlascloud.ai/v1",
+        "api_key": "env:ATLAS_CLOUD_API_KEY",
+    }
+
+
+@pytest.mark.asyncio
 async def test_openai_compact_uses_default_temperature(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
