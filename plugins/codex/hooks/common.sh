@@ -273,6 +273,13 @@ fi
 
 case "$PROJECT_DIR" in
   /*) ;;
+  # Windows: the hook cwd arrives as a Win32 drive path (C:/... or C:\...).
+  # Git Bash treats it as absolute, so keep it absolute and only swap the
+  # separators, which matters when no git root is found below. Do not
+  # canonicalize it (e.g. `cygpath -u` -> /c/...): the collection name is a
+  # hash of this string, so any respelling silently moves the project to a
+  # new, empty collection.
+  [A-Za-z]:[/\\]*) PROJECT_DIR="${PROJECT_DIR//\\//}" ;;
   *) PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
 esac
 

@@ -36,6 +36,13 @@ else
 fi
 case "$_PROJECT_DIR" in
   /*) ;;
+  # Windows: CLAUDE_PROJECT_DIR arrives as a Win32 drive path (C:/... or C:\...).
+  # Git Bash treats it as absolute, so keep it absolute and only swap the
+  # separators, which matters when no git root is found below. Do not
+  # canonicalize it (e.g. `cygpath -u` -> /c/...): the collection name is a
+  # hash of this string, so any respelling silently moves the project to a
+  # new, empty collection.
+  [A-Za-z]:[/\\]*) _PROJECT_DIR="${_PROJECT_DIR//\\//}" ;;
   *) _PROJECT_DIR="$(pwd)/$_PROJECT_DIR" ;;
 esac
 _GIT_ROOT="$(git -C "$_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
