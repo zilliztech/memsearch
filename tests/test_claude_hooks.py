@@ -937,8 +937,9 @@ echo "- User discussed a macOS stop hook regression."
         ("/tmp/memsearch-lite.db", 0, 0),
         ("http://127.0.0.1:19530", 1, 2),
         ("tcp://127.0.0.1:19530", 1, 2),
+        ("unix:/run/user/1000/memsearch/milvus.sock", 1, 2),
     ],
-    ids=["lite", "http-server", "tcp-server"],
+    ids=["lite", "http-server", "tcp-server", "unix-socket-server"],
 )
 def test_claude_stop_indexes_only_server(
     tmp_path: Path,
@@ -1613,6 +1614,78 @@ exit 0
 """,
     )
     _write_executable(fake_bin / "curl", '#!/usr/bin/env bash\necho \'{"info":{"version":"9.9.9"}}\'\n')
+
+
+@pytest.mark.parametrize(
+    "milvus_uri",
+    ["http://127.0.0.1:19530", "tcp://127.0.0.1:19530", "unix:/run/user/1000/memsearch/milvus.sock"],
+    ids=["http", "tcp", "unix-socket"],
+)
+@pytest.mark.parametrize(
+    ("script", "project_var"),
+    [
+        ("plugins/claude-code/hooks/session-start.sh", "CLAUDE_PROJECT_DIR"),
+        ("plugins/codex/hooks/session-start.sh", "MEMSEARCH_PROJECT_DIR"),
+    ],
+    ids=PLUGIN_IDS,
+)
+def test_session_start_watches_server_uris(tmp_path: Path, script: str, project_var: str, milvus_uri: str) -> None:
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    for directory in (project / ".memsearch", home / ".memsearch", fake_bin):
+        directory.mkdir(parents=True, exist_ok=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    call_log = tmp_path / "calls.log"
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  printf '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"%s"}}\n' "$TEST_MILVUS_URI"
+  exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    embedding.model) echo "tiny" ;;
+    milvus.uri) echo "$TEST_MILVUS_URI" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 9.9.9"
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", '#!/usr/bin/env bash\necho \'{"info":{"version":"9.9.9"}}\'\n')
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        project_var: str(project),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "TEST_MILVUS_URI": milvus_uri,
+    }
+
+    subprocess.run(
+        ["bash", str(Path(script).resolve())],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=project,
+        env=env,
+        check=True,
+    )
+
+    assert _wait_for(
+        lambda: call_log.exists() and any(call.startswith("watch ") for call in call_log.read_text().splitlines()),
+        timeout=5.0,
+    )
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert not any(call.startswith("index ") for call in calls)
 
 
 @pytest.mark.parametrize(
