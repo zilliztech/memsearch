@@ -407,6 +407,38 @@ def test_windows_local_uri_reaches_milvus_client(monkeypatch: pytest.MonkeyPatch
     s.close()
 
 
+def test_unix_socket_uri_is_a_server_not_a_local_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """A unix: socket URI is a Milvus server, so it reaches the client unchanged and is never a Lite file."""
+    connected: dict[str, str] = {}
+
+    class FakeMilvusClient:
+        def __init__(self, *, uri: str):
+            connected["uri"] = uri
+
+        def has_collection(self, collection_name: str) -> bool:
+            return True
+
+        def load_collection(self, collection_name: str) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakePyMilvus:
+        MilvusClient = FakeMilvusClient
+
+    uri = "unix:/run/user/1000/memsearch/milvus.sock"
+    monkeypatch.chdir(tmp_path)
+    with monkeypatch.context() as patch:
+        patch.setitem(sys.modules, "pymilvus", FakePyMilvus())
+        s = MilvusStore(uri=uri, dimension=None)
+
+    assert not s._is_lite
+    assert connected["uri"] == uri
+    assert not (tmp_path / "unix:").exists()
+    s.close()
+
+
 def test_open_error_reports_file_where_directory_expected(tmp_path: Path):
     """Under a 3.x runtime a plain file is a real layout mismatch worth reporting."""
     db = tmp_path / "old.db"

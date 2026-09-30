@@ -471,7 +471,7 @@ start_watch() {
 
   # Lite (local .db): skip watch entirely — file lock prevents concurrent access.
   # Session-start does a one-time index() instead.
-  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]]; then
+  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]] && [[ "$_uri" != unix:* ]]; then
     return 0
   fi
 

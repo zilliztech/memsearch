@@ -257,7 +257,7 @@ start_watch
 # Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
 # Kill any previous background index first to prevent process accumulation across sessions.
 # If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
-if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
+if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
   kill_orphaned_index
   (
     _index_args=("$MEMORY_DIR")
