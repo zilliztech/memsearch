@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from .chunker import _HEADING_RE
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
@@ -499,6 +500,13 @@ def expand(
             sys.exit(1)
 
         all_lines = read_utf8_text_replace(source_path).splitlines()
+        if start_line > len(all_lines):
+            click.echo(
+                f"Warning: chunk start_line {start_line} is past the end of {source} "
+                f"({len(all_lines)} lines); the index is out of sync with the file. "
+                "Re-run 'memsearch index <path>' to refresh it.",
+                err=True,
+            )
 
         if lines is not None:
             # Show N lines before/after the chunk
@@ -571,27 +579,24 @@ def _extract_section(
     Walks backward to find the section heading, then forward to the next
     heading of equal or higher level (or EOF).
     """
-    # Find section start — walk backward to the heading
+    # Find section start — walk backward to the heading, starting at the
+    # chunk's own first line (clamped in case the file shrank since indexing)
     section_start = start_line - 1  # 0-indexed
     if heading_level > 0:
-        for i in range(start_line - 2, -1, -1):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_start = i
-                    break
+        for i in range(min(start_line, len(all_lines)) - 1, -1, -1):
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_start = i
+                break
 
     # Find section end — walk forward to the next heading of same or higher level
     section_end = len(all_lines)
     if heading_level > 0:
         for i in range(start_line, len(all_lines)):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_end = i
-                    break
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_end = i
+                break
 
     content = "\n".join(all_lines[section_start:section_end])
     return content, section_start + 1, section_end
