@@ -487,7 +487,7 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     """Run a restricted read-only memory command."""
     if not command.strip():
         return "Error: empty command"
-    if re.search(r"[|;&<>`$(){}]", command):
+    if re.search(r"[|;&<>`$(){}%!^]", command):
         return "Error: shell metacharacters are not allowed"
     try:
         argv = _split_command(command)

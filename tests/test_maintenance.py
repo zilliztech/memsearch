@@ -489,6 +489,61 @@ def test_run_memory_command_rejects_shell_metacharacters(tmp_path: Path) -> None
     assert "not allowed" in output
 
 
+@pytest.mark.parametrize("command", ["grep %USERPROFILE%\\secret.txt", "grep foo^bar", "grep !history"])
+def test_run_memory_command_rejects_percent_bang_caret(tmp_path: Path, command: str) -> None:
+    # On Windows, a resolved .cmd/.bat shim runs through cmd.exe, which re-parses the
+    # whole command line and expands %VAR%/!VAR!/^-escaped tokens *after* the path
+    # sandbox has validated the literal argument -- so an arg like %USERPROFILE%\x
+    # looks cwd-relative here but is expanded to an absolute path outside the memory
+    # roots by the time it actually runs. Reject these chars outright.
+    project = tmp_path / "repo"
+    input_dir = project / ".memsearch" / "memory"
+    input_dir.mkdir(parents=True)
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+
+    captured = {}
+
+    def fake_runner(ctx, prompt: str) -> str:
+        captured["ctx"] = ctx
+        return json.dumps({"action": "none", "reason": "test"})
+
+    run_due_tasks(platform="codex", project_dir=project, cfg=cfg, force=True, llm_runner=fake_runner)
+    output = run_memory_command(command, captured["ctx"])
+
+    assert "not allowed" in output
+
+
+def test_split_command_preserves_backslashes_on_windows(monkeypatch) -> None:
+    # Exercise the non-POSIX branch of _split_command on any host, not just a real
+    # Windows one: posix-mode shlex (the default off-Windows) treats backslash as an
+    # escape character and would eat it, turning C:\Users\x into C:Usersx.
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    assert maintenance._split_command(r"grep foo C:\Users\x\memory\note.md") == [
+        "grep",
+        "foo",
+        r"C:\Users\x\memory\note.md",
+    ]
+
+
+def test_validate_paths_in_args_does_not_skip_backslash_paths(tmp_path: Path) -> None:
+    # Before this fix, an arg with no "/" and no leading "." -- which is what every
+    # Windows path looks like from a non-Windows shlex split, e.g. C:\Users\x\f.txt --
+    # was treated as a bare word and skipped validation entirely, so it reached
+    # _run_restricted unchecked. Runs on any host: POSIX Path() still treats the
+    # backslash as a literal filename character rather than a real separator, so this
+    # checks that the arg reaches path resolution (and so gets flagged as outside the
+    # allowed roots) instead of being skipped outright.
+    allowed_root = tmp_path / "memory"
+    allowed_root.mkdir()
+
+    rejected = maintenance._validate_paths_in_args(
+        ["outside\\secret.txt"], [allowed_root], cwd=tmp_path, allow_hash=False
+    )
+
+    assert "outside allowed memory roots" in rejected
+
+
 def test_native_provider_requires_plugin_runner(tmp_path: Path) -> None:
     project = tmp_path / "repo"
     input_dir = project / ".memsearch" / "memory"
