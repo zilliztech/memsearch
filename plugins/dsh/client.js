@@ -49,10 +49,9 @@ window.__ModuleLoader__.load({
         '--msr-warn:var(--dsw-alias-state-warn-primary,#f59e0b);' +
         '--msr-error:var(--dsw-alias-state-error-primary,#ef4444);' +
         'box-sizing:border-box;' +
-        'width:calc(100% - var(--dsh-composer-side-clearance, 16px) * 2);' +
-        'max-width:var(--dsh-composer-card-max-width, 780px);' +
-        'margin:0 auto 6px;' +
-        'padding:0 var(--dsh-composer-dock-inset, 8px);' +
+        'width:calc(100% - var(--dsh-composer-side-clearance, 16px) * 2 - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'max-width:calc(var(--dsh-composer-card-max-width, 780px) - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'margin:0 auto;' +
         'flex:none;' +
         'display:flex;' +
         'flex-direction:column;' +
@@ -483,7 +482,7 @@ window.__ModuleLoader__.load({
 
     /** The dock strip: candidate count + expandable review list. */
     function SkillReviewPanel(props) {
-      var sessionId = props.sessionId || (props.session && props.session.id) || (props.session && props.session.sessionId)
+      var sessionId = props.sessionId
       var candidates = useState(null) // null = loading
       var setCandidates = candidates[1]
       var collapsed = useState(true)
@@ -674,8 +673,8 @@ window.__ModuleLoader__.load({
         return slots.register(
           { name: 'conversation.input.dock', id: 'skill-review', order: 15 },
           function (props) {
-            var sId = props.sessionId || (props.session && props.session.id) || (props.session && props.session.sessionId)
-            return React.createElement(SkillReviewPanel, { sessionId: sId, session: props.session })
+            var sId = props.sessionId || (props.session && props.session.sessionId)
+            return React.createElement(SkillReviewPanel, { sessionId: sId })
           },
         )
       })
