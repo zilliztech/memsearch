@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHARED = ROOT / "plugins" / "_shared" / "skills"
 
 # Skills materialized from a shared body plus per-platform frontmatter.
-FS_PLATFORMS = ("claude-code", "codex", "openclaw", "opencode")
+FS_PLATFORMS = ("claude-code", "codex", "openclaw", "opencode", "zcode")
 
 # Extra frontmatter lines each platform adds after the shared ``description:`` line.
 FRONTMATTER_EXTRA = {
@@ -32,6 +32,7 @@ FRONTMATTER_EXTRA = {
     "codex": [],
     "openclaw": ["metadata:", "  openclaw:", '    emoji: "🧠"'],
     "opencode": ["allowed-tools: Bash"],
+    "zcode": [],
 }
 
 

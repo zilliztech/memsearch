@@ -25,6 +25,7 @@ notes are platform-specific — see your platform reference file:
 - OpenClaw → `references/openclaw.md`
 - OpenCode → `references/opencode.md`
 - DeepSeek Harness → `references/dsh.md`
+- ZCode → `references/zcode.md`
 
 ## Intent routing
 
