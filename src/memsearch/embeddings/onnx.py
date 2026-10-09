@@ -19,7 +19,11 @@ class OnnxEmbedding:
     - Models with ``last_hidden_state`` output — CLS pooling + L2 normalize applied
     """
 
-    _DEFAULT_BATCH_SIZE = 32
+    # 64 measured ~11% faster than 32 on the default int8 bge-m3 model
+    # (CPU, Apple M-series; 128 texts: 13.2s @ 32 -> 11.7s @ 64 -> 10.6s @ 128).
+    # 128 is not the default because worst-case padded batches (8192-token
+    # inputs) materialize multi-GB activation tensors; 64 keeps that bounded.
+    _DEFAULT_BATCH_SIZE = 64
 
     def __init__(
         self,
@@ -63,7 +67,12 @@ class OnnxEmbedding:
         # Detect dimension from a probe embedding
         probe = self._encode(["hello"])
         self._dimension = len(probe[0])
-        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
+        self._batch_size = self._resolve_batch_size(batch_size)
+
+    @classmethod
+    def _resolve_batch_size(cls, batch_size: int) -> int:
+        """An explicit positive ``batch_size`` wins; 0 means provider default."""
+        return batch_size if batch_size > 0 else cls._DEFAULT_BATCH_SIZE
 
     @staticmethod
     def _download_model_files(model, hf_hub_download, list_repo_files):
