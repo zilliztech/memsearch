@@ -64,3 +64,29 @@ jobs:
 
       - name: Pack package
         run: npm pack --dry-run
+
+  dsh:
+    name: DSH plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/dsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Test package
+        run: npm test
+
+      - name: Check package syntax
+        run: |
+          node --check index.js
+          node --check client.js
+
+      - name: Pack package
+        run: npm pack --dry-run
