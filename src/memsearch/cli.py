@@ -733,7 +733,13 @@ def watch(
 @cli.command()
 @click.option("--source", "-s", default=None, help="Only compact chunks from this source.")
 @click.option(
-    "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
+    "--output-dir", "-o", default=None, type=click.Path(), help="Parent of the memory/ directory for the summary."
+)
+@click.option(
+    "--memory-dir",
+    default=None,
+    type=click.Path(file_okay=False),
+    help="Exact directory for the summary, with no memory/ appended. Overrides --output-dir.",
 )
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
@@ -745,6 +751,7 @@ def watch(
 def compact(
     source: str | None,
     output_dir: str | None,
+    memory_dir: str | None,
     llm_provider: str | None,
     llm_model: str | None,
     llm_base_url: str | None,
@@ -808,6 +815,7 @@ def compact(
                 llm_model=eff_model,
                 prompt_template=prompt_template,
                 output_dir=output_dir,
+                memory_dir=memory_dir,
                 llm_base_url=eff_base_url,
                 llm_api_key=eff_api_key,
             )
