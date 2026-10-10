@@ -48,6 +48,13 @@ window.__ModuleLoader__.load({
         '--msr-success:var(--dsw-alias-state-success-primary,#22c55e);' +
         '--msr-warn:var(--dsw-alias-state-warn-primary,#f59e0b);' +
         '--msr-error:var(--dsw-alias-state-error-primary,#ef4444);' +
+        'box-sizing:border-box;' +
+        'width:calc(100% - var(--dsh-composer-side-clearance, 16px) * 2 - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'max-width:calc(var(--dsh-composer-card-max-width, 780px) - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'margin:0 auto;' +
+        'flex:none;' +
+        'display:flex;' +
+        'flex-direction:column;' +
         'font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;' +
       '}' +
       '.msr-bar{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;box-sizing:border-box;' +
@@ -92,7 +99,7 @@ window.__ModuleLoader__.load({
       '.msr-toast.ok{border-color:color-mix(in srgb,var(--msr-success) 45%,transparent);color:var(--msr-success);}' +
       '.msr-toast.warn{border-color:color-mix(in srgb,var(--msr-warn) 45%,transparent);color:var(--msr-warn);}' +
       '.msr-toast.err{border-color:color-mix(in srgb,var(--msr-error) 45%,transparent);color:var(--msr-error);}' +
-      '.msr-capsule{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;box-sizing:border-box;' +
+      '.msr-capsule{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:3px 11px;box-sizing:border-box;' +
         'border:1px solid var(--msr-border);border-radius:999px;background:var(--msr-bg);color:var(--msr-text);' +
         'font-size:12px;font-weight:600;cursor:pointer;line-height:1.6;white-space:nowrap;transition:border-color .12s ease;}' +
       '.msr-capsule:hover{border-color:var(--msr-brand);}' +
@@ -664,9 +671,10 @@ window.__ModuleLoader__.load({
       ensureCss()
       slots.inject('conversation.input.dock', function () {
         return slots.register(
-          { name: 'conversation.input.dock', id: 'skill-review' },
+          { name: 'conversation.input.dock', id: 'skill-review', order: 15 },
           function (props) {
-            return React.createElement(SkillReviewPanel, { sessionId: props.sessionId })
+            var sId = props.sessionId || (props.session && props.session.sessionId)
+            return React.createElement(SkillReviewPanel, { sessionId: sId })
           },
         )
       })
