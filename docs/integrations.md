@@ -292,7 +292,7 @@ uv run --extra research python examples/parallel_research.py "Milvus hybrid sear
 
 # Include a page you want to keep in the knowledge base
 uv run --extra research python examples/parallel_research.py "Milvus hybrid search" \
-  --fetch-url https://milvus.io/docs/hybrid_search.md
+  --fetch-url https://milvus.io/docs/hybrid_search_with_milvus.md
 
 # Recall saved research without calling Parallel again
 uv run --extra research python examples/parallel_research.py "BM25 and dense vectors" --recall-only
