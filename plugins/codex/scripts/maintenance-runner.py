@@ -26,6 +26,7 @@ DEFAULT_NATIVE_MODELS = {
     "opencode": "",
     "openclaw": "",
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
+    "zcode": "",  # zcode uses the same Stop-hook + native-LLM pattern as claude-code
 }
 
 
@@ -517,12 +518,42 @@ def run_native_provider(ctx, prompt: str) -> str:
         out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=180)
         return extract_task_json_output(out)
 
+    if ctx.platform == "zcode":
+        # ZCode uses the same claude -p path as Claude Code.
+        # ponytail: add ZCode-specific flags if they diverge from claude-code.
+        cmd = [
+            "claude",
+            "-p",
+            *claude_safe_mode_args(),
+            "--strict-mcp-config",
+            "--no-session-persistence",
+            "--no-chrome",
+        ]
+        if getattr(ctx, "task", "") == "memory_to_skill":
+            cmd += ["--tools", "Bash", "--allowed-tools", "Bash(memsearch transcript:*) Bash(memsearch expand:*)"]
+        else:
+            cmd += ["--tools", ""]
+        if model:
+            cmd += ["--model", model]
+        cmd += [
+            "--system-prompt",
+            "You are a maintenance task runner. Output only the requested JSON object.",
+            prompt,
+        ]
+        env["CLAUDECODE"] = ""
+        env["MEMSEARCH_DISABLE"] = "1"
+        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
+
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run plugin-local MemSearch maintenance tasks.")
-    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "dsh"])
+    parser.add_argument(
+        "--platform",
+        required=True,
+        choices=["claude-code", "codex", "opencode", "openclaw", "dsh", "zcode"],
+    )
     parser.add_argument("--project-dir", default=None)
     parser.add_argument("--memsearch-dir", default=None)
     parser.add_argument("--force", action="store_true")
