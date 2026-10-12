@@ -277,6 +277,7 @@ def test_cli_watch_records_event_error_state(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(cli_module, "resolve_config", lambda _overrides=None: MemSearchConfig())
     monkeypatch.setattr(core_module, "MemSearch", FakeMemSearch)
     monkeypatch.setattr(time, "sleep", stop_loop)
+    monkeypatch.setenv("MEMSEARCH_STATE_DIR", str(tmp_path / "state"))
 
     result = CliRunner().invoke(cli, ["watch", str(memory_dir)])
 
