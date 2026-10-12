@@ -2,6 +2,9 @@
 
 The Claude Code plugin ships with **ONNX bge-m3 int8** as the default embedding model. This page documents the benchmark we ran to pick it — which models we tested, what dataset we used, and why this one won.
 
+> **Just want the setup path?** Start with [Getting Started](../getting-started.md), then see [Configuration](configuration.md) for provider settings or [For Agent Developers](for-developers.md) for integration details.
+
+
 If you just want the answer: on our real-world memory-retrieval benchmark (955 chunks / 2172 bilingual queries), `gpahal/bge-m3-onnx-int8` lost only ~1% recall to the full-precision PyTorch model while cutting the on-disk model size from 2.2 GB to 558 MB and dropping the `torch` dependency entirely. It also outperforms OpenAI `text-embedding-3-small` on Chinese retrieval (Recall@5 0.776 vs 0.717), so we can ship a zero-config default that is better than the old API-key default on real user data.
 
 ---
