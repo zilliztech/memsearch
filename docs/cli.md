@@ -1,6 +1,6 @@
 # CLI Reference
 
-memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases.
+memsearch provides a command-line interface for indexing, searching, and managing semantic memory over markdown knowledge bases. If you're brand new to the project, start with [Getting Started](getting-started.md) for the first end-to-end setup before diving into command details.
 
 ```bash
 $ memsearch --version
