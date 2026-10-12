@@ -2,6 +2,11 @@
 
 This page explains the core principles behind memsearch and how they differentiate it from other agent memory solutions.
 
+Need a different level of detail?
+- Use [Getting Started](getting-started.md) if you want a working local setup first
+- Use [Architecture](architecture.md) if you want the implementation/data-flow view
+- Use [CLI Reference](cli.md) if you want command-level usage
+
 ---
 
 ## Markdown is the Source of Truth
