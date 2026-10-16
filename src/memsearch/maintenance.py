@@ -317,11 +317,11 @@ def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:
     if provider_type == "gemini":
         return _run_gemini_with_tools(ctx, prompt, model, provider_cfg)
 
-    return _run_async_summarize_text(prompt, provider_type, model, provider_cfg)
+    return _run_async_summarize_text(prompt, provider_type, model, provider_cfg, ctx)
 
 
 def _run_async_summarize_text(
-    prompt: str, provider_type: str, model: str | None, provider_cfg: LLMProviderConfig
+    prompt: str, provider_type: str, model: str | None, provider_cfg: LLMProviderConfig, ctx: TaskContext
 ) -> str:
     import asyncio
 
@@ -332,6 +332,8 @@ def _run_async_summarize_text(
             model=model,
             base_url=provider_cfg.base_url or None,
             api_key=provider_cfg.api_key or None,
+            audit_source=f"plugin-{ctx.platform}-{ctx.task}",
+            audit_context=str(ctx.project_dir),
         )
     )
 
