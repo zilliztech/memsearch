@@ -20,6 +20,7 @@ Commands:
   config      Manage memsearch configuration.
   expand      Expand a memory chunk to show full context.
   index       Index markdown files from PATHS.
+  quality     Score a candidate memory section from standard input.
   reset       Drop all indexed data.
   search      Search indexed memory for QUERY.
   stats       Show statistics about the index.
@@ -36,6 +37,7 @@ Commands:
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
+| `memsearch quality` | Score a pending captured-memory section without writing it |
 | `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
 | `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
 | `memsearch stats` | Display index statistics (total chunk count) |
@@ -300,6 +302,10 @@ provider = "openai"
 | `llm.model` | string | `""` | LLM model override for `memsearch compact` |
 | `llm.base_url` | string | `""` | OpenAI-compatible API base URL |
 | `llm.api_key` | string | `""` | API key (supports `env:VAR_NAME` syntax) |
+| `quality_filter.enabled` | bool | `true` | Enable deterministic capture scoring in supporting plugins |
+| `quality_filter.min_content_length` | int | `40` | Normalized-content length below which a candidate is penalized |
+| `quality_filter.degrade_threshold` | int | `60` | Minimum score for an unmarked write |
+| `quality_filter.reject_threshold` | int | `30` | Minimum score for a degraded write |
 | `llm.providers.<name>.type` | string | `""` | Named provider type for plugin summarization (`openai`, `openai-compatible`, `anthropic`, `gemini`) |
 | `llm.providers.<name>.model` | string | `""` | Default model for a named plugin summarization provider |
 | `llm.providers.<name>.base_url` | string | `""` | OpenAI-compatible API base URL for a named provider |
@@ -316,6 +322,22 @@ provider = "openai"
 | `prompts.summarize` | string | `""` | Custom prompt file for plugin session summarization |
 | `prompts.project_review` | string | `""` | Custom prompt file for plugin project maintenance |
 | `prompts.user_profile` | string | `""` | Custom prompt file for plugin user-profile maintenance |
+
+---
+
+## `memsearch quality`
+
+Score one pending memory section from standard input without writing a journal or
+opening Milvus. Capture integrations can supply the current and prior daily
+journals with repeatable `--recent-file` options for near-duplicate detection.
+
+```bash
+printf '%s\n' '- Implemented a deterministic quality scorer.' | memsearch quality --json-output
+# {"score": 100, "action": "write", "reasons": []}
+```
+
+The JSON `action` is `write`, `degrade`, or `reject`. The command is
+side-effect free; the integration decides whether and how to append the section.
 
 ---
 
