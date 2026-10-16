@@ -198,17 +198,20 @@ fi
 # content-bearing Stop of this session (SessionStart no longer writes it
 # eagerly, so sessions without summaries leave no stub journals). The
 # progressive-disclosure anchor comment doubles as the heading-written marker.
-{
-  if [ -z "$SESSION_ID" ] || ! grep -qF "session:${SESSION_ID}" "$MEMORY_FILE" 2>/dev/null; then
-    echo -e "\n## Session $NOW\n"
-  fi
-  echo "### $NOW"
-  if [ -n "$SESSION_ID" ]; then
-    echo "<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->"
-  fi
-  echo "$SUMMARY"
-  echo ""
-} >> "$MEMORY_FILE"
+# Build the whole entry in memory and append with a single write: concurrent
+# Stop hooks share one daily file (worktrees, synced folders), and multiple
+# echo/write syscalls would interleave heading, anchor, and summary across
+# sessions. One O_APPEND write keeps the entry atomic against other appenders.
+# No flock: flock(1) is unavailable on macOS.
+BLOCK=""
+if [ -z "$SESSION_ID" ] || ! grep -qF "session:${SESSION_ID}" "$MEMORY_FILE" 2>/dev/null; then
+  BLOCK="\n## Session $NOW\n"
+fi
+BLOCK="${BLOCK}### $NOW\n"
+if [ -n "$SESSION_ID" ]; then
+  BLOCK="${BLOCK}<!-- session:${SESSION_ID} turn:${LAST_USER_TURN_UUID} transcript:${TRANSCRIPT_PATH} -->\n"
+fi
+printf '%b%s\n\n' "$BLOCK" "$SUMMARY" >> "$MEMORY_FILE"
 
 # Server mode indexes immediately instead of relying on the watch debounce.
 # Lite mode keeps the SessionStart one-shot index: restarting it after every
