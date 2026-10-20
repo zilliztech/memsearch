@@ -51,6 +51,18 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install core for plugin integration tests
+        working-directory: .
+        run: uv sync --locked
+
       - name: Install dependencies
         run: npm install --package-lock=false
 

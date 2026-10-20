@@ -77,6 +77,7 @@ OpenCode's [official migration](https://opencode.ai/v2/docs/migrate-v1) is user-
 Development checks:
 
 ```bash
+uv sync --locked
 npm --prefix plugins/opencode run typecheck
 npm --prefix plugins/opencode test
 uv run python -m pytest tests/test_opencode_turns.py tests/test_opencode_parse_transcript.py tests/test_maintenance_runner.py tests/test_skills_sync.py
