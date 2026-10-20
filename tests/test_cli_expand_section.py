@@ -43,6 +43,15 @@ def test_extract_section_mid_section_chunk_walks_back_to_heading() -> None:
     assert content.startswith("## A")
 
 
+def test_extract_section_keeps_nested_children_but_excludes_peer() -> None:
+    lines = ["## Parent", "intro", "### Child", "detail", "## Peer", "other"]
+
+    content, start, end = _extract_section(lines, 1, 2)
+
+    assert (start, end) == (1, 4)
+    assert content == "## Parent\nintro\n### Child\ndetail"
+
+
 def test_expand_returns_the_chunks_own_section_and_anchor(monkeypatch, tmp_path) -> None:
     source = tmp_path / "2026-09-24.md"
     source.write_text(DAILY_LOG, encoding="utf-8")
