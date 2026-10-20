@@ -1,108 +1,61 @@
 # Installation
 
-## Prerequisites
+## Compatibility
 
-- OpenCode with plugin support
-- Python 3.10+
-- memsearch installed: `uv tool install "memsearch[onnx]"`
-- POSIX shell environment for the plugin helper scripts (`bash` + `python3`)
+**Plugin 0.4.0 supports official OpenCode V2 `>=2.0.32 <3`.** Its development SDK is pinned to `@opencode/plugin@2.0.32`. V1 installations should keep the plugin pinned:
 
-!!! warning "Native Windows is not supported yet"
-    The OpenCode plugin currently shells out to `bash` and `python3` helper scripts for collection derivation, transcript parsing, and the background capture daemon. On a plain Windows install without a POSIX shell, the plugin may fail with errors like `derive-collection.sh: No such file or directory`.
+```json
+{ "plugin": ["@zilliz/memsearch-opencode@0.3.17"] }
+```
 
-    Recommended options:
+That singular `plugin` key is the V1 configuration. V2 uses `plugins`. Check the host version and actual loaded plugin path; comparing registry and worktree version strings alone is insufficient.
 
-    - Run OpenCode + memsearch inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
-    - Or use Git Bash / another POSIX-compatible shell and expect some path-handling rough edges
+## Install the V2 plugin
 
-    If you need native Windows support, track [issue #387](https://github.com/zilliztech/memsearch/issues/387).
-
-## Verify the plugin is working
-
-After restarting OpenCode, use this quick checklist:
-
-1. Open a project and chat for a few turns.
-2. Confirm memory files appear:
+Use the existing nvm Node 22 environment, Python 3.11+, and a current MemSearch CLI supporting `--default-collection`. Standalone TUI capture, fresh-session recall, L3 and exit recovery were validated with Node 22.23.2 on official CLI 2.0.32 and 2.1.0. Development types remain pinned to SDK 2.0.32. Install the core if needed:
 
 ```bash
-ls .memsearch/memory/
+uv tool install 'memsearch[onnx]'
 ```
 
-3. Inspect today's memory file:
+Install the published package through OpenCode:
 
 ```bash
-cat .memsearch/memory/$(date +%Y-%m-%d).md
+opencode plugin add @zilliz/memsearch-opencode@0.4.0
 ```
 
-4. Ask a recall question in OpenCode, for example:
-
-```text
-We discussed the authentication flow before, what was the approach?
-```
-
-If capture is working, you should see daily markdown files appear and the agent should be able to use `memory_search` / `memory_get` / `memory_transcript` when history is relevant.
-
-## Install from npm (recommended)
-
-Add to your `~/.config/opencode/opencode.json`:
+The equivalent V2 configuration is:
 
 ```json
 {
-  "plugin": ["@zilliz/memsearch-opencode"]
+  "plugins": ["@zilliz/memsearch-opencode@0.4.0"]
 }
 ```
 
-## Install from Source (development)
+### Development source
+
+From a source clone:
 
 ```bash
-bash memsearch/plugins/opencode/install.sh
-```
-
-The installer:
-
-1. Symlinks the plugin to `~/.config/opencode/plugins/memsearch.ts`
-2. Symlinks the memory-recall skill to `~/.agents/skills/memory-recall`
-3. Installs npm dependencies
-4. Shows next steps
-
-## Configuration
-
-The plugin defaults to ONNX embedding (no API key). Configuration uses the standard memsearch config system:
-
-```bash
-memsearch config set embedding.provider onnx
-memsearch config set milvus.uri http://localhost:19530  # optional: remote Milvus
-```
-
-## Updating
-
-For npm installs, keep the package name in `~/.config/opencode/opencode.json` and restart OpenCode so it reloads the configured plugin:
-
-```json
-{
-  "plugin": ["@zilliz/memsearch-opencode"]
-}
-```
-
-If you pinned a package version in that file, update the version string before restarting OpenCode.
-
-For source installs, pull the latest repo and re-run the installer:
-
-```bash
-cd memsearch
-git pull
 bash plugins/opencode/install.sh
 ```
 
-## Uninstall
+The script installs source dependencies and prints the exact absolute entry to add to your V2 configuration. It does not edit shared host configuration, authentication, global Skills, or running daemons.
 
-For npm installs, remove `@zilliz/memsearch-opencode` from the `plugin` array in `~/.config/opencode/opencode.json`, then restart OpenCode.
-
-For source installs, remove the symlinks created by the installer:
-
-```bash
-rm -f ~/.config/opencode/plugins/memsearch.ts
-rm -rf ~/.agents/skills/memory-recall
+```json
+{
+  "plugins": ["/absolute/path/to/memsearch/plugins/opencode"]
+}
 ```
 
-Uninstalling the plugin does not delete memory files in `.memsearch/memory/`.
+Enable exactly one MemSearch source. Retain other plugins, but do not also enable an npm MemSearch package or an old `memsearch.ts` discovery link. All three Skills register at runtime with their packaged reference paths; no global Skill symlink is needed.
+
+Restart and verify that OpenCode loaded this path and exposes the three memory tools. Memories live in the exact checkout's `.memsearch/memory/`. Explicit configured collections take precedence over the per-project derived fallback. Existing embedding/provider/model settings are preserved; the plugin never writes global config.
+
+## Existing conversations
+
+Follow the [official OpenCode migration guidance](https://opencode.ai/v2/docs/migrate-v1) yourself. MemSearch does not migrate the database or change Markdown anchors. First activation baselines already-settled history; it does not bulk-import old conversations. Existing journals remain searchable.
+
+If L3 fails, check host/plugin compatibility, the anchor's database path, and the specific session/turn. A database with V2 tables may still lack a referenced migrated conversation. Keep useful search/expand results and report this limitation; do not reset capture state or rewrite anchors.
+
+V1 can reject the V2 entrypoint before its Skills load. Use this page or an independently installed `memory-config` Skill for that diagnosis. Source tests and a published installation must be validated separately.

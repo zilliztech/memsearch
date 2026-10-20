@@ -76,7 +76,7 @@ Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-worksp
 
 ### OpenCode Plugin
 
-TypeScript plugin with daemon-based capture from OpenCode's SQLite database.
+OpenCode V2 plugin with immediate session-event capture and durable SQLite recovery before recall. V1 users pin the published `@zilliz/memsearch-opencode@0.3.17`.
 
 ```bash
 bash memsearch/plugins/opencode/install.sh

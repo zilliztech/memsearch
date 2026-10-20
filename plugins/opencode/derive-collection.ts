@@ -20,6 +20,6 @@ export function deriveCollectionNameFromScript(
       timeout: 5000,
     }).trim();
   } catch {
-    return "ms_opencode_default";
+    throw new Error("Could not derive a project-specific memory collection; refusing a shared fallback.");
   }
 }

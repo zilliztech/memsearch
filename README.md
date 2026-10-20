@@ -181,28 +181,21 @@ We discussed batch size limits before, what did we decide?
 <details>
 <summary><h3>For OpenCode Users</h3></summary>
 
+**Plugin 0.4.0 supports OpenCode V2 `>=2.0.32 <3`.** Install with `opencode plugin add @zilliz/memsearch-opencode@0.4.0`, or add it to the V2 configuration:
+
 ```json
-// In ~/.config/opencode/opencode.json
-{ "plugin": ["@zilliz/memsearch-opencode"] }
+{ "plugins": ["@zilliz/memsearch-opencode@0.4.0"] }
 ```
 
-After installing, chat in TUI as usual. A background daemon captures conversations.
+Use exactly one MemSearch source. The three tools and Skills register at runtime. Completed turns are captured immediately; durable pending work recovers before recall after a short exit. Markdown remains under `.memsearch/memory/`.
 
-**Verify it's working:**
+**V1 users pin the published 0.3.17 plugin** using their existing V1 configuration:
 
-```bash
-ls .memsearch/memory/    # daily .md files appear after a few conversations
+```json
+{ "plugin": ["@zilliz/memsearch-opencode@0.3.17"] }
 ```
 
-**Recall memories** — two ways to trigger:
-
-```
-/memory-recall what did we discuss about authentication?
-```
-Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
-```
-We discussed the authentication flow before, what was the approach?
-```
+Ask about previous decisions to use `memory_search` → `memory_get` → `memory_transcript`, or invoke the `memory-recall` Skill. Existing Markdown and transcript anchors are preserved; OpenCode's database migration remains user-owned.
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
 

@@ -1,106 +1,67 @@
 #!/usr/bin/env python3
-"""Parse OpenCode SQLite transcript for a given session.
-
-Usage:
-  parse-transcript.py <session_id> [--limit N] [--turn TURN_ID] [--context N] [--project-dir PATH]
-
-Options:
-  --limit N        Max number of turns to return when no turn is targeted (default: 20)
-  --turn TURN_ID   Return the target turn plus surrounding context turns
-  --context N      Number of turns before/after the target turn (default: 3)
-  --project-dir    OpenCode project directory (unused for transcript reads; kept for tool compatibility)
-
-The script reads from the OpenCode SQLite database at:
-  ~/.local/share/opencode/opencode.db
-"""
+"""Read one explicitly scoped OpenCode V2 conversation; never use the sidecar as dialogue."""
 
 from __future__ import annotations
 
 import argparse
-import os
+import contextlib
 import sqlite3
 import sys
 
-from opencode_turns import build_turns, find_turn_index, get_db_path
+from opencode_turns import Scope, TranscriptError, build_turns, find_turn_index, get_db_path, open_source, session_row
 
 
-def _emit(text: str = "", *, err: bool = False) -> None:
-    """Write a line of output without relying on print()."""
-    stream = sys.stderr if err else sys.stdout
-    stream.write(text)
-    if not text.endswith("\n"):
-        stream.write("\n")
-
-
-def parse_session(
-    session_id: str,
-    limit: int = 20,
-    turn_id: str | None = None,
-    context: int = 3,
-) -> None:
-    """Parse messages for a session, grouped into turns."""
-    db_path = get_db_path()
-    if not os.path.exists(db_path):
-        _emit(f"Error: OpenCode database not found at {db_path}", err=True)
-        sys.exit(1)
-
-    conn = sqlite3.connect(db_path, timeout=5)
-    conn.row_factory = sqlite3.Row
-
-    try:
+def parse_session(session_id: str, scope: Scope, db_path: str, *, limit=20, turn_id=None, context=3) -> str:
+    with contextlib.closing(open_source(db_path)) as conn:
+        session_row(conn, session_id, scope)
         turns = build_turns(conn, session_id)
-        if not turns:
-            _emit(f"No messages found for session {session_id}")
-            return
-
-        if turn_id:
-            target_idx = find_turn_index(turns, turn_id)
-            if target_idx < 0:
-                _emit(f"Turn not found: {turn_id}", err=True)
-                sys.exit(1)
-
-            start = max(0, target_idx - context)
-            end = min(len(turns), target_idx + context + 1)
-            selected = turns[start:end]
-        elif limit and limit > 0:
-            selected = turns[-limit:]
-        else:
-            selected = turns
-
-        if not selected:
-            _emit(f"No meaningful content found for session {session_id}")
-            return
-
-        for turn in selected:
-            _emit(turn.render())
-            _emit()
-
-    finally:
-        conn.close()
+    if not turns:
+        raise TranscriptError("Session has no V2 user turns. Verify the referenced session and host migration.")
+    if turn_id:
+        index = find_turn_index(turns, turn_id)
+        selected = turns[max(0, index - context) : index + context + 1]
+    else:
+        selected = turns[-limit:]
+    return "\n\n".join(f"=== Turn {turn.turn_id} ===\n{turn.render()}" for turn in selected)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Parse OpenCode session transcript")
-    parser.add_argument("session_id", help="Session ID to parse")
-    parser.add_argument("--limit", type=int, default=20, help="Max turns to return")
-    parser.add_argument("--turn", default=None, help="Target turn ID (prefix match)")
-    parser.add_argument("--context", type=int, default=3, help="Turns before/after target")
-    parser.add_argument(
-        "--project-dir",
-        default=os.getcwd(),
-        help="OpenCode project directory (unused for transcript reads; kept for tool compatibility)",
-    )
+def bounded_int(low: int, high: int):
+    def parse(value: str) -> int:
+        number = int(value)
+        if not low <= number <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
+        return number
+
+    return parse
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("session_id")
+    parser.add_argument("--project-dir", required=True, help="Exact requesting checkout/root")
+    parser.add_argument("--project-id", required=True, help="Requesting host project ID")
+    parser.add_argument("--workspace-id")
+    parser.add_argument("--db", help="Database path from the journal anchor")
+    parser.add_argument("--channel", default="latest")
+    parser.add_argument("--turn")
+    parser.add_argument("--limit", type=bounded_int(1, 50), default=20)
+    parser.add_argument("--context", type=bounded_int(0, 10), default=3)
     args = parser.parse_args()
-
-    # The capture daemon may maintain a turn sidecar for replay-safe progress,
-    # but transcript reads always rebuild from the raw OpenCode SQLite database.
-    parse_session(
-        args.session_id,
-        limit=args.limit,
-        turn_id=args.turn,
-        context=args.context,
-    )
+    try:
+        text = parse_session(
+            args.session_id,
+            Scope(args.project_dir, args.project_id, args.workspace_id),
+            get_db_path(args.db, args.channel),
+            limit=args.limit,
+            turn_id=args.turn,
+            context=args.context,
+        )
+        sys.stdout.write(text + "\n")
+        return 0
+    except (TranscriptError, sqlite3.Error, OSError) as exc:
+        sys.stderr.write(f"Transcript unavailable: {exc}\n")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

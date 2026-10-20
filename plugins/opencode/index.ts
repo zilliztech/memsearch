@@ -1,382 +1,82 @@
-/**
- * memsearch OpenCode plugin — semantic memory search across sessions.
- *
- * Registers:
- * - memory_search tool: semantic search over past memories
- * - memory_get tool: expand a chunk to full context
- * - memory_transcript tool: parse original conversation from OpenCode SQLite
- * - experimental.chat.system.transform hook: inject recent memories as context
- *
- * Auto-capture is handled by a background Python daemon (capture-daemon.py)
- * that polls the OpenCode SQLite database for completed turns.
- */
-
-import type { Plugin } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin";
-import { execSync, exec, spawn, spawnSync } from "node:child_process";
-import {
-  readFileSync,
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { join, dirname } from "node:path";
+/** OpenCode V2 memory capture and recall plugin. */
+import { Plugin } from "@opencode/plugin";
+import { dirname, join } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
-import {
-  getRecentMemories,
-  getSkillCandidateHint,
-  MEMSEARCH_SYSTEM_MARKER,
-  mergeSystemMemoryContext,
-  shellEscape,
-} from "./context.ts";
+import { CaptureCoordinator, helperRunner } from "./capture.ts";
+import { getRecentMemories, MEMSEARCH_SYSTEM_MARKER, mergeSystemMemoryContext } from "./context.ts";
 import { deriveCollectionNameFromScript } from "./derive-collection.ts";
+import { detectCommand, run } from "./runtime.ts";
+import { databasePath, hostScope, sessionScope } from "./scope.ts";
+import { registerSkills } from "./skills.ts";
+import { registerTools } from "./tools.ts";
 
-const PLUGIN_DIR = dirname(realpathSync(fileURLToPath(import.meta.url)));
+const pluginDir = dirname(realpathSync(fileURLToPath(import.meta.url)));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Detect the memsearch CLI command.
- * Checks: PATH -> ~/.local/bin/uvx -> uvx in PATH.
- */
-function detectMemsearchCmd(): string {
-  const home = process.env.HOME || "";
-
-  try {
-    const r = spawnSync("which", ["memsearch"], { stdio: "pipe" });
-    if (r.status === 0) return "memsearch";
-  } catch { /* ignore */ }
-
-  const uvxPath = join(home, ".local", "bin", "uvx");
-  if (existsSync(uvxPath)) {
-    return `${uvxPath} --from 'memsearch[onnx]' memsearch`;
-  }
-
-  try {
-    const r = spawnSync("which", ["uvx"], { stdio: "pipe" });
-    if (r.status === 0) return "uvx --from 'memsearch[onnx]' memsearch";
-  } catch { /* ignore */ }
-
-  return "memsearch";
-}
-
-/** Derive a per-project Milvus collection name via the shared script. */
-function deriveCollectionName(projectDir: string): string {
-  const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
-  return deriveCollectionNameFromScript(script, projectDir);
-}
-
-function requireDefaultCollectionSupport(
-  projectDir: string,
-  collectionName: string,
-  memsearchCmd: string
-): void {
-  const result = spawnSync(
-    "bash",
-    [
-      "-c",
-      `${memsearchCmd} config get milvus.collection ` +
-        `--default-collection '${shellEscape(collectionName)}'`,
-    ],
-    { cwd: projectDir, encoding: "utf-8", timeout: 5000 }
-  );
-  if (result.status !== 0) {
-    throw new Error(
-      "Installed memsearch CLI is incompatible with this plugin; " +
-        "--default-collection support is required. Upgrade memsearch core and the plugin together."
-    );
-  }
-}
-
-/**
- * Start the capture daemon as a background process.
- * The daemon polls OpenCode's SQLite for completed turns and writes to daily .md files.
- */
-function startCaptureDaemon(
-  projectDir: string,
-  collectionName: string,
-  memsearchCmd: string
-): void {
-  const stateDir = join(projectDir, ".memsearch");
-  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
-  const daemonScript = join(PLUGIN_DIR, "scripts", "capture-daemon.py");
-
-  // Check if daemon is already running
-  if (existsSync(pidFile)) {
-    try {
-      const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
-      if (pid > 0) {
-        // Check if process is still alive
-        try {
-          process.kill(pid, 0);
-          return; // Already running
-        } catch {
-          // Process is dead, clean up stale PID file
-          try { unlinkSync(pidFile); } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
-  }
-
-  try {
-    mkdirSync(stateDir, { recursive: true });
-    const child = spawn(
-      "python3",
-      [
-        daemonScript,
-        projectDir,
-        collectionName,
-        "--memsearch-cmd",
-        memsearchCmd,
-        "--poll-interval",
-        "10",
-        "--parent-pid",
-        String(process.pid),
-      ],
-      {
-        cwd: projectDir,
-        detached: true,
-        stdio: "ignore",
-        env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
-      }
-    );
-    child.unref();
-    if (child.pid) {
-      try { writeFileSync(pidFile, String(child.pid), "utf-8"); } catch { /* ignore */ }
+export default Plugin.define({
+  id: "memsearch",
+  async setup(ctx) {
+    const version = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(ctx.app.version);
+    if (!version || Number(version[1]) !== 2 || Number(version[2]) === 0 && Number(version[3]) < 32) {
+      throw new Error("MemSearch requires OpenCode V2 >=2.0.32 <3. V1 users must pin @zilliz/memsearch-opencode@0.3.17; host migration is user-owned.");
     }
-  } catch {
-    // Capture is best-effort; tools still work without the background daemon.
-  }
-}
-
-/**
- * Stop the capture daemon.
- */
-function stopCaptureDaemon(projectDir: string): void {
-  const pidFile = join(projectDir, ".memsearch", ".capture.pid");
-  if (existsSync(pidFile)) {
+    if (process.env.MEMSEARCH_NO_WATCH) return;
+    const scope = hostScope(ctx);
+    const db = databasePath(ctx.app.channel);
+    const command = detectCommand();
+    const collection = deriveCollectionNameFromScript(join(pluginDir, "scripts/derive-collection.sh"), scope.root);
+    await run(command, ["config", "get", "milvus.collection", "--default-collection", collection], scope.root, undefined, 15_000);
+    const capture = new CaptureCoordinator(helperRunner(ctx, pluginDir, scope, db, collection, command));
+    const events = new AbortController();
+    const registrations: { dispose(): Promise<void> }[] = [];
     try {
-      const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
-      if (pid > 0) {
-        try { process.kill(pid, "SIGTERM"); } catch { /* ignore */ }
-      }
-    } catch { /* ignore */ }
-  }
-}
-
-function wakeMaintenance(projectDir: string, memsearchDir: string): void {
-  const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
-  exec(
-    `python3 '${shellEscape(runner)}' --platform opencode ` +
-      `--project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(memsearchDir)}' &`,
-    {
-      cwd: projectDir,
-      timeout: 5000,
-      env: { ...process.env, MEMSEARCH_NO_WATCH: "1" },
-    },
-    () => { /* ignore */ }
-  );
-}
-
-function commandFailure(action: string, result: ReturnType<typeof spawnSync>): string | null {
-  if (result.error) return `${action} failed: ${result.error.message}`;
-  if (result.status === 0) return null;
-  const detail = String(result.stderr || result.stdout || result.signal || "unknown error").trim();
-  return `${action} failed (exit ${result.status ?? "unknown"}): ${detail}`;
-}
-
-// ---------------------------------------------------------------------------
-// Plugin entry
-// ---------------------------------------------------------------------------
-
-const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
-  // worktree can be "/" for global projects — use directory instead
-  const projectDir = (worktree && worktree !== "/") ? worktree : (directory || process.cwd());
-  const memsearchCmd = detectMemsearchCmd();
-  const collectionName = deriveCollectionName(projectDir);
-  requireDefaultCollectionSupport(projectDir, collectionName, memsearchCmd);
-  const memsearchDir = join(projectDir, ".memsearch");
-  const memoryDir = join(memsearchDir, "memory");
-  const skillCandidateHint = getSkillCandidateHint(memsearchDir, memsearchCmd);
-  const home = process.env.HOME || "~";
-
-  // Skip capture/recall in child processes to prevent recursion
-  const isChildProcess = !!process.env.MEMSEARCH_NO_WATCH;
-  const autoCapture = !isChildProcess;
-  const autoRecall = !isChildProcess;
-
-  // Ensure default config (onnx provider) at startup
-  try {
-    const configFile = join(home, ".memsearch", "config.toml");
-    const localConfig = join(projectDir, ".memsearch.toml");
-    if (!existsSync(configFile) && !existsSync(localConfig)) {
+      // Establish the first-install baseline before accepting prompts or recall.
+      await capture.initialize();
+      if (!capture.ready) throw new Error("MemSearch could not establish its V2 capture baseline. Check host database/schema and CLI configuration before enabling the plugin.");
+      registrations.push(await registerSkills(ctx, pluginDir));
+      registrations.push(await registerTools(ctx, scope, collection, command, capture, pluginDir, db));
+      registrations.push(await ctx.session.hook("prompt", async input => {
+        await sessionScope(ctx, scope, input.sessionID, db, pluginDir);
+        await capture.recover();
+      }));
+      registrations.push(await ctx.session.hook("context", async input => {
+        await sessionScope(ctx, scope, input.sessionID, db, pluginDir);
+        const pending = await capture.recover();
+        const hint = await run(command, ["skills", "status", "--hint"], scope.root, undefined, 5000).catch(() => "");
+        const memory = getRecentMemories(join(scope.root, ".memsearch/memory"));
+        input.system = mergeSystemMemoryContext(input.system, [MEMSEARCH_SYSTEM_MARKER,
+          "Use memory_search → memory_get → memory_transcript for relevant history. Skills: memory-recall, memory-config, memory-to-skill.",
+          memory, hint, pending].filter(Boolean).join("\n\n"));
+      }));
+    } catch (error) {
+      events.abort();
+      await capture.close(0);
+      await Promise.all(registrations.map(item => item.dispose()));
+      throw error;
+    }
+    // Subscribe only after baseline and registrations: a setup-time event must
+    // never merge inference into the initialization promise awaited by the host.
+    // Prompt/recall recovery and the timer scan cover events missed during setup.
+    const subscription = (async () => {
       try {
-        execSync(`${memsearchCmd} config set embedding.provider onnx`, {
-          cwd: projectDir,
-          timeout: 5000,
-          stdio: "ignore",
-        });
-      } catch { /* ignore */ }
-    }
-  } catch { /* ignore */ }
-
-  // Run initial index in background
-  if (existsSync(memoryDir)) {
-    exec(
-      `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
-        `--default-collection ${collectionName}`,
-      { cwd: projectDir, timeout: 120000 },
-      () => { /* ignore */ }
-    );
-  }
-
-  // Start capture daemon for auto-capture
-  if (autoCapture) {
-    startCaptureDaemon(projectDir, collectionName, memsearchCmd);
-    wakeMaintenance(projectDir, memsearchDir);
-  }
-
-  return {
-    // ----- Tools -----
-    tool: {
-      memory_search: tool({
-        description:
-          "Search past conversation memories using memsearch semantic search. " +
-          "Returns relevant chunks from past sessions, including dates, " +
-          "topics discussed, and code referenced. Powered by Milvus hybrid " +
-          "search (BM25 + dense vectors + RRF reranking).",
-        args: {
-          query: tool.schema.string().describe("Search query — describe what you want to find"),
-          top_k: tool.schema.number().optional().describe("Number of results to return (default: 5)"),
-        },
-        async execute(args, context) {
-          // Use context.directory for the actual session directory (may differ from init)
-          const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          const memDir = join(dir, ".memsearch", "memory");
-          // Ensure daemon is running for current directory
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
-          const topK = args.top_k || 5;
-          try {
-            const result = spawnSync(
-              "bash",
-              [
-                "-c",
-                `${memsearchCmd} search '${shellEscape(args.query)}' ` +
-                  `--top-k ${topK} --json-output --default-collection ${col}`,
-              ],
-              { cwd: dir, encoding: "utf-8", timeout: 30000 }
-            );
-            const failure = commandFailure("Search", result);
-            if (failure) return failure;
-            return result.stdout || result.stderr || "No results found.";
-          } catch (e: any) {
-            return `Search failed: ${e.message}`;
-          }
-        },
-      }),
-
-      memory_get: tool({
-        description:
-          "Expand a memory chunk to see the full markdown section with " +
-          "surrounding context. Use after memory_search to get details " +
-          "about a specific result.",
-        args: {
-          chunk_hash: tool.schema.string().describe("The chunk_hash from a search result to expand"),
-        },
-        async execute(args, context) {
-          const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
-          try {
-            const result = spawnSync(
-              "bash",
-              [
-                "-c",
-                `${memsearchCmd} expand '${shellEscape(args.chunk_hash)}' ` +
-                  `--default-collection ${col}`,
-              ],
-              { cwd: dir, encoding: "utf-8", timeout: 15000 }
-            );
-            const failure = commandFailure("Expand", result);
-            if (failure) return failure;
-            return result.stdout || result.stderr || "No content found.";
-          } catch (e: any) {
-            return `Expand failed: ${e.message}`;
-          }
-        },
-      }),
-
-      memory_transcript: tool({
-        description:
-          "Retrieve the original conversation from a past OpenCode session. " +
-          "Use after memory_get when the expanded result contains a session anchor " +
-          "(<!-- session:ID turn:ID db:PATH -->). Returns the formatted " +
-          "dialogue with [User] and [Assistant] labels. When turn_id is present, " +
-          "the tool returns the target turn plus surrounding context.",
-        args: {
-          session_id: tool.schema.string().describe("The session ID from the anchor comment"),
-          turn_id: tool.schema.string().optional().describe("Optional turn ID from the anchor comment"),
-          context: tool.schema.number().optional().describe("Turns before/after the target turn (default: 3)"),
-          limit: tool.schema.number().optional().describe("Max number of turns to return when no turn_id is provided (default: 20)"),
-        },
-        async execute(args, context) {
-          const dir = context?.directory || projectDir;
-          const col = dir !== projectDir ? deriveCollectionName(dir) : collectionName;
-          if (autoCapture) startCaptureDaemon(dir, col, memsearchCmd);
-          try {
-            const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.py");
-            const scriptArgs = [
-              scriptPath,
-              args.session_id,
-              "--project-dir",
-              dir,
-            ];
-            if (args.turn_id) {
-              scriptArgs.push("--turn", args.turn_id);
-            }
-            if (typeof args.context === "number") {
-              scriptArgs.push("--context", String(args.context));
-            }
-            if (typeof args.limit === "number") {
-              scriptArgs.push("--limit", String(args.limit));
-            }
-            const result = spawnSync("python3", scriptArgs, {
-              encoding: "utf-8",
-              timeout: 15000,
-            });
-            return result.stdout?.trim() || result.stderr || "No transcript content found.";
-          } catch (e: any) {
-            return `Transcript parse failed: ${e.message}`;
-          }
-        },
-      }),
-    },
-
-    // ----- Hook: system prompt transform — inject recent memories -----
-    ...(autoRecall
-      ? {
-          "experimental.chat.system.transform": async (_input: any, output: any) => {
+        for await (const event of ctx.event.subscribe({ signal: events.signal })) {
+          if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(event.type) && "sessionID" in event.data) {
             try {
-              const context = getRecentMemories(memoryDir);
-              if (context || skillCandidateHint) {
-                const memoryText =
-                  `${MEMSEARCH_SYSTEM_MARKER} You have access to memory_search, ` +
-                  `memory_get, and memory_transcript tools for recalling past sessions.` +
-                  `${skillCandidateHint ? `\n${skillCandidateHint}` : ""}` +
-                  `${context ? `\n\n${context}` : ""}`;
-                output.system = mergeSystemMemoryContext(output.system, memoryText);
-              }
-            } catch { /* ignore */ }
-          },
+              await sessionScope(ctx, scope, String(event.data.sessionID), db, pluginDir);
+              void capture.request(true);
+            } catch { /* Foreign location/session; never redirect capture there. */ }
+          }
         }
-      : {}),
-  };
-};
-
-export default MemsearchPlugin;
+      } catch { /* The recovery scan covers dropped streams as well as shutdown. */ }
+    })();
+    const timer = setInterval(() => { void capture.request(true); }, 15_000);
+    timer.unref();
+    return async () => {
+      clearInterval(timer); events.abort();
+      // The host allows three seconds. Preserve pending work and recover before next recall.
+      await capture.close();
+      await Promise.all(registrations.map(item => item.dispose()));
+      void subscription;
+    };
+  },
+});

@@ -1,427 +1,278 @@
-#!/usr/bin/env python3
-"""Shared helpers for OpenCode transcript turn handling.
-
-The raw OpenCode SQLite database remains the source of truth for transcript
-content. This module also manages a small sidecar SQLite database under
-<project>/.memsearch/opencode-turns.db for derived capture checkpoints and
-stable turn ordering during replay.
-"""
+"""Read OpenCode V2 projections without modifying the host database."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
-import time
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 
-def _tail_truncate(text: str, max_chars: int) -> str:
-    """Keep the end of long text, where final conclusions usually appear."""
-    if len(text) <= max_chars:
-        return text
-    return "...(truncated to tail)\n" + text[-max_chars:]
+class TranscriptError(ValueError):
+    """An actionable failure to read the referenced conversation."""
 
 
-@dataclass
-class OpenCodeMessage:
-    """A single meaningful OpenCode message with rendered text."""
+def get_db_path(explicit: str | None = None, channel: str = "latest") -> str:
+    if explicit:
+        return str(Path(explicit).expanduser().resolve()) if explicit != ":memory:" else explicit
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "opencode"
+    filename = os.environ.get("OPENCODE_DB")
+    if filename is None:
+        shared = channel in {"latest", "dev", "beta", "next", "prod"}
+        shared = shared or os.environ.get("OPENCODE_DISABLE_CHANNEL_DB", "").lower() in {"1", "true"}
+        filename = "opencode.db" if shared else f"opencode-{re.sub(r'[^a-zA-Z0-9._-]', '-', channel)}.db"
+    if filename == ":memory:":
+        return filename
+    return str((data / filename).expanduser().resolve())
 
-    id: str
-    role: str
-    parent_id: str | None
-    time_created: int
-    finish: str | None
-    text: str
+
+def open_source(path: str) -> sqlite3.Connection:
+    if path == ":memory:":
+        raise TranscriptError("In-memory OpenCode databases cannot be read by the transcript helper.")
+    file = Path(path).expanduser().resolve()
+    if not file.is_file():
+        raise TranscriptError(f"OpenCode database not found: {file}. Check the anchor and host data directory.")
+    conn = sqlite3.connect(file.as_uri() + "?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"session_v2", "session_message"} <= tables:
+        conn.close()
+        raise TranscriptError(
+            "OpenCode V2 session_v2/session_message schema unavailable. V1 users must pin plugin 0.3.17. "
+            "For an upgraded host, verify its migration: https://opencode.ai/v2/docs/migrate-v1 . "
+            "MemSearch does not migrate databases or rewrite journal anchors."
+        )
+    required = {
+        "session_v2": {
+            "id",
+            "project_id",
+            "directory",
+            "workspace_id",
+            "parent_id",
+            "fork_session_id",
+            "fork_boundary",
+        },
+        "session_message": {"id", "session_id", "type", "seq", "data"},
+    }
+    for table, columns in required.items():
+        if not columns <= {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.close()
+            raise TranscriptError("Unsupported OpenCode V2 projection schema; verify host version and migration.")
+    return conn
+
+
+def project_root(directory: str) -> str:
+    """Resolve a checkout, keeping unrelated non-Git directories distinct."""
+    path = Path(directory).resolve(strict=True)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0:
+            return str(Path(result.stdout.strip()).resolve(strict=True))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return str(path)
+
+
+@dataclass(frozen=True)
+class Scope:
+    root: str
+    project_id: str
+    workspace_id: str | None = None
+
+    def owns(self, row: sqlite3.Row) -> bool:
+        # Host project IDs can change independently of physical ownership.
+        if row["workspace_id"] != self.workspace_id:
+            return False
+        try:
+            return project_root(row["directory"]) == str(Path(self.root).resolve(strict=True))
+        except (OSError, ValueError):
+            return False
+
+
+def session_row(conn: sqlite3.Connection, session_id: str, scope: Scope) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM session_v2 WHERE id = ?", (session_id,)).fetchone()
+    if row is None:
+        raise TranscriptError(
+            f"Session {session_id} is unavailable in this V2 database. Check the referenced database/session; "
+            "if it predates the upgrade, verify the user-owned OpenCode migration."
+        )
+    if not scope.owns(row):
+        raise TranscriptError("Referenced session is outside the requesting project's checkout/workspace.")
+    return row
+
+
+def session_ids(conn: sqlite3.Connection, scope: Scope) -> list[str]:
+    rows = conn.execute(
+        "SELECT * FROM session_v2 WHERE workspace_id IS ? AND parent_id IS NULL ORDER BY id",
+        (scope.workspace_id,),
+    )
+    return [row["id"] for row in rows if scope.owns(row)]
 
 
 @dataclass
 class OpenCodeTurn:
-    """A user turn plus its assistant follow-up messages."""
-
     session_id: str
     turn_id: str
-    turn_index: int
-    start_time: int
-    end_time: int
-    first_message_id: str
-    last_message_id: str
-    message_count: int
-    assistant_message_count: int
-    complete: bool
-    messages: list[OpenCodeMessage] = field(default_factory=list)
+    start_seq: int
+    end_seq: int
+    messages: list[dict] = field(default_factory=list)
+    outcome: str | None = None
+    followed_by_user: bool = False
 
-    def render(self, max_chars: int = 3000) -> str:
-        """Render the turn into readable transcript text."""
-        lines: list[str] = [
-            f"=== Turn {self.turn_index} ({self.turn_id}) ===",
-        ]
-        for message in self.messages:
-            label = "[User]" if message.role == "user" else "[Assistant]"
-            text = message.text.strip()
-            text = _tail_truncate(text, max_chars)
-            lines.append(f"{label}: {text}")
-            lines.append("")
-        return "\n".join(lines).strip()
-
-
-@dataclass
-class TurnState:
-    """Persistent capture progress for a session."""
-
-    session_id: str
-    last_completed_time: int
-    last_completed_message_id: str
-    last_completed_turn_id: str
-
-
-def get_db_path() -> str:
-    """Find the OpenCode SQLite database."""
-    default = os.path.expanduser("~/.local/share/opencode/opencode.db")
-    if os.path.exists(default):
-        return default
-
-    xdg_data = os.environ.get("XDG_DATA_HOME", "")
-    if xdg_data:
-        alt = os.path.join(xdg_data, "opencode", "opencode.db")
-        if os.path.exists(alt):
-            return alt
-
-    return default
-
-
-def get_turn_db_path(project_dir: str) -> str:
-    """Return the derived turn metadata database path for a project."""
-    return os.path.join(project_dir, ".memsearch", "opencode-turns.db")
-
-
-def open_turn_db(project_dir: str) -> sqlite3.Connection:
-    """Open the sidecar turn database and ensure its schema exists."""
-    turn_db_path = get_turn_db_path(project_dir)
-    Path(turn_db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(turn_db_path, timeout=5)
-    conn.row_factory = sqlite3.Row
-    ensure_turn_schema(conn)
-    return conn
-
-
-def ensure_turn_schema(conn: sqlite3.Connection) -> None:
-    """Create the sidecar schema if it does not exist yet."""
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS turns (
-            session_id TEXT NOT NULL,
-            turn_id TEXT NOT NULL,
-            turn_index INTEGER NOT NULL,
-            start_time INTEGER NOT NULL,
-            start_message_id TEXT NOT NULL,
-            end_time INTEGER NOT NULL,
-            end_message_id TEXT NOT NULL,
-            message_count INTEGER NOT NULL,
-            assistant_message_count INTEGER NOT NULL,
-            complete INTEGER NOT NULL DEFAULT 1,
-            time_created INTEGER NOT NULL,
-            time_updated INTEGER NOT NULL,
-            PRIMARY KEY (session_id, turn_id)
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS turn_state (
-            session_id TEXT PRIMARY KEY,
-            last_completed_time INTEGER NOT NULL DEFAULT 0,
-            last_completed_message_id TEXT NOT NULL DEFAULT '',
-            last_completed_turn_id TEXT NOT NULL DEFAULT '',
-            time_created INTEGER NOT NULL,
-            time_updated INTEGER NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS turns_session_index_idx ON turns (session_id, turn_index)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS turns_session_time_idx ON turns (session_id, end_time, turn_id)"
-    )
-    conn.commit()
-
-
-def load_turn_state(conn: sqlite3.Connection, session_id: str) -> TurnState:
-    """Load the last completed turn checkpoint for a session."""
-    row = conn.execute(
-        """
-        SELECT session_id, last_completed_time, last_completed_message_id, last_completed_turn_id
-        FROM turn_state
-        WHERE session_id = ?
-        """,
-        (session_id,),
-    ).fetchone()
-
-    if row is None:
-        return TurnState(session_id=session_id, last_completed_time=0, last_completed_message_id="", last_completed_turn_id="")
-
-    return TurnState(
-        session_id=row["session_id"],
-        last_completed_time=int(row["last_completed_time"]),
-        last_completed_message_id=row["last_completed_message_id"] or "",
-        last_completed_turn_id=row["last_completed_turn_id"] or "",
-    )
-
-
-def save_turn_state(conn: sqlite3.Connection, state: TurnState) -> None:
-    """Persist the checkpoint for a session."""
-    now = int(_now_ms())
-    conn.execute(
-        """
-        INSERT INTO turn_state (
-            session_id, last_completed_time, last_completed_message_id, last_completed_turn_id,
-            time_created, time_updated
-        ) VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET
-            last_completed_time = excluded.last_completed_time,
-            last_completed_message_id = excluded.last_completed_message_id,
-            last_completed_turn_id = excluded.last_completed_turn_id,
-            time_updated = excluded.time_updated
-        """,
-        (
-            state.session_id,
-            state.last_completed_time,
-            state.last_completed_message_id,
-            state.last_completed_turn_id,
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-
-
-def save_turn(conn: sqlite3.Connection, turn: OpenCodeTurn) -> None:
-    """Persist derived metadata for a completed turn."""
-    now = int(_now_ms())
-    conn.execute(
-        """
-        INSERT INTO turns (
-            session_id, turn_id, turn_index, start_time, start_message_id, end_time,
-            end_message_id, message_count, assistant_message_count, complete,
-            time_created, time_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(session_id, turn_id) DO UPDATE SET
-            turn_index = excluded.turn_index,
-            start_time = excluded.start_time,
-            start_message_id = excluded.start_message_id,
-            end_time = excluded.end_time,
-            end_message_id = excluded.end_message_id,
-            message_count = excluded.message_count,
-            assistant_message_count = excluded.assistant_message_count,
-            complete = excluded.complete,
-            time_updated = excluded.time_updated
-        """,
-        (
-            turn.session_id,
-            turn.turn_id,
-            turn.turn_index,
-            turn.start_time,
-            turn.first_message_id,
-            turn.end_time,
-            turn.last_message_id,
-            turn.message_count,
-            turn.assistant_message_count,
-            1 if turn.complete else 0,
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-
-
-def load_session_turn_rows(conn: sqlite3.Connection, session_id: str) -> list[sqlite3.Row]:
-    """Load cached turn rows for a session."""
-    return conn.execute(
-        """
-        SELECT session_id, turn_id, turn_index, start_time, start_message_id,
-               end_time, end_message_id, message_count, assistant_message_count, complete
-        FROM turns
-        WHERE session_id = ?
-        ORDER BY turn_index ASC
-        """,
-        (session_id,),
-    ).fetchall()
-
-
-def load_messages(
-    conn: sqlite3.Connection,
-    session_id: str,
-    after_time: int | None = None,
-    after_message_id: str | None = None,
-) -> list[sqlite3.Row]:
-    """Load OpenCode messages for a session in chronological order."""
-    query = [
-        "SELECT id, data, time_created FROM message WHERE session_id = ?",
-    ]
-    params: list[object] = [session_id]
-
-    if after_time is not None:
-        if after_message_id:
-            query.append(
-                "AND (time_created > ? OR (time_created = ? AND id > ?))"
+    @property
+    def status(self) -> str:
+        assistants = [m for m in self.messages if m["type"] == "assistant"]
+        settled = all(
+            m.get("time", {}).get("completed") is not None
+            and not m.get("retry")
+            and all(
+                p.get("state", {}).get("status") in {"completed", "error"}
+                for p in m.get("content", [])
+                if p.get("type") == "tool"
             )
-            params.extend([after_time, after_time, after_message_id])
-        else:
-            query.append("AND time_created > ?")
-            params.append(after_time)
+            for m in assistants
+        )
+        if self.outcome in {"failed", "interrupted"}:
+            return "discarded"
+        final = assistants[-1] if assistants else {}
+        # A failed final assistant can retain a nominal finish reason. Earlier
+        # failed attempts may be followed by a successfully recovered response.
+        failed = final.get("error") is not None or final.get("finish") == "error"
+        # Officially migrated V2 projections have completed timestamps but no
+        # streamed timestamp or idle row. In the pinned V2 runner, visible text
+        # starts the step before streamed is persisted, then completion follows.
+        # Require that settled projected shape, never just another user message.
+        imported = (
+            bool(assistants)
+            and all(
+                m.get("time", {}).get("created") is not None and "streamed" not in m.get("time", {}) for m in assistants
+            )
+            and any(p.get("type") == "text" and p.get("text", "").strip() for p in final.get("content", []))
+        )
+        if (
+            assistants
+            and settled
+            and not failed
+            and final.get("finish") in {"stop", "length", "content-filter"}
+            and (self.outcome == "succeeded" or imported)
+        ):
+            return "complete"
+        if settled and failed and self.outcome == "succeeded":
+            return "discarded"
+        # A user steer can supersede an earlier intent without a final answer.
+        # Only a persisted terminal boundary permits advancing past that intent.
+        if self.followed_by_user and self.outcome == "succeeded" and settled:
+            return "discarded"
+        return "pending"
 
-    query.append("ORDER BY time_created ASC, id ASC")
-    return conn.execute(" ".join(query), tuple(params)).fetchall()
-
-
-def extract_message_text(conn: sqlite3.Connection, message_id: str) -> str:
-    """Render a message's parts into readable text."""
-    parts = conn.execute(
-        """
-        SELECT id, data, time_created
-        FROM part
-        WHERE message_id = ?
-        ORDER BY time_created ASC, id ASC
-        """,
-        (message_id,),
-    ).fetchall()
-
-    text_parts: list[str] = []
-
-    for part in parts:
-        try:
-            part_data = json.loads(part["data"])
-        except Exception:
-            continue
-
-        part_type = part_data.get("type", "")
-        if part_type == "text" and part_data.get("text"):
-            if part_data.get("synthetic"):
+    def render(self, max_chars: int = 24000) -> str:
+        lines = []
+        for message in self.messages:
+            if message["type"] == "user":
+                text = str(message.get("text", ""))
+                label = "User"
+            elif message["type"] == "assistant":
+                text = "\n".join(str(p.get("text", "")) for p in message.get("content", []) if p.get("type") == "text")
+                label = "Assistant"
+            else:
                 continue
-            text = str(part_data["text"]).strip()
-            if text:
-                text_parts.append(text)
-        # Skip tool parts; summaries use the readable User/Assistant text.
+            if text.strip():
+                if len(text) > 6000:
+                    text = "...(truncated to tail)\n" + text[-6000:]
+                lines.append(f"[{label}]: {text.strip()}")
+        rendered = "\n\n".join(lines)
+        if len(rendered) > max_chars:
+            # Retain the initial request as well as final conclusions.
+            rendered = rendered[:4000] + "\n...(truncated)\n" + rendered[-(max_chars - 4025) :]
+        return rendered
 
-    combined = "\n".join(text_parts).strip()
-    return combined
 
-
-def build_turns(
-    conn: sqlite3.Connection,
-    session_id: str,
-    after_time: int | None = None,
-    after_message_id: str | None = None,
-) -> list[OpenCodeTurn]:
-    """Group OpenCode messages into turns."""
-    rows = load_messages(conn, session_id, after_time=after_time, after_message_id=after_message_id)
-
+def build_turns(conn: sqlite3.Connection, session_id: str, after_seq: int = -1) -> list[OpenCodeTurn]:
+    # A moved session's earlier payload belongs to another location. Establish
+    # the boundary from metadata before selecting any message content.
+    switched = conn.execute(
+        "SELECT max(seq) FROM session_message WHERE session_id = ? AND type = 'location-switched'",
+        (session_id,),
+    ).fetchone()[0]
+    after_seq = max(after_seq, switched if switched is not None else -1)
+    rows = conn.execute(
+        "SELECT id, type, seq, data FROM session_message WHERE session_id = ? AND seq > ? ORDER BY seq",
+        (session_id, after_seq),
+    )
     turns: list[OpenCodeTurn] = []
-    current: OpenCodeTurn | None = None
-    current_message_ids: set[str] = set()
-
+    current = None
+    busy: list[OpenCodeTurn] = []
     for row in rows:
         try:
-            msg_data = json.loads(row["data"])
-        except Exception:
-            continue
-
-        role = msg_data.get("role", "unknown")
-        parent_id = msg_data.get("parentID")
-        time_created = int(row["time_created"])
-        finish = msg_data.get("finish")
-        message_text = extract_message_text(conn, row["id"]).strip()
-
-        if role == "user":
-            if not message_text:
-                continue
-
-            message = OpenCodeMessage(
-                id=row["id"],
-                role=role,
-                parent_id=parent_id,
-                time_created=time_created,
-                finish=finish,
-                text=message_text,
-            )
-
-            if current is not None:
-                current.complete = _is_complete(current)
-                turns.append(current)
-
-            current = OpenCodeTurn(
-                session_id=session_id,
-                turn_id=message.id,
-                turn_index=len(turns) + 1,
-                start_time=message.time_created,
-                end_time=message.time_created,
-                first_message_id=message.id,
-                last_message_id=message.id,
-                message_count=1,
-                assistant_message_count=0,
-                complete=False,
-                messages=[message],
-            )
-            current_message_ids = {message.id}
-            continue
-
-        if role == "assistant" and current is not None:
-            if parent_id and parent_id not in current_message_ids:
-                continue
-
-            if not message_text:
-                current_message_ids.add(row["id"])
-                continue
-
-            message = OpenCodeMessage(
-                id=row["id"],
-                role=role,
-                parent_id=parent_id,
-                time_created=time_created,
-                finish=finish,
-                text=message_text,
-            )
-
+            data = json.loads(row["data"])
+            if not isinstance(data, dict):
+                raise ValueError("not an object")
+        except (ValueError, TypeError) as exc:
+            raise TranscriptError(f"Invalid V2 message data for {row['id']}; capture remains pending.") from exc
+        message = {**data, "id": row["id"], "type": row["type"]}
+        if row["type"] == "user":
+            if current:
+                current.followed_by_user = True
+                if current.outcome is None and current.status == "complete":
+                    # A later V2 run's idle outcome must not overwrite the
+                    # terminal state of already-settled imported history.
+                    busy.remove(current)
+            current = OpenCodeTurn(session_id, row["id"], row["seq"], row["seq"], [message])
+            turns.append(current)
+            busy.append(current)
+        elif row["type"] == "assistant" and current:
             current.messages.append(message)
-            current_message_ids.add(message.id)
-            current.end_time = message.time_created
-            current.last_message_id = message.id
-            current.message_count += 1
-            current.assistant_message_count += 1
-
-    if current is not None:
-        current.complete = _is_complete(current)
-        turns.append(current)
-
-    for index, turn in enumerate(turns, start=1):
-        turn.turn_index = index
-
+            current.end_seq = row["seq"]
+        elif row["type"] == "idle":
+            for turn in busy:
+                turn.outcome = data.get("outcome")
+            if current:
+                current.end_seq = row["seq"]
+            busy = []
+            current = None
+        elif row["type"] == "location-switched":
+            # Do not attribute the previous location's conversation to its new owner.
+            turns = []
+            busy = []
+            current = None
     return turns
 
 
-def _is_complete(turn: OpenCodeTurn) -> bool:
-    """Heuristically decide whether a grouped turn has finished."""
-    assistant_finishes = [msg.finish for msg in turn.messages if msg.role == "assistant"]
-    if not assistant_finishes:
-        return False
-    last_finish = assistant_finishes[-1]
-    return last_finish != "tool-calls"
+def find_turn_index(turns: list[OpenCodeTurn], target: str) -> int:
+    exact = [i for i, turn in enumerate(turns) if turn.turn_id == target]
+    matches = exact or [i for i, turn in enumerate(turns) if turn.turn_id.startswith(target)]
+    if len(matches) > 1:
+        raise TranscriptError("Ambiguous turn prefix; use the complete turn ID from the journal anchor.")
+    if not matches:
+        raise TranscriptError(f"Turn not found: {target}. Verify this anchor in the selected V2 database.")
+    return matches[0]
 
 
-def find_turn_index(turns: list[OpenCodeTurn], target_turn_id: str) -> int:
-    """Find a turn index by exact or prefix match."""
-    if not target_turn_id:
-        return -1
+if __name__ == "__main__":
+    import argparse
+    import contextlib
+    import sys
 
-    for index, turn in enumerate(turns):
-        if turn.turn_id == target_turn_id:
-            return index
-        if turn.turn_id.startswith(target_turn_id) or target_turn_id.startswith(turn.turn_id[:8]):
-            return index
-    return -1
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
+    parser = argparse.ArgumentParser(description="Validate exact V2 session ownership without reading dialogue.")
+    parser.add_argument("session_id")
+    parser.add_argument("--project-dir", required=True)
+    parser.add_argument("--project-id", required=True)
+    parser.add_argument("--workspace-id")
+    parser.add_argument("--db", required=True)
+    args = parser.parse_args()
+    try:
+        with contextlib.closing(open_source(args.db)) as conn:
+            session_row(conn, args.session_id, Scope(args.project_dir, args.project_id, args.workspace_id))
+    except (TranscriptError, OSError, sqlite3.Error) as exc:
+        sys.stderr.write(f"Session ownership unavailable: {exc}\n")
+        raise SystemExit(1) from exc

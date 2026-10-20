@@ -1,1417 +1,975 @@
 from __future__ import annotations
 
-import importlib.util
+import contextlib
 import json
-import sqlite3
 import subprocess
 import sys
-from contextlib import suppress
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
-SCRIPT_DIR = Path(__file__).resolve().parent.parent / "plugins" / "opencode" / "scripts"
-sys.path.insert(0, str(SCRIPT_DIR))
+from tests.opencode_v2_fixtures import Fixture, capture, reader
 
-CAPTURE_DAEMON_PATH = SCRIPT_DIR / "capture-daemon.py"
-CAPTURE_DAEMON_SPEC = importlib.util.spec_from_file_location(
-    "capture_daemon",
-    CAPTURE_DAEMON_PATH,
+
+@pytest.fixture
+def fixture(tmp_path):
+    value = Fixture(tmp_path / "project")
+    yield value
+    value.conn.close()
+
+
+@pytest.fixture
+def store(fixture):
+    with contextlib.closing(capture.CaptureStore(str(fixture.root))) as value:
+        yield value
+
+
+def test_sparse_seq_is_order_not_timestamps(fixture, store):
+    fixture.turn()
+    fixture.turn(40)
+    source, count = fixture.batch(store)
+    assert count == 2
+    assert store.cursor(source, "session") == 55
+    assert fixture.journals().count("<!-- session:session turn:") == 2
+    assert fixture.batch(store)[1] == 0
+    assert "synthetic user marker" not in fixture.journals()
+
+
+@pytest.mark.parametrize(
+    "completed,tools,finish,retry,expected",
+    [
+        (False, [], "stop", None, "pending"),
+        (True, ["running"], "stop", None, "pending"),
+        (True, ["pending"], "stop", None, "pending"),
+        (True, ["completed", "error"], "stop", None, "complete"),
+        (True, [], "tool-calls", None, "pending"),
+        (True, [], "stop", {"attempt": 1}, "pending"),
+    ],
 )
-assert CAPTURE_DAEMON_SPEC is not None
-assert CAPTURE_DAEMON_SPEC.loader is not None
-capture_daemon = importlib.util.module_from_spec(CAPTURE_DAEMON_SPEC)
-CAPTURE_DAEMON_SPEC.loader.exec_module(capture_daemon)
-
-from opencode_turns import (  # noqa: E402
-    OpenCodeMessage,
-    OpenCodeTurn,
-    TurnState,
-    build_turns,
-    get_turn_db_path,
-    load_session_turn_rows,
-    load_turn_state,
-    open_turn_db,
-    save_turn,
-    save_turn_state,
-)
-
-
-def _write_utf8_memsearch_stub(path: Path) -> None:
-    path.write_text(
-        """\
-import os
-import sys
-
-
-def write(stream, value):
-    stream.buffer.write(value.encode("utf-8"))
-    stream.buffer.flush()
-
-
-args = sys.argv[1:]
-mode = os.environ.get("MEMSEARCH_STUB_MODE", "success")
-
-write(sys.stderr, "诊断丁: UTF-8 stderr\\n")
-if mode == "config-nonzero" and args[:2] == ["config", "get"]:
-    raise SystemExit(7)
-
-if args[:2] == ["config", "get"]:
-    values = {
-        "plugins.opencode.summarize.model": "模型/摘要",
-        "plugins.opencode.summarize.provider": "custom-provider",
-        "plugins.opencode.summarize.enabled": "true",
-        "prompts.summarize": os.environ["MEMSEARCH_STUB_PROMPT_PATH"],
-    }
-    write(sys.stdout, values[args[2]] + "\\n")
-elif args and args[0] == "summarize":
-    sys.stdin.buffer.read()
-    if mode == "summarize-nonzero":
-        raise SystemExit(7)
-    write(sys.stdout, "- 摘要包含非 ASCII\\n")
-else:
-    raise SystemExit(2)
-""",
-        encoding="utf-8",
-    )
-
-
-def _utf8_stub_command(stub: Path) -> str:
-    return f'"{sys.executable}" "{stub}"'
-
-
-def _record_subprocess_results_with_cp1252_default(monkeypatch, subprocess_module):
-    real_run = subprocess.run
-    completed = []
-
-    def run(*args, **kwargs):
-        if kwargs.get("text") and "encoding" not in kwargs:
-            kwargs["encoding"] = "cp1252"
-            kwargs["errors"] = "strict"
-        result = real_run(*args, **kwargs)
-        completed.append(result)
-        return result
-
-    monkeypatch.setattr(subprocess_module, "run", run)
-    return completed
-
-
-def test_memsearch_adapter_decodes_utf8_when_locale_is_cp1252(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    stub = tmp_path / "memsearch-stub.py"
-    prompt_dir = tmp_path / "自定义提示"
-    prompt_dir.mkdir()
-    prompt = prompt_dir / "摘要提示.txt"
-    prompt.write_text("为 {{AGENT_NAME}} 生成摘要", encoding="utf-8")
-    _write_utf8_memsearch_stub(stub)
-
-    monkeypatch.setenv("MEMSEARCH_STUB_PROMPT_PATH", str(prompt))
-    command = _utf8_stub_command(stub)
-    argv = [sys.executable, str(stub), "config", "get", "plugins.opencode.summarize.model"]
-
-    with pytest.raises(UnicodeDecodeError):
-        subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            encoding="cp1252",
-            errors="strict",
-            check=False,
-        )
-
-    completed = _record_subprocess_results_with_cp1252_default(monkeypatch, capture_daemon.subprocess)
-
-    assert capture_daemon.get_plugin_summarize_model(command) == "模型/摘要"
-    assert capture_daemon.get_plugin_summarize_provider(command) == "custom-provider"
-    assert capture_daemon.get_plugin_summarize_enabled(command) is True
-    assert capture_daemon._load_summarize_prompt("OpenCode", command) == "为 OpenCode 生成摘要"
-    assert capture_daemon.summarize_with_llm("用户: 请总结", "", command) == "- 摘要包含非 ASCII"
-    assert completed
-    assert all(result.stderr == "诊断丁: UTF-8 stderr\n" for result in completed)
-
-
-def test_memsearch_adapter_preserves_nonzero_fallbacks(tmp_path: Path, monkeypatch) -> None:
-    stub = tmp_path / "memsearch-stub.py"
-    prompt = tmp_path / "prompt.txt"
-    prompt.write_text("unused", encoding="utf-8")
-    _write_utf8_memsearch_stub(stub)
-
-    monkeypatch.setenv("MEMSEARCH_STUB_MODE", "config-nonzero")
-    monkeypatch.setenv("MEMSEARCH_STUB_PROMPT_PATH", str(prompt))
-    command = _utf8_stub_command(stub)
-
-    assert capture_daemon.get_plugin_summarize_model(command) == ""
-    assert capture_daemon.get_plugin_summarize_provider(command) == ""
-    assert capture_daemon.get_plugin_summarize_enabled(command) is True
-
-    monkeypatch.setenv("MEMSEARCH_STUB_MODE", "summarize-nonzero")
-    assert capture_daemon.summarize_with_llm("turn", "", command) is None
-
-
-def test_memsearch_adapter_preserves_timeout_fallbacks(monkeypatch) -> None:
-    def timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
-
-    monkeypatch.setattr(capture_daemon.subprocess, "run", timeout)
-
-    assert capture_daemon.get_plugin_summarize_model("memsearch") == ""
-    assert capture_daemon.get_plugin_summarize_provider("memsearch") == ""
-    assert capture_daemon.get_plugin_summarize_enabled("memsearch") is True
-    assert capture_daemon.summarize_with_llm("turn", "", "memsearch") is None
-
-
-def test_opencode_config_resolution_uses_jsonc_and_env_dir_precedence(tmp_path: Path, monkeypatch) -> None:
-    home = tmp_path / "home"
-    xdg_config = tmp_path / "xdg-config"
-    project = tmp_path / "repo"
-    config_dir = tmp_path / "custom-opencode"
-    home.mkdir()
-    project.mkdir()
-    (xdg_config / "opencode").mkdir(parents=True)
-    config_dir.mkdir()
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config))
-    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
-    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
-    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
-    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
-
-    (xdg_config / "opencode" / "opencode.json").write_text(
-        '{"small_model": "global-json", "username": "global"}',
-        encoding="utf-8",
-    )
-    (xdg_config / "opencode" / "opencode.jsonc").write_text(
-        '{\n  // jsonc should override json in the same directory\n  "small_model": "global-jsonc",\n}\n',
-        encoding="utf-8",
-    )
-    (project / "opencode.json").write_text(
-        '{"small_model": "project-json", "username": "project-json"}',
-        encoding="utf-8",
-    )
-    (project / "opencode.jsonc").write_text(
-        '{\n  "small_model": "project-jsonc",\n  "provider": {"openai": {"apiKey": "{file:token.txt}"}},\n}\n',
-        encoding="utf-8",
-    )
-    (config_dir / "opencode.jsonc").write_text(
-        '{"small_model": "config-dir", "plugin": ["memsearch-opencode"]}',
-        encoding="utf-8",
-    )
-
-    cfg = capture_daemon.load_opencode_config(project)
-
-    assert capture_daemon.get_small_model(project) == "config-dir"
-    assert cfg["small_model"] == "config-dir"
-    assert cfg["username"] == "project-json"
-    assert cfg["provider"]["openai"]["apiKey"] == f"{{file:{project / 'token.txt'}}}"
-
-
-def test_opencode_config_resolution_uses_opencode_config_file(tmp_path: Path, monkeypatch) -> None:
-    home = tmp_path / "home"
-    xdg_config = tmp_path / "xdg-config"
-    project = tmp_path / "repo"
-    custom_config = tmp_path / "custom-opencode.jsonc"
-    home.mkdir()
-    project.mkdir()
-    (xdg_config / "opencode").mkdir(parents=True)
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config))
-    monkeypatch.setenv("OPENCODE_CONFIG", str(custom_config))
-    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
-    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
-
-    (xdg_config / "opencode" / "opencode.jsonc").write_text(
-        '{"small_model": "global-jsonc"}',
-        encoding="utf-8",
-    )
-    custom_config.write_text(
-        '{\n  // exact env config overrides global config\n  "small_model": "env-config",\n}\n',
-        encoding="utf-8",
-    )
-
-    assert capture_daemon.get_small_model(project) == "env-config"
-
-
-def test_opencode_isolated_config_sanitizes_plugins(tmp_path: Path, monkeypatch) -> None:
-    home = tmp_path / "home"
-    project = tmp_path / "repo"
-    config_dir = tmp_path / "custom-opencode"
-    home.mkdir()
-    project.mkdir()
-    config_dir.mkdir()
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
-    monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
-    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
-    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
-
-    (project / "opencode.jsonc").write_text(
-        '{"model": "project/model", "plugin": ["project-plugin"]}',
-        encoding="utf-8",
-    )
-    (config_dir / "opencode.jsonc").write_text(
-        '{"small_model": "dir/model", "plugin": ["dir-plugin"]}',
-        encoding="utf-8",
-    )
-
-    isolated_root = Path(capture_daemon.ensure_isolated_config(project))
-    isolated_config = json.loads((isolated_root / "opencode" / "opencode.json").read_text(encoding="utf-8"))
-
-    assert isolated_root == home / ".codex" / "tmp" / "opencode-memsearch-summarize"
-    assert isolated_config["model"] == "project/model"
-    assert isolated_config["small_model"] == "dir/model"
-    assert "plugin" not in isolated_config
-    assert not (isolated_root / "opencode" / "opencode.jsonc").exists()
-
-
-def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeypatch) -> None:
-    project = tmp_path / "repo"
-    project.mkdir()
-    captured = {}
-
-    def fake_popen(cmd, **kwargs):
-        captured["cmd"] = cmd
-        captured["env"] = kwargs["env"]
-        captured["stdin"] = kwargs["stdin"]
-        captured["stdout"] = kwargs["stdout"]
-        captured["stderr"] = kwargs["stderr"]
-        captured["start_new_session"] = kwargs["start_new_session"]
-
-        class Process:
-            pass
-
-        return Process()
-
-    monkeypatch.setattr(capture_daemon.subprocess, "Popen", fake_popen)
-    monkeypatch.setenv("MEMSEARCH_NO_WATCH", "0")
-    monkeypatch.delenv("MEMSEARCH_DISABLE", raising=False)
-
-    capture_daemon.wake_maintenance(str(project))
-
-    assert captured["cmd"][:4] == ["python3", str(SCRIPT_DIR / "maintenance-runner.py"), "--platform", "opencode"]
-    assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
-    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(project / ".memsearch")
-    assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
-    assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
-    assert captured["stdin"] == capture_daemon.subprocess.DEVNULL
-    assert captured["stdout"] == capture_daemon.subprocess.DEVNULL
-    assert captured["stderr"] == capture_daemon.subprocess.DEVNULL
-    assert captured["start_new_session"] is True
-
-
-def test_opencode_plugin_capture_daemon_uses_spawned_child_lifecycle() -> None:
-    source = (SCRIPT_DIR.parent / "index.ts").read_text(encoding="utf-8")
-
-    assert 'exec(\n    `python3 "${daemonScript}"' not in source
-    assert "spawn(" in source
-    assert '"--parent-pid"' in source
-    assert "String(process.pid)" in source
-    assert "writeFileSync(pidFile, String(child.pid)" in source
-
-
-def test_opencode_capture_daemon_parent_process_liveness(monkeypatch) -> None:
-    def alive(pid: int, signal_number: int) -> None:
-        assert pid == 123
-        assert signal_number == 0
-
-    monkeypatch.setattr(capture_daemon.os, "kill", alive)
-    assert capture_daemon.process_is_alive(123) is True
-
-    def missing(pid: int, signal_number: int) -> None:
-        raise ProcessLookupError
-
-    monkeypatch.setattr(capture_daemon.os, "kill", missing)
-    assert capture_daemon.process_is_alive(123) is False
-
-    def inaccessible(pid: int, signal_number: int) -> None:
-        raise PermissionError
-
-    monkeypatch.setattr(capture_daemon.os, "kill", inaccessible)
-    assert capture_daemon.process_is_alive(123) is True
-
-
-def _make_opencode_db(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE message (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            time_created INTEGER NOT NULL,
-            time_updated INTEGER NOT NULL,
-            data TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE part (
-            id TEXT PRIMARY KEY,
-            message_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            time_created INTEGER NOT NULL,
-            time_updated INTEGER NOT NULL,
-            data TEXT NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def _insert_message(
-    conn: sqlite3.Connection,
-    message_id: str,
-    session_id: str,
-    time_created: int,
-    role: str,
-    parent_id: str | None = None,
-    finish: str = "stop",
-    text: str = "",
-    tool_output: str | None = None,
-    tool_error: str | None = None,
-) -> None:
-    payload: dict[str, object] = {
-        "role": role,
-        "time": {"created": time_created},
-        "finish": finish,
-    }
-    if parent_id:
-        payload["parentID"] = parent_id
-    conn.execute(
-        """
-        INSERT INTO message (id, session_id, time_created, time_updated, data)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (message_id, session_id, time_created, time_created, json.dumps(payload)),
-    )
-
-    part_id = f"{message_id}-p1"
-    if text:
-        conn.execute(
-            """
-            INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                part_id,
-                message_id,
-                session_id,
-                time_created,
-                time_created,
-                json.dumps({"type": "text", "text": text}),
-            ),
-        )
-
-    if tool_output is not None:
-        conn.execute(
-            """
-            INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"{message_id}-tool",
-                message_id,
-                session_id,
-                time_created,
-                time_created,
-                json.dumps(
-                    {
-                        "type": "tool",
-                        "tool": "Bash",
-                        "state": {
-                            "status": "completed",
-                            "input": {"command": "ls"},
-                            "output": tool_output,
-                        },
-                    }
-                ),
-            ),
-        )
-
-    if tool_error is not None:
-        conn.execute(
-            """
-            INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"{message_id}-tool-error",
-                message_id,
-                session_id,
-                time_created,
-                time_created,
-                json.dumps(
-                    {
-                        "type": "tool",
-                        "tool": "Bash",
-                        "state": {
-                            "status": "error",
-                            "error": tool_error,
-                        },
-                    }
-                ),
-            ),
-        )
-
-
-def test_build_turns_groups_multi_message_assistant_turns(tmp_path: Path) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_test"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Plan the change")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="tool-calls", text="Checking")
-    _insert_message(
-        conn,
-        "a2",
-        session_id,
-        120,
-        "assistant",
-        parent_id="u1",
-        finish="stop",
-        text="Done",
-        tool_output="output.txt",
-    )
-    _insert_message(conn, "u2", session_id, 130, "user", text="Thanks")
-    _insert_message(conn, "a3", session_id, 140, "assistant", parent_id="u2", finish="stop", text="You're welcome")
-    conn.commit()
-
-    turns = build_turns(conn, session_id)
-
-    assert len(turns) == 2
-    assert turns[0].turn_id == "u1"
-    assert turns[0].assistant_message_count == 2
-    assert turns[0].complete is True
-    assert "Plan the change" in turns[0].render()
-    assert "[Tool:" not in turns[0].render()
-    assert turns[1].turn_id == "u2"
-    assert turns[1].complete is True
-
-    conn.close()
-
-
-def test_build_turns_omits_successful_tool_output_content(tmp_path: Path) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_tool_output"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Check the journal")
-    _insert_message(
-        conn,
-        "a1",
-        session_id,
-        110,
-        "assistant",
-        parent_id="u1",
-        finish="stop",
-        text="Checking",
-        tool_output="stale fact from old journal: memsearch 0.4.4",
-    )
-    conn.commit()
-
-    rendered = build_turns(conn, session_id)[0].render()
-
-    assert "[Tool:" not in rendered
-    assert "output_chars" not in rendered
-    assert "stale fact" not in rendered
-    assert "0.4.4" not in rendered
-
-    conn.close()
-
-
-def test_build_turns_omits_tool_error_content(tmp_path: Path) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_tool_error"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Debug the failure")
-    _insert_message(
-        conn,
-        "a1",
-        session_id,
-        110,
-        "assistant",
-        parent_id="u1",
-        finish="stop",
-        text="Debugging",
-        tool_error="prefix secret failure payload final error marker",
-    )
-    conn.commit()
-
-    rendered = build_turns(conn, session_id)[0].render()
-
-    assert "[Tool:" not in rendered
-    assert "error_chars" not in rendered
-    assert "final error marker" not in rendered
-    assert "prefix secret" not in rendered
-
-    conn.close()
-
-
-def test_opencode_turn_render_keeps_tail_of_long_messages() -> None:
-    turn = OpenCodeTurn(
-        session_id="ses_tail",
-        turn_id="u1",
-        turn_index=1,
-        start_time=100,
-        end_time=110,
-        first_message_id="u1",
-        last_message_id="a1",
-        message_count=2,
-        assistant_message_count=1,
-        complete=True,
-        messages=[
-            OpenCodeMessage("u1", "user", None, 100, "stop", "Question"),
-            OpenCodeMessage("a1", "assistant", "u1", 110, "stop", "prefix " + ("x" * 200) + " final marker"),
+def test_completed_and_all_tools_settled(fixture, completed, tools, finish, retry, expected):
+    fixture.user()
+    fixture.assistant(completed=completed, tools=tools, finish=finish, retry=retry)
+    fixture.idle()
+    turn = reader.build_turns(fixture.conn, "session")[0]
+    assert turn.status == expected
+    assert "RAW_TOOL_SECRET" not in turn.render()
+
+
+def test_streamed_update_and_missed_event_recovered(fixture, store):
+    fixture.user()
+    fixture.assistant(completed=False)
+    fixture.idle()
+    assert fixture.batch(store)[1] == 0
+    data = json.loads(fixture.conn.execute("SELECT data FROM session_message WHERE seq=9").fetchone()[0])
+    data["time"]["completed"] = 5
+    fixture.conn.execute("UPDATE session_message SET data=? WHERE seq=9", (json.dumps(data),))
+    fixture.conn.commit()
+    assert fixture.batch(store)[1] == 1
+
+
+def test_textless_steps_and_synthetic_rows(fixture):
+    fixture.user()
+    fixture.row(4, "synthetic", {"text": "RAW_SYNTHETIC"})
+    fixture.assistant(seq=5, tools=["completed"], finish="tool-calls", text="")
+    fixture.row(6, "compaction", {"summary": "RAW_COMPACTION"})
+    fixture.assistant()
+    fixture.idle()
+    turn = reader.build_turns(fixture.conn, "session")[0]
+    assert turn.status == "complete"
+    assert len(turn.messages) == 3
+    assert "RAW_" not in turn.render()
+
+
+def test_pending_does_not_skip_later_turns(fixture, store):
+    fixture.user()
+    fixture.assistant(completed=False, tools=["running"])
+    fixture.user(11)
+    fixture.assistant(12)
+    fixture.idle()
+    source, count = fixture.batch(store)
+    assert count == 0
+    assert store.cursor(source, "session") == -1
+
+
+def test_steered_intent_does_not_block_completed_response(fixture, store):
+    fixture.user()
+    fixture.user(6)
+    fixture.assistant()
+    fixture.idle()
+    assert [t.status for t in reader.build_turns(fixture.conn, "session")] == ["discarded", "complete"]
+    assert fixture.batch(store)[1] == 1
+    assert "turn:msg6" in fixture.journals()
+
+
+@pytest.mark.parametrize("outcome", ["failed", "interrupted"])
+def test_terminal_failure_advances_without_summary(fixture, store, outcome):
+    fixture.user()
+    fixture.assistant(completed=False)
+    fixture.idle(outcome=outcome)
+    source, count = fixture.batch(store, lambda _: pytest.fail("not complete"))
+    assert count == 0
+    assert store.cursor(source, "session") == 15
+
+
+def test_shutdown_without_idle_resumes_same_turn(fixture, store):
+    fixture.user()
+    fixture.assistant()
+    assert fixture.batch(store)[1] == 0
+    fixture.idle()
+    assert fixture.batch(store)[1] == 1
+
+
+def test_first_activation_baselines_only_settled_history(fixture, store):
+    fixture.turn()
+    fixture.user(22)
+    fixture.assistant(29)
+    assert fixture.batch(store, initialize=True)[1] == 0
+    fixture.idle(35)
+    assert fixture.batch(store)[1] == 1
+    assert "turn:msg2 " not in fixture.journals()
+    assert "turn:msg22 " in fixture.journals()
+
+
+def test_baseline_transaction_rolls_back_on_bad_history(fixture, store):
+    fixture.turn()
+    fixture.session("z")
+    fixture.row(1, "user", [], session="z")
+    with pytest.raises(reader.TranscriptError):
+        fixture.batch(store, initialize=True)
+    assert store.db.execute("SELECT count(*) FROM v2_sources").fetchone()[0] == 0
+    assert store.db.execute("SELECT count(*) FROM v2_sessions").fetchone()[0] == 0
+
+
+def test_cancel_leaves_pending_and_restart_summarizes_once(fixture, store):
+    fixture.turn()
+
+    def cancelled(_):
+        raise capture.Cancelled()
+
+    with pytest.raises(capture.Cancelled):
+        fixture.batch(store, cancelled)
+    assert store.db.execute("SELECT entry FROM v2_pending").fetchone()[0] is None
+    assert fixture.journals() == ""
+    assert fixture.batch(store)[1] == 1
+    assert store.db.execute("SELECT count(*) FROM v2_pending").fetchone()[0] == 0
+
+
+def test_append_survives_checkpoint_failure_without_repeat(fixture, store, monkeypatch):
+    fixture.turn()
+    original = store.commit
+    monkeypatch.setattr(store, "commit", lambda *_: (_ for _ in ()).throw(OSError("checkpoint fault")))
+    with pytest.raises(OSError):
+        fixture.batch(store)
+    before = fixture.journals()
+    monkeypatch.setattr(store, "commit", original)
+    assert fixture.batch(store, lambda _: pytest.fail("prepared summary must be reused"))[1] == 1
+    assert fixture.journals() == before
+
+
+def test_partial_append_is_completed_not_accepted_by_anchor(fixture, store, monkeypatch):
+    fixture.turn()
+    original = store.append_prepared
+
+    def partial(row):
+        # The anchor is present, but the summary is not yet complete.
+        entry = bytes(row["entry"])
+        Path(row["journal"]).write_bytes(entry[: entry.index(b"- Safe") + 3])
+        raise OSError("disk fault")
+
+    monkeypatch.setattr(store, "append_prepared", partial)
+    with pytest.raises(OSError):
+        fixture.batch(store)
+    monkeypatch.setattr(store, "append_prepared", original)
+    assert fixture.batch(store, lambda _: pytest.fail("already prepared"))[1] == 1
+    assert fixture.journals().count("<!-- session:") == 1
+    assert fixture.journals().endswith("- Safe summary.\n\n")
+
+
+def test_concurrent_journal_edit_fails_closed(fixture, store, monkeypatch):
+    fixture.turn()
+    original = store.append_prepared
+
+    def conflict(row):
+        Path(row["journal"]).write_text("UNRELATED JOURNAL EDIT")
+        original(row)
+
+    monkeypatch.setattr(store, "append_prepared", conflict)
+    with pytest.raises(RuntimeError, match="Journal changed"):
+        fixture.batch(store)
+    assert fixture.journals() == "UNRELATED JOURNAL EDIT"
+    assert store.db.execute("SELECT count(*) FROM v2_pending").fetchone()[0] == 1
+
+
+def test_existing_anchors_and_legacy_sidecar_preserved(fixture, store):
+    fixture.turn()
+    store.memory.mkdir()
+    original = "# Existing\n<!-- session:session turn:msg2 db:/old/db -->\n- Kept.\n"
+    (store.memory / "2025-01-02.md").write_text(original)
+    store.db.execute("CREATE TABLE legacy_checkpoint(time INTEGER)")
+    store.db.execute("INSERT INTO legacy_checkpoint VALUES(123456789)")
+    store.db.commit()
+    assert fixture.batch(store, lambda _: pytest.fail("existing journal"))[1] == 0
+    assert fixture.journals() == original
+    assert store.db.execute("SELECT time FROM legacy_checkpoint").fetchone()[0] == 123456789
+
+
+def test_disabled_retains_pending_without_model_call(fixture, store):
+    fixture.turn()
+    assert fixture.batch(store, lambda _: pytest.fail("disabled"), enabled=False)[1] == 0
+    assert fixture.batch(store)[1] == 1
+
+
+def test_exact_project_workspace_and_subagent_ownership(fixture, store, tmp_path):
+    sibling = tmp_path / "elsewhere/project"
+    sibling.mkdir(parents=True)
+    for name, kwargs in [
+        ("reidentified", {"project": "other"}),
+        ("workspace", {"workspace": "ws"}),
+        ("subagent", {"parent": "session"}),
+        ("same_name", {"directory": sibling}),
+    ]:
+        fixture.session(name, **kwargs)
+        fixture.turn(session=name)
+    fixture.turn()
+    assert reader.session_ids(fixture.conn, fixture.scope) == ["reidentified", "session"]
+    assert fixture.batch(store)[1] == 2
+
+
+def test_git_subdirectory_owned_but_worktree_separate(fixture, tmp_path):
+    subprocess.run(["git", "init", "-q", str(fixture.root)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(fixture.root),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
         ],
+        check=True,
     )
+    sub = fixture.root / "nested"
+    sub.mkdir()
+    other = tmp_path / "worktree"
+    subprocess.run(
+        ["git", "-C", str(fixture.root), "worktree", "add", "--detach", str(other)], check=True, capture_output=True
+    )
+    fixture.session("nested", directory=sub)
+    fixture.session("worktree", directory=other)
+    nested_repo = fixture.root / "separate-repo"
+    subprocess.run(["git", "init", "-q", str(nested_repo)], check=True)
+    fixture.session("nested-repo", directory=nested_repo)
+    alias = tmp_path / "alias"
+    alias.symlink_to(sub, target_is_directory=True)
+    fixture.session("alias", directory=alias, project="different-id")
+    assert reader.session_ids(fixture.conn, fixture.scope) == ["alias", "nested", "session"]
 
-    rendered = turn.render(max_chars=40)
 
-    assert "...(truncated to tail)" in rendered
-    assert "final marker" in rendered
-    assert "prefix " not in rendered
+def test_foreign_payload_is_never_selected(fixture, store, tmp_path):
+    from tests.opencode_v2_fixtures import parser
+
+    other = tmp_path / "other"
+    other.mkdir()
+    fixture.session("foreign", directory=other)
+    fixture.row(0, "user", [], session="foreign")
+    fixture.turn()
+    queries = []
+    fixture.conn.set_trace_callback(queries.append)
+    assert fixture.batch(store)[1] == 1
+    assert not any("data FROM session_message" in q and "'foreign'" in q for q in queries)
+    with pytest.raises(reader.TranscriptError, match="outside"):
+        parser.parse_session("foreign", fixture.scope, str(fixture.path))
 
 
-def test_build_turns_keeps_assistant_descendants_in_same_turn(tmp_path: Path) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_descendants"
+def test_move_never_decodes_prior_location_payload(fixture, store):
+    fixture.row(0, "user", [])
+    fixture.row(20, "location-switched", {"directory": str(fixture.root)})
+    fixture.turn(30)
+    assert fixture.batch(store)[1] == 1
 
-    _insert_message(conn, "u1", session_id, 100, "user", text="Investigate the failure")
-    _insert_message(
-        conn,
-        "a1",
-        session_id,
-        110,
+
+def test_project_reidentification_preserves_pending_and_cursor(fixture, store):
+    fixture.turn()
+    with pytest.raises(capture.Cancelled):
+        fixture.batch(store, lambda _: (_ for _ in ()).throw(capture.Cancelled()))
+    old_key = capture.source_key(str(fixture.path), fixture.scope)
+    fixture.scope = reader.Scope(str(fixture.root), "new-host-id")
+    assert capture.source_key(str(fixture.path), fixture.scope) == old_key
+    assert fixture.batch(store, initialize=True)[1] == 0
+    assert fixture.batch(store)[1] == 1
+    fixture.scope = reader.Scope(str(fixture.root), "another-host-id")
+    assert fixture.batch(store)[1] == 0
+    assert fixture.journals().count("<!-- session:") == 1
+
+
+def test_move_excludes_old_location_history(fixture, store):
+    fixture.turn()
+    fixture.row(20, "location-switched", {"directory": str(fixture.root)})
+    fixture.turn(30)
+    assert fixture.batch(store)[1] == 1
+    assert "turn:msg2 " not in fixture.journals()
+
+
+@pytest.mark.parametrize("parent_present", [True, False])
+def test_fork_skips_copied_history_but_keeps_new_turn(fixture, store, parent_present):
+    fixture.turn()
+    fixture.session("fork", fork="session", boundary={"type": "after", "messageID": "msg9"})
+    fixture.user(session="fork", id="msg_fork_2")
+    fixture.row(
+        9,
         "assistant",
-        parent_id="u1",
-        finish="tool-calls",
-        text="Running checks",
+        {"content": [{"type": "text", "text": "copied"}], "finish": "stop", "time": {"completed": 1}},
+        session="fork",
+        id="msg_fork_9",
     )
-    _insert_message(
-        conn,
-        "a2",
-        session_id,
-        120,
-        "assistant",
-        parent_id="a1",
-        finish="stop",
-        text="Found the root cause",
-    )
-    _insert_message(conn, "u2", session_id, 130, "user", text="Apply the fix")
-    conn.commit()
-
-    turns = build_turns(conn, session_id)
-
-    assert len(turns) == 2
-    assert turns[0].turn_id == "u1"
-    assert turns[0].assistant_message_count == 2
-    assert turns[0].complete is True
-    assert [message.id for message in turns[0].messages] == ["u1", "a1", "a2"]
-
-    conn.close()
-
-
-def test_build_turns_keeps_descendants_through_textless_assistant_nodes(tmp_path: Path) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_textless_descendants"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Investigate the failure")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="tool-calls")
-    _insert_message(
-        conn,
-        "a2",
-        session_id,
-        120,
-        "assistant",
-        parent_id="a1",
-        finish="stop",
-        text="Found the root cause",
-    )
-    _insert_message(conn, "u2", session_id, 130, "user", text="Apply the fix")
-    conn.commit()
-
-    turns = build_turns(conn, session_id)
-
-    assert len(turns) == 2
-    assert turns[0].turn_id == "u1"
-    assert turns[0].assistant_message_count == 1
-    assert turns[0].complete is True
-    assert [message.id for message in turns[0].messages] == ["u1", "a2"]
-    assert "Found the root cause" in turns[0].render()
-
-    conn.close()
-
-
-def test_turn_sidecar_persists_state_and_turns(tmp_path: Path) -> None:
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-
-    turn_db = open_turn_db(str(project_dir))
-    turn = OpenCodeTurn(
-        session_id="ses_1",
-        turn_id="u1",
-        turn_index=1,
-        start_time=100,
-        end_time=150,
-        first_message_id="u1",
-        last_message_id="a1",
-        message_count=2,
-        assistant_message_count=1,
-        complete=True,
-        messages=[],
-    )
-
-    save_turn(turn_db, turn)
-    save_turn_state(
-        turn_db,
-        TurnState(
-            session_id="ses_1",
-            last_completed_time=150,
-            last_completed_message_id="a1",
-            last_completed_turn_id="u1",
-        ),
-    )
-
-    rows = load_session_turn_rows(turn_db, "ses_1")
-    state = load_turn_state(turn_db, "ses_1")
-
-    assert get_turn_db_path(str(project_dir)).endswith(".memsearch/opencode-turns.db")
-    assert len(rows) == 1
-    assert rows[0]["turn_id"] == "u1"
-    assert state.last_completed_turn_id == "u1"
-    assert state.last_completed_message_id == "a1"
-
-    turn_db.close()
-
-
-def test_capture_session_turns_keeps_monotonic_turn_index_across_batches(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_capture"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-    current_time_ms = {"value": 0}
-    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
-    conn.commit()
-
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-    )
-
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
-    _insert_message(conn, "a2", session_id, 210, "assistant", parent_id="u2", finish="stop", text="Answer two")
-    conn.commit()
-
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-    )
-
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
-
-    _insert_message(conn, "u3", session_id, 300, "user", text="Question three")
-    conn.commit()
-
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-    )
-
-    rows = load_session_turn_rows(turn_db, session_id)
-
-    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1), ("u2", 2)]
-
-    turn_db.close()
-    conn.close()
-
-
-def _prepare_summary_capture(
-    tmp_path: Path,
-    session_id: str,
-    marker: str,
-    assistant_text: str = "Answer",
-) -> tuple[sqlite3.Connection, sqlite3.Connection, Path, Path, Path]:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text=marker)
-    _insert_message(
-        conn,
-        "a1",
-        session_id,
-        110,
-        "assistant",
-        parent_id="u1",
-        finish="stop",
-        text=assistant_text,
-    )
-    _insert_message(conn, "u2", session_id, 200, "user", text="Close the first turn")
-    conn.commit()
-    return conn, open_turn_db(str(project_dir)), db_path, project_dir, memory_dir
-
-
-def _run_summary_capture(
-    conn: sqlite3.Connection,
-    turn_db: sqlite3.Connection,
-    db_path: Path,
-    memory_dir: Path,
-    session_id: str,
-) -> str:
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-    )
-    return next(memory_dir.glob("*.md")).read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize("mode", ["missing", "failure", "nonzero", "empty", "unusable", "timeout"])
-def test_capture_session_turns_omits_transcript_when_native_summary_fails(
-    tmp_path: Path,
-    monkeypatch,
-    mode: str,
-) -> None:
-    session_id = "ses_summary_failure"
-    marker = "S651_SYNTHETIC_PRIVATE_TURN_MARKER"
-    conn, turn_db, db_path, _, memory_dir = _prepare_summary_capture(tmp_path, session_id, marker)
-    isolated_root = tmp_path / "isolated"
-
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda *args: True)
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_provider", lambda *args: "")
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_model", lambda *args: "")
-    monkeypatch.setattr(capture_daemon, "_load_summarize_prompt", lambda *args: "Summarize safely.")
-    monkeypatch.setattr(capture_daemon, "ensure_isolated_config", lambda *args: str(isolated_root))
-
-    def fail_native(cmd, **kwargs):
-        if mode == "missing":
-            raise FileNotFoundError("opencode")
-        if mode == "failure":
-            raise RuntimeError("synthetic native failure")
-        if mode == "timeout":
-            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
-        if mode == "nonzero":
-            return subprocess.CompletedProcess(cmd, 23, stdout=f"- {marker}\n", stderr="synthetic failure")
-        if mode == "unusable":
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"{marker}\n", stderr="")
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(capture_daemon.subprocess, "run", fail_native)
-
-    content = _run_summary_capture(conn, turn_db, db_path, memory_dir, session_id)
-    assert marker not in content
-    assert "Memory summary unavailable" in content
-    assert "transcript content was omitted" in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
-    assert load_turn_state(turn_db, session_id).last_completed_turn_id == "u1"
-
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_omits_transcript_when_prompt_loading_raises(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    session_id = "ses_prompt_exception"
-    marker = "S651_SYNTHETIC_PROMPT_EXCEPTION_MARKER"
-    conn, turn_db, db_path, _, memory_dir = _prepare_summary_capture(
-        tmp_path,
-        session_id,
-        marker,
-        "Synthetic answer",
-    )
-
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda *args: True)
-
-    def raise_prompt_decode_error(*args):
-        raise UnicodeError("synthetic unreadable prompt")
-
-    monkeypatch.setattr(capture_daemon, "_load_summarize_prompt", raise_prompt_decode_error)
-
-    content = _run_summary_capture(conn, turn_db, db_path, memory_dir, session_id)
-    assert marker not in content
-    assert "Synthetic answer" not in content
-    assert capture_daemon._SUMMARY_UNAVAILABLE in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
-    assert load_turn_state(turn_db, session_id).last_completed_turn_id == "u1"
-
-    turn_db.close()
-    conn.close()
-
-
-@pytest.mark.parametrize("mode", ["exception", "nonzero", "empty", "timeout"])
-def test_capture_session_turns_omits_transcript_when_managed_summary_fails(
-    tmp_path: Path,
-    monkeypatch,
-    mode: str,
-) -> None:
-    session_id = "ses_managed_summary_failure"
-    marker = "S651_SYNTHETIC_MANAGED_PRIVATE_MARKER"
-    conn, turn_db, db_path, _, memory_dir = _prepare_summary_capture(tmp_path, session_id, marker)
-
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda *args: True)
-    monkeypatch.setattr(capture_daemon, "_load_summarize_prompt", lambda *args: "Summarize safely.")
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_provider", lambda *args: "openai")
-
-    def fail_managed(cmd, **kwargs):
-        if mode == "exception":
-            raise RuntimeError("synthetic managed failure")
-        if mode == "timeout":
-            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
-        if mode == "nonzero":
-            return subprocess.CompletedProcess(cmd, 23, stdout=f"- {marker}\n", stderr="synthetic failure")
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(capture_daemon.subprocess, "run", fail_managed)
-
-    content = _run_summary_capture(conn, turn_db, db_path, memory_dir, session_id)
-    assert marker not in content
-    assert capture_daemon._SUMMARY_UNAVAILABLE in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
-    assert load_turn_state(turn_db, session_id).last_completed_turn_id == "u1"
-
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_accepts_managed_provider_plain_text(tmp_path: Path, monkeypatch) -> None:
-    session_id = "ses_managed_plain_text"
-    marker = "S651_SYNTHETIC_MANAGED_PLAIN_TEXT_MARKER"
-    plain_summary = "Managed provider plain-text summary."
-    conn, turn_db, db_path, _, memory_dir = _prepare_summary_capture(tmp_path, session_id, marker)
-
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda *args: True)
-    monkeypatch.setattr(capture_daemon, "_load_summarize_prompt", lambda *args: "Summarize safely.")
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_provider", lambda *args: "openai")
-    monkeypatch.setattr(
-        capture_daemon.subprocess,
-        "run",
-        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout=f"{plain_summary}\n", stderr=""),
-    )
-
-    content = _run_summary_capture(conn, turn_db, db_path, memory_dir, session_id)
-    assert plain_summary in content
-    assert marker not in content
-    assert "Memory summary unavailable" not in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
-    assert load_turn_state(turn_db, session_id).last_completed_turn_id == "u1"
-
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_keeps_normal_native_summary_behavior(tmp_path: Path, monkeypatch) -> None:
-    session_id = "ses_summary_success"
-    marker = "S651_SYNTHETIC_NORMAL_USER_MARKER"
-    conn, turn_db, db_path, _, memory_dir = _prepare_summary_capture(tmp_path, session_id, marker)
-    isolated_root = tmp_path / "isolated"
-
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_enabled", lambda *args: True)
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_provider", lambda *args: "")
-    monkeypatch.setattr(capture_daemon, "get_plugin_summarize_model", lambda *args: "")
-    monkeypatch.setattr(capture_daemon, "_load_summarize_prompt", lambda *args: "Summarize safely.")
-    monkeypatch.setattr(capture_daemon, "ensure_isolated_config", lambda *args: str(isolated_root))
-
-    captured_env = {}
-
-    def summarize_native(cmd, **kwargs):
-        captured_env.update(kwargs["env"])
-        return subprocess.CompletedProcess(cmd, 0, stdout="- Safe synthetic summary.\n", stderr="")
-
-    monkeypatch.setattr(capture_daemon.subprocess, "run", summarize_native)
-
-    content = _run_summary_capture(conn, turn_db, db_path, memory_dir, session_id)
-    assert "- Safe synthetic summary." in content
-    assert marker not in content
-    assert "Memory summary unavailable" not in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
-    assert captured_env["XDG_DATA_HOME"] == str(isolated_root / "data")
-    assert captured_env["MEMSEARCH_NO_WATCH"] == "1"
-    assert load_turn_state(turn_db, session_id).last_completed_turn_id == "u1"
-
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_is_idempotent_after_partial_state_save_failure(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_crash"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
-    _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
-    conn.commit()
-
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-
-    original_save_turn_state = capture_daemon.save_turn_state
-    failed_once = {"value": False}
-
-    def flaky_save_turn_state(*args, **kwargs):
-        if not failed_once["value"]:
-            failed_once["value"] = True
-            raise RuntimeError("simulated crash before cursor persisted")
-        return original_save_turn_state(*args, **kwargs)
-
-    turn_db = open_turn_db(str(project_dir))
-    monkeypatch.setattr(capture_daemon, "save_turn_state", flaky_save_turn_state)
-
-    with suppress(RuntimeError):
-        capture_daemon.capture_session_turns(
-            conn,
-            turn_db,
-            str(memory_dir),
-            session_id,
-            "",
-            "memsearch",
-            str(db_path),
+    fixture.turn(30, session="fork")
+    if not parent_present:
+        fixture.conn.execute("DELETE FROM session_message WHERE session_id='session'")
+        fixture.conn.execute("DELETE FROM session_v2 WHERE id='session'")
+        fixture.conn.commit()
+    fixture.batch(store)
+    assert "turn:msg_fork_2" not in fixture.journals()
+    assert "session:fork turn:msg32" in fixture.journals()
+
+
+def test_two_capture_instances_serialize_real_writes(fixture):
+    fixture.turn()
+
+    def worker():
+        with (
+            contextlib.closing(reader.open_source(str(fixture.path))) as conn,
+            contextlib.closing(capture.CaptureStore(str(fixture.root))) as store,
+        ):
+            return capture.capture_batch(conn, store, fixture.scope, str(fixture.path), lambda _: "- Concurrent.")[1]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(lambda _: worker(), range(2))) == [0, 1]
+    assert fixture.journals().count("<!-- session:") == 1
+
+
+def test_native_custom_prompt_bullet_validation_and_failure(fixture, tmp_path):
+    from memsearch.config import MemSearchConfig
+
+    cfg = MemSearchConfig()
+    custom = tmp_path / "prompt.txt"
+    custom.write_text("CUSTOM {{AGENT_NAME}}", encoding="utf8")
+    cfg.prompts.summarize = str(custom)
+    cfg.plugins.opencode.summarize.model = "openai/title"
+    fixture.turn()
+    turn = reader.build_turns(fixture.conn, "session")[0]
+
+    def native(prompt, model, task):
+        assert prompt.startswith("CUSTOM OpenCode\n")
+        assert model == "openai/title" and task == "summarize"
+        return "preamble\n- 中文摘要\nnoise"
+
+    assert capture.summarize(turn, cfg, [], str(fixture.root), native) == "- 中文摘要"
+    assert capture.summarize(turn, cfg, [], str(fixture.root), lambda *_: "raw text") == capture.UNAVAILABLE
+    assert (
+        capture.summarize(
+            turn, cfg, [], str(fixture.root), lambda *_: (_ for _ in ()).throw(ValueError("RAW_PRIVATE_ERROR"))
         )
-
-    monkeypatch.setattr(capture_daemon, "save_turn_state", original_save_turn_state)
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
+        == capture.UNAVAILABLE
     )
 
-    files = sorted(memory_dir.glob("*.md"))
-    assert len(files) == 1
-    content = files[0].read_text(encoding="utf-8")
-    assert content.count(f"<!-- session:{session_id} turn:u1 db:{db_path} -->") == 1
 
-    state = load_turn_state(turn_db, session_id)
-    assert state.last_completed_turn_id == "u1"
+@pytest.mark.parametrize(
+    "response,expected",
+    [
+        ("Plain 中文 summary", "Plain 中文 summary"),
+        ("Preamble\n- 中文 summary\nTrailing text", "- 中文 summary"),
+    ],
+)
+def test_managed_summary_preserves_plain_utf8_and_argv(fixture, tmp_path, response, expected):
+    from memsearch.config import MemSearchConfig
 
-    turn_db.close()
-    conn.close()
-
-
-def test_capture_session_turns_waits_for_tail_turn_stability_before_capture(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_tail_wait"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-    tail_cache: dict[str, object] = {}
-
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-    current_time_ms = {"value": 0}
-    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
-    conn.commit()
-
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
+    cfg = MemSearchConfig()
+    cfg.plugins.opencode.summarize.provider = " custom-provider "
+    fixture.turn(text="中文 marker")
+    turn = reader.build_turns(fixture.conn, "session")[0]
+    cli = tmp_path / "cli with spaces.py"
+    cli.write_text(
+        f"import sys\nassert sys.argv[1:] == ['summarize','--plugin','opencode','--agent-name','OpenCode']\nassert '中文 marker' in sys.stdin.read()\nprint({response!r})\n"
     )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    current_time_ms["value"] = 299_999
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
-    )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    current_time_ms["value"] = 300_000
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
+    assert (
+        capture.summarize(turn, cfg, [sys.executable, str(cli)], str(fixture.root), lambda *_: pytest.fail("native"))
+        == expected
     )
 
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
 
-    turn_db.close()
-    conn.close()
+def test_transcript_and_summary_size_bounds(fixture):
+    fixture.user(text="x" * 100000)
+    for i in range(3, 13):
+        fixture.assistant(i, text="y" * 10000, finish="tool-calls")
+    fixture.assistant(14)
+    fixture.idle()
+    turn = reader.build_turns(fixture.conn, "session")[0]
+    assert len(turn.render()) <= 24000
+    from memsearch.config import MemSearchConfig
 
-
-def test_capture_session_turns_resets_tail_stability_when_content_changes(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_tail_reset"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-    tail_cache: dict[str, object] = {}
-
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-    current_time_ms = {"value": 0}
-    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Draft answer")
-    conn.commit()
-
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
-    )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    _insert_message(conn, "a2", session_id, 120, "assistant", parent_id="a1", finish="stop", text="Final answer")
-    conn.commit()
-
-    current_time_ms["value"] = 250_000
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
-    )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    current_time_ms["value"] = 549_999
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
-    )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    current_time_ms["value"] = 550_000
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
+    assert (
+        capture.summarize(turn, MemSearchConfig(), [], str(fixture.root), lambda *_: "- " + "x" * 20000)
+        == capture.UNAVAILABLE
     )
 
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
 
-    turn_db.close()
-    conn.close()
+def test_move_during_inference_cannot_append_to_old_project(fixture, store, tmp_path):
+    fixture.turn()
+    other = tmp_path / "moved"
+    other.mkdir()
+
+    def summarize_and_move(_):
+        fixture.conn.execute("UPDATE session_v2 SET directory=? WHERE id='session'", (str(other),))
+        fixture.conn.commit()
+        return "- Wrong owner's summary."
+
+    with pytest.raises(reader.TranscriptError, match="outside"):
+        fixture.batch(store, summarize_and_move)
+    assert fixture.journals() == ""
+    assert store.db.execute("SELECT count(*) FROM v2_pending").fetchone()[0] == 1
 
 
-def test_capture_session_turns_closes_prior_turn_as_soon_as_next_user_arrives(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_next_user"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-    tail_cache: dict[str, object] = {}
+def test_native_eof_and_host_cancellation_are_retryable(monkeypatch):
+    import io
 
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-    current_time_ms = {"value": 0}
-    monkeypatch.setattr(capture_daemon.time, "time", lambda: current_time_ms["value"] / 1000)
+    for reply in ["", '{"cancelled":true}\n']:
+        monkeypatch.setattr(capture.sys, "stdin", io.StringIO(reply))
+        monkeypatch.setattr(capture.sys, "stdout", io.StringIO())
+        with pytest.raises(capture.Cancelled):
+            capture.native_request("synthetic prompt")
 
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
-    conn.commit()
 
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
+def test_fork_before_sparse_boundary_does_not_skip_new_child_turn(fixture, store):
+    fixture.turn()
+    fixture.user(100)
+    fixture.session("fork", fork="session", boundary={"type": "before", "messageID": "msg100"})
+    fixture.user(session="fork", id="msg_fork_2")
+    fixture.row(15, "idle", {"outcome": "succeeded"}, session="fork", id="msg_fork_15")
+    fixture.turn(20, session="fork")
+    fixture.batch(store)
+    assert "session:fork turn:msg22" in fixture.journals()
+    assert "turn:msg_fork_2" not in fixture.journals()
+
+
+def test_index_failure_retries_index_without_resummarizing_or_appending(fixture, tmp_path):
+    import os
+
+    from tests.opencode_v2_fixtures import SCRIPTS
+
+    fixture.turn()
+    home = tmp_path / "isolated-home"
+    home.mkdir()
+    cli = tmp_path / "index-cli.py"
+    cli.write_text(
+        "from pathlib import Path\nimport sys\n"
+        "assert sys.argv[1] == 'index'\n"
+        "assert '--default-collection' in sys.argv\n"
+        "Path('index-attempts').open('a').write('attempt\\n')\n"
+        "sys.exit(0 if Path('index-ready').exists() else 1)\n"
     )
-    assert load_session_turn_rows(turn_db, session_id) == []
-
-    _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
-    conn.commit()
-
-    current_time_ms["value"] = 1_000
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
-        tail_cache,
+    argv = [
+        sys.executable,
+        str(SCRIPTS / "capture.py"),
+        "--project-dir",
+        str(fixture.root),
+        "--project-id",
+        "project",
+        "--db",
+        str(fixture.path),
+        "--collection",
+        "fixture-collection",
+        "--command",
+        json.dumps([sys.executable, str(cli)]),
+    ]
+    env = {**os.environ, "HOME": str(home), "MEMSEARCH_DIR": str(fixture.root / ".memsearch")}
+    first = subprocess.run(
+        argv, input='{"text":"- Durable fixture summary."}\n', text=True, capture_output=True, env=env, timeout=20
     )
+    assert first.returncode == 1, first.stderr
+    assert '"type": "generate"' in first.stdout
+    before = fixture.journals()
+    assert "Durable fixture summary" in before
+    (fixture.root / "index-ready").touch()
+    second = subprocess.run(argv, input="", text=True, capture_output=True, env=env, timeout=20)
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert '"type": "generate"' not in second.stdout
+    assert fixture.journals() == before
+    assert (fixture.root / "index-attempts").read_text().count("attempt") == 2
+    with contextlib.closing(capture.CaptureStore(str(fixture.root))) as store:
+        assert store.db.execute("SELECT index_dirty FROM v2_sources").fetchone()[0] == 0
 
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert [(row["turn_id"], row["turn_index"]) for row in rows] == [("u1", 1)]
 
-    turn_db.close()
-    conn.close()
+def test_disabled_helper_does_not_request_inference(fixture, tmp_path):
+    import os
 
+    from tests.opencode_v2_fixtures import SCRIPTS
 
-def test_capture_session_turns_uses_legacy_last_msg_time_before_sidecar_exists(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_upgrade"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-    memory_dir.mkdir(parents=True)
-    legacy_state_file = project_dir / ".memsearch" / ".last_msg_time"
-    legacy_state_file.write_text("150", encoding="utf-8")
-
-    today = capture_daemon.datetime.now().strftime("%Y-%m-%d")
-    legacy_memory = memory_dir / f"{today}.md"
-    legacy_memory.write_text(
-        f"# {today}\n\n"
-        "## Session 00:00\n\n"
-        "### 00:00\n"
-        f"<!-- session:{session_id} db:{db_path} -->\n"
-        "- legacy summary for turn u1\n\n",
-        encoding="utf-8",
+    fixture.turn()
+    home = tmp_path / "home"
+    (home / ".memsearch").mkdir(parents=True)
+    (home / ".memsearch/config.toml").write_text("[plugins.opencode.summarize]\nenabled = false\n")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS / "capture.py"),
+            "--project-dir",
+            str(fixture.root),
+            "--project-id",
+            "project",
+            "--db",
+            str(fixture.path),
+            "--collection",
+            "fixture",
+            "--command",
+            json.dumps(["unused"]),
+        ],
+        input="",
+        text=True,
+        capture_output=True,
+        timeout=20,
+        env={**os.environ, "HOME": str(home), "MEMSEARCH_DIR": str(fixture.root / ".memsearch")},
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '"type": "generate"' not in result.stdout
+    assert fixture.journals() == ""
 
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question one")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer one")
-    _insert_message(conn, "u2", session_id, 200, "user", text="Question two")
-    _insert_message(conn, "a2", session_id, 210, "assistant", parent_id="u2", finish="stop", text="Answer two")
-    _insert_message(conn, "u3", session_id, 300, "user", text="Question three")
-    conn.commit()
 
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
+def test_sigterm_during_native_request_replays_from_durable_pending(fixture, tmp_path):
+    import os
+    import selectors
 
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
+    from tests.opencode_v2_fixtures import SCRIPTS
+
+    fixture.turn()
+    home = tmp_path / "home"
+    home.mkdir()
+    cli = tmp_path / "index.py"
+    cli.write_text("import sys\nassert sys.argv[1] == 'index'\n")
+    argv = [
+        sys.executable,
+        str(SCRIPTS / "capture.py"),
+        "--project-dir",
+        str(fixture.root),
+        "--project-id",
+        "project",
+        "--db",
+        str(fixture.path),
+        "--collection",
+        "fixture",
+        "--command",
+        json.dumps([sys.executable, str(cli)]),
+    ]
+    env = {**os.environ, "HOME": str(home), "MEMSEARCH_DIR": str(fixture.root / ".memsearch")}
+    with subprocess.Popen(
+        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
+    ) as process:
+        try:
+            with selectors.DefaultSelector() as ready:
+                ready.register(process.stdout, selectors.EVENT_READ)
+                assert ready.select(10), "helper did not request native generation"
+            assert json.loads(process.stdout.readline())["type"] == "generate"
+            process.terminate()
+            assert process.wait(timeout=5) == 75
+        finally:
+            if process.poll() is None:
+                process.kill()
+    assert fixture.journals() == ""
+    with contextlib.closing(capture.CaptureStore(str(fixture.root))) as store:
+        assert store.db.execute("SELECT entry FROM v2_pending").fetchone()[0] is None
+    result = subprocess.run(
+        argv, input='{"text":"- Recovered after shutdown."}\n', text=True, capture_output=True, env=env, timeout=20
     )
-
-    rows = load_session_turn_rows(turn_db, session_id)
-    assert [row["turn_id"] for row in rows] == ["u2"]
-
-    content = legacy_memory.read_text(encoding="utf-8")
-    assert f"<!-- session:{session_id} db:{db_path} -->" in content
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" not in content
-    assert f"<!-- session:{session_id} turn:u2 db:{db_path} -->" in content
-    assert "Question two" not in content
-    assert "Memory summary unavailable" in content
-
-    state = load_turn_state(turn_db, session_id)
-    assert state.last_completed_turn_id == "u2"
-    assert state.last_completed_time == 210
-
-    turn_db.close()
-    conn.close()
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert fixture.journals().count("Recovered after shutdown") == 1
 
 
-def test_capture_session_turns_does_not_advance_sidecar_when_markdown_write_fails(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_write_fail"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
+def load_migrated_projection(fixture):
+    """Use the exact V2 rows from the outer official migration reproduction."""
+    data = json.loads((Path(__file__).parent / "fixtures/opencode-v2-migrated.json").read_text())
+    session_id = data["session_id"]
+    fixture.session(session_id, project=data["stored_project_id"])
+    fixture.scope = reader.Scope(str(fixture.root), data["requester_project_id"])
+    for row in data["messages"]:
+        fixture.row(row["seq"], row["type"], row["data"], session=session_id, id=row["id"])
+    return session_id, data["messages"][0]["id"]
 
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
-    conn.commit()
 
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        capture_daemon,
-        "write_capture",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("disk full")),
+@pytest.mark.parametrize("existing_anchor", [True, False])
+def test_official_migrated_shape_baselines_and_continues_without_idle(fixture, store, existing_anchor):
+    from tests.opencode_v2_fixtures import parser
+
+    session_id, turn_id = load_migrated_projection(fixture)
+    assert fixture.conn.execute("SELECT count(*) FROM session_message WHERE type='idle'").fetchone()[0] == 0
+    anchor = f"<!-- session:{session_id} turn:{turn_id} db:/original/opencode.db -->"
+    original = "# Existing migration journal\n" + anchor + "\n- Preserved summary.\n"
+    store.memory.mkdir(exist_ok=True)
+    journal = store.memory / "2026-01-01.md"
+    if existing_anchor:
+        journal.write_text(original)
+    text = parser.parse_session(session_id, fixture.scope, str(fixture.path), turn_id=turn_id, context=0)
+    assert "cedar-8174" in text and "23-hour" in text
+    source, count = fixture.batch(store, lambda _: pytest.fail("historical baseline"), initialize=True)
+    assert count == 0 and store.cursor(source, session_id) == 1
+    fixture.user(20, session=session_id)
+    fixture.assistant(29, session=session_id)
+    assert fixture.batch(store)[1] == 0  # Live settled step still awaits its idle boundary.
+    fixture.idle(35, session=session_id)
+    assert fixture.batch(store)[1] == 1
+    assert fixture.batch(store)[1] == 0
+    assert fixture.journals().count(f"session:{session_id} turn:msg20") == 1
+    if existing_anchor:
+        assert journal.read_text() == original
+    else:
+        assert turn_id not in fixture.journals()
+
+
+def test_migrated_anchor_replay_and_cancelled_v2_continuation(fixture, store):
+    session_id, turn_id = load_migrated_projection(fixture)
+    store.memory.mkdir()
+    journal = store.memory / "2026-01-01.md"
+    original = f"# Existing\n<!-- session:{session_id} turn:{turn_id} db:/original/opencode.db -->\n- Kept.\n"
+    journal.write_text(original)
+    fixture.turn(20, session=session_id)
+    with pytest.raises(capture.Cancelled):
+        fixture.batch(store, lambda _: (_ for _ in ()).throw(capture.Cancelled()))
+    assert store.cursor(capture.source_key(str(fixture.path), fixture.scope), session_id) == 1
+    # A new plugin activation marks index dirty; normal replay reuses pending work.
+    assert fixture.batch(store, initialize=True)[1] == 0
+    assert fixture.batch(store)[1] == 1
+    assert fixture.batch(store)[1] == 0
+    assert journal.read_text() == original
+    assert fixture.journals().count(f"session:{session_id} turn:msg22") == 1
+
+
+def test_later_failed_execution_does_not_change_imported_settled_history(fixture):
+    session_id, _ = load_migrated_projection(fixture)
+    fixture.user(20, session=session_id)
+    fixture.assistant(29, session=session_id, completed=False)
+    fixture.idle(35, session=session_id, outcome="failed")
+    turns = reader.build_turns(fixture.conn, session_id)
+    assert [turn.status for turn in turns] == ["complete", "discarded"]
+
+
+def test_queued_user_does_not_prove_live_completion(fixture, store):
+    fixture.user()
+    fixture.assistant()
+    fixture.user(20)
+    assert [turn.status for turn in reader.build_turns(fixture.conn, "session")] == ["pending", "pending"]
+    assert fixture.batch(store)[1] == 0
+    fixture.assistant(29)
+    fixture.idle(35)
+    assert fixture.batch(store)[1] == 2
+
+
+@pytest.mark.parametrize("mutation", ["partial", "retry", "error", "unsettled-tool"])
+def test_imported_shape_never_promotes_partial_retry_error_or_unsettled_tools(fixture, store, mutation):
+    session_id, _ = load_migrated_projection(fixture)
+    row = fixture.conn.execute(
+        "SELECT id,data FROM session_message WHERE session_id=? AND type='assistant'", (session_id,)
+    ).fetchone()
+    data = json.loads(row["data"])
+    if mutation == "partial":
+        del data["time"]["completed"]
+    elif mutation == "retry":
+        data["retry"] = {"attempt": 1}
+    elif mutation == "error":
+        data["error"] = {"type": "provider.error", "message": "failed despite stop"}
+    else:
+        data["content"].append({"type": "tool", "state": {"status": "running"}})
+    fixture.conn.execute("UPDATE session_message SET data=? WHERE id=?", (json.dumps(data), row["id"]))
+    fixture.conn.commit()
+    fixture.user(20, session=session_id)
+    assert reader.build_turns(fixture.conn, session_id)[0].status == "pending"
+    source, count = fixture.batch(store, initialize=True)
+    assert count == 0 and store.cursor(source, session_id) == -1
+
+
+def test_final_assistant_error_is_not_success_but_recovered_retry_is(fixture, store):
+    fixture.user()
+    fixture.assistant(retry={"attempt": 1})
+    fixture.idle()
+    row = fixture.conn.execute("SELECT data FROM session_message WHERE seq=9").fetchone()
+    data = json.loads(row[0])
+    data["error"] = {"type": "provider.error", "message": "temporary failure"}
+    fixture.conn.execute("UPDATE session_message SET data=? WHERE seq=9", (json.dumps(data),))
+    fixture.conn.commit()
+    assert fixture.batch(store)[1] == 0
+    data.pop("retry")
+    fixture.conn.execute("UPDATE session_message SET data=? WHERE seq=9", (json.dumps(data),))
+    fixture.conn.commit()
+    assert reader.build_turns(fixture.conn, "session")[0].status == "discarded"
+    # The host clears retry/error when the same assistant starts again.
+    data.pop("error")
+    fixture.conn.execute("UPDATE session_message SET data=? WHERE seq=9", (json.dumps(data),))
+    fixture.conn.commit()
+    assert fixture.batch(store)[1] == 1
+
+
+def test_successful_final_response_after_an_earlier_failed_attempt(fixture, store):
+    fixture.user()
+    fixture.row(
+        5,
+        "assistant",
+        {"time": {"created": 1, "completed": 2}, "content": [], "finish": "error", "error": {"type": "provider.error"}},
     )
-
-    turn_db = open_turn_db(str(project_dir))
-
-    with suppress(OSError):
-        capture_daemon.capture_session_turns(
-            conn,
-            turn_db,
-            str(memory_dir),
-            session_id,
-            "",
-            "memsearch",
-            str(db_path),
-        )
-
-    state = load_turn_state(turn_db, session_id)
-    rows = load_session_turn_rows(turn_db, session_id)
-
-    assert state.last_completed_turn_id == ""
-    assert state.last_completed_message_id == ""
-    assert state.last_completed_time == 0
-    assert rows == []
-
-    turn_db.close()
-    conn.close()
+    fixture.assistant()
+    fixture.idle()
+    assert fixture.batch(store)[1] == 1
 
 
-def test_capture_session_turns_skips_summarizer_when_anchor_already_exists(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    summarize_calls = {"count": 0}
+def test_maintenance_only_helper_never_enters_capture_lock_or_database(fixture, store, tmp_path):
+    import os
 
-    def tracking_summarize(*args, **kwargs):
-        summarize_calls["count"] += 1
-        return "- summarized"
+    from tests.opencode_v2_fixtures import SCRIPTS
 
-    monkeypatch.setattr(capture_daemon, "summarize_with_llm", tracking_summarize)
-
-    db_path = tmp_path / "opencode.db"
-    conn = _make_opencode_db(db_path)
-    session_id = "ses_rebuild"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    memory_dir = project_dir / ".memsearch" / "memory"
-    memory_dir.mkdir(parents=True)
-
-    _insert_message(conn, "u1", session_id, 100, "user", text="Question")
-    _insert_message(conn, "a1", session_id, 110, "assistant", parent_id="u1", finish="stop", text="Answer")
-    _insert_message(conn, "u2", session_id, 200, "user", text="Follow-up")
-    conn.commit()
-
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
+    home = tmp_path / "home"
+    home.mkdir()
+    # The fixture holds the capture lock. The optional helper must still finish.
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS / "capture.py"),
+            "--maintenance",
+            "--project-dir",
+            str(fixture.root),
+            "--project-id",
+            "project",
+            "--db",
+            str(tmp_path / "unavailable.db"),
+            "--collection",
+            "fixture",
+            "--command",
+            '["unused"]',
+        ],
+        input="",
+        text=True,
+        capture_output=True,
+        timeout=10,
+        env={**os.environ, "HOME": str(home), "MEMSEARCH_DIR": str(fixture.root / ".memsearch")},
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["type"] == "done"
+    assert store.db.execute("SELECT count(*) FROM v2_sources").fetchone()[0] == 0
 
-    assert summarize_calls["count"] == 1
-    content = next(memory_dir.glob("*.md")).read_text(encoding="utf-8")
-    assert f"<!-- session:{session_id} turn:u1 db:{db_path} -->" in content
 
-    turn_db.close()
+def test_recall_queries_serialize_with_capture_and_each_other(fixture, tmp_path, monkeypatch):
+    from tests.opencode_v2_fixtures import SCRIPTS
 
-    turn_db = open_turn_db(str(project_dir))
-    capture_daemon.capture_session_turns(
-        conn,
-        turn_db,
-        str(memory_dir),
-        session_id,
-        "",
-        "memsearch",
-        str(db_path),
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    command = tmp_path / "exclusive-query.py"
+    command.write_text(
+        "import os,time\nfrom pathlib import Path\n"
+        "fd=os.open('query-active',os.O_CREAT|os.O_EXCL|os.O_WRONLY)\n"
+        "try:\n"
+        " Path('query-entries').open('a').write('entered\\n')\n"
+        " time.sleep(.2)\n"
+        "finally:\n os.close(fd)\n os.unlink('query-active')\n"
+        "print('query completed')\n"
     )
+    argv = [
+        sys.executable,
+        str(SCRIPTS / "capture.py"),
+        "--project-dir",
+        str(fixture.root),
+        "--project-id",
+        "reidentified",
+        "--db",
+        str(fixture.path),
+        "--collection",
+        "fixture",
+        "--command",
+        json.dumps([sys.executable, str(command)]),
+        "--query",
+        '["search","fixture"]',
+        "--session-id",
+        "session",
+    ]
+    with contextlib.ExitStack() as stack:
+        with contextlib.closing(capture.CaptureStore(str(fixture.root))):
+            processes = [
+                stack.enter_context(subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+                for _ in range(2)
+            ]
+            # Neither command may enter while a capture/index batch owns the lock.
+            import time
 
-    assert summarize_calls["count"] == 1
+            time.sleep(0.2)
+            assert not (fixture.root / "query-entries").exists()
+        for process in processes:
+            stdout, stderr = process.communicate(timeout=10)
+            assert process.returncode == 0, stderr
+            assert stdout.strip() == "query completed"
+    assert (fixture.root / "query-entries").read_text().count("entered") == 2
+    fixture.conn.execute("UPDATE session_v2 SET workspace_id='foreign'")
+    fixture.conn.commit()
+    denied = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+    assert denied.returncode == 1
+    assert (fixture.root / "query-entries").read_text().count("entered") == 2
 
-    content = next(memory_dir.glob("*.md")).read_text(encoding="utf-8")
-    assert content.count(f"<!-- session:{session_id} turn:u1 db:{db_path} -->") == 1
 
-    turn_db.close()
-    conn.close()
+def test_two_roots_share_cli_lock_but_infer_concurrently(tmp_path, monkeypatch):
+    import os
+    import select
+
+    from tests.opencode_v2_fixtures import SCRIPTS
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    command = tmp_path / "exclusive-cli.py"
+    command.write_text(
+        "import fcntl,os,sys,time\nfrom pathlib import Path\n"
+        "home=Path.home()\n"
+        "with (home/'database-lock').open('a') as lock:\n"
+        " fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)\n"
+        " with (home/'entries').open('a') as log: log.write(sys.argv[1]+'\\n')\n"
+        " time.sleep(.15)\n"
+        "print('completed')\n"
+    )
+    with contextlib.ExitStack() as stack:
+        fixtures = [Fixture(tmp_path / name) for name in ("project-a", "project-b")]
+        for item in fixtures:
+            stack.callback(item.conn.close)
+            with contextlib.closing(capture.CaptureStore(str(item.root))) as store:
+                item.batch(store, initialize=True)
+            item.turn()
+
+        def start(item, *args):
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "capture.py"),
+                    "--project-dir",
+                    str(item.root),
+                    "--project-id",
+                    "p",
+                    "--db",
+                    str(item.path),
+                    "--collection",
+                    item.root.name,
+                    "--command",
+                    json.dumps([sys.executable, str(command)]),
+                    *args,
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env={**os.environ, "MEMSEARCH_DIR": str(item.root / ".memsearch")},
+            )
+
+            def cleanup():
+                if process.poll() is None:
+                    process.terminate()
+                process.communicate(timeout=10)
+
+            stack.callback(cleanup)
+            return process
+
+        captures = [start(item) for item in fixtures]
+        # Both helpers must reach native inference before either answer exists.
+        # A global batch lock would prevent the second request from arriving.
+        for process in captures:
+            assert select.select([process.stdout], [], [], 10)[0]
+            assert json.loads(process.stdout.readline())["type"] == "generate"
+        assert not (home / "entries").exists()
+        for process in captures:
+            process.stdin.write('{"text":"- Concurrent inference fixture."}\n')
+            process.stdin.flush()
+        queries = [
+            start(item, "--query", json.dumps([operation, "fixture"]), "--session-id", "session")
+            for item, operation in zip(fixtures, ("search", "expand"), strict=True)
+        ]
+        for process in [*captures, *queries]:
+            stdout, stderr = process.communicate(timeout=15)
+            assert process.returncode == 0, stdout + stderr
+        assert sorted((home / "entries").read_text().splitlines()) == ["expand", "index", "index", "search"]
+        for item in fixtures:
+            assert item.journals().count("<!-- session:") == 1
+
+
+def test_cli_lock_cancellation_releases_waiter_owner_and_child(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from tests.opencode_v2_fixtures import SCRIPTS
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    command = tmp_path / "blocking-cli.py"
+    command.write_text(
+        "import fcntl,os,time\nfrom pathlib import Path\n"
+        "home=Path.home()\n"
+        "with (home/'database-lock').open('a') as lock:\n"
+        " fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)\n"
+        " (home/Path.cwd().name).write_text(str(os.getpid()))\n"
+        " if Path.cwd().name=='project-a': time.sleep(60)\n"
+        "print('completed')\n"
+    )
+    with contextlib.ExitStack() as stack:
+        fixtures = [Fixture(tmp_path / name) for name in ("project-a", "project-b")]
+        for item in fixtures:
+            stack.callback(item.conn.close)
+
+        def start(item):
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(SCRIPTS / "capture.py"),
+                    "--project-dir",
+                    str(item.root),
+                    "--project-id",
+                    "p",
+                    "--db",
+                    str(item.path),
+                    "--collection",
+                    item.root.name,
+                    "--command",
+                    json.dumps([sys.executable, str(command)]),
+                    "--query",
+                    '["search","fixture"]',
+                    "--session-id",
+                    "session",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            def cleanup():
+                if process.poll() is None:
+                    process.terminate()
+                process.communicate(timeout=10)
+
+            stack.callback(cleanup)
+            return process
+
+        owner = start(fixtures[0])
+        deadline = time.monotonic() + 10
+        while not (home / "project-a").exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        child_pid = int((home / "project-a").read_text())
+        waiter = start(fixtures[1])
+        time.sleep(0.2)
+        assert waiter.poll() is None
+        assert not (home / "project-b").exists()
+        waiter.terminate()
+        waiter.communicate(timeout=5)
+        assert waiter.returncode == 75
+        # Cancellation releases the waiter's project lock as well as any CLI lock.
+        successor = start(fixtures[1])
+        owner.terminate()
+        owner.communicate(timeout=5)
+        assert owner.returncode == 75
+        stdout, stderr = successor.communicate(timeout=10)
+        assert successor.returncode == 0, stdout + stderr
+        assert stdout.strip() == "completed"
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
