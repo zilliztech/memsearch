@@ -589,7 +589,7 @@ model = ""                    # empty = Codex plugin default
 
 [plugins.opencode.summarize]
 provider = ""                 # empty/native = OpenCode native summarizer
-model = ""                    # empty = OpenCode small_model/default behavior
+model = ""                    # native: empty = title-agent model, then host default
 
 [plugins.openclaw.summarize]
 provider = ""                 # empty/native = OpenClaw native summarizer

@@ -96,9 +96,12 @@ plugins/
 │   ├── skills/             # memory-recall SKILL.md (decision guide)
 │   └── scripts/            # derive-collection.sh, parse-transcript.sh
 ├── opencode/               # OpenCode plugin (TypeScript npm plugin)
-│   ├── index.ts            # Tools + experimental hooks
-│   ├── scripts/            # capture-daemon.py (SQLite polling), parse-transcript.py
-│   └── skills/             # memory-recall SKILL.md
+│   ├── index.ts            # Plugin.define setup, execution events, prompt/context hooks
+│   ├── capture.ts          # Capture/recovery coordinator and native inference bridge
+│   ├── tools.ts            # memory_search/get/transcript registration
+│   ├── skills.ts           # Packaged Skill registration
+│   ├── scripts/            # capture.py (durable capture), opencode_turns.py, parse-transcript.py
+│   └── skills/             # memory-recall, memory-config, memory-to-skill
 └── codex/                  # Codex plugin (shell hooks + SKILL.md)
     ├── hooks/              # SessionStart, Stop, UserPromptSubmit
     ├── skills/             # memory-recall skill
@@ -130,11 +133,25 @@ TypeScript is loaded via jiti — no compilation step needed.
 
 ### OpenCode
 
+Prepare the source dependencies:
+
 ```bash
-mkdir -p ~/.config/opencode/plugins
-ln -sf $(pwd)/plugins/opencode/index.ts ~/.config/opencode/plugins/memsearch.ts
-# Restart opencode to load
+bash plugins/opencode/install.sh
 ```
+
+The script prints the absolute plugin directory to add to the `plugins`
+array in `opencode.json`:
+
+```json
+{
+  "plugins": ["/absolute/path/to/memsearch/plugins/opencode"]
+}
+```
+
+Use this directory as the only MemSearch entry, retaining other plugins.
+Restart OpenCode and verify the loaded path, three memory tools, and packaged
+Skills. See the [plugin README](plugins/opencode/README.md) for development checks
+and capture/recovery behavior.
 
 ### Codex
 

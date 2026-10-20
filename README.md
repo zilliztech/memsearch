@@ -181,21 +181,15 @@ We discussed batch size limits before, what did we decide?
 <details>
 <summary><h3>For OpenCode Users</h3></summary>
 
-**Plugin 0.4.0 supports OpenCode V2 `>=2.0.32 <3`.** Install with `opencode plugin add @zilliz/memsearch-opencode@0.4.0`, or add it to the V2 configuration:
+MemSearch gives OpenCode persistent memory across sessions. Install the plugin:
 
-```json
-{ "plugins": ["@zilliz/memsearch-opencode@0.4.0"] }
+```bash
+opencode plugin add @zilliz/memsearch-opencode
 ```
 
-Use exactly one MemSearch source. The three tools and Skills register at runtime. Completed turns are captured immediately; durable pending work recovers before recall after a short exit. Markdown remains under `.memsearch/memory/`.
+Completed turns are summarized into `.memsearch/memory/` and indexed for recall. Pending work resumes after an interruption.
 
-**V1 users pin the published 0.3.17 plugin** using their existing V1 configuration:
-
-```json
-{ "plugin": ["@zilliz/memsearch-opencode@0.3.17"] }
-```
-
-Ask about previous decisions to use `memory_search` → `memory_get` → `memory_transcript`, or invoke the `memory-recall` Skill. Existing Markdown and transcript anchors are preserved; OpenCode's database migration remains user-owned.
+Ask about previous decisions or debugging sessions, and OpenCode can search memory, expand relevant notes, and look up the original conversation. The `memory-recall`, `memory-config`, and `memory-to-skill` Skills are included.
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
 

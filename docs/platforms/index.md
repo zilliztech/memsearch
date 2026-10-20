@@ -9,12 +9,12 @@ memsearch provides plugins for 5 AI coding agent platforms. All plugins share th
 | Feature | [Claude Code](claude-code/index.md) | [Codex](codex/index.md) | [DeepSeek Harness](dsh/index.md) | [OpenClaw](openclaw/index.md) | [OpenCode](opencode/index.md) |
 |---------|:---:|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | Shell hooks | Native ESM + web client | TS registerTool | TS npm plugin |
-| **Capture method** | Stop hook (async) | Stop hook (async) | `session/event` turn end | agent_end hook | SQLite daemon |
-| **Summarization** | `claude -p --model haiku` | `codex exec` | DSH headless agent | OpenClaw agent | `opencode run` |
+| **Capture method** | Stop hook (async) | Stop hook (async) | `session/event` turn end | agent_end hook | Execution events + SQLite recovery |
+| **Summarization** | `claude -p --model haiku` | `codex exec` | DSH headless agent | OpenClaw agent | Native `ctx.generate.text` |
 | **Recall mechanism** | SKILL.md (context: fork) | SKILL.md | Native skill | memory_search tool | memory_search tool |
 | **L3 transcript format** | Claude Code JSONL | Codex rollout JSONL | DSH session database | OpenClaw JSONL | OpenCode SQLite |
 | **Isolation** | Per-project collection | Per-project collection | Per-project collection | Per-workspace collection | Per-project collection |
-| **Install method** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | npm + opencode.json |
+| **Install method** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` |
 | **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
 | **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
 

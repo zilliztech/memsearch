@@ -1,46 +1,44 @@
 # Installation
 
-## Compatibility
-
-**Plugin 0.4.0 supports official OpenCode V2 `>=2.0.32 <3`.** Its development SDK is pinned to `@opencode/plugin@2.0.32`. V1 installations should keep the plugin pinned:
-
-```json
-{ "plugin": ["@zilliz/memsearch-opencode@0.3.17"] }
-```
-
-That singular `plugin` key is the V1 configuration. V2 uses `plugins`. Check the host version and actual loaded plugin path; comparing registry and worktree version strings alone is insufficient.
-
-## Install the V2 plugin
-
-Use the existing nvm Node 22 environment, Python 3.11+, and a current MemSearch CLI supporting `--default-collection`. Standalone TUI capture, fresh-session recall, L3 and exit recovery were validated with Node 22.23.2 on official CLI 2.0.32 and 2.1.0. Development types remain pinned to SDK 2.0.32. Install the core if needed:
+Use OpenCode with Node.js 22+ and Python 3.11+. Install the MemSearch CLI with local embedding support:
 
 ```bash
 uv tool install 'memsearch[onnx]'
 ```
 
-Install the published package through OpenCode:
+## Install the plugin
+
+Install the package through OpenCode:
 
 ```bash
-opencode plugin add @zilliz/memsearch-opencode@0.4.0
+opencode plugin add @zilliz/memsearch-opencode
 ```
 
-The equivalent V2 configuration is:
+You can also add it to the `plugins` array in `opencode.json`:
 
 ```json
 {
-  "plugins": ["@zilliz/memsearch-opencode@0.4.0"]
+  "plugins": ["@zilliz/memsearch-opencode"]
 }
 ```
 
-### Development source
+Keep one MemSearch entry alongside your other plugins. Restart OpenCode to load the plugin and its three Skills: `memory-recall`, `memory-config`, and `memory-to-skill`.
 
-From a source clone:
+## Start using memory
+
+Open a project and have a conversation. Completed turns are summarized into the project's `.memsearch/memory/` directory and indexed automatically. In a fresh session, ask about that conversation to use the memory tools.
+
+Capture starts with new turns after the plugin is activated. Existing MemSearch journals are searchable; earlier OpenCode conversations are not bulk-imported. Each checkout has its own memory collection by default, and an explicitly configured collection takes precedence. Embedding, provider, and model options use the shared [MemSearch configuration](../../home/configuration.md).
+
+## Development source
+
+From a source clone, prepare the plugin dependencies:
 
 ```bash
 bash plugins/opencode/install.sh
 ```
 
-The script installs source dependencies and prints the exact absolute entry to add to your V2 configuration. It does not edit shared host configuration, authentication, global Skills, or running daemons.
+The script prints the absolute plugin directory to add to your configuration:
 
 ```json
 {
@@ -48,14 +46,6 @@ The script installs source dependencies and prints the exact absolute entry to a
 }
 ```
 
-Enable exactly one MemSearch source. Retain other plugins, but do not also enable an npm MemSearch package or an old `memsearch.ts` discovery link. All three Skills register at runtime with their packaged reference paths; no global Skill symlink is needed.
+Use this directory as the only MemSearch entry, retaining other plugins. Skills register from the package automatically. Restart OpenCode after source changes and verify the loaded path and the three memory tools.
 
-Restart and verify that OpenCode loaded this path and exposes the three memory tools. Memories live in the exact checkout's `.memsearch/memory/`. Explicit configured collections take precedence over the per-project derived fallback. Existing embedding/provider/model settings are preserved; the plugin never writes global config.
-
-## Existing conversations
-
-Follow the [official OpenCode migration guidance](https://opencode.ai/v2/docs/migrate-v1) yourself. MemSearch does not migrate the database or change Markdown anchors. First activation baselines already-settled history; it does not bulk-import old conversations. Existing journals remain searchable.
-
-If L3 fails, check host/plugin compatibility, the anchor's database path, and the specific session/turn. A database with V2 tables may still lack a referenced migrated conversation. Keep useful search/expand results and report this limitation; do not reset capture state or rewrite anchors.
-
-V1 can reject the V2 entrypoint before its Skills load. Use this page or an independently installed `memory-config` Skill for that diagnosis. Source tests and a published installation must be validated separately.
+For loading or transcript lookup problems, see [troubleshooting](memory-tools.md#troubleshooting).
