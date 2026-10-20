@@ -1,79 +1,26 @@
 #!/bin/bash
-# Install the memsearch OpenCode plugin.
-#
-# This script:
-# 1. Detects if memsearch is installed
-# 2. Symlinks the plugin to OpenCode's plugins directory
-# 3. Symlinks the memory-recall skill to ~/.agents/skills/
-# 4. Prints setup instructions
-
+# Prepare the V2 source for development. Host configuration remains user-owned.
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPENCODE_PLUGINS_DIR="${HOME}/.config/opencode/plugins"
-AGENTS_SKILLS_DIR="${HOME}/.agents/skills"
-
-echo "=== memsearch OpenCode Plugin Installer ==="
-echo ""
-
-# 1. Check memsearch
-if command -v memsearch &>/dev/null; then
-  echo "[OK] memsearch found: $(which memsearch)"
-elif command -v uvx &>/dev/null; then
-  echo "[OK] uvx found — will use: uvx --from 'memsearch[onnx]' memsearch"
-  echo "     Tip: install memsearch for faster startup: uv tool install 'memsearch[onnx]'"
-else
-  echo "[WARN] Neither memsearch nor uvx found."
-  echo "       Install with: uv tool install 'memsearch[onnx]'"
-  echo "       Or: pip install 'memsearch[onnx]'"
+command -v node >/dev/null || { echo "Node 22 is required; activate the existing nvm environment." >&2; exit 1; }
+command -v npm >/dev/null
+command -v python3 >/dev/null
+node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)' || {
+  echo "Node 22+ is required. Use nvm without replacing your shared installation." >&2; exit 1;
+}
+if ! command -v memsearch >/dev/null && ! command -v uvx >/dev/null; then
+  echo "Install the core first: uv tool install 'memsearch[onnx]'" >&2
+  exit 1
 fi
-echo ""
-
-# 2. Symlink plugin to OpenCode plugins directory
-mkdir -p "${OPENCODE_PLUGINS_DIR}"
-PLUGIN_LINK="${OPENCODE_PLUGINS_DIR}/memsearch.ts"
-if [ -L "${PLUGIN_LINK}" ] || [ -f "${PLUGIN_LINK}" ]; then
-  echo "[SKIP] Plugin already exists at ${PLUGIN_LINK}"
-  echo "       Remove it first if you want to reinstall: rm ${PLUGIN_LINK}"
-else
-  ln -sf "${SCRIPT_DIR}/index.ts" "${PLUGIN_LINK}"
-  echo "[OK] Plugin symlinked: ${PLUGIN_LINK} -> ${SCRIPT_DIR}/index.ts"
-fi
-echo ""
-
-# 3. Symlink skills to ~/.agents/skills/ (OpenCode-compatible)
-mkdir -p "${AGENTS_SKILLS_DIR}"
-for skill_name in memory-recall memory-config memory-to-skill; do
-  SKILL_LINK="${AGENTS_SKILLS_DIR}/${skill_name}"
-  if [ -L "${SKILL_LINK}" ] || [ -d "${SKILL_LINK}" ]; then
-    echo "[SKIP] Skill already exists at ${SKILL_LINK}"
-    echo "       Remove it first if you want to reinstall: rm -rf ${SKILL_LINK}"
-  else
-    ln -sf "${SCRIPT_DIR}/skills/${skill_name}" "${SKILL_LINK}"
-    echo "[OK] Skill symlinked: ${SKILL_LINK} -> ${SCRIPT_DIR}/skills/${skill_name}"
-  fi
-done
-echo ""
-
-# 4. Install plugin dependencies
-echo "[INFO] Installing plugin dependencies..."
-if command -v npm &>/dev/null; then
-  (cd "${SCRIPT_DIR}" && npm install --save-dev @opencode-ai/plugin 2>/dev/null) && echo "[OK] Dependencies installed" || echo "[WARN] npm install failed — plugin may still work if OpenCode provides the SDK"
-else
-  echo "[WARN] npm not found — plugin may still work if @opencode-ai/plugin is available"
-fi
-echo ""
-
-# 5. Show next steps
-echo "=== Installation Complete ==="
-echo ""
-echo "The plugin will be auto-loaded next time you start OpenCode."
-echo ""
-echo "To verify, start OpenCode and check if memory_search tool appears:"
-echo "  opencode"
-echo ""
-echo "Optional: Add to opencode.json for npm-based install:"
-echo '  "plugin": ["memsearch-opencode"]'
-echo ""
-echo "Memory files will be stored in: <project>/.memsearch/memory/"
-echo "Collection name is derived per-project for isolation."
+npm install --prefix "$SCRIPT_DIR" --ignore-scripts --no-package-lock
+python3 - "$SCRIPT_DIR" <<'PY'
+import json
+import sys
+print("MemSearch V2 development source prepared for OpenCode >=2.0.32 <3.")
+print("Add this source once to the V2 plugins array, retaining your other plugins:")
+print(json.dumps({"plugins": [sys.argv[1]]}, indent=2))
+print("Do not also enable an npm MemSearch entry or old local memsearch.ts link.")
+print("Restart OpenCode and verify the loaded path. Skills register at runtime.")
+print("Published V1 users pin @zilliz/memsearch-opencode@0.3.17.")
+print("No host config, authentication, global Skills or daemon state was changed.")
+PY

@@ -1,4 +1,5 @@
 {
+  "historicalSnapshot": {"pluginVersion": "0.3.19", "currentCandidateValidation": false, "currentReport": "compatibility.md", "note": "Retained historical inspector output; PASS applies only to that snapshot."},
   "generatedAt": "deterministic",
   "targetOpenClaw": {
     "configuredPath": "npm:openclaw@2026.9.4",

@@ -18,9 +18,11 @@ import {
   readdirSync,
   writeFileSync,
   unlinkSync,
+  realpathSync,
 } from "node:fs";
-import { join, dirname, isAbsolute } from "node:path";
+import { join, dirname, isAbsolute, resolve, relative, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -266,6 +268,194 @@ function envWithOverrides(overrides: Record<string, string>): Record<string, str
   return { ...env, ...overrides };
 }
 
+const SESSION_REFERENCE_PREFIX = "openclaw-session:";
+
+/** Optional public SDK: old hosts continue to use their JSONL transcripts. */
+async function loadTranscriptSdk(): Promise<any> {
+  try {
+    return await import("openclaw/plugin-sdk/session-transcript-runtime");
+  } catch (error: any) {
+    const missing = ["ERR_PACKAGE_PATH_NOT_EXPORTED", "ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(error.code);
+    // Older jiti hosts expand the missing subpath under their root alias. Match
+    // only the missing target, never a transitive dependency's require stack.
+    if (missing && /(?:package 'openclaw'|openclaw\/plugin-sdk\/session-transcript-runtime|openclaw\/dist\/plugin-sdk\/(?:root-alias\.cjs\/)?session-transcript-runtime|session-transcript-runtime.*openclaw)/.test(error.message.split("\n")[0])) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+async function loadSessionVisibilitySdk(): Promise<any> {
+  const [visibility, routing] = await Promise.all([
+    import("openclaw/plugin-sdk/session-visibility"),
+    import("openclaw/plugin-sdk/routing"),
+  ]);
+  return { ...visibility, ...routing };
+}
+
+/** Resolve storage through the host; retain the selected profile on old hosts. */
+function resolveStateDir(runtime: any): string {
+  return runtime.state?.resolveStateDir?.() || process.env.OPENCLAW_STATE_DIR?.trim() ||
+    join(process.env.HOME || "~", ".openclaw");
+}
+
+/** Storage-neutral L3 references retain both the session incarnation and its store scope. */
+export function createTranscriptAccess(runtime: any, config: any = {}, loadSdk = loadTranscriptSdk, loadPolicy = loadSessionVisibilitySdk) {
+  let sdkPromise: Promise<any> | undefined;
+  let policyPromise: Promise<any> | undefined;
+  const sdk = () => sdkPromise ??= loadSdk();
+  const currentConfig = (ctx: any) => ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config ?? config;
+  function assertCaller(ctx: any, signal?: AbortSignal): void {
+    signal?.throwIfAborted();
+    ctx?.assertInvocationCurrent?.();
+    ctx?.assertMemoryAudienceCurrent?.();
+    if (!ctx?.agentId || ctx.sandboxed || ctx.fsPolicy?.workspaceOnly ||
+        ctx.sessionKey?.split(":").includes("incognito")) {
+      throw new Error("Transcript access requires an unsandboxed, identified session");
+    }
+  }
+  function storePath(agentId: string, cfg: any): string {
+    const resolveStore = runtime.agent?.session?.resolveStorePath ?? runtime.channel?.session?.resolveStorePath;
+    return resolveStore ? resolveStore(cfg?.session?.store, { agentId }) :
+      join(resolveStateDir(runtime), "agents", agentId, "sessions", "sessions.json");
+  }
+  async function authorizeTarget(policy: any, scope: any, ctx: any, signal?: AbortSignal): Promise<void> {
+    assertCaller(ctx, signal);
+    const cfg = currentConfig(ctx);
+    if (scope.agentId !== ctx.agentId || scope.storePath !== storePath(ctx.agentId, cfg)) {
+      throw new Error("Transcript reference is outside the current profile/agent store");
+    }
+    for (const key of [ctx.sessionKey, scope.sessionKey]) {
+      if (typeof key !== "string" || key.trim() !== key ||
+          policy.parseAgentSessionKey(key)?.agentId !== ctx.agentId || policy.isIncognitoSessionKey(key)) {
+        throw new Error("Transcript access requires canonical, non-incognito session keys for the current agent");
+      }
+    }
+    // These auxiliary surfaces can have private read-scope ceilings that the
+    // public plugin context does not expose. Do not infer or reconstruct them.
+    if (policy.isSubagentSessionKey(ctx.sessionKey) || policy.isAcpSessionKey(ctx.sessionKey) || cfg.session?.scope === "global") {
+      throw new Error("Transcript access does not support this auxiliary/global session read scope");
+    }
+    const crossSession = scope.sessionKey !== ctx.sessionKey || scope.sessionId !== ctx.sessionId;
+    if (crossSession && cfg.gateway?.roles) {
+      throw new Error("Role-controlled cross-session transcript access requires host caller authorization");
+    }
+    const getEntry = runtime.agent?.session?.getSessionEntryAsync;
+    if (typeof getEntry !== "function") throw new Error("Host cannot confirm target session metadata");
+    const entry = await getEntry({ agentId: ctx.agentId, sessionKey: scope.sessionKey,
+      storePath: scope.storePath, readConsistency: "latest" });
+    assertCaller(ctx, signal);
+    if (!entry || entry.sessionId !== scope.sessionId || entry.incognito === true ||
+        (entry.visibility !== undefined && entry.visibility !== "shared")) {
+      throw new Error("Target session metadata is missing, changed, draft or incognito");
+    }
+    const access = policy.createSessionVisibilityRowChecker({
+      action: "history", requesterAgentId: ctx.agentId, defaultAgentId: ctx.agentId,
+      requesterSessionKey: ctx.sessionKey,
+      mainSessionKey: policy.buildAgentMainSessionKey({ agentId: ctx.agentId, mainKey: cfg.session?.mainKey }),
+      visibility: policy.resolveEffectiveSessionToolsVisibility({ cfg, sandboxed: ctx.sandboxed === true }),
+      a2aPolicy: policy.createAgentToAgentPolicy(cfg, { sandboxed: ctx.sandboxed === true }),
+    }).check({ key: scope.sessionKey, agentId: ctx.agentId, ownerSessionKey: entry.ownerSessionKey,
+      spawnedBy: entry.spawnedBy, parentSessionKey: entry.parentSessionKey });
+    if (!access.allowed) throw new Error(access.error || "Session history visibility denied");
+  }
+  async function checkedIdentity(reader: any, scope: any): Promise<void> {
+    const identity = await reader.resolveSessionTranscriptIdentity(scope);
+    if (identity.agentId !== scope.agentId || identity.sessionId !== scope.sessionId ||
+        identity.sessionKey !== scope.sessionKey) {
+      throw new Error("Transcript session identity changed; refusing a different session");
+    }
+  }
+  return {
+    async capture(ctx: any): Promise<string> {
+      if (!ctx.sessionId || !ctx.agentId) return "";
+      assertCaller(ctx);
+      if (!/^[a-zA-Z0-9_-]+$/.test(ctx.agentId) || !/^[a-zA-Z0-9_-]+$/.test(ctx.sessionId)) {
+        throw new Error("Invalid transcript agent/session identity");
+      }
+      const agentId = ctx.agentId;
+      const store = storePath(agentId, currentConfig(ctx));
+      const scope = { agentId, sessionId: ctx.sessionId, sessionKey: ctx.sessionKey, storePath: store };
+      const reader = await sdk();
+      if (reader) {
+        if (!scope.sessionKey) throw new Error("Transcript SDK requires hook context sessionKey");
+        await checkedIdentity(reader, scope);
+        assertCaller(ctx);
+        const ref = new URL(`${SESSION_REFERENCE_PREFIX}//${encodeURIComponent(agentId)}/${encodeURIComponent(scope.sessionId)}`);
+        // Explicit session metadata survives the host's credential-query redaction.
+        ref.searchParams.set("sessionKey", scope.sessionKey);
+        ref.searchParams.set("store", store);
+        return ref.href;
+      }
+      const path = join(dirname(store), `${scope.sessionId}.jsonl`);
+      // Do not advertise an invented legacy path for a SQLite-only session.
+      return existsSync(path) ? path : "";
+    },
+    async read(reference: string, ctx: any, signal?: AbortSignal): Promise<string | undefined> {
+      assertCaller(ctx, signal);
+      const cfg = currentConfig(ctx);
+      const currentStore = storePath(ctx.agentId, cfg);
+      if (!reference.startsWith(SESSION_REFERENCE_PREFIX)) {
+        const root = dirname(currentStore);
+        const file = resolve(reference);
+        const inside = (base: string, target: string) => {
+          const rel = relative(base, target);
+          return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+        };
+        if (!isAbsolute(reference) || !inside(resolve(root), file) || !file.endsWith(".jsonl") ||
+            (existsSync(file) && !inside(realpathSync(root), realpathSync(file)))) {
+          throw new Error("Legacy transcript is outside the current profile/agent store");
+        }
+        const modern = await sdk();
+        assertCaller(ctx, signal);
+        if (modern) {
+          throw new Error("Use an SDK-generated session reference on this host; JSONL paths lack exact target key metadata");
+        }
+        if (basename(file) !== `${ctx.sessionId}.jsonl` &&
+            (["self", "tree"].includes(cfg.tools?.sessions?.visibility) || cfg.gateway?.roles)) {
+          throw new Error("Legacy transcript cannot confirm access under restricted session policy");
+        }
+        return undefined;
+      }
+      const ref = new URL(reference);
+      const scope = {
+        agentId: decodeURIComponent(ref.hostname), sessionId: decodeURIComponent(ref.pathname.slice(1)),
+        sessionKey: ref.searchParams.get("sessionKey"), storePath: ref.searchParams.get("store"),
+      };
+      if (!scope.agentId || !scope.sessionId || !scope.sessionKey || !scope.storePath || !isAbsolute(scope.storePath) || ref.username || ref.password || ref.port || ref.hash) {
+        throw new Error("Invalid OpenClaw session transcript reference");
+      }
+      if (scope.agentId !== ctx.agentId || scope.storePath !== currentStore) {
+        throw new Error("Transcript reference is outside the current profile/agent store");
+      }
+      const reader = await sdk();
+      if (!reader) throw new Error("This host does not provide the OpenClaw session transcript SDK");
+      if (typeof reader.resolveSessionTranscriptIdentity !== "function" ||
+          typeof reader.readVisibleSessionTranscriptMessageEntries !== "function") {
+        throw new Error("This host lacks the required session transcript SDK readers");
+      }
+      const policy = await (policyPromise ??= loadPolicy());
+      await authorizeTarget(policy, scope, ctx, signal);
+      await checkedIdentity(reader, scope);
+      assertCaller(ctx, signal);
+      const entries = await reader.readVisibleSessionTranscriptMessageEntries(scope);
+      // Recheck exact metadata and current policy before disclosing the result.
+      await authorizeTarget(policy, scope, ctx, signal);
+      assertCaller(ctx, signal);
+      const messages = entries.map((entry: any) => entry.message).filter((m: any) => m?.role === "user" || m?.role === "assistant");
+      const lastUser = messages.findLastIndex((m: any) => m.role === "user");
+      if (lastUser < 0) return "(no user message found)";
+      const lines = messages.slice(lastUser).map((m: any) => {
+        const text = typeof m.content === "string" ? m.content : (m.content || [])
+          .filter((block: any) => block.type === "text").map((block: any) => block.text || "").join("\n");
+        return text.trim() ? `[${m.role === "user" ? "User" : "Assistant"}]: ${text}` : "";
+      }).filter(Boolean);
+      const output = ["=== Transcript of a conversation between User and an AI assistant ===", ...lines].join("\n");
+      return output.length > 32000 ? `${output.slice(0, 32000)}\n[Transcript output truncated]` : output;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Plugin entry
 // ---------------------------------------------------------------------------
@@ -285,6 +475,7 @@ export default {
     const autoRecall = pluginConfig.autoRecall !== false && !isChildProcess;
     const logger = api.logger;
     const home = process.env.HOME || "~";
+    const transcripts = createTranscriptAccess(api.runtime, api.config);
 
     // Convenience wrapper for api.runtime.system.runCommandWithTimeout
     async function runCmd(
@@ -344,24 +535,24 @@ export default {
       return _memsearchCmd;
     }
 
-    async function getMemsearchConfigValue(key: string): Promise<string> {
+    async function getMemsearchConfigValue(key: string, cwd = projectDir): Promise<string> {
       const cmd = await getMemsearchCmd();
       const r = await runCmd(
         ["bash", "-c", `${cmd} config get '${shellEscape(key)}'`],
-        { timeoutMs: 5000, cwd: projectDir }
+        { timeoutMs: 5000, cwd }
       );
       return r.stdout?.trim() || "";
     }
 
-    async function getSkillCandidateHint(): Promise<string> {
+    async function getSkillCandidateHint(cwd: string): Promise<string> {
       try {
         const cmd = await getMemsearchCmd();
         const r = await runCmd(
           [
             "bash", "-c",
-            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`,
+            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(cwd))}' ${cmd} skills status --hint`,
           ],
-          { timeoutMs: 5000, cwd: projectDir }
+          { timeoutMs: 5000, cwd }
         );
         if (r.code !== 0) return "";
         return r.stdout?.trim().split("\n")[0] || "";
@@ -370,19 +561,19 @@ export default {
       }
     }
 
-    async function wakeMaintenance(): Promise<void> {
+    async function wakeMaintenance(cwd = projectDir): Promise<void> {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
         runCmd(
           [
             "bash", "-c",
             `python3 '${shellEscape(runner)}' --platform openclaw ` +
-              `--project-dir '${shellEscape(projectDir)}' ` +
-              `--memsearch-dir '${shellEscape(getMemsearchDir(projectDir))}'`,
+              `--project-dir '${shellEscape(cwd)}' ` +
+              `--memsearch-dir '${shellEscape(getMemsearchDir(cwd))}'`,
           ],
           {
             timeoutMs: 120000,
-            cwd: projectDir,
+            cwd,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
           }
         ).catch(() => { /* ignore */ });
@@ -392,15 +583,12 @@ export default {
     }
 
     // --- Lazy-cached collection name derivation ---
-    let _collectionNameFor = "";
-    let _collectionName = "ms_openclaw_default";
-    let _compatibleCollectionFor = "";
+    const collections = new Map<string, Promise<string>>();
 
     async function requireDefaultCollectionSupport(
-      scopeDir: string,
+      cwd: string,
       collection: string
     ): Promise<void> {
-      if (_compatibleCollectionFor === scopeDir) return;
       const cmd = await getMemsearchCmd();
       const r = await runCmd(
         [
@@ -409,7 +597,7 @@ export default {
           `${cmd} config get milvus.collection ` +
             `--default-collection '${shellEscape(collection)}'`,
         ],
-        { timeoutMs: 5000, cwd: projectDir }
+        { timeoutMs: 5000, cwd }
       );
       if (r.code !== 0) {
         throw new Error(
@@ -417,50 +605,47 @@ export default {
             "--default-collection support is required. Upgrade memsearch core and the plugin together."
         );
       }
-      _compatibleCollectionFor = scopeDir;
     }
 
-    async function getCollectionName(): Promise<string> {
-      const scopeDir = getCollectionScopeDir(projectDir);
-      if (_collectionNameFor !== scopeDir) {
+    async function getCollectionName(cwd = projectDir): Promise<string> {
+      const scopeDir = getCollectionScopeDir(cwd);
+      const key = JSON.stringify([cwd, scopeDir]);
+      if (!collections.has(key)) collections.set(key, (async () => {
+        let collection = "ms_openclaw_default";
         const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
         try {
           const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5000 });
           if (r.code === 0 && r.stdout?.trim()) {
-            _collectionName = r.stdout.trim();
-          } else {
-            _collectionName = "ms_openclaw_default";
+            collection = r.stdout.trim();
           }
         } catch {
-          _collectionName = "ms_openclaw_default";
+          /* use the compatibility default */
         }
-        _collectionNameFor = scopeDir;
-      }
-      await requireDefaultCollectionSupport(scopeDir, _collectionName);
-      return _collectionName;
+        await requireDefaultCollectionSupport(cwd, collection);
+        return collection;
+      })().catch(error => { collections.delete(key); throw error; }));
+      return collections.get(key)!;
     }
 
-    // Per-agent state — defaults updated on first tool call via factory ctx.
+    // Per-agent state — updated by both hook and tool contexts.
     // Memory lives under <workspace>/.memsearch/memory/ — co-located with
     // AGENTS.md, IDENTITY.md, etc. Collection name is derived from the
     // workspace path (same algorithm as Claude Code/Codex/OpenCode) so that
     // memories are automatically shared when multiple platforms work on the
     // same project directory.
     let agentId = "main";
-    let projectDir = join(home, ".openclaw", "workspace");  // default main workspace
+    let projectDir = join(resolveStateDir(api.runtime), "workspace");
     let memoryDir = getMemoryDir(projectDir);
 
-    /** Update agent context from tool factory ctx. Called on each tool invocation. */
+    /** Hooks may run before any tool factory, including the first captured turn. */
     function updateAgentContext(ctx: any): void {
-      const newId = ctx?.agentId;
-      const newWorkspace = ctx?.workspaceDir;
-      if (newId && (newId !== agentId || (newWorkspace && newWorkspace !== projectDir))) {
+      const newId = ctx?.agentId || agentId;
+      const newWorkspace = ctx?.workspaceDir ||
+        api.runtime.agent?.resolveAgentWorkspaceDir?.(api.config, newId);
+      if (newId !== agentId || (newWorkspace && newWorkspace !== projectDir)) {
         agentId = newId;
-        projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
+        projectDir = newWorkspace || join(resolveStateDir(api.runtime), agentId === "main" ? "workspace" : `workspace-${agentId}`);
         memoryDir = getMemoryDir(projectDir);
-        // Invalidate cached collection name — will be re-derived on next getCollectionName()
-        _collectionNameFor = "";
-        _compatibleCollectionFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
         );
@@ -473,6 +658,7 @@ export default {
     api.registerTool(
       (ctx: any) => {
         updateAgentContext(ctx);
+        const toolProjectDir = projectDir;
         return {
           name: "memory_search",
           label: "Memory Search",
@@ -502,14 +688,14 @@ export default {
             const topK = params.top_k || 5;
             try {
               const cmd = await getMemsearchCmd();
-              const collection = await getCollectionName();
+              const collection = await getCollectionName(toolProjectDir);
               const result = await runCmd(
                 [
                   "bash", "-c",
                   `${cmd} search '${shellEscape(params.query)}' ` +
                     `--top-k ${topK} --json-output --default-collection ${collection}`,
                 ],
-                { timeoutMs: 30000, cwd: projectDir }
+                { timeoutMs: 30000, cwd: toolProjectDir }
               );
               const failure = commandFailure("Search", result);
               if (failure) {
@@ -536,6 +722,7 @@ export default {
     api.registerTool(
       (ctx: any) => {
         updateAgentContext(ctx);
+        const toolProjectDir = projectDir;
         return {
           name: "memory_get",
           label: "Memory Get",
@@ -559,14 +746,14 @@ export default {
           ) {
             try {
               const cmd = await getMemsearchCmd();
-              const collection = await getCollectionName();
+              const collection = await getCollectionName(toolProjectDir);
               const result = await runCmd(
                 [
                   "bash", "-c",
                   `${cmd} expand '${shellEscape(params.chunk_hash)}' ` +
                     `--default-collection ${collection}`,
                 ],
-                { timeoutMs: 15000, cwd: projectDir }
+                { timeoutMs: 15000, cwd: toolProjectDir }
               );
               const failure = commandFailure("Expand", result);
               if (failure) {
@@ -588,7 +775,7 @@ export default {
     );
 
     // ----- Tool: memory_transcript (L3) -----
-    // Parses the original conversation from an OpenClaw JSONL transcript file.
+    // Reads the host transcript SDK, with compatibility for existing JSONL anchors.
     // Use after memory_get when the expanded chunk contains a transcript anchor.
     api.registerTool(
       (ctx: any) => {
@@ -599,28 +786,38 @@ export default {
           description:
             "Retrieve the original conversation from a past session transcript. " +
             "Use after memory_get when the expanded result contains a transcript " +
-            "anchor (<!-- session:UUID transcript:PATH -->). Returns the formatted " +
+            "anchor (<!-- session:UUID transcript:REFERENCE -->). Pass its exact reference unchanged. Returns the formatted " +
             "dialogue with [User] and [Assistant] labels.",
           parameters: {
             type: "object" as const,
             properties: {
               transcript_path: {
                 type: "string" as const,
-                description: "Path to the .jsonl transcript file (from the anchor comment)",
+                description: "Exact transcript reference from the anchor: openclaw-session URI or legacy .jsonl path",
               },
             },
             required: ["transcript_path"],
           },
           async execute(
             _toolCallId: string,
-            params: { transcript_path: string }
+            params: { transcript_path: string },
+            signal?: AbortSignal
           ) {
             try {
+              const transcript = await transcripts.read(params.transcript_path, ctx, signal);
+              if (transcript !== undefined) {
+                return { content: [{ type: "text" as const, text: transcript }] };
+              }
               const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.sh");
               const result = await runCmd(
                 ["bash", scriptPath, params.transcript_path],
                 { timeoutMs: 15000 }
               );
+              signal?.throwIfAborted();
+              ctx?.assertInvocationCurrent?.();
+              ctx?.assertMemoryAudienceCurrent?.();
+              const failure = commandFailure("Transcript", result);
+              if (failure) return { content: [{ type: "text" as const, text: failure }] };
               const output = result.stdout?.trim() || result.stderr || "No transcript content";
               return { content: [{ type: "text" as const, text: output }] };
             } catch (e: any) {
@@ -638,10 +835,13 @@ export default {
 
     // ----- Hook: before_prompt_build — inject recent memories -----
     if (autoRecall) {
-      api.on("before_prompt_build", async () => {
+      api.on("before_prompt_build", async (_event: any, ctx: any) => {
+        updateAgentContext(ctx);
+        const promptProjectDir = projectDir;
+        const promptMemoryDir = memoryDir;
         try {
-          const context = getRecentMemories(memoryDir);
-          const skillHint = await getSkillCandidateHint();
+          const context = getRecentMemories(promptMemoryDir);
+          const skillHint = await getSkillCandidateHint(promptProjectDir);
           const blocks = [context, skillHint].filter(Boolean);
           if (blocks.length > 0) {
             return { prependContext: blocks.join("\n\n") };
@@ -671,7 +871,7 @@ export default {
        * Summarize a conversation turn using an LLM CLI.
        * Tries: openclaw agent → raw text fallback.
        */
-      async function summarizeWithLLM(turnText: string): Promise<string> {
+      async function summarizeWithLLM(turnText: string, captureProjectDir: string): Promise<string> {
         // Load summarization prompt: user custom (via config) > plugin built-in template
         const agentName = "OpenClaw";
         let systemPrompt = "";
@@ -679,10 +879,10 @@ export default {
         // Try reading user-custom prompt from config
         let customPromptFile = "";
         try {
-          customPromptFile = await getMemsearchConfigValue("prompts.summarize");
+          customPromptFile = await getMemsearchConfigValue("prompts.summarize", captureProjectDir);
         } catch { /* ignore */ }
         if (customPromptFile && !isAbsolute(customPromptFile)) {
-          customPromptFile = join(projectDir, customPromptFile);
+          customPromptFile = join(captureProjectDir, customPromptFile);
         }
 
         if (customPromptFile && existsSync(customPromptFile)) {
@@ -703,25 +903,25 @@ export default {
 
         let summarizeModel = "";
         try {
-          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model");
+          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model", captureProjectDir);
         } catch { /* ignore */ }
 
         let summarizeProvider = "";
         try {
-          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider");
+          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider", captureProjectDir);
         } catch { /* ignore */ }
 
         if (summarizeProvider && summarizeProvider !== "native") {
           try {
             const cmd = await getMemsearchCmd();
-            const tmpInput = `/tmp/memsearch-summarize-input-${Date.now()}.txt`;
+            const tmpInput = `/tmp/memsearch-summarize-input-${randomUUID()}.txt`;
             writeFileSync(tmpInput, turnText, "utf-8");
             const shellCmd =
               `cat ${JSON.stringify(tmpInput)} | ${cmd} summarize ` +
               `--plugin openclaw --agent-name OpenClaw`;
             const result = await runCmd(["bash", "-c", shellCmd], {
               timeoutMs: 60000,
-              cwd: projectDir,
+              cwd: captureProjectDir,
               env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
             });
             try { unlinkSync(tmpInput); } catch { /* ignore cleanup errors */ }
@@ -739,12 +939,12 @@ export default {
         // truncates stdout before the LLM response arrives.
         try {
           const msgText = `${systemPrompt}\n\nTranscript:\n${turnText}`;
-          const tmpFile = `/tmp/memsearch-summarize-${Date.now()}.txt`;
-          const modelArg = summarizeModel ? ` --model ${JSON.stringify(summarizeModel)}` : "";
-          const shellCmd = `openclaw agent --local --session-id memsearch-summarize${modelArg} -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
+          const tmpFile = `/tmp/memsearch-summarize-${randomUUID()}.txt`;
+          const modelArg = summarizeModel ? ` --model '${shellEscape(summarizeModel)}'` : "";
+          const shellCmd = `openclaw agent --local --session-id ${randomUUID()}${modelArg} -m '${shellEscape(msgText)}' > ${JSON.stringify(tmpFile)} 2>/dev/null`;
           await runCmd(["bash", "-c", shellCmd], {
             timeoutMs: 60000,
-            cwd: projectDir,
+            cwd: captureProjectDir,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" }),
           });
           if (existsSync(tmpFile)) {
@@ -769,14 +969,22 @@ export default {
       }
 
       /** Write a turn summary to the daily memory file and re-index. */
-      async function writeTurnCapture(turnText: string, sessionId?: string): Promise<void> {
+      async function writeTurnCapture(turnText: string, ctx: any, provenance: Promise<string>): Promise<void> {
         try {
           if (turnText.length < 1) return;
+          const captureMemoryDir = ctx.memoryDir;
+          let anchor = "";
+          try {
+            const reference = await provenance;
+            if (reference) anchor = `<!-- session:${ctx.sessionId} transcript:${reference} -->\n`;
+          } catch (error: any) {
+            logger?.warn?.(`[memsearch] Transcript provenance unavailable: ${error.message}`);
+          }
 
-          ensureDir(memoryDir);
+          ensureDir(captureMemoryDir);
           const today = new Date().toISOString().split("T")[0];
           const now = new Date().toTimeString().slice(0, 5);
-          const memoryFile = join(memoryDir, `${today}.md`);
+          const memoryFile = join(captureMemoryDir, `${today}.md`);
 
           // Write session heading if this is a new file
           if (!existsSync(memoryFile)) {
@@ -790,7 +998,7 @@ export default {
           // Summarize the turn via LLM, or fall back to raw text
           let summary: string;
           try {
-            summary = await summarizeWithLLM(turnText);
+            summary = await summarizeWithLLM(turnText, ctx.projectDir);
           } catch {
             summary = turnText;
           }
@@ -804,23 +1012,20 @@ export default {
           if (!cleanSummary) return;
 
           // Append to daily memory file with optional anchor
-          let anchor = "";
-          if (sessionId) {
-            const transcriptPath = `${home}/.openclaw/agents/${agentId}/sessions/${sessionId}.jsonl`;
-            anchor = `<!-- session:${sessionId} transcript:${transcriptPath} -->\n`;
-          }
           const entry = `### ${now}\n${anchor}${cleanSummary}\n\n`;
+          ctx.assertInvocationCurrent?.();
+          ctx.assertMemoryAudienceCurrent?.();
           appendFileSync(memoryFile, entry, "utf-8");
 
           // Index in background (non-blocking, fire-and-forget)
           const cmd = await getMemsearchCmd();
-          const collection = await getCollectionName();
+          const collection = await getCollectionName(ctx.projectDir);
           runCmd(
             [
               "bash", "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`,
+              `${cmd} index '${shellEscape(captureMemoryDir)}' --default-collection ${collection}`,
             ],
-            { timeoutMs: 60000, cwd: projectDir }
+            { timeoutMs: 60000, cwd: ctx.projectDir }
           ).catch((err: any) => {
             logger?.warn?.(`[memsearch] Index failed: ${err.message}`);
           });
@@ -832,42 +1037,59 @@ export default {
       }
 
       // Primary capture: agent_end fires every turn with full message history
-      api.on("agent_end", async (event: any) => {
+      api.on("agent_end", async (event: any, ctx: any) => {
+        // Failed turns and restricted audiences must not enter shared persistent memory.
+        if (event.success === false || !ctx?.agentId || ctx.sandboxed ||
+            ctx.sessionKey?.split(":").includes("incognito") ||
+            (ctx.memoryAudience && (ctx.memoryAudience.kind !== "owner-private" || ctx.memoryAudience.agentId !== ctx.agentId))) return;
+        ctx.assertMemoryAudienceCurrent?.();
+        updateAgentContext(ctx);
+        const captureContext = Object.freeze({
+          ...ctx, agentId: ctx?.agentId, projectDir, memoryDir,
+          sessionId: ctx?.sessionId || "", sessionKey: ctx?.sessionKey,
+        });
         const messages = event.messages || [];
         if (messages.length < 2) return;
+        const lastTurn = extractLastTurn(messages);
+        if (!lastTurn || lastTurn.length < 50) return;
+        // Start provenance resolution synchronously, freezing the host-selected
+        // store before configuration or summarization can yield to another hook.
+        const provenance = transcripts.capture(captureContext).catch((error: any) => {
+          logger?.warn?.(`[memsearch] Transcript provenance unavailable: ${error.message}`);
+          return "";
+        });
 
         let summarizeEnabled = "true";
         try {
-          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled");
+          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled", captureContext.projectDir);
         } catch { /* ignore */ }
         if (summarizeEnabled === "false") {
-          wakeMaintenance().catch(() => { /* ignore */ });
+          wakeMaintenance(captureContext.projectDir).catch(() => { /* ignore */ });
           return;
         }
 
-        const lastTurn = extractLastTurn(messages);
-        if (!lastTurn || lastTurn.length < 50) return;
-
-        const sessionId = event.sessionId || "";
-        await writeTurnCapture(lastTurn, sessionId);
-        wakeMaintenance().catch(() => { /* ignore */ });
+        await writeTurnCapture(lastTurn, captureContext, provenance);
+        wakeMaintenance(captureContext.projectDir).catch(() => { /* ignore */ });
       });
     }
 
     // ----- Hook: session_start — ensure config + start indexing -----
-    api.on("session_start", async () => {
+    api.on("session_start", async (_event: any, ctx: any) => {
+      updateAgentContext(ctx);
+      const sessionProjectDir = projectDir;
+      const sessionMemoryDir = memoryDir;
       try {
         const cmd = await getMemsearchCmd();
-        const collection = await getCollectionName();
+        const collection = await getCollectionName(sessionProjectDir);
 
         // Ensure default config (onnx provider, no API key needed)
         const configFile = join(home, ".memsearch", "config.toml");
-        const localConfig = join(projectDir, ".memsearch.toml");
+        const localConfig = join(sessionProjectDir, ".memsearch.toml");
         if (!existsSync(configFile) && !existsSync(localConfig)) {
           try {
             await runCmd(
               ["bash", "-c", `${cmd} config set embedding.provider onnx`],
-              { timeoutMs: 5000, cwd: projectDir }
+              { timeoutMs: 5000, cwd: sessionProjectDir }
             );
           } catch {
             /* ignore */
@@ -875,13 +1097,13 @@ export default {
         }
 
         // Run initial index in background (fire-and-forget)
-        if (existsSync(memoryDir)) {
+        if (existsSync(sessionMemoryDir)) {
           runCmd(
             [
               "bash", "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`,
+              `${cmd} index '${shellEscape(sessionMemoryDir)}' --default-collection ${collection}`,
             ],
-            { timeoutMs: 120000, cwd: projectDir }
+            { timeoutMs: 120000, cwd: sessionProjectDir }
           ).catch((err: any) => {
             logger?.warn?.(
               `[memsearch] Initial index failed: ${err.message}`
@@ -990,6 +1212,7 @@ export default {
           }
         });
     }, {
+      commands: ["memsearch"],
       descriptors: [{
         name: "memsearch",
         description: "Semantic memory search and management",

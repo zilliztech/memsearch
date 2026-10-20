@@ -1016,7 +1016,7 @@ test('apply: search failure is explicit while injection remains nonblocking', as
   }, false, 'Collection missing')
 })
 
-test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', async () => {
+test('apply: returned chunks inject one retrieved-context marker with producer-owned source metadata', async () => {
   await withInjectionFixture(
     [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],
     async ({ result, unchanged, registeredSkillNames, callLog }) => {
@@ -1029,8 +1029,8 @@ test('apply: returned chunks inject one retrieved-context marker with plugin sou
       assert.equal(text.split(marker).length - 1, 1, 'exactly one retrieved-context marker')
       assert.ok(text.includes('Retrieved memory candidates from past sessions:'))
       assert.ok(text.includes('PINE-NEBULA-8643'))
-      assert.equal(injected.source.kind, 'plugin')
-      assert.equal(injected.source.plugin, 'memsearch')
+      assert.equal(injected.source.kind, 'plugin:memsearch')
+      assert.equal(injected.source.plugin, undefined, 'retired shared plugin wrapper must not be emitted')
       assert.equal(injected.source.form, 'snapshot')
       assert.equal(injected.source.sections[0].name, 'memsearch')
       assert.equal(injected.source.sections[0].text, text)

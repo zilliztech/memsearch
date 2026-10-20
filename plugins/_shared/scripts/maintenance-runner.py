@@ -12,7 +12,6 @@ import argparse
 import contextlib
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -27,233 +26,6 @@ DEFAULT_NATIVE_MODELS = {
     "openclaw": "",
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
 }
-
-
-def _strip_jsonc(text: str) -> str:
-    """Remove JSONC comments and trailing commas while preserving string contents."""
-    out: list[str] = []
-    i = 0
-    in_string = False
-    string_quote = ""
-    escaped = False
-    while i < len(text):
-        char = text[i]
-        nxt = text[i + 1] if i + 1 < len(text) else ""
-        if in_string:
-            out.append(char)
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == string_quote:
-                in_string = False
-            i += 1
-            continue
-        if char in {'"', "'"}:
-            in_string = True
-            string_quote = char
-            out.append(char)
-            i += 1
-            continue
-        if char == "/" and nxt == "/":
-            i += 2
-            while i < len(text) and text[i] not in "\r\n":
-                i += 1
-            continue
-        if char == "/" and nxt == "*":
-            i += 2
-            while i + 1 < len(text) and not (text[i] == "*" and text[i + 1] == "/"):
-                i += 1
-            i += 2
-            continue
-        out.append(char)
-        i += 1
-
-    without_comments = "".join(out)
-    out = []
-    i = 0
-    in_string = False
-    string_quote = ""
-    escaped = False
-    while i < len(without_comments):
-        char = without_comments[i]
-        if in_string:
-            out.append(char)
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == string_quote:
-                in_string = False
-            i += 1
-            continue
-        if char in {'"', "'"}:
-            in_string = True
-            string_quote = char
-            out.append(char)
-            i += 1
-            continue
-        if char == ",":
-            j = i + 1
-            while j < len(without_comments) and without_comments[j].isspace():
-                j += 1
-            if j < len(without_comments) and without_comments[j] in "]}":
-                i += 1
-                continue
-        out.append(char)
-        i += 1
-    return "".join(out)
-
-
-def _read_jsonc_config_from_text(text: str) -> dict:
-    try:
-        data = json.loads(_strip_jsonc(text))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _read_jsonc_config(path: Path) -> dict:
-    try:
-        return _read_jsonc_config_from_text(path.read_text(encoding="utf-8"))
-    except OSError:
-        return {}
-
-
-def _deep_merge_config(base: dict, override: dict) -> dict:
-    result = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = _deep_merge_config(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-def _rewrite_relative_file_refs(value, config_dir: Path):
-    if isinstance(value, dict):
-        return {key: _rewrite_relative_file_refs(item, config_dir) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_rewrite_relative_file_refs(item, config_dir) for item in value]
-    if not isinstance(value, str):
-        return value
-
-    def replace(match: re.Match[str]) -> str:
-        file_ref = match.group(1)
-        if file_ref.startswith("~/") or os.path.isabs(file_ref):
-            return match.group(0)
-        return "{file:" + str((config_dir / file_ref).resolve()) + "}"
-
-    return re.sub(r"\{file:([^}]+)\}", replace, value)
-
-
-def _load_opencode_config_file(path: Path) -> dict:
-    cfg = _read_jsonc_config(path)
-    if not cfg:
-        return {}
-    return _rewrite_relative_file_refs(cfg, path.parent)
-
-
-def _opencode_global_config_dir() -> Path:
-    xdg_config = os.environ.get("XDG_CONFIG_HOME")
-    if xdg_config:
-        return Path(xdg_config).expanduser() / "opencode"
-    return Path.home() / ".config" / "opencode"
-
-
-def _env_flag_enabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
-
-
-def _opencode_project_config_files(project_dir: Path) -> list[Path]:
-    found: list[Path] = []
-    current = project_dir.resolve()
-    while True:
-        for filename in ("opencode.jsonc", "opencode.json"):
-            candidate = current / filename
-            if candidate.is_file():
-                found.append(candidate)
-        parent = current.parent
-        if parent == current:
-            break
-        current = parent
-    return list(reversed(found))
-
-
-def _opencode_directory_config_files(project_dir: Path) -> list[Path]:
-    dirs: list[Path] = []
-    if not _env_flag_enabled("OPENCODE_DISABLE_PROJECT_CONFIG"):
-        current = project_dir.resolve()
-        while True:
-            local = current / ".opencode"
-            if local.is_dir() and local not in dirs:
-                dirs.append(local)
-            parent = current.parent
-            if parent == current:
-                break
-            current = parent
-
-    home_local = Path.home() / ".opencode"
-    if home_local.is_dir() and home_local not in dirs:
-        dirs.append(home_local)
-
-    env_dir = os.environ.get("OPENCODE_CONFIG_DIR", "").strip()
-    if env_dir:
-        config_dir = Path(env_dir).expanduser()
-        if config_dir not in dirs:
-            dirs.append(config_dir)
-
-    files: list[Path] = []
-    for directory in dirs:
-        for filename in ("opencode.json", "opencode.jsonc"):
-            candidate = directory / filename
-            if candidate.is_file():
-                files.append(candidate)
-    return files
-
-
-def _iter_opencode_config_files(project_dir: str | os.PathLike[str] | None = None) -> list[Path]:
-    project = Path(project_dir or os.getcwd()).expanduser().resolve()
-    files: list[Path] = []
-
-    global_dir = _opencode_global_config_dir()
-    for filename in ("config.json", "opencode.json", "opencode.jsonc"):
-        candidate = global_dir / filename
-        if candidate.is_file():
-            files.append(candidate)
-
-    env_config = os.environ.get("OPENCODE_CONFIG", "").strip()
-    if env_config:
-        candidate = Path(env_config).expanduser()
-        if candidate.is_file():
-            files.append(candidate)
-
-    if not _env_flag_enabled("OPENCODE_DISABLE_PROJECT_CONFIG"):
-        files.extend(_opencode_project_config_files(project))
-
-    files.extend(_opencode_directory_config_files(project))
-    return files
-
-
-def load_opencode_config(project_dir: str | os.PathLike[str] | None = None) -> dict:
-    """Load local OpenCode config sources in OpenCode-compatible precedence order."""
-    merged: dict = {}
-    for path in _iter_opencode_config_files(project_dir):
-        merged = _deep_merge_config(merged, _load_opencode_config_file(path))
-
-    content = os.environ.get("OPENCODE_CONFIG_CONTENT")
-    if content:
-        content_dir = Path(project_dir or os.getcwd()).expanduser().resolve()
-        cfg = _rewrite_relative_file_refs(_read_jsonc_config_from_text(content), content_dir)
-        merged = _deep_merge_config(merged, cfg)
-    return merged
-
-
-def _sanitize_opencode_config(cfg: dict) -> dict:
-    sanitized = dict(cfg)
-    for key in ("plugin", "plugins", "plugin_origins"):
-        sanitized.pop(key, None)
-    return sanitized
 
 
 def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> str:
@@ -327,22 +99,8 @@ def extract_task_json_output(output: str) -> str:
     return output
 
 
-def ensure_opencode_isolated_config(project_dir: str | os.PathLike[str] | None = None) -> Path:
-    home = Path.home()
-    root = home / ".codex" / "tmp" / "opencode-memsearch-maintenance"
-    isolated = root / "opencode"
-    isolated.mkdir(parents=True, exist_ok=True)
-    for filename in ("config.json", "opencode.json", "opencode.jsonc"):
-        stale = isolated / filename
-        if stale.is_symlink() or stale.is_file():
-            stale.unlink(missing_ok=True)
-    cfg = _sanitize_opencode_config(load_opencode_config(project_dir))
-    if cfg:
-        (isolated / "opencode.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return root
-
-
-def ensure_memsearch_importable() -> None:
+def ensure_memsearch_importable(entrypoint: Path | None = None) -> None:
+    entrypoint = entrypoint or Path(__file__).resolve()
     user_paths = [
         str(Path.home() / ".local" / "bin"),
         str(Path.home() / ".cargo" / "bin"),
@@ -381,7 +139,7 @@ def ensure_memsearch_importable() -> None:
                 if python_bin:
                     os.execvpe(
                         python_bin,
-                        [python_bin, str(Path(__file__).resolve()), *sys.argv[1:]],
+                        [python_bin, str(entrypoint), *sys.argv[1:]],
                         {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"},
                     )
 
@@ -398,7 +156,7 @@ def ensure_memsearch_importable() -> None:
             "--with",
             "memsearch[onnx]",
             "python",
-            str(Path(__file__).resolve()),
+            str(entrypoint),
             *sys.argv[1:],
         ],
         env,
@@ -488,18 +246,7 @@ def run_native_provider(ctx, prompt: str) -> str:
         return extract_task_json_output(run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120))
 
     if ctx.platform == "opencode":
-        isolated = ensure_opencode_isolated_config(ctx.project_dir)
-        cmd = ["opencode", "run"]
-        if model:
-            cmd += ["-m", model]
-        cmd.append(prompt)
-        env["OPENCODE_CONFIG"] = ""
-        env["OPENCODE_CONFIG_DIR"] = ""
-        env["OPENCODE_CONFIG_CONTENT"] = ""
-        env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
-        env["XDG_CONFIG_HOME"] = str(isolated)
-        env["XDG_DATA_HOME"] = str(isolated / "data")
-        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
+        raise RuntimeError("OpenCode native maintenance requires the running V2 plugin's generation callback.")
 
     if ctx.platform == "dsh":
         # One-shot DSH headless agent; the model is the user's DSH default
@@ -508,7 +255,7 @@ def run_native_provider(ctx, prompt: str) -> str:
         # is instructed to output only a JSON object, which we then extract.
         # DSH_CLI may be a full command line (e.g. `node /path/to/bin.js`).
         cli = os.environ.get("DSH_CLI", "dsh").strip()
-        cmd = shlex.split(cli) + ["--profile", "headless"]
+        cmd = [*shlex.split(cli), "--profile", "headless"]
         if model:
             cmd += ["--patch", f"agent-default-model={{model:{model}}}"]
         cmd.append(prompt)
@@ -518,6 +265,43 @@ def run_native_provider(ctx, prompt: str) -> str:
         return extract_task_json_output(out)
 
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
+
+
+def run_maintenance(platform, project_dir, memsearch_dir, cfg, *, native_runner=None, force=False):
+    """Run shared maintenance with an optional host-owned stateless generator."""
+    from memsearch.maintenance import run_due_tasks, run_task_llm
+
+    apply_plugin_prompt_defaults(cfg)
+
+    def llm_runner(ctx, prompt: str) -> str:
+        provider_name = (ctx.task_config.provider or "native").strip()
+        if provider_name in {"", "native"}:
+            return (native_runner or run_native_provider)(ctx, prompt)
+        return run_task_llm(ctx, prompt, cfg)
+
+    results = run_due_tasks(
+        platform=platform,
+        project_dir=project_dir,
+        memsearch_dir=memsearch_dir,
+        cfg=cfg,
+        force=force,
+        llm_runner=llm_runner,
+    )
+
+    # Distill recurring workflows into candidate skills (procedural memory).
+    # Same session-end trigger, due-state, and llm_runner as the tasks above;
+    # this only ever touches the candidate store, never an agent's skills dir.
+    from memsearch.skills import distill as distill_skills
+
+    skill_result = distill_skills(
+        platform=platform,
+        project_dir=project_dir,
+        memsearch_dir=memsearch_dir,
+        cfg=cfg,
+        force=force,
+        llm_runner=llm_runner,
+    )
+    return results, skill_result
 
 
 def main() -> int:
@@ -533,40 +317,17 @@ def main() -> int:
     try:
         ensure_memsearch_importable()
         from memsearch.config import resolve_config
-        from memsearch.maintenance import run_due_tasks, run_task_llm
 
         project_dir = Path(args.project_dir or old_cwd).expanduser().resolve()
         os.chdir(project_dir)
         cfg = resolve_config()
-        apply_plugin_prompt_defaults(cfg)
 
-        def llm_runner(ctx, prompt: str) -> str:
-            provider_name = (ctx.task_config.provider or "native").strip()
-            if provider_name in {"", "native"}:
-                return run_native_provider(ctx, prompt)
-            return run_task_llm(ctx, prompt, cfg)
-
-        results = run_due_tasks(
-            platform=args.platform,
-            project_dir=project_dir,
-            memsearch_dir=args.memsearch_dir,
-            cfg=cfg,
+        results, skill_result = run_maintenance(
+            args.platform,
+            project_dir,
+            args.memsearch_dir,
+            cfg,
             force=args.force,
-            llm_runner=llm_runner,
-        )
-
-        # Distill recurring workflows into candidate skills (procedural memory).
-        # Same session-end trigger, due-state, and llm_runner as the tasks above;
-        # this only ever touches the candidate store, never an agent's skills dir.
-        from memsearch.skills import distill as distill_skills
-
-        skill_result = distill_skills(
-            platform=args.platform,
-            project_dir=project_dir,
-            memsearch_dir=args.memsearch_dir,
-            cfg=cfg,
-            force=args.force,
-            llm_runner=llm_runner,
         )
     except (KeyError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         sys.stderr.write(f"Maintenance error: {exc}\n")

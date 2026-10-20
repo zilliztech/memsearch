@@ -384,8 +384,7 @@ run_maintenance() {
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
 
-# Kill any previously spawned background index processes for this project.
-# Also sweeps orphaned milvus_lite processes.
+# Stop previous background index tasks for this memory directory.
 kill_orphaned_index() {
   # Skip in child codex exec processes to avoid killing the parent's work
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
@@ -411,13 +410,7 @@ kill_orphaned_index() {
     done
   fi
 
-  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index exits)
-  orphans=$(pgrep -f "milvus_lite/lib/milvus" 2>/dev/null || true)
-  if [ -n "$orphans" ]; then
-    echo "$orphans" | while read -r opid; do
-      kill "$opid" 2>/dev/null || true
-    done
-  fi
+  # Milvus Lite manages its server lifetime; never sweep backend processes globally.
 }
 
 # --- Watch singleton management ---

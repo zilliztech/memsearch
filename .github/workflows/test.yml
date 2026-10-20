@@ -51,8 +51,23 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install core for plugin integration tests
+        working-directory: .
+        run: uv sync --locked
+
       - name: Install dependencies
         run: npm install --package-lock=false
+
+      - name: Check package types
+        run: npm run typecheck
 
       - name: Test package
         run: npm test
@@ -61,6 +76,32 @@ jobs:
         run: |
           node --check index.ts
           node --check context.ts
+
+      - name: Pack package
+        run: npm pack --dry-run
+
+  dsh:
+    name: DSH plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/dsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Test package
+        run: npm test
+
+      - name: Check package syntax
+        run: |
+          node --check index.js
+          node --check client.js
 
       - name: Pack package
         run: npm pack --dry-run
