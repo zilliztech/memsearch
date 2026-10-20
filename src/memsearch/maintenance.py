@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -486,10 +487,10 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     """Run a restricted read-only memory command."""
     if not command.strip():
         return "Error: empty command"
-    if re.search(r"[|;&<>`$(){}]", command):
+    if re.search(r"[|;&<>`$(){}%!^]", command):
         return "Error: shell metacharacters are not allowed"
     try:
-        argv = shlex.split(command)
+        argv = _split_command(command)
     except ValueError as e:
         return f"Error: {e}"
     if not argv:
@@ -523,13 +524,31 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     return f"Error: command {executable!r} is not allowed"
 
 
+def _split_command(command: str) -> list[str]:
+    """Split a drill-down command without eating Windows path separators.
+
+    POSIX-mode shlex treats backslash as an escape, so ``C:\\Users\\x`` becomes
+    ``C:Usersx`` -- a drive-relative path that slips past the root check below.
+    On Windows, split in non-POSIX mode and strip the surrounding quotes it keeps.
+    """
+    if os.name != "nt":
+        return shlex.split(command)
+    return [_strip_quotes(token) for token in shlex.split(command, posix=False)]
+
+
+def _strip_quotes(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+        return token[1:-1]
+    return token
+
+
 def _validate_paths_in_args(args: list[str], allowed_roots: list[Path], *, cwd: Path, allow_hash: bool) -> str:
     for arg in args:
         if arg.startswith("-") or arg in {"*.md", "'*.md'", '"*.md"'}:
             continue
         if allow_hash and re.fullmatch(r"[a-fA-F0-9]{8,64}", arg):
             continue
-        if "/" not in arg and not arg.startswith("."):
+        if "/" not in arg and "\\" not in arg and not arg.startswith("."):
             continue
         path = Path(arg).expanduser()
         if not path.is_absolute():
@@ -551,8 +570,11 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _run_restricted(argv: list[str], cwd: Path) -> str:
+    # Resolve like a shell so Windows .cmd/.bat shims are found; unresolvable
+    # names pass through and fail the same way as before.
+    argv = [shutil.which(argv[0]) or argv[0], *argv[1:]]
     text_options = {}
-    if Path(argv[0]).name.lower() in {"memsearch", "memsearch.exe"}:
+    if Path(argv[0]).stem.lower() == "memsearch":
         text_options = {"encoding": "utf-8", "errors": "strict"}
     try:
         result = subprocess.run(
@@ -578,9 +600,11 @@ def _parse_task_response(raw: str) -> dict[str, str]:
         text = match.group(1)
 
     try:
-        data = json.loads(text)
+        # strict=False: models often emit the markdown `content` with raw newlines
+        # inside the JSON string, which strict parsing rejects as control characters.
+        data = json.loads(text, strict=False)
     except json.JSONDecodeError as initial_error:
-        decoder = json.JSONDecoder()
+        decoder = json.JSONDecoder(strict=False)
         last_object: dict[str, Any] | None = None
         last_action_object: dict[str, Any] | None = None
 

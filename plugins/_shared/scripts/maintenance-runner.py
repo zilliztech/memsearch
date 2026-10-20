@@ -256,11 +256,32 @@ def _sanitize_opencode_config(cfg: dict) -> dict:
     return sanitized
 
 
-def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> str:
+def resolve_executable(cmd: list[str], env: dict[str, str]) -> list[str]:
+    """Resolve cmd[0] the way a shell would, including Windows .cmd/.bat shims.
+
+    CreateProcess only finds .exe files, so a bare "claude" fails on Windows when
+    the CLI is an npm shim (claude.cmd). Unresolvable names are passed through
+    unchanged so the OS error surfaces exactly as before.
+    """
+    executable = shutil.which(cmd[0], path=env.get("PATH"))
+    return [executable or cmd[0], *cmd[1:]]
+
+
+def run_command(
+    cmd: list[str],
+    *,
+    env: dict[str, str],
+    cwd: Path,
+    timeout: int,
+    input: str | None = None,
+) -> str:
     result = subprocess.run(
-        cmd,
+        resolve_executable(cmd, env),
+        input=input,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
         cwd=str(cwd),
         timeout=timeout,
@@ -288,6 +309,9 @@ def _describe_arg(arg: str, limit: int = 120) -> str:
     return f"<arg:{len(arg)} chars>"
 
 
+TASK_ERRORS = (KeyError, OSError, RuntimeError, ValueError, subprocess.SubprocessError)
+
+
 _CLAUDE_SAFE_MODE_ARGS: list[str] | None = None
 
 
@@ -296,9 +320,13 @@ def claude_safe_mode_args() -> list[str]:
     global _CLAUDE_SAFE_MODE_ARGS
     if _CLAUDE_SAFE_MODE_ARGS is not None:
         return _CLAUDE_SAFE_MODE_ARGS
+    claude = shutil.which("claude")
+    if claude is None:
+        _CLAUDE_SAFE_MODE_ARGS = []
+        return _CLAUDE_SAFE_MODE_ARGS
     try:
         result = subprocess.run(
-            ["claude", "--help"],
+            [claude, "--help"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -441,11 +469,13 @@ def run_native_provider(ctx, prompt: str) -> str:
         cmd += [
             "--system-prompt",
             "You are a maintenance task runner. Output only the requested JSON object.",
-            prompt,
         ]
         env["CLAUDECODE"] = ""
         env["MEMSEARCH_DISABLE"] = "1"
-        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
+        # The prompt goes over stdin, as stop.sh does for summaries (#664): the
+        # journals block can reach MAX_PROMPT_CHARS, past Windows' 32,767-char
+        # command-line limit.
+        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120, input=prompt)
 
     if ctx.platform == "codex":
         with tempfile.NamedTemporaryFile(
@@ -546,14 +576,21 @@ def main() -> int:
                 return run_native_provider(ctx, prompt)
             return run_task_llm(ctx, prompt, cfg)
 
-        results = run_due_tasks(
-            platform=args.platform,
-            project_dir=project_dir,
-            memsearch_dir=args.memsearch_dir,
-            cfg=cfg,
-            force=args.force,
-            llm_runner=llm_runner,
-        )
+        failed = False
+        try:
+            results = run_due_tasks(
+                platform=args.platform,
+                project_dir=project_dir,
+                memsearch_dir=args.memsearch_dir,
+                cfg=cfg,
+                force=args.force,
+                llm_runner=llm_runner,
+            )
+        except TASK_ERRORS as exc:
+            # The failure is already recorded in .maintenance-state.json. Keep going
+            # so memory_to_skill still gets its turn instead of being starved by it.
+            sys.stderr.write(f"Maintenance error: {exc}\n")
+            results, failed = [], True
 
         # Distill recurring workflows into candidate skills (procedural memory).
         # Same session-end trigger, due-state, and llm_runner as the tasks above;
@@ -568,7 +605,7 @@ def main() -> int:
             force=args.force,
             llm_runner=llm_runner,
         )
-    except (KeyError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+    except TASK_ERRORS as exc:
         sys.stderr.write(f"Maintenance error: {exc}\n")
         return 1
     finally:
@@ -585,7 +622,7 @@ def main() -> int:
             sys.stdout.write(f"{result.task}: {result.action}{detail}\n")
         skill_detail = f": {skill_result.reason}" if skill_result.reason else ""
         sys.stdout.write(f"memory_to_skill: {skill_result.action}{skill_detail}\n")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

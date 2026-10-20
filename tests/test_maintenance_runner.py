@@ -106,10 +106,11 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input=None):
         captured["cmd"] = cmd
         captured["env"] = env
         captured["cwd"] = cwd
+        captured["input"] = input
         return '{"action":"none","reason":"ok"}'
 
     monkeypatch.setattr(runner, "run_command", fake_run_command)
@@ -124,9 +125,29 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     assert json.loads(result) == {"action": "none", "reason": "ok"}
     assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["cmd"][0:2] == ["claude", "-p"]
-    assert captured["cmd"][-1] == "maintenance prompt"
+    assert captured["input"] == "maintenance prompt"
+    assert "maintenance prompt" not in captured["cmd"]
     assert captured["cmd"][captured["cmd"].index("--system-prompt") + 1] != "maintenance prompt"
     assert captured["env"]["CLAUDECODE"] == ""
+
+
+def test_claude_native_runner_keeps_long_prompts_off_the_command_line(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    captured = {}
+
+    def fake_run_command(cmd, *, env, cwd, timeout, input=None):
+        captured["cmd"] = cmd
+        captured["input"] = input
+        return '{"action":"none","reason":"ok"}'
+
+    monkeypatch.setattr(runner, "run_command", fake_run_command)
+    ctx = SimpleNamespace(platform="claude-code", project_dir=tmp_path, task_config=SimpleNamespace(model=""))
+    prompt = "journal line → åäö\n" * 8000
+
+    runner.run_native_provider(ctx, prompt)
+
+    assert captured["input"] == prompt
+    assert sum(len(arg) + 1 for arg in captured["cmd"]) < 32767
 
 
 def test_openclaw_native_runner_extracts_json_from_noisy_output(tmp_path: Path, monkeypatch) -> None:
@@ -163,6 +184,7 @@ def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, m
     config_dir.mkdir()
 
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # Path.home() reads this on Windows
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
     monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"username": "from-content", "plugin": ["content-plugin"]}')
@@ -293,3 +315,89 @@ def test_run_command_success_prefers_stdout(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
 
     assert runner.run_command(["tool"], env={}, cwd=tmp_path, timeout=1) == '{"ok": true}'
+
+
+def test_run_command_resolves_executable_on_path_and_sends_utf8_input(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    seen = {}
+
+    def fake_which(name, path=None):
+        seen["which"] = (name, path)
+        return r"C:\Users\me\AppData\Roaming\npm\claude.CMD"
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout='{"ok": true}', stderr="")
+
+    monkeypatch.setattr(runner.shutil, "which", fake_which)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    out = runner.run_command(["claude", "-p"], env={"PATH": "/fake/bin"}, cwd=tmp_path, timeout=1, input="→ prompt")
+
+    assert out == '{"ok": true}'
+    assert seen["which"] == ("claude", "/fake/bin")
+    assert seen["cmd"] == [r"C:\Users\me\AppData\Roaming\npm\claude.CMD", "-p"]
+    assert seen["kwargs"]["input"] == "→ prompt"
+    assert seen["kwargs"]["encoding"] == "utf-8"
+
+
+def test_run_command_passes_unresolvable_names_through(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(runner.shutil, "which", lambda name, path=None: None)
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    runner.run_command(["tool", "run"], env={"PATH": ""}, cwd=tmp_path, timeout=1)
+
+    assert seen["cmd"] == ["tool", "run"]
+
+
+def test_run_command_passes_utf8_prompt_through_a_real_process(tmp_path: Path) -> None:
+    runner = _load_runner()
+    import os
+
+    prompt = "journal → åäö \U0001f4da\n" * 5000
+    script = (
+        "import hashlib, sys; "
+        "data = sys.stdin.buffer.read().decode('utf-8').replace('\\r\\n', '\\n'); "
+        "print(hashlib.sha256(data.encode('utf-8')).hexdigest())"
+    )
+
+    out = runner.run_command(
+        [sys.executable, "-c", script], env=dict(os.environ), cwd=tmp_path, timeout=30, input=prompt
+    )
+
+    import hashlib
+
+    assert out == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def test_main_still_distills_skills_when_a_review_task_fails(tmp_path: Path, monkeypatch) -> None:
+    runner = _load_runner()
+    project = tmp_path / "repo"
+    (project / ".memsearch" / "memory").mkdir(parents=True)
+    from memsearch import maintenance, skills
+
+    def failing_tasks(**kwargs):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    distilled = {}
+
+    def fake_distill(**kwargs):
+        distilled["called"] = True
+        return SimpleNamespace(action="skip", reason="not due")
+
+    monkeypatch.setattr(maintenance, "run_due_tasks", failing_tasks)
+    monkeypatch.setattr(skills, "distill", fake_distill)
+    monkeypatch.setattr(
+        sys, "argv", ["maintenance-runner.py", "--platform", "claude-code", "--project-dir", str(project)]
+    )
+
+    assert runner.main() == 1
+    assert distilled["called"] is True
