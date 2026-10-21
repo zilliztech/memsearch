@@ -177,6 +177,15 @@ ${PARSED}"
     2>/dev/null)
   SUMMARY_STATUS=$?
   set -e
+  # Native CLI errors can arrive on stdout even with a successful exit status.
+  # Match response prefixes only, not error terms mentioned in valid summaries.
+  if [ "$SUMMARY_STATUS" -eq 0 ]; then
+    case "$SUMMARY" in
+      "You've hit your limit"*|"API Error:"*)
+        SUMMARY_FAILURE="summarizer returned an error response"
+        ;;
+    esac
+  fi
 else
   SUMMARY_FAILURE="summarizer unavailable"
 fi

@@ -1157,6 +1157,96 @@ fi
     assert "session:session turn:turn-failure" in memory_text
 
 
+@pytest.mark.parametrize("provider", ["", "native"], ids=["default", "explicit-native"])
+@pytest.mark.parametrize(
+    ("summary", "is_error"),
+    [
+        ("You've hit your limit · resets 11am (Africa/Johannesburg)", True),
+        ("API Error: 429 Too Many Requests", True),
+        ('API Error: 401 {"error":{"type":"authentication_error"}}', True),
+        ("- No significant changes.", False),
+        ("User investigated rate limits and authentication.", False),
+        ("- Added retries for rate limit exceeded responses and HTTP 401, 403, and 429 errors.", False),
+        ('- Documented the "You\'ve hit your limit" and "API Error: 429" notices.', False),
+        ("- User debugged retries.\nAPI Error: 429 was the response recorded in the transcript.", False),
+    ],
+    ids=[
+        "plan-limit",
+        "api-rate-limit",
+        "api-auth",
+        "short",
+        "plain-text",
+        "error-terms",
+        "quoted-errors",
+        "error-line",
+    ],
+)
+def test_claude_stop_hook_validates_native_summary_output(
+    tmp_path: Path, provider: str, summary: str, is_error: bool
+) -> None:
+    script = Path("plugins/claude-code/hooks/stop.sh")
+    home, fake_bin, memsearch_dir = tmp_path / "home", tmp_path / "bin", tmp_path / ".memsearch"
+    transcript = tmp_path / "session.jsonl"
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript, turn_uuid="turn-output")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+if [ "$1" = config ] && [ "$2" = get ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    plugins.claude-code.summarize.enabled) echo true ;;
+    plugins.claude-code.summarize.provider) echo "$TEST_SUMMARIZE_PROVIDER" ;;
+    *) echo "" ;;
+  esac
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "claude",
+        """#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then exit 0; fi
+cat >/dev/null
+printf '%s\n' "$TEST_SUMMARY"
+exit 0
+""",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "TEST_SUMMARIZE_PROVIDER": provider,
+        "TEST_SUMMARY": summary,
+    }
+    result = subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    memory_text = next((memsearch_dir / "memory").glob("*.md")).read_text(encoding="utf-8")
+    assert json.loads(result.stdout) == {}
+    assert "## Session " in memory_text
+    assert "### " in memory_text
+    assert f"<!-- session:session turn:turn-output transcript:{transcript} -->" in memory_text
+    if is_error:
+        assert summary not in memory_text
+        assert "Memory summary unavailable: summarizer returned an error response" in memory_text
+        assert "transcript content was omitted" in memory_text
+        assert "Summarize this session" not in memory_text
+        assert "I explained the hook behavior." not in memory_text
+    else:
+        assert summary in memory_text
+        assert "Memory summary unavailable" not in memory_text
+
+
 def test_claude_stop_hook_groups_session_headings(tmp_path: Path) -> None:
     script = Path("plugins/claude-code/hooks/stop.sh")
     plugin_root = Path("plugins/claude-code").resolve()
