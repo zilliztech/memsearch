@@ -247,5 +247,6 @@ files and the Milvus index are left untouched.
 - Python helpers under `scripts/` are linted with the repo's `ruff` config and
   tested under `plugins/dsh/tests/`.
 - Keep the memory-write format byte-compatible with the other platform
-  plugins; see `plugins/opencode/scripts/capture-daemon.py` for the canonical
-  writer.
+  plugins; see the OpenCode journal writer in
+  [`scripts/capture.py`](../opencode/scripts/capture.py) for the shared
+  heading and transcript-anchor format.

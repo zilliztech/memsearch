@@ -46,7 +46,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
 
-/** Cordis plugin name; also the `source.plugin` tag on injected messages. */
+/**
+ * Cordis plugin name; also the producer identity behind the
+ * `plugin:memsearch` source kind on injected messages.
+ */
 export const name = 'memsearch'
 
 /** Services this plugin needs before `apply()` runs. */
@@ -108,10 +111,16 @@ async function loadDshLlm(ctx) {
 }
 
 /**
- * Build one plugin-sourced user message carrying the memory block.
+ * Build one producer-attributed user message carrying the memory block.
+ *
+ * The source kind is producer-owned: session format V4 rejects the retired
+ * shared `kind: 'plugin'` wrapper, and the framework's convention for a
+ * plugin producer is `plugin:<plugin name>` — the same kind the released
+ * V3-to-V4 migration assigns to this producer's historical rows.
+ *
  * @param ctx - the Cordis context (profile anchor for dsh-llm resolution).
  * @param text - the rendered memory block.
- * @returns a frozen `UserMessage` with a plugin snapshot source.
+ * @returns a frozen `UserMessage` with a producer-owned snapshot source.
  */
 async function createMemoryMessage(ctx, text) {
   const dshLlm = await loadDshLlm(ctx)
@@ -119,8 +128,7 @@ async function createMemoryMessage(ctx, text) {
     return dshLlm.createUserMessage({
       content: [{ type: 'text', text }],
       source: {
-        kind: 'plugin',
-        plugin: name,
+        kind: `plugin:${name}`,
         form: 'snapshot',
         sections: [{ name, text }],
       },
@@ -131,8 +139,7 @@ async function createMemoryMessage(ctx, text) {
     role: 'user',
     content: [{ type: 'text', text }],
     source: {
-      kind: 'plugin',
-      plugin: name,
+      kind: `plugin:${name}`,
       form: 'snapshot',
       sections: [{ name, text }],
     },

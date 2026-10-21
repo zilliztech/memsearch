@@ -181,28 +181,15 @@ We discussed batch size limits before, what did we decide?
 <details>
 <summary><h3>For OpenCode Users</h3></summary>
 
-```json
-// In ~/.config/opencode/opencode.json
-{ "plugin": ["@zilliz/memsearch-opencode"] }
-```
-
-After installing, chat in TUI as usual. A background daemon captures conversations.
-
-**Verify it's working:**
+MemSearch gives OpenCode persistent memory across sessions. Install the plugin:
 
 ```bash
-ls .memsearch/memory/    # daily .md files appear after a few conversations
+opencode plugin add @zilliz/memsearch-opencode
 ```
 
-**Recall memories** — two ways to trigger:
+Completed turns are summarized into `.memsearch/memory/` and indexed for recall. Pending work resumes after an interruption.
 
-```
-/memory-recall what did we discuss about authentication?
-```
-Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
-```
-We discussed the authentication flow before, what was the approach?
-```
+Ask about previous decisions or debugging sessions, and OpenCode can search memory, expand relevant notes, and look up the original conversation. The `memory-recall`, `memory-config`, and `memory-to-skill` Skills are included.
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
 

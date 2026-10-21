@@ -19,7 +19,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 | [**Codex**](../platforms/codex/index.md) | `bash install.sh` | Stable |
 | [**DeepSeek Harness**](../platforms/dsh/index.md) | `dsh plugin --profile <name> add @zilliz/memsearch-dsh` | Stable |
 | [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install --force` + hook permissions | Stable |
-| [**OpenCode**](../platforms/opencode/index.md) | Add to `opencode.json` plugin array | Stable |
+| [**OpenCode**](../platforms/opencode/index.md) | `opencode plugin add @zilliz/memsearch-opencode` | Stable |
 
 ## What Happens Automatically
 
