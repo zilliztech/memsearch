@@ -113,7 +113,9 @@ else
   COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
 fi
 
-# --- JSON helpers (jq preferred, python3 fallback) ---
+source "$(dirname "${BASH_SOURCE[0]}")/python.sh"
+
+# --- JSON helpers (jq preferred, Python fallback) ---
 
 # _json_val <json_string> <dotted_key> [default]
 # Extract a value from JSON. Key supports dotted notation (e.g. "info.version").
@@ -126,7 +128,7 @@ _json_val() {
     # Build jq filter from dotted key: "info.version" → ".info.version"
     result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
   else
-    result=$(printf '%s' "$json" | python3 -c "
+    result=$(printf '%s' "$json" | run_python -c "
 import json, sys
 try:
     obj = json.load(sys.stdin)
@@ -159,7 +161,7 @@ _json_encode_str() {
   if command -v jq &>/dev/null; then
     printf '%s' "$str" | jq -Rs . 2>/dev/null && return 0
   fi
-  printf '%s' "$str" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null && return 0
+  printf '%s' "$str" | run_python -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null && return 0
   # Last resort: simple quoting (no special char escaping)
   printf '"%s"' "$str"
   return 0
@@ -318,7 +320,7 @@ _pypi_latest_version() {
 index_state_warning() {
   local state_path="$MEMSEARCH_DIR/.index-state.json"
   [ -f "$state_path" ] || return 0
-  python3 - "$state_path" <<'PY' 2>/dev/null || true
+  run_python - "$state_path" <<'PY' 2>/dev/null || true
 import json
 import sys
 from datetime import datetime, timezone
@@ -370,10 +372,10 @@ run_memsearch() {
 }
 
 run_maintenance() {
-  if command -v python3 >/dev/null 2>&1; then
+  if python_available; then
     (
       cd "$_PROJECT_DIR"
-      MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
+      MEMSEARCH_NO_WATCH=1 run_python "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
         --platform claude-code \
         --project-dir "$_PROJECT_DIR" \
         --memsearch-dir "$MEMSEARCH_DIR"

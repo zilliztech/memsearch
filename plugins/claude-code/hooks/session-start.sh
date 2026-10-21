@@ -10,6 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec < /dev/null
 source "$SCRIPT_DIR/common.sh"
 
+# Report this before config/bootstrap work. A fixed JSON message also works
+# without jq or Python, when dynamic status strings cannot be JSON-encoded.
+if ! python_available; then
+  echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart Claude Code."}'
+  exit 0
+fi
+
 # Bootstrap: if memsearch not available, install uv and warm up uvx cache
 if ! memsearch_available; then
   if ! command -v uvx &>/dev/null; then

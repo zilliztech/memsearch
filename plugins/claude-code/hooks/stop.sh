@@ -65,8 +65,9 @@ if [ "$SUMMARIZE_ENABLED" = "false" ]; then
   exit 0
 fi
 
-# Parse transcript — extract the last turn only (one user question + all responses)
-PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
+# Parse in a subshell to reuse the resolved Python command without changing
+# this hook's state. Extract the last turn only (one question + all responses).
+PARSED=$(source "$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
 if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ] || [ "$PARSED" = "(no user message found)" ] || [ "$PARSED" = "(empty turn)" ]; then
   echo '{}'
@@ -80,7 +81,7 @@ MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
 
 # Extract session ID and last user turn UUID for progressive disclosure anchors
 SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
-LAST_USER_TURN_UUID=$(python3 -c "
+LAST_USER_TURN_UUID=$(run_python -c "
 import json, sys
 uuid = ''
 with open(sys.argv[1], encoding='utf-8', errors='replace') as f:

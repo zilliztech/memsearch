@@ -37,6 +37,159 @@ def _write_claude_transcript(path: Path, *, turn_uuid: str) -> None:
     )
 
 
+@pytest.fixture
+def claude_python_env(tmp_path: Path) -> dict[str, str]:
+    """Simulate Git Bash with controlled Python commands and optional jq."""
+    if os.name != "posix":
+        pytest.skip("uses POSIX executable symlinks to simulate Git Bash")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    store = tmp_path / "WindowsApps"
+    home.mkdir()
+    fake_bin.mkdir()
+    store.mkdir()
+    for name in (
+        "bash",
+        "cat",
+        "timeout",
+        "perl",
+        "dirname",
+        "git",
+        "basename",
+        "tr",
+        "sed",
+        "cut",
+        "sha256sum",
+        "date",
+        "wc",
+        "grep",
+        "mkdir",
+        "find",
+        "realpath",
+    ):
+        if executable := shutil.which(name):
+            (fake_bin / name).symlink_to(executable)
+    # Mask any interpreters in the user bin paths added by common.sh as well.
+    for name in ("python3", "python", "py"):
+        _write_executable(store / name, "#!/bin/sh\necho 'Python was not found' >&2\nexit 49\n")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/bin/sh
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    milvus.uri) echo "${MEMSEARCH_TEST_MILVUS_URI:-http://localhost:19530}" ;;
+  esac
+fi
+exit 0
+""",
+    )
+    return {
+        **os.environ,
+        "HOME": str(home),
+        # Keep this last so common.sh does not prepend it ahead of the stubs.
+        "PATH": os.pathsep.join([str(fake_bin), str(store), "/usr/local/bin"]),
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_TEST_PYTHON": sys.executable,
+    }
+
+
+@pytest.mark.parametrize("with_jq", [False, True], ids=["without-jq", "with-jq"])
+@pytest.mark.parametrize("interpreter", ["python3", "python", "py", "py-after-python2"])
+def test_claude_hooks_capture_with_working_python(
+    tmp_path: Path, claude_python_env: dict[str, str], interpreter: str, with_jq: bool
+) -> None:
+    env = claude_python_env
+    fake_bin = tmp_path / "bin"
+    install = tmp_path / "Python Install"
+    install.mkdir()
+    env["PATH"] = f"{install}{os.pathsep}{env['PATH']}"
+    if with_jq:
+        if not (jq := shutil.which("jq")):
+            pytest.skip("jq is not installed")
+        (fake_bin / "jq").symlink_to(jq)
+    if interpreter == "py-after-python2":
+        _write_executable(
+            install / "python",
+            '#!/bin/sh\nexec "$MEMSEARCH_TEST_PYTHON" -c '
+            "'import sys; sys.version_info = (2, 7); exec(sys.argv[1])' \"$2\"\n",
+        )
+    if interpreter in {"py", "py-after-python2"}:
+        _write_executable(
+            install / "py",
+            '#!/bin/sh\n[ "$1" = "-3" ] || exit 1\nshift\nexec "$MEMSEARCH_TEST_PYTHON" "$@"\n',
+        )
+    else:
+        (install / interpreter).symlink_to(sys.executable)
+    _write_executable(
+        fake_bin / "claude",
+        '#!/bin/sh\n[ "${1:-}" = "--help" ] && exit 0\ncat >/dev/null\necho "- User discussed Python detection."\n',
+    )
+    transcript = tmp_path / "session-python.jsonl"
+    _write_claude_transcript(transcript, turn_uuid="turn-python")
+
+    result = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/stop.sh"],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert result.stdout.strip() == "{}"
+    assert result.stderr == ""
+    journals = list((tmp_path / ".memsearch" / "memory").glob("*.md"))
+    assert len(journals) == 1
+    journal = journals[0].read_text(encoding="utf-8")
+    assert "User discussed Python detection." in journal
+    assert "turn:turn-python" in journal
+
+    # The parser is also a standalone helper, without common.sh's setup.
+    parsed = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/parse-transcript.sh", str(transcript)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert "[User]: Summarize this session" in parsed.stdout
+    hint = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/user-prompt-submit.sh"],
+        input=json.dumps({"prompt": "Explain how Python detection works in these hooks."}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert "Recall available if needed" in json.loads(hint.stdout)["systemMessage"]
+
+
+@pytest.mark.parametrize("with_jq", [False, True], ids=["without-jq", "with-jq"])
+def test_claude_session_start_reports_missing_python(
+    tmp_path: Path, claude_python_env: dict[str, str], with_jq: bool
+) -> None:
+    if with_jq:
+        if not (jq := shutil.which("jq")):
+            pytest.skip("jq is not installed")
+        (tmp_path / "bin" / "jq").symlink_to(jq)
+    # The diagnostic must remain valid JSON even with a Windows backend path.
+    claude_python_env["MEMSEARCH_TEST_MILVUS_URI"] = r'C:\Users\Jane "Doe"\milvus.db'
+    result = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/session-start.sh"],
+        capture_output=True,
+        text=True,
+        env=claude_python_env,
+        check=True,
+    )
+    assert result.stderr == ""
+    status = json.loads(result.stdout)["systemMessage"]
+    assert "ERROR: no working Python 3 found" in status
+    assert "memory capture disabled" in status
+
+
 def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str]) -> str:
     script = Path("plugins/claude-code/hooks/session-start.sh")
     home = tmp_path / "home"
@@ -1987,6 +2140,7 @@ echo '{"info":{"version":"2.0.0"}}'
             "BLOCKER_PID_FILE": str(blocker_pid_file),
             "BLOCKER_STARTED": str(blocker_started),
             "BLOCKER_RELEASE": str(blocker_release),
+            "REAL_PYTHON": sys.executable,
         }
     )
     state = tmp_path / ".memsearch" / ".index-state.json"
@@ -1995,6 +2149,10 @@ echo '{"info":{"version":"2.0.0"}}'
     _write_executable(
         fake_bin / "python3",
         """#!/usr/bin/env bash
+# Only block the index-state read, not interpreter detection or JSON helpers.
+if [ "${1:-}" != "-" ]; then
+  exec "$REAL_PYTHON" "$@"
+fi
 printf '%s' "$$" > "$BLOCKER_PID_FILE"
 : > "$BLOCKER_STARTED"
 i=0
