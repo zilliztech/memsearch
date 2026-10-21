@@ -201,10 +201,12 @@ All plugins share the same memsearch backend. Configure once, works everywhere.
 
 #### Embedding
 
-Defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On first launch the model (~558 MB) is downloaded from HuggingFace Hub.
+The Claude Code plugin defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On first launch the model (~558 MB) is downloaded from HuggingFace Hub.
+
+> **API/CLI defaults differ:** The Python API and an unconfigured CLI default to `openai`, which sends indexed text and search queries to the OpenAI API and uses `OPENAI_API_KEY` from the environment when no key is passed explicitly. Installing `memsearch[onnx]` alone does not select ONNX.
 
 ```bash
-memsearch config set embedding.provider onnx     # default — local, free
+memsearch config set embedding.provider onnx     # local, free; Claude Code plugin default
 memsearch config set embedding.provider openai   # needs OPENAI_API_KEY
 memsearch config set embedding.provider ollama   # local, any model
 ```
@@ -442,6 +444,8 @@ uv add "memsearch[onnx]"
 </details>
 
 ### 🐍 Python API — Give Your Agent Memory
+
+The example below uses the OpenAI default. For local embeddings, install `memsearch[onnx]` and use `MemSearch(paths=["./memory"], embedding_provider="onnx")` instead. The Python constructor does not load CLI configuration.
 
 ```python
 from memsearch import MemSearch

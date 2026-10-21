@@ -120,10 +120,35 @@ memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 
 ## Embedding Provider
 
+The Claude Code plugin defaults to **ONNX bge-m3**, but the Python API and an
+unconfigured CLI default to **OpenAI**. By default, `openai` sends indexed text
+and search queries to the OpenAI API; `OPENAI_API_KEY` is used from the environment
+when no key is passed explicitly. Installing `memsearch[onnx]` alone does not
+select ONNX.
+
+For local embeddings, install `memsearch[onnx]` and select the provider explicitly:
+
+```bash
+memsearch config set embedding.provider onnx
+```
+
+This saves the CLI setting to `~/.memsearch/config.toml`. The Python constructor
+does not load CLI configuration; pass the provider directly:
+
+```python
+from memsearch import MemSearch
+
+mem = MemSearch(paths=["./memory"], embedding_provider="onnx")
+```
+
+ONNX runs embeddings locally on CPU without an API key. The first run downloads
+the model (~558 MB) from HuggingFace Hub. This setting controls embeddings only,
+not plugin summarization, compaction, reranking, or Milvus storage.
+
 | Provider | Install | API Key | Notes |
 |----------|---------|---------|-------|
-| **onnx** (default) | `pip install memsearch[onnx]` | No | Local, free, ~100MB model download |
-| openai | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
+| **onnx** (Claude Code plugin default) | `pip install memsearch[onnx]` | No | Local, free, ~558 MB model download |
+| **openai** (Python API / unconfigured CLI default) | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
 | google | `pip install memsearch[google]` | `GOOGLE_API_KEY` | Gemini embeddings |
 | voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | High quality |
 | jina | `pip install memsearch[jina]` | `JINA_API_KEY` | jina-embeddings-v4, multilingual, long context |
