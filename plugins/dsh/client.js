@@ -37,6 +37,101 @@ window.__ModuleLoader__.load({
     var NS = 'memsearch-skill-review'
     var CSS_TAG = 'memsearch-skill-review-css'
 
+    var MESSAGES = {
+      en: {
+        capsuleTitle: 'MemSearch skill candidates — click to review',
+        loadingCandidates: 'Loading skill candidates…',
+        awaitingReview: ' skill candidate{plural} awaiting review',
+        installedCount: ' (installed {installed} · total {total})',
+        btnOpen: 'Review',
+        btnCollapse: 'Collapse',
+        btnRefresh: 'Refresh',
+        btnHide: 'Hide',
+        panelTitle: 'Skill candidates',
+        panelSubtitle: 'Review opens in the conversation · Install runs in the background',
+        emptyCandidates: 'No skill candidates.',
+        btnItemReview: 'Review',
+        btnItemInstall: 'Install',
+        btnItemDismiss: 'Dismiss',
+        seenTimes: ' · seen {count} time{plural}',
+        installedTo: ' · installed to {path}',
+        fromPrefix: 'from ',
+        noteInstall: 'Installation is a manual step (memsearch skills install) and is never automatic. Target directory follows plugins.dsh.memory_to_skill.paths, defaulting to ~/.agents/skills.',
+        previewEmpty: 'Select a file to preview its contents (read-only).',
+        previewLoading: 'Loading…',
+        previewUnsupported: 'File type .{ext} is not supported for preview (read-only .md/.json/.txt/.toml and similar text).',
+        toastReviewQueued: 'Review queued for {name} — the agent will pick it up on the next turn.',
+        toastInstalling: 'Installing {name} to {target} in the background.',
+        toastOpenDir: 'Opening {path} in your file manager…',
+        toastOpenDirFail: '{error} — open the folder manually to browse it.',
+      },
+      zh: {
+        capsuleTitle: 'MemSearch 技能候选 — 点击查看与审阅',
+        loadingCandidates: '正在加载技能候选…',
+        awaitingReview: ' 个技能候选待审阅',
+        installedCount: ' (已安装 {installed} · 共 {total})',
+        btnOpen: '打开',
+        btnCollapse: '折叠',
+        btnRefresh: '刷新',
+        btnHide: '隐藏',
+        panelTitle: '技能候选清单',
+        panelSubtitle: '审阅将在对话中展开 · 安装将在后台运行',
+        emptyCandidates: '暂无待审阅的技能候选。',
+        btnItemReview: '审阅',
+        btnItemInstall: '安装',
+        btnItemDismiss: '忽略',
+        seenTimes: ' · 出现 {count} 次',
+        installedTo: ' · 已安装至 {path}',
+        fromPrefix: '源自 ',
+        noteInstall: '技能安装为手动确认流程（不会自动安装），默认安装至 ~/.agents/skills。',
+        previewEmpty: '选择文件以预览其内容（只读）。',
+        previewLoading: '加载中…',
+        previewUnsupported: '不支持预览 .{ext} 文件（仅支持只读预览 .md/.json/.txt/.toml 等文本文件）。',
+        toastReviewQueued: '已加入审阅队列：{name} — Agent 将在下一轮处理。',
+        toastInstalling: '正在后台安装 {name} 至 {target}…',
+        toastOpenDir: '正在文件管理器中打开 {path}…',
+        toastOpenDirFail: '{error} — 请手动打开文件夹查看。',
+      },
+    }
+
+    function detectLang(ctx) {
+      try {
+        var locale = ctx && ctx.get && ctx.get('locale')
+        if (locale) {
+          var l = typeof locale.current === 'function' ? locale.current() : (locale.language || locale.current)
+          if (l && typeof l === 'string') return l.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+        }
+      } catch (e) {}
+      if (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang) {
+        var docLang = document.documentElement.lang.toLowerCase()
+        if (docLang.startsWith('zh')) return 'zh'
+        if (docLang.startsWith('en')) return 'en'
+      }
+      if (typeof navigator !== 'undefined') {
+        var nLang = (navigator.language || '').toLowerCase()
+        if (nLang.startsWith('zh')) return 'zh'
+        if (Array.isArray(navigator.languages) && navigator.languages.length > 0) {
+          var first = navigator.languages[0].toLowerCase()
+          if (first.startsWith('zh')) return 'zh'
+          if (first.startsWith('en')) return 'en'
+        }
+      }
+      return 'zh'
+    }
+
+    function createTranslator(lang) {
+      var dict = MESSAGES[lang] || MESSAGES.en
+      return function t(key, vars) {
+        var str = dict[key] || MESSAGES.en[key] || key
+        if (vars) {
+          for (var k in vars) {
+            str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k])
+          }
+        }
+        return str
+      }
+    }
+
     var CSS =
       '.msr-root{' +
         '--msr-bg:var(--dsw-alias-bg-layer-1,#1c1f26);' +
@@ -48,6 +143,13 @@ window.__ModuleLoader__.load({
         '--msr-success:var(--dsw-alias-state-success-primary,#22c55e);' +
         '--msr-warn:var(--dsw-alias-state-warn-primary,#f59e0b);' +
         '--msr-error:var(--dsw-alias-state-error-primary,#ef4444);' +
+        'box-sizing:border-box;' +
+        'width:calc(100% - var(--dsh-composer-side-clearance, 16px) * 2 - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'max-width:calc(var(--dsh-composer-card-max-width, 780px) - var(--dsh-composer-dock-inset, 8px) * 4);' +
+        'margin:0 auto;' +
+        'flex:none;' +
+        'display:flex;' +
+        'flex-direction:column;' +
         'font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;' +
       '}' +
       '.msr-bar{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;box-sizing:border-box;' +
@@ -92,7 +194,7 @@ window.__ModuleLoader__.load({
       '.msr-toast.ok{border-color:color-mix(in srgb,var(--msr-success) 45%,transparent);color:var(--msr-success);}' +
       '.msr-toast.warn{border-color:color-mix(in srgb,var(--msr-warn) 45%,transparent);color:var(--msr-warn);}' +
       '.msr-toast.err{border-color:color-mix(in srgb,var(--msr-error) 45%,transparent);color:var(--msr-error);}' +
-      '.msr-capsule{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;box-sizing:border-box;' +
+      '.msr-capsule{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:3px 11px;box-sizing:border-box;' +
         'border:1px solid var(--msr-border);border-radius:999px;background:var(--msr-bg);color:var(--msr-text);' +
         'font-size:12px;font-weight:600;cursor:pointer;line-height:1.6;white-space:nowrap;transition:border-color .12s ease;}' +
       '.msr-capsule:hover{border-color:var(--msr-brand);}' +
@@ -323,6 +425,7 @@ window.__ModuleLoader__.load({
      */
     function MemsearchBrowser(props) {
       var sessionId = props.sessionId
+      var t = props.t || createTranslator('en')
       var open = useState(false)
       var setOpen = open[1]
       // listings: rel -> { path, rel, dirs, files } — one cached listing per
@@ -387,7 +490,7 @@ window.__ModuleLoader__.load({
         var seq = ++reqSeq.current
         setSel({ rel: rel, name: name, ext: ext })
         if (PREVIEW_EXTS.indexOf(ext) < 0) {
-          if (seq === reqSeq.current) setPreview({ err: 'File type .' + ext + ' is not supported for preview (read-only .md/.json/.txt/.toml and similar text).' })
+          if (seq === reqSeq.current) setPreview({ err: t('previewUnsupported', { ext: ext }) })
           return
         }
         setPreview({ text: null })
@@ -454,7 +557,7 @@ window.__ModuleLoader__.load({
         previewPane = h('div', { className: 'msr-md msr-preview' },
           isMd ? renderMarkdown(preview[0].text) : h('pre', { className: 'msr-md' }, preview[0].text))
       } else {
-        previewPane = h('div', { className: 'msr-preview empty' }, 'Select a file to preview its contents (read-only).')
+        previewPane = h('div', { className: 'msr-preview empty' }, t('previewEmpty'))
       }
 
       var rootListing = listings[0]['/']
@@ -464,7 +567,7 @@ window.__ModuleLoader__.load({
           h('span', null, '📁'),
           h('span', { className: 'msr-panel-title' }, '.memsearch/'),
           h('span', { className: 'msr-spacer' }),
-          h('span', null, loading[0] ? 'Loading…' : (rootListing ? rootListing.path : ''))),
+          h('span', null, loading[0] ? t('previewLoading') : (rootListing ? rootListing.path : ''))),
         open[0]
           ? h('div', { className: 'msr-fs-body' },
               h('div', { className: 'msr-fs-tree' },
@@ -476,6 +579,7 @@ window.__ModuleLoader__.load({
     /** The dock strip: candidate count + expandable review list. */
     function SkillReviewPanel(props) {
       var sessionId = props.sessionId
+      var t = props.t || createTranslator('en')
       var candidates = useState(null) // null = loading
       var setCandidates = candidates[1]
       var collapsed = useState(true)
@@ -502,8 +606,8 @@ window.__ModuleLoader__.load({
 
       useEffect(function () {
         if (toast[0] === null) return
-        var t = setTimeout(function () { setToast(null) }, 4000)
-        return function () { clearTimeout(t) }
+        var tId = setTimeout(function () { setToast(null) }, 4000)
+        return function () { clearTimeout(tId) }
       }, [toast[0]])
 
       var act = function (name, action) {
@@ -517,9 +621,9 @@ window.__ModuleLoader__.load({
           .then(function (r) {
             if (!r.ok || !r.data.ok) throw new Error(r.data.error || 'request failed')
             if (action === 'review') {
-              setToast({ kind: 'ok', text: 'Review queued for ' + name + ' — the agent will pick it up on the next turn.' })
+              setToast({ kind: 'ok', text: t('toastReviewQueued', { name: name }) })
             } else {
-              setToast({ kind: 'ok', text: 'Installing ' + name + ' to ' + r.data.target + ' in the background.' })
+              setToast({ kind: 'ok', text: t('toastInstalling', { name: name, target: r.data.target }) })
               setTimeout(load, 2500)
             }
           })
@@ -539,10 +643,10 @@ window.__ModuleLoader__.load({
           .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data } }) })
           .then(function (r) {
             if (!r.ok) throw new Error(r.data.error || 'could not open directory')
-            setToast({ kind: 'ok', text: 'Opening ' + r.data.path + ' in your file manager…' })
+            setToast({ kind: 'ok', text: t('toastOpenDir', { path: r.data.path }) })
           })
           .catch(function (err) {
-            setToast({ kind: 'err', text: String(err && err.message ? err.message : err) + ' — open the folder manually to browse it.' })
+            setToast({ kind: 'err', text: t('toastOpenDirFail', { error: String(err && err.message ? err.message : err) }) })
           })
           .finally(function () { setBusy(null) })
       }
@@ -559,7 +663,7 @@ window.__ModuleLoader__.load({
       }
 
       var capsule = h(
-        'button', { className: 'msr-capsule', onClick: expand, title: 'MemSearch skill candidates — click to review' },
+        'button', { className: 'msr-capsule', onClick: expand, title: t('capsuleTitle') },
         h('span', { className: 'msr-badge', style: { background: 'transparent', padding: 0 } }, '🧠 MemSearch'),
         h('span', { className: 'msr-capsule-dot ' + (pending.length > 0 ? '' : 'zero') }, String(pending.length)),
         h('span', { className: 'msr-capsule-chev' }, '▾')
@@ -569,17 +673,17 @@ window.__ModuleLoader__.load({
         'div', { className: 'msr-bar' },
         h('span', { className: 'msr-badge' }, 'MemSearch'),
         loading
-          ? h('span', null, 'Loading skill candidates…')
+          ? h('span', null, t('loadingCandidates'))
           : h('span', null,
               h('span', { className: 'msr-count' }, String(pending.length)),
-              ' skill candidate' + (pending.length === 1 ? '' : 's') + ' awaiting review',
+              t('awaitingReview', { plural: pending.length === 1 ? '' : 's' }),
               h('span', { style: { color: 'var(--msr-text-2)', fontSize: 12 } },
-                ' (installed ' + installed + ' · total ' + visible.length + ')')),
+                t('installedCount', { installed: installed, total: visible.length }))),
         h('span', { className: 'msr-spacer' }),
         h('button', { className: 'msr-btn', onClick: function () { setOpen(!open[0]) } },
-          open[0] ? 'Collapse' : 'Review'),
-        h('button', { className: 'msr-btn ghost', onClick: function () { setDismissed({}); load() } }, 'Refresh'),
-        h('button', { className: 'msr-btn ghost', onClick: function () { setCollapsed(true) } }, 'Hide')
+          open[0] ? t('btnCollapse') : t('btnOpen')),
+        h('button', { className: 'msr-btn ghost', onClick: function () { setDismissed({}); load() } }, t('btnRefresh')),
+        h('button', { className: 'msr-btn ghost', onClick: function () { setCollapsed(true) } }, t('btnHide'))
       )
 
       var items = visible.map(function (c) {
@@ -593,12 +697,12 @@ window.__ModuleLoader__.load({
             h('div', { className: 'msr-item-meta' },
               c.sources.length > 0
                 ? h('span', null,
-                    'from ',
+                    t('fromPrefix'),
                     c.sources.slice(0, 3).map(function (s, i) { return h('code', { key: i }, s) }),
                     c.sources.length > 3 ? h('span', null, ' +' + (c.sources.length - 3)) : null)
                 : null,
-              ' · seen ' + c.occurrences + (c.occurrences === 1 ? ' time' : ' times'),
-              c.installedPaths.length > 0 ? ' · installed to ' + c.installedPaths[0] : null),
+              t('seenTimes', { count: c.occurrences, plural: c.occurrences === 1 ? '' : 's' }),
+              c.installedPaths.length > 0 ? t('installedTo', { path: c.installedPaths[0] }) : null),
             c.reason ? h('div', { className: 'msr-item-meta', style: { opacity: 0.9 } }, c.reason) : null
           ),
           h('div', { className: 'msr-item-actions' },
@@ -607,14 +711,14 @@ window.__ModuleLoader__.load({
                   className: 'msr-btn primary',
                   disabled: busy[0] === c.name,
                   onClick: function () { act(c.name, 'review') },
-                }, 'Review')
+                }, t('btnItemReview'))
               : null,
             c.status === 'candidate'
               ? h('button', {
                   className: 'msr-btn',
                   disabled: busy[0] === c.name,
                   onClick: function () { act(c.name, 'install') },
-                }, 'Install')
+                }, t('btnItemInstall'))
               : null,
             h('button', {
               className: 'msr-btn ghost danger',
@@ -626,7 +730,7 @@ window.__ModuleLoader__.load({
                   return next
                 })
               },
-            }, 'Dismiss')
+            }, t('btnItemDismiss'))
           )
         )
       })
@@ -635,16 +739,15 @@ window.__ModuleLoader__.load({
         ? h(
             'div', { className: 'msr-panel' },
             h('div', { className: 'msr-panel-head' },
-              h('span', { className: 'msr-panel-title' }, 'Skill candidates'),
+              h('span', { className: 'msr-panel-title' }, t('panelTitle')),
               h('span', { className: 'msr-spacer' }),
-              h('span', { style: { color: 'var(--msr-text-2)' } }, 'Review opens in the conversation · Install runs in the background')),
+              h('span', { style: { color: 'var(--msr-text-2)' } }, t('panelSubtitle'))),
             visible.length === 0
               ? h('div', { className: 'msr-item', style: { color: 'var(--msr-text-2)' } },
-                  loading ? 'Loading…' : 'No skill candidates.')
+                  loading ? t('previewLoading') : t('emptyCandidates'))
               : h('div', { className: 'msr-list' }, items),
-            h(MemsearchBrowser, { sessionId: sessionId }),
-            h('div', { className: 'msr-note' },
-              'Installation is a manual step (memsearch skills install) and is never automatic. Target directory follows plugins.dsh.memory_to_skill.paths, defaulting to ~/.agents/skills.')
+            h(MemsearchBrowser, { sessionId: sessionId, t: t }),
+            h('div', { className: 'msr-note' }, t('noteInstall'))
           )
         : null
 
@@ -662,15 +765,21 @@ window.__ModuleLoader__.load({
       var slots = ctx.get('slots')
       if (slots === undefined) return
       ensureCss()
+      var lang = detectLang(ctx)
+      var t = createTranslator(lang)
       slots.inject('conversation.input.dock', function () {
         return slots.register(
-          { name: 'conversation.input.dock', id: 'skill-review' },
+          { name: 'conversation.input.dock', id: 'skill-review', order: 15 },
           function (props) {
-            return React.createElement(SkillReviewPanel, { sessionId: props.sessionId })
+            var sId = props.sessionId || (props.session && props.session.sessionId)
+            return React.createElement(SkillReviewPanel, { sessionId: sId, t: t })
           },
         )
       })
     }
+
+    exports.createTranslator = createTranslator
+    exports.MESSAGES = MESSAGES
 
     return module.exports
   },
