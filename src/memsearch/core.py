@@ -275,6 +275,7 @@ class MemSearch:
         llm_model: str | None = None,
         prompt_template: str | None = None,
         output_dir: str | Path | None = None,
+        memory_dir: str | Path | None = None,
         llm_base_url: str | None = None,
         llm_api_key: str | None = None,
     ) -> str:
@@ -297,8 +298,16 @@ class MemSearch:
             Custom prompt template for the LLM.  Must contain a
             ``{chunks}`` placeholder.  Defaults to the built-in prompt.
         output_dir:
-            Directory to write the compact file into.  Defaults to the
-            first entry in *paths*.
+            Parent of the ``memory/`` directory the compact file is
+            written into.  Defaults to the first entry in *paths*.
+            Ignored when *memory_dir* is given.
+        memory_dir:
+            The exact directory the compact file is written into, with no
+            ``memory/`` appended.  Use it for stores whose directory is not
+            named ``memory`` — for example a central store laid out as
+            ``<store-root>/<project>``.  When unset or empty, behaviour is
+            unchanged.  The caller chooses the directory, so it is also the
+            caller's job to keep it inside the store being compacted.
         llm_base_url:
             Custom base URL for OpenAI-compatible API endpoints.  Only
             used when *llm_provider* is ``"openai"``.
@@ -327,11 +336,15 @@ class MemSearch:
             api_key=llm_api_key,
         )
 
-        # Write summary to memory/YYYY-MM-DD.md (append)
-        base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
-        memory_dir = base / "memory"
-        memory_dir.mkdir(parents=True, exist_ok=True)
-        compact_file = memory_dir / f"{date.today()}.md"
+        # Write summary to <target>/YYYY-MM-DD.md (append).  *memory_dir* names the
+        # directory exactly; without it the legacy ``<base>/memory`` join applies.
+        if memory_dir:
+            target_dir = Path(memory_dir)
+        else:
+            base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
+            target_dir = base / "memory"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        compact_file = target_dir / f"{date.today()}.md"
         compact_heading = "\n\n## Memory Compact\n\n"
         with open(compact_file, "a", encoding="utf-8") as f:
             if compact_file.stat().st_size == 0:
