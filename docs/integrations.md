@@ -1,6 +1,6 @@
 # Integrations
 
-memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, and **[CrewAI](https://www.crewai.com/)**.
+memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **[LangChain](https://www.langchain.com/)**, **[LangGraph](https://langchain-ai.github.io/langgraph/)**, **[LlamaIndex](https://www.llamaindex.ai/)**, **[CrewAI](https://www.crewai.com/)**, and **[Parallel Search MCP](#parallel-search-mcp)**.
 
 ---
 
@@ -266,3 +266,41 @@ print(result)
 ```
 
 The agent will automatically call `search_memory` to look up the answer before responding.
+
+
+---
+
+## Parallel Search MCP
+
+Turn web research into a local, searchable markdown knowledge base with
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+The anonymous endpoint provides free web search (Fast mode) and page fetching
+without an account or API key, subject to rate limits.
+
+The runnable [research example](https://github.com/zilliztech/memsearch/blob/main/examples/parallel_research.py)
+uses the Python MCP SDK's Streamable HTTP transport. It saves excerpts from the
+first three search results, with source URLs, then indexes and recalls them through
+`MemSearch`. Add `--fetch-url` to extract excerpts from a specific page as well.
+It uses local ONNX embeddings and a separate Milvus Lite database; the first run
+downloads the embedding model. No LLM is needed.
+
+From a checkout of this repository:
+
+```bash
+uv sync --extra research
+uv run --extra research python examples/parallel_research.py "Milvus hybrid search"
+
+# Include a page you want to keep in the knowledge base
+uv run --extra research python examples/parallel_research.py "Milvus hybrid search" \
+  --fetch-url https://milvus.io/docs/hybrid_search_with_milvus.md
+
+# Recall saved research without calling Parallel again
+uv run --extra research python examples/parallel_research.py "BM25 and dense vectors" --recall-only
+```
+
+Notes are stored under `.memsearch/research/pages/`, and the derived index is
+`.memsearch/research/research.db`. Pass `--directory /path/to/research` to keep both
+elsewhere. Repeating a source URL updates its markdown snapshot. Remote errors
+are reported before indexing; existing notes remain available for local recall.
+Web excerpts are external source material: check their provenance before using
+them as instructions or treating them as verified facts.
