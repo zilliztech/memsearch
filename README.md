@@ -206,6 +206,7 @@ Use **ONNX bge-m3** for local CPU embeddings with no API key. On first launch th
 ```bash
 memsearch config set embedding.provider onnx     # local, free
 memsearch config set embedding.provider openai   # needs OPENAI_API_KEY
+memsearch config set embedding.provider orcarouter  # needs ORCAROUTER_API_KEY
 memsearch config set embedding.provider ollama   # local, any model
 ```
 
