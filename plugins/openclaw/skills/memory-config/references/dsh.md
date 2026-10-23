@@ -22,7 +22,7 @@ Docs: https://zilliztech.github.io/memsearch/platforms/dsh/installation/
 
 DSH splits config across two surfaces, unlike the other platforms:
 
-1. **MemSearch TOML** (`~/.memsearch/config.toml`) — summarize provider/model,
+1. **MemSearch TOML** (`~/.memsearch/config.toml`, or `%USERPROFILE%\.memsearch\config.toml` on native Windows) — summarize provider/model,
    Milvus, collection, memory dir, and the maintenance tasks. Uses the
    `[plugins.dsh.*]` prefix.
 2. **Plugin-level switches** in the profile's `cordis.patch.yml` — the capture/
@@ -55,7 +55,7 @@ output_file = ".memsearch/USER.md"
 [plugins.dsh.memory_to_skill]
 enabled = false
 min_occurrences = 3
-paths = []          # install targets; default resolves to ~/.agents/skills
+paths = []          # install targets; default resolves to ~/.agents/skills (%USERPROFILE%\.agents\skills on Windows)
 ```
 
 ## Plugin-level switches (cordis.patch.yml)
@@ -68,8 +68,9 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
   config:
     captureEnabled: true     # capture completed turns
     injectEnabled: true      # inject returned memory candidates
-    summarizeEnabled: true   # summarize turns before writing
-    summarizeMode: auto      # auto | dsh-headless | custom-llm
+    summarizeEnabled: true        # summarize turns before writing
+    summarizeMode: auto           # auto | dsh-headless | custom-llm
+    summarizeTimeoutMs: 30000     # increase for slower cloud models (e.g. 120000)
 ```
 
 ## Summarizer backends
@@ -78,7 +79,7 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
   `custom-llm`; otherwise `dsh-headless`.
 - **`dsh-headless`** — boots a one-shot `dsh --profile headless` agent. The
   sub-agent's model is the deployment's `agent-default-model` from
-  `~/.dsh/settings.yaml` (the same selection the Web UI model picker writes).
+  `~/.dsh/settings.yaml` (`%USERPROFILE%\.dsh\settings.yaml` on Windows) (the same selection the Web UI model picker writes).
   **`[plugins.dsh.summarize]` provider/model do NOT apply here** — change the
   model in DSH settings instead.
 - **`custom-llm`** — a direct LLM call using `[llm.providers.*]`; provider/model
@@ -91,7 +92,7 @@ dump.
 ## Native model defaults
 
 - `dsh-headless` and `native` maintenance use the DSH deployment's
-  `agent-default-model` (Web UI model picker / `~/.dsh/settings.yaml`).
+  `agent-default-model` (Web UI model picker / `~/.dsh/settings.yaml`, or `%USERPROFILE%\.dsh\settings.yaml` on Windows).
 
 ## Restart guidance
 
@@ -99,3 +100,12 @@ Restart the DSH profile after installing or updating the plugin so the
 `memory-recall` skill re-registers and the plugin rows reload. TOML changes
 apply on the next capture/recall/index/maintenance invocation; summarizer
 backend changes (`summarizeMode`) need the plugin config to reload.
+
+## Native Windows
+
+The DSH plugin runs MemSearch with direct executable arguments; Git Bash and
+WSL are not runtime requirements. Commands in this skill may be used from the
+DSH PowerShell shell. When an explicit helper command is needed, set
+`MEMSEARCH_DSH_COMMAND_JSON` or `MEMSEARCH_PYTHON` to a JSON string array of
+executable and arguments, for example `["C:\\Tools\\dsh.exe", "--profile",
+"headless"]`. This preserves paths containing spaces without shell quoting.

@@ -44,7 +44,7 @@ When an expanded result contains an anchor comment like
 you can render the original conversation around that turn:
 
 ```bash
-python3 {{PLUGIN_DIR}}/scripts/parse-transcript.py --db "<path>" --turn <N> --context 3
+{{PYTHON_CMD}} {{PLUGIN_DIR}}/scripts/parse-transcript.py --db "<path>" --turn <N> --context 3
 ```
 
 Pass `--context 0` for just the target turn, or omit `--turn` to see the most recent turns.
@@ -56,5 +56,5 @@ Return a concise summary of the relevant context to the user, citing the memory 
 ## Notes
 
 - The memory store is plain markdown under `<project>/.memsearch/memory/YYYY-MM-DD.md`. Milvus is a derived search index; a chunk may be indexed slightly behind the markdown source.
-- If `memsearch` is not on PATH, prefix with the detected command `{{MEMSEARCH_CMD}}` (which may be `uvx --from 'memsearch[onnx]' memsearch`).
+- The commands above work in bash and PowerShell alike: `{{MEMSEARCH_CMD}}` and `{{PYTHON_CMD}}` are pre-resolved for this machine. If `memsearch` is not on PATH, the prefix may be a `uvx --from 'memsearch[onnx]' memsearch` fallback.
 - Prefer the final, user-facing outcome over raw transcript detail.

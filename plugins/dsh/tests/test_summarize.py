@@ -41,6 +41,23 @@ def test_import_forces_utf8_stdout_and_stderr_under_legacy_code_page() -> None:
     assert result.stderr.decode("utf-8").strip() == "ошибка 中文"
 
 
+@pytest.mark.parametrize("encoding", ["cp1251:strict", "cp936:strict"])
+def test_import_decodes_node_utf8_stdin_under_legacy_code_page(encoding: str) -> None:
+    """Node sends UTF-8 regardless of locale; stdin must not decode it as GBK/cp1251."""
+    text = "[User] Проверь память 😀 中文\n[Assistant] Готово."
+    code = f"import sys; sys.path.insert(0, {str(SCRIPTS)!r}); import summarize; print(sys.stdin.read(), end='')"
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, "PYTHONIOENCODING": encoding},
+        input=text.encode("utf-8"),
+        capture_output=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    assert result.stdout.decode("utf-8").replace("\r\n", "\n") == text
+
+
 def _provider(type_: str, model: str = "", base_url: str = "", api_key: str = "") -> SimpleNamespace:
     return SimpleNamespace(type=type_, model=model, base_url=base_url, api_key=api_key)
 
@@ -56,6 +73,10 @@ def make_config(**overrides) -> SimpleNamespace:
     plugins = SimpleNamespace(dsh=SimpleNamespace(summarize=SimpleNamespace(enabled=True, provider="", model="")))
     config = SimpleNamespace(llm=llm, compact=compact, prompts=prompts, plugins=plugins)
     return config
+
+
+def test_sanitize_surrogates_replaces_lone_units_and_preserves_unicode() -> None:
+    assert summarize._sanitize_surrogates("bad:\udc98 good:😀") == "bad:� good:😀"
 
 
 class TestResolveLlmSettings:
@@ -157,8 +178,9 @@ class TestMainTranscriptRecovery:
 
         seen = {}
 
-        async def fake_summarize(prompt, provider_type, model, base_url, api_key):
+        async def fake_summarize(prompt, provider_type, model, base_url, api_key, audit_context=None):
             seen["prompt"] = prompt
+            seen["audit_context"] = audit_context
             return "- remembered"
 
         monkeypatch.setattr(summarize, "_summarize", fake_summarize)
