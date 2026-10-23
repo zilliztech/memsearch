@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,8 +14,10 @@ from memsearch import maintenance
 from memsearch.config import LLMProviderConfig, MemSearchConfig, PluginMaintenanceTaskConfig
 from memsearch.maintenance import (
     MAX_PROMPT_CHARS,
+    STALE_LOCK_AGE_SECONDS,
     TaskContext,
     _build_prompt,
+    _file_lock,
     _parse_task_response,
     _read_recent_journals,
     run_due_tasks,
@@ -615,3 +618,103 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert run_memory_command(f"find {memory} -name '*.md'", ctx) == "local output"
     assert "encoding" not in calls[-1][1]
     assert "errors" not in calls[-1][1]
+
+
+def _age_lock_beyond_stale_threshold(path: Path) -> None:
+    stamps = time.time() - STALE_LOCK_AGE_SECONDS - 3600
+    os.utime(path, (stamps, stamps))
+
+
+def test_file_lock_acquires_cleanly_and_leaves_no_residue(tmp_path: Path) -> None:
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    with _file_lock(lock) as locked:
+        assert locked is True
+        assert lock.read_text(encoding="utf-8") == str(os.getpid())
+    assert not lock.exists()
+
+
+def test_file_lock_recovers_lock_left_by_dead_pid(tmp_path: Path) -> None:
+    # A crashed run leaves a lock whose holder is gone: the dead PID must be
+    # detected and the lock taken over instead of blocking forever (#788).
+    # Skipped on Windows: os.kill(pid, 0) terminates the target there, so the
+    # implementation never probes PIDs on that platform (mtime fallback
+    # instead, covered by test_file_lock_recovers_unparseable_stale_lock).
+    if os.name == "nt":
+        pytest.skip("PID liveness probing is POSIX-only; Windows uses the mtime fallback")
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    lock.write_text("999999999", encoding="utf-8")  # far above any real pid_max
+    with _file_lock(lock) as locked:
+        assert locked is True
+        assert lock.read_text(encoding="utf-8") == str(os.getpid())
+    assert not lock.exists()
+
+
+def test_file_lock_yields_false_while_holder_alive(tmp_path: Path) -> None:
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    lock.write_text(str(os.getpid()), encoding="utf-8")
+    with _file_lock(lock) as locked:
+        assert locked is False
+    # The live holder's lock must be left untouched.
+    assert lock.exists()
+    assert lock.read_text(encoding="utf-8") == str(os.getpid())
+
+
+def test_file_lock_keeps_unparseable_fresh_lock(tmp_path: Path) -> None:
+    # Content we cannot attribute to a dead PID plus a fresh mtime: assume a
+    # concurrent holder (e.g. it wrote nothing yet) and stay locked.
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    lock.write_text("not-a-pid", encoding="utf-8")
+    with _file_lock(lock) as locked:
+        assert locked is False
+    assert lock.exists()
+
+
+def test_file_lock_recovers_unparseable_stale_lock(tmp_path: Path) -> None:
+    # Garbage content (or an empty file from a crash between open and write)
+    # past the staleness age must be recovered.
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    lock.write_text("not-a-pid", encoding="utf-8")
+    _age_lock_beyond_stale_threshold(lock)
+    with _file_lock(lock) as locked:
+        assert locked is True
+    assert not lock.exists()
+
+
+def test_file_lock_recovers_stale_lock_even_if_pid_probes_alive(tmp_path: Path) -> None:
+    # PID reuse guard: a lock whose PID is (now) alive but whose mtime is
+    # older than one maintenance interval cannot belong to a current run.
+    lock = tmp_path / ".maintenance-codex-project_review.lock"
+    lock.write_text(str(os.getpid()), encoding="utf-8")
+    _age_lock_beyond_stale_threshold(lock)
+    with _file_lock(lock) as locked:
+        assert locked is True
+    assert not lock.exists()
+
+
+def test_run_due_tasks_recovers_stale_lock(tmp_path: Path) -> None:
+    # End to end: a lock left by a crashed run must not silence maintenance
+    # with action="locked" forever; the next run takes over and executes.
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-05-27.md").write_text("### 10:00\n- User discussed stale locks.\n", encoding="utf-8")
+    lock = project / ".memsearch" / ".maintenance-codex-project_review.lock"
+    lock.write_text("999999999", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+    cfg.plugins.codex.project_review.provider = "openai"
+
+    def fake_runner(ctx, prompt: str) -> str:
+        return json.dumps(
+            {
+                "action": "replace",
+                "reason": "recovered",
+                "content": "# Project Memory\n\n## Active Threads\n- Recovered.",
+            }
+        )
+
+    results = run_due_tasks(platform="codex", project_dir=project, cfg=cfg, llm_runner=fake_runner)
+
+    assert [r.action for r in results] == ["replace", "disabled"]
+    assert not lock.exists()
