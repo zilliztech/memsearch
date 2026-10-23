@@ -8,6 +8,7 @@ function createHarness() {
   let stateValues = []
   let stateSetters = []
   const refs = []
+  const effects = []
   let moduleDefinition
   let dockRenderer
 
@@ -30,8 +31,9 @@ function createHarness() {
       cursor++
       return fn
     },
-    useEffect() {
+    useEffect(fn) {
       cursor++
+      if (typeof fn === 'function') effects.push(fn)
     },
     useRef(initial) {
       const index = cursor++
@@ -78,10 +80,20 @@ function createHarness() {
     typeof element.type === 'function' && element.type.name === 'MemsearchBrowser'
   ))
   assert.ok(browserElement, 'MemsearchBrowser component is reachable from the expanded panel')
+  effects.length = 0
+
+  function flushEffects() {
+    while (effects.length > 0) {
+      const fn = effects.shift()
+      fn()
+    }
+  }
 
   return {
     Browser: browserElement.type,
     context,
+    dockRenderer,
+    flushEffects,
     renderWith,
   }
 }
@@ -177,4 +189,31 @@ test('an older file response cannot replace a newer preview after rerender', asy
 
   assert.equal(previewUpdates.at(-1).text, 'SECOND')
   assert.ok(!previewUpdates.some((update) => update.text === 'FIRST'))
+})
+
+test('dock renderer resolves sessionId from session prop and requests candidates', async () => {
+  const { dockRenderer, context, flushEffects, renderWith } = createHarness()
+  const fetchedUrls = []
+  context.fetch = (url) => {
+    fetchedUrls.push(url)
+    return Promise.resolve({
+      json: async () => ({ candidates: [] }),
+    })
+  }
+
+  // Resolves sessionId from props.session when props.sessionId is absent
+  const panelElement = dockRenderer({ session: { sessionId: 'session-2' } })
+  assert.equal(panelElement.props.sessionId, 'session-2', 'dock element receives sessionId from session object')
+
+  renderWith([[], false, true, {}, null, null])
+  panelElement.type(panelElement.props)
+  flushEffects()
+  await flushPromises()
+
+  assert.equal(fetchedUrls.length, 1)
+  assert.equal(
+    fetchedUrls[0],
+    '/memsearch-dsh/skill-candidates?sessionId=session-2',
+    'candidates are fetched using session-2 from props.session',
+  )
 })
