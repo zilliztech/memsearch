@@ -433,7 +433,9 @@ def search(
 
 @cli.command()
 @click.argument("chunk_hash")
-@click.option("--section/--no-section", default=True, help="Show full heading section (default).")
+@click.option(
+    "--section/--no-section", default=True, help="Show full heading section (default) or only the chunk's own lines."
+)
 @click.option("--lines", "-n", default=None, type=int, help="Show N lines before/after instead of full section.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 @_common_options
@@ -455,7 +457,8 @@ def expand(
     """Expand a memory chunk to show full context. [Claude Code plugin: L2]
 
     Look up CHUNK_HASH in the index, then read the source markdown file
-    to return the surrounding context (full heading section by default).
+    to return the surrounding context (full heading section by default,
+    or the chunk's own lines with --no-section).
 
     Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
@@ -507,6 +510,10 @@ def expand(
                 "Re-run 'memsearch index <path>' to refresh it.",
                 err=True,
             )
+
+        if lines is None and not section:
+            # Chunk-only view: same range as `--lines 0`
+            lines = 0
 
         if lines is not None:
             # Show N lines before/after the chunk

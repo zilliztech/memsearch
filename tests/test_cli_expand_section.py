@@ -166,3 +166,46 @@ def test_expand_warns_only_when_chunk_start_line_is_past_end_of_file(
         assert f"{source} (9 lines)" in result.stderr
         assert "Re-run 'memsearch index <path>'" in result.stderr
     assert json.loads(result.stdout)["source"] == str(source)
+
+
+def test_expand_no_section_returns_chunk_range_for_mid_section_chunk(monkeypatch, tmp_path) -> None:
+    paragraphs = [f"Paragraph {i:02}: fixed factual memory about ordinary indexing behavior." for i in range(1, 7)]
+    text = "# Notes\n\n" + "\n\n".join(paragraphs) + "\n"
+    source = tmp_path / "notes.md"
+    source.write_text(text, encoding="utf-8")
+
+    chunks = chunk_markdown(text, str(source), max_chunk_size=150, overlap_lines=0)
+    middle = [c for c in chunks if c.heading == "Notes" and c.start_line > 1]
+    assert middle, "expected at least one mid-section chunk under the top-level heading"
+    chunk = middle[len(middle) // 2]
+
+    class FakeStore:
+        def __init__(self, **_kwargs):
+            pass
+
+        def query(self, filter_expr: str):
+            return [
+                {
+                    "source": str(source),
+                    "start_line": chunk.start_line,
+                    "end_line": chunk.end_line,
+                    "heading": chunk.heading,
+                    "heading_level": chunk.heading_level,
+                }
+            ]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "resolve_config", lambda _overrides=None: MemSearchConfig())
+    monkeypatch.setattr(store_module, "MilvusStore", FakeStore)
+
+    result = CliRunner().invoke(cli, ["expand", "abc123", "--no-section", "--json-output"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    file_lines = text.splitlines()
+    expected_end = min(len(file_lines), chunk.end_line)
+    assert data["start_line"] == chunk.start_line
+    assert data["end_line"] == expected_end
+    assert data["content"] == "\n".join(file_lines[chunk.start_line - 1 : expected_end])
