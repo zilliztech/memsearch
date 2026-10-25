@@ -7,7 +7,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh",
-            "timeout": 10
+            "timeout": 10,
+            "statusMessage": "MemSearch: load session memory"
           }
         ]
       }
@@ -18,7 +19,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.sh",
-            "timeout": 15
+            "timeout": 15,
+            "statusMessage": "MemSearch: recall availability"
           }
         ]
       }
@@ -30,7 +32,8 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/stop.sh",
             "async": true,
-            "timeout": 120
+            "timeout": 120,
+            "statusMessage": "MemSearch: capture conversation"
           }
         ]
       }
@@ -42,7 +45,8 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh",
             "async": true,
-            "timeout": 10
+            "timeout": 10,
+            "statusMessage": "MemSearch: session cleanup"
           }
         ]
       }

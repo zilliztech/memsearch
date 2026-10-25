@@ -79,9 +79,9 @@ hooks_file = Path(sys.argv[1])
 install_dir = sys.argv[2]
 
 spec = {
-    "SessionStart": {"script": "session-start.sh", "timeout": 30},
-    "UserPromptSubmit": {"script": "user-prompt-submit.sh", "timeout": 10},
-    "Stop": {"script": "stop.sh", "timeout": 30},
+    "SessionStart": {"script": "session-start.sh", "timeout": 30, "status_message": "MemSearch: load session memory"},
+    "UserPromptSubmit": {"script": "user-prompt-submit.sh", "timeout": 10, "status_message": "MemSearch: recall availability"},
+    "Stop": {"script": "stop.sh", "timeout": 30, "status_message": "MemSearch: capture conversation"},
 }
 
 
@@ -151,6 +151,7 @@ for event, details in spec.items():
                     "type": "command",
                     "command": f"bash {install_dir}/hooks/{script}",
                     "timeout": details["timeout"],
+                    "statusMessage": details["status_message"],
                 }
             ],
         }
