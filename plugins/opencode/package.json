@@ -1,6 +1,6 @@
 {
   "name": "@zilliz/memsearch-opencode",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "memsearch plugin for OpenCode \u2014 semantic memory search across sessions",
   "type": "module",
   "main": "index.ts",
