@@ -48,7 +48,8 @@ onnx = [
     "tokenizers>=0.15",
     "huggingface-hub>=0.20",
 ]
-all = ["memsearch[google,voyage,jina,mistral,ollama,local,anthropic,onnx]"]
+research = ["memsearch[onnx]", "mcp>=1.26,<2"]
+all = ["memsearch[google,voyage,jina,mistral,ollama,local,anthropic,onnx,research]"]
 
 [project.scripts]
 memsearch = "memsearch.cli:cli"
