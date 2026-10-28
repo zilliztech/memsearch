@@ -13,6 +13,45 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.skipif(os.name != "posix", reason="tests the POSIX shell-form hook launcher")
+@pytest.mark.parametrize(
+    "directory", ["plugin", "plugin with spaces", "plugin\twith\ttabs", 'plugin\'s "$HOME"; [cache]']
+)
+@pytest.mark.parametrize(
+    ("event", "hook"),
+    [
+        (event, hook)
+        for event, matchers in json.loads(Path("plugins/claude-code/hooks/hooks.json").read_text(encoding="utf-8"))[
+            "hooks"
+        ].items()
+        for matcher in matchers
+        for hook in matcher["hooks"]
+        if hook["type"] == "command"
+    ],
+    ids=lambda value: value if isinstance(value, str) else value["command"],
+)
+def test_claude_manifest_commands_preserve_plugin_path(tmp_path: Path, directory: str, event: str, hook: dict) -> None:
+    plugin_root = tmp_path / directory
+    shutil.copytree(Path("plugins/claude-code"), plugin_root)
+
+    # Exercise the manifest command, not a direct invocation of its script. The
+    # real scripts' recursion guard prevents memory/index/model side effects
+    # only after the shell has successfully located and launched the script.
+    result = subprocess.run(
+        ["sh", "-c", hook["command"]],
+        input=json.dumps({"hook_event_name": event}),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root), "MEMSEARCH_DISABLE": "1"},
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {}
+    assert result.stderr == ""
+
+
 def _write_executable(path: Path, source: str) -> None:
     path.write_text(source, encoding="utf-8")
     path.chmod(0o755)
