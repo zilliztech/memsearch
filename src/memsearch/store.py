@@ -21,6 +21,10 @@ class CollectionNotFoundError(RuntimeError):
         )
 
 
+class DimensionMismatchError(ValueError):
+    """Raised when the embedding provider's dimension differs from the collection's."""
+
+
 def _escape_filter_value(value: str) -> str:
     """Escape backslashes and double quotes for Milvus filter expressions."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
@@ -206,6 +210,16 @@ class MilvusStore:
         except TypeError:
             client.load_collection(self._collection)
 
+    def set_dimension(self, dimension: int) -> None:
+        """Set the embedding dimension once the provider is known.
+
+        Checks it against an already-open collection, raising
+        :class:`DimensionMismatchError` on a mismatch.
+        """
+        self._dimension = dimension
+        if self._collection_exists:
+            self._check_dimension()
+
     def _check_dimension(self) -> None:
         """Verify that the existing collection's embedding dimension matches."""
         if self._dimension is None:
@@ -215,7 +229,7 @@ class MilvusStore:
             if field.get("name") == "embedding":
                 existing_dim = field.get("params", {}).get("dim")
                 if existing_dim is not None and int(existing_dim) != self._dimension:
-                    raise ValueError(
+                    raise DimensionMismatchError(
                         f"Embedding dimension mismatch: collection '{self._collection}' "
                         f"has dim={existing_dim} but the current embedding provider "
                         f"outputs dim={self._dimension}. "

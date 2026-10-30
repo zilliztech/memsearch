@@ -14,13 +14,17 @@ if TYPE_CHECKING:
 
 from .chunker import Chunk, chunk_markdown, clean_content_for_embedding, compute_chunk_id
 from .compact import compact_chunks
-from .embeddings import EmbeddingProvider, get_provider
+from .embeddings import DEFAULT_MODELS, EmbeddingProvider, get_provider
 from .index_report import IndexFailure, IndexReport, format_error
 from .io import read_utf8_text_replace
 from .scanner import ScannedFile, scan_paths, should_index_path
-from .store import MilvusStore
+from .store import CollectionNotFoundError, MilvusStore
 
 logger = logging.getLogger(__name__)
+
+
+class _EmbedderLoadError(Exception):
+    """Carries a provider load failure out of the per-file error handling."""
 
 
 class MemSearch:
@@ -79,22 +83,61 @@ class MemSearch:
         self._overlap_lines = overlap_lines
         self._ignore_files = list(ignore_files or [])
         self._exclude = list(exclude or [])
-        self._embedder: EmbeddingProvider = get_provider(
-            embedding_provider,
-            model=embedding_model,
-            batch_size=embedding_batch_size,
-            base_url=embedding_base_url,
-            api_key=embedding_api_key,
+        # The provider is built on first use: loading a local model (onnx, local)
+        # costs seconds and GBs of RAM, and an index run with nothing new to
+        # embed never needs it.  Chunk IDs only need the model name, which is
+        # exactly what every provider reports as ``model_name``.
+        self._embedding_provider = embedding_provider
+        self._embedder_kwargs: dict[str, Any] = {
+            "model": embedding_model,
+            "batch_size": embedding_batch_size,
+            "base_url": embedding_base_url,
+            "api_key": embedding_api_key,
+        }
+        self._embedding_model_name = (
+            embedding_model if embedding_model is not None else DEFAULT_MODELS.get(embedding_provider)
         )
+        self._embedder_instance: EmbeddingProvider | None = None
+        # dimension stays unknown until the embedder loads; the existing
+        # collection's dimension is checked then (see ``_embedder``).
         self._store = MilvusStore(
             uri=milvus_uri,
             token=milvus_token,
             collection=collection,
-            dimension=self._embedder.dimension,
+            dimension=None,
             description=description,
             _create_if_missing=False,
         )
         self._reranker_model = reranker_model
+        if self._embedding_model_name is None:
+            # No known default model name (unregistered provider): build it now
+            # so get_provider reports an unknown name exactly as before.
+            _ = self._embedder
+
+    @property
+    def _embedder(self) -> EmbeddingProvider:
+        if self._embedder_instance is None:
+            embedder = get_provider(self._embedding_provider, **self._embedder_kwargs)
+            self._store.set_dimension(embedder.dimension)
+            self._embedder_instance = embedder
+        return self._embedder_instance
+
+    @_embedder.setter
+    def _embedder(self, embedder: EmbeddingProvider) -> None:
+        self._embedder_instance = embedder
+
+    @property
+    def _model_name(self) -> str:
+        if self._embedder_instance is not None:
+            return self._embedder_instance.model_name
+        return self._embedding_model_name
+
+    def _ensure_collection_for_write(self) -> None:
+        try:
+            self._store._ensure_collection_for_write()
+        except CollectionNotFoundError:
+            _ = self._embedder  # creating the collection needs the dimension
+            self._store._ensure_collection_for_write()
 
     # ------------------------------------------------------------------
     # Indexing
@@ -111,7 +154,7 @@ class MemSearch:
 
     async def index_with_report(self, *, force: bool = False) -> IndexReport:
         """Scan paths and index all markdown files with structured status."""
-        self._store._ensure_collection_for_write()
+        self._ensure_collection_for_write()
         files = scan_paths(
             self._paths,
             ignore_files=self._ignore_files,
@@ -125,6 +168,10 @@ class MemSearch:
             try:
                 n = await self._index_file(f, force=force)
                 total += n
+            except _EmbedderLoadError as exc:
+                # A provider that cannot load (missing key or extra, dimension
+                # mismatch) fails the whole run, not one file at a time.
+                raise exc.__cause__ from None
             except Exception as exc:
                 failed_files.append(IndexFailure(path=str(f.path), error=format_error(exc)))
                 logger.exception("Failed to index %s, skipping", f.path)
@@ -158,7 +205,7 @@ class MemSearch:
 
     async def index_file(self, path: str | Path) -> int:
         """Index a single file.  Returns number of chunks."""
-        self._store._ensure_collection_for_write()
+        self._ensure_collection_for_write()
         p = Path(path).expanduser().resolve()
         _st = p.stat()
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
@@ -173,19 +220,11 @@ class MemSearch:
             max_chunk_size=self._max_chunk_size,
             overlap_lines=self._overlap_lines,
         )
-        model = self._embedder.model_name
+        model = self._model_name
 
         # Compute composite chunk IDs (matching OpenClaw format)
         chunk_ids = {compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) for c in chunks}
         old_ids = self._store.hashes_by_source(source)
-
-        # Delete stale chunks that are no longer in the file
-        stale = old_ids - chunk_ids
-        if stale:
-            self._store.delete_by_hashes(list(stale))
-
-        if not chunks:
-            return 0
 
         if not force:
             # Only embed chunks whose ID doesn't already exist
@@ -194,8 +233,21 @@ class MemSearch:
                 for c in chunks
                 if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) not in old_ids
             ]
-            if not chunks:
-                return 0
+        if chunks:
+            # Load the embedder before deleting anything, so a dimension
+            # mismatch aborts while the stored chunks are still intact.
+            try:
+                _ = self._embedder
+            except Exception as exc:
+                raise _EmbedderLoadError from exc
+
+        # Delete stale chunks that are no longer in the file
+        stale = old_ids - chunk_ids
+        if stale:
+            self._store.delete_by_hashes(list(stale))
+
+        if not chunks:
+            return 0
 
         return await self._embed_and_store(chunks)
 
