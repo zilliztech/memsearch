@@ -479,6 +479,36 @@ def resolve_config(
     return cfg
 
 
+def memsearch_kwargs_from_config(
+    cfg: MemSearchConfig,
+    *,
+    extra_ignore_files: tuple[str, ...] = (),
+    extra_exclude: tuple[str, ...] = (),
+) -> dict:
+    """Extract :class:`~memsearch.core.MemSearch` constructor kwargs.
+
+    Shared by the CLI and the MCP server so both honour the same config
+    file, the same environment variables and the same defaults.
+    """
+    merged_ignore = list(dict.fromkeys([*cfg.indexing.ignore_files, *extra_ignore_files]))
+    merged_exclude = list(dict.fromkeys([*cfg.indexing.exclude, *extra_exclude]))
+    return {
+        "embedding_provider": cfg.embedding.provider,
+        "embedding_model": cfg.embedding.model or None,
+        "embedding_batch_size": cfg.embedding.batch_size,
+        "embedding_base_url": cfg.embedding.base_url or None,
+        "embedding_api_key": cfg.embedding.api_key or None,
+        "milvus_uri": cfg.milvus.uri,
+        "milvus_token": cfg.milvus.token or None,
+        "collection": cfg.milvus.collection,
+        "max_chunk_size": cfg.chunking.max_chunk_size,
+        "overlap_lines": cfg.chunking.overlap_lines,
+        "ignore_files": merged_ignore,
+        "exclude": merged_exclude,
+        "reranker_model": cfg.reranker.model,
+    }
+
+
 def save_config(cfg_dict: dict[str, Any], path: Path | str) -> None:
     """Write a config dict to a TOML file."""
     p = Path(path).expanduser()
