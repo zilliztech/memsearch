@@ -10,7 +10,6 @@ from pathlib import Path
 
 import click
 
-from .chunker import _HEADING_RE
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
@@ -19,6 +18,7 @@ from .config import (
     config_to_dict,
     get_config_value,
     load_config_file,
+    memsearch_kwargs_from_config,
     resolve_config,
     save_config,
     set_config_value,
@@ -103,21 +103,11 @@ def _cfg_to_memsearch_kwargs(
     extra_exclude: tuple[str, ...] = (),
 ) -> dict:
     """Extract MemSearch constructor kwargs from a resolved config."""
-    return {
-        "embedding_provider": cfg.embedding.provider,
-        "embedding_model": cfg.embedding.model or None,
-        "embedding_batch_size": cfg.embedding.batch_size,
-        "embedding_base_url": cfg.embedding.base_url or None,
-        "embedding_api_key": cfg.embedding.api_key or None,
-        "milvus_uri": cfg.milvus.uri,
-        "milvus_token": cfg.milvus.token or None,
-        "collection": cfg.milvus.collection,
-        "max_chunk_size": cfg.chunking.max_chunk_size,
-        "overlap_lines": cfg.chunking.overlap_lines,
-        "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),
-        "exclude": _merge_unique(cfg.indexing.exclude, extra_exclude),
-        "reranker_model": cfg.reranker.model,
-    }
+    return memsearch_kwargs_from_config(
+        cfg,
+        extra_ignore_files=extra_ignore_files,
+        extra_exclude=extra_exclude,
+    )
 
 
 def _merge_unique(configured: list[str], extra: tuple[str, ...]) -> list[str]:
@@ -419,6 +409,79 @@ def search(
 
 
 # ======================================================================
+# MCP server (Model Context Protocol over stdio)
+#
+# Exposes the same capabilities as the CLI — search, index, expand, stats
+# — plus the embedding and rerank backends, as MCP tools.
+# ======================================================================
+
+
+@cli.command()
+@_common_options
+@click.option(
+    "--reranker-model",
+    default=None,
+    help="Cross-encoder model for reranking (empty string disables).",
+)
+@click.option(
+    "--knowledge-db",
+    default=None,
+    help="Path to a knowledge store (SQLite) to expose as the knowledge_search tool.",
+)
+@click.option(
+    "--max-content-chars",
+    default=2000,
+    type=int,
+    help="Truncate tool output content to this many characters.",
+)
+def mcp(
+    provider: str | None,
+    model: str | None,
+    batch_size: int | None,
+    base_url: str | None,
+    api_key: str | None,
+    collection: str | None,
+    default_collection: str | None,
+    milvus_uri: str | None,
+    milvus_token: str | None,
+    reranker_model: str | None,
+    knowledge_db: str | None,
+    max_content_chars: int,
+) -> None:
+    """Run an MCP server on stdio that exposes memsearch tools.
+
+    The server speaks JSON-RPC 2.0 over stdin/stdout, one JSON object per
+    line, UTF-8.  Point an MCP client at it, for example in Codex:
+
+        [mcp_servers.memsearch]
+        command = "memsearch"
+        args = ["mcp"]
+    """
+    from .mcp_server import serve
+
+    cfg = _safe_resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+            reranker_model=reranker_model,
+        ),
+        default_overrides=_build_cli_overrides(collection=default_collection),
+    )
+    serve(
+        config=cfg,
+        collection=cfg.milvus.collection,
+        knowledge_db=knowledge_db,
+        max_content_chars=max_content_chars,
+    )
+
+
+# ======================================================================
 # Expand command (progressive disclosure L2)
 #
 # Shows the full heading section around a chunk, used by the Claude Code
@@ -586,27 +649,11 @@ def _extract_section(
     Walks backward to find the section heading, then forward to the next
     heading of equal or higher level (or EOF).
     """
-    # Find section start — walk backward to the heading, starting at the
-    # chunk's own first line (clamped in case the file shrank since indexing)
-    section_start = start_line - 1  # 0-indexed
-    if heading_level > 0:
-        for i in range(min(start_line, len(all_lines)) - 1, -1, -1):
-            m = _HEADING_RE.match(all_lines[i])
-            if m and len(m.group(1)) <= heading_level:
-                section_start = i
-                break
+    # Shared with the MCP `memory_expand` tool; carries the same clamping
+    # upstream applied here when the source file shrank since indexing.
+    from .expand import extract_section
 
-    # Find section end — walk forward to the next heading of same or higher level
-    section_end = len(all_lines)
-    if heading_level > 0:
-        for i in range(start_line, len(all_lines)):
-            m = _HEADING_RE.match(all_lines[i])
-            if m and len(m.group(1)) <= heading_level:
-                section_end = i
-                break
-
-    content = "\n".join(all_lines[section_start:section_end])
-    return content, section_start + 1, section_end
+    return extract_section(all_lines, start_line, heading_level)
 
 
 @cli.command()

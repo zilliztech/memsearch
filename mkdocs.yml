@@ -43,6 +43,7 @@ nav:
     - Embedding Model Evaluation: home/embedding-evaluation.md
     - Reranking Evaluation: https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md
     - Quickstart: getting-started.md
+    - MCP Server: mcp.md
     - FAQ: faq.md
     - Troubleshooting: troubleshooting.md
   - Claude Code Plugin:
