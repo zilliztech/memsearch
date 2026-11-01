@@ -97,6 +97,44 @@ ranking; no accept/reject threshold has been calibrated for this dataset.
 See the [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for the frozen
 candidate comparison with Voyage and its limitations.
 
+### Optional remote rerank service
+
+`remote:` selects a `/v1/rerank`-compatible HTTP endpoint — one you run
+yourself (vLLM and compatible services) or a hosted rerank API that
+authenticates with a bearer token via `MEMSEARCH_REMOTE_RERANKER_API_KEY`.
+The URL comes from `MEMSEARCH_REMOTE_RERANKER_URL`, or from the constructor
+when you build the adapter directly:
+
+```python
+mem = MemSearch(paths=["./memory"], reranker_model="remote:Qwen3-Reranker-8B")
+results = await mem.search("Why was the cache policy changed?", top_k=5)
+```
+
+Like Jev, search fetches three times the requested `top_k`, reranks those
+candidates, and returns `top_k`. Through `reranker_model` the request timeout
+is the adapter default, 60 s. For candidates obtained elsewhere, or to bound
+the wait differently, use the adapter directly:
+
+```python
+from memsearch.remote_reranker import RemoteReranker
+
+ranked = RemoteReranker(
+    "Qwen3-Reranker-8B",
+    url="http://127.0.0.1:8081/v1/rerank",
+    timeout=120.0,
+).rerank(
+    "Why was the cache policy changed?",
+    [{"content": "The policy changed to prevent stale answers.", "source": "notes.md"}],
+    top_k=5,
+)
+```
+
+The service scores every candidate in one request and returns
+`{"results": [{"index", "relevance_score"}]}`. Candidates the service leaves
+out are dropped, so the caller sees exactly what the reranker ranked highest.
+Errors are surfaced to the caller; an unsuccessful request never silently
+becomes an unreranked result.
+
 ### Context Manager
 
 `MemSearch` implements the context manager protocol. Use `with` to ensure resources are released:
