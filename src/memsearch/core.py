@@ -109,8 +109,8 @@ class MemSearch:
             _create_if_missing=False,
         )
         self._reranker_model = reranker_model
-        if self._embedding_model_name is None:
-            # No known default model name (unregistered provider): build it now
+        if embedding_provider not in DEFAULT_MODELS:
+            # No registered default model (unregistered provider): build it now
             # so get_provider reports an unknown name exactly as before.
             _ = self._embedder
 
@@ -184,6 +184,7 @@ class MemSearch:
             indexed_sources = self._store.indexed_sources()
             for source in indexed_sources:
                 if source not in active_sources and _source_under_any_root(source, cleanup_roots):
+                    _ = self._embedder  # validate before deleted-source cleanup
                     self._store.delete_by_source(source)
                     logger.info("Removed stale chunks for deleted file: %s", source)
 
@@ -209,7 +210,10 @@ class MemSearch:
         p = Path(path).expanduser().resolve()
         _st = p.stat()
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
-        return await self._index_file(sf)
+        try:
+            return await self._index_file(sf)
+        except _EmbedderLoadError as exc:
+            raise exc.__cause__ from None
 
     async def _index_file(self, f: ScannedFile, *, force: bool = False) -> int:
         source = str(f.path)
@@ -233,7 +237,8 @@ class MemSearch:
                 for c in chunks
                 if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) not in old_ids
             ]
-        if chunks:
+        stale = old_ids - chunk_ids
+        if chunks or stale:
             # Load the embedder before deleting anything, so a dimension
             # mismatch aborts while the stored chunks are still intact.
             try:
@@ -242,7 +247,6 @@ class MemSearch:
                 raise _EmbedderLoadError from exc
 
         # Delete stale chunks that are no longer in the file
-        stale = old_ids - chunk_ids
         if stale:
             self._store.delete_by_hashes(list(stale))
 
@@ -458,6 +462,7 @@ class MemSearch:
         def _on_change(event_type: str, file_path: Path) -> None:
             try:
                 if event_type == "deleted":
+                    _ = self._embedder  # validate before watcher deletion
                     self._store.delete_by_source(str(file_path))
                     summary = f"Removed chunks for {file_path}"
                 else:
