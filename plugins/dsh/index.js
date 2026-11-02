@@ -1335,7 +1335,7 @@ export function apply(ctx, config = {}) {
       const projectDir = bootProjectDir
       const memoryDir = memoryDirFor(projectDir)
       if (!existsSync(memoryDir)) return
-      runMaintenance(ctx, projectDir, memoryDir)
+      runMaintenance(ctx, projectDir, memsearchDirFor(projectDir))
     } catch (error) {
       ctx.logger.warn(`[memsearch] maintenance timer failed: ${error.message}`)
     }
@@ -1347,7 +1347,7 @@ export function apply(ctx, config = {}) {
       const projectDir = projectDirFor(session)
       const memoryDir = memoryDirFor(projectDir)
       if (!existsSync(memoryDir)) return
-      runMaintenance(ctx, projectDir, memoryDir)
+      runMaintenance(ctx, projectDir, memsearchDirFor(projectDir))
     } catch (error) {
       ctx.logger.warn(`[memsearch] maintenance listener failed: ${error.message}`)
     }
