@@ -1,5 +1,7 @@
 # Why memsearch?
 
+> **Want the practical path first?** Start with [For Agent Users](for-users.md), [For Agent Developers](for-developers.md), or the full [Getting Started](../getting-started.md) guide.
+
 ## One Memory, Every Agent
 
 memsearch provides persistent memory plugins for **5 major AI coding agent platforms**: [Claude Code](../platforms/claude-code/index.md), [Codex](../platforms/codex/index.md), [DeepSeek Harness](../platforms/dsh/index.md), [OpenClaw](../platforms/openclaw/index.md), and [OpenCode](../platforms/opencode/index.md).
