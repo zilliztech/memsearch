@@ -24,9 +24,7 @@ echo "- Codex summarized the turn."
 """
 
 
-def _run_worker(
-    tmp_path: Path, accepted_model: str, *, timeout_status: int | None = None
-) -> tuple[str, list[str]]:
+def _run_worker(tmp_path: Path, accepted_model: str, *, timeout_status: int | None = None) -> tuple[str, list[str]]:
     memory_dir = tmp_path / ".memsearch" / "memory"
     memory_dir.mkdir(parents=True)
     memory_file = memory_dir / "2026-11-04.md"
