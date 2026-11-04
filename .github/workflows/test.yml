@@ -101,6 +101,21 @@ jobs:
       - name: Test package
         run: npm test
 
+      - name: Setup uv for maintenance integration
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Python for maintenance integration
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install core for maintenance integration
+        working-directory: .
+        run: uv sync --locked
+
+      - name: Test maintenance integration
+        run: uv run --project ../.. npm run test:integration
+
       - name: Check package syntax
         run: |
           node --check index.js
