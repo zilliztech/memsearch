@@ -24,7 +24,9 @@ echo "- Codex summarized the turn."
 """
 
 
-def _run_worker(tmp_path: Path, accepted_model: str) -> tuple[str, list[str]]:
+def _run_worker(
+    tmp_path: Path, accepted_model: str, *, timeout_status: int | None = None
+) -> tuple[str, list[str]]:
     memory_dir = tmp_path / ".memsearch" / "memory"
     memory_dir.mkdir(parents=True)
     memory_file = memory_dir / "2026-11-04.md"
@@ -51,7 +53,14 @@ def _run_worker(tmp_path: Path, accepted_model: str) -> tuple[str, list[str]]:
         path.write_text(body, encoding="utf-8")
         path.chmod(0o755)
 
+    if timeout_status is not None:
+        # Stands in for coreutils `timeout`: the hook only looks at its exit status.
+        path = fake_bin / "timeout"
+        path.write_text(f"#!/usr/bin/env bash\nexit {timeout_status}\n", encoding="utf-8")
+        path.chmod(0o755)
+
     models_log = tmp_path / "models.log"
+    models_log.touch()  # a stubbed `timeout` never reaches the fake codex
     env = {
         **os.environ,
         "HOME": str(tmp_path / "home"),
@@ -80,4 +89,14 @@ def test_codex_stop_marks_failed_summary_instead_of_passing_off_fallback(tmp_pat
     # The excerpt is still kept below the marker so nothing is lost.
     assert "- User asked: fix the bug" in content
     assert "- Codex: fixed it" in content
+    assert content.index("Memory summary unavailable") < content.index("- User asked:")
+
+
+def test_codex_stop_marks_timed_out_summary(tmp_path: Path) -> None:
+    # status 124 is what `timeout` returns when it kills the summarizer
+    content, _ = _run_worker(tmp_path, accepted_model="gpt-6-luna", timeout_status=124)
+
+    assert "- Memory summary unavailable: summarizer timed out" in content
+    assert "summarizer exited with status" not in content
+    assert "- User asked: fix the bug" in content
     assert content.index("Memory summary unavailable") < content.index("- User asked:")

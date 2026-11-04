@@ -173,6 +173,9 @@ ${CONTENT}"
 
   # A failed summarizer call must not look like a summary: keep the fallback
   # excerpt, but mark it so the failure is visible in the memory file.
+  # This intentionally differs from plugins/claude-code/hooks/stop.sh, which omits the
+  # transcript on failure; keep the "Memory summary unavailable:" prefix identical so
+  # both journals stay greppable together.
   local SUMMARY_FAILURE=""
   if [ "$SUMMARY_STATUS" -eq 124 ]; then
     SUMMARY_FAILURE="- Memory summary unavailable: summarizer timed out; showing the last message instead."
