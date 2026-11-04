@@ -122,6 +122,7 @@ run_worker() {
   fi
 
   local SUMMARY=""
+  local SUMMARY_STATUS=0
   local SUMMARIZE_PROVIDER=""
   if memsearch_available; then
     SUMMARIZE_PROVIDER=$(_memsearch config get plugins.codex.summarize.provider 2>/dev/null || true)
@@ -131,7 +132,7 @@ run_worker() {
     SUMMARY=$(printf '%s' "$CONTENT" | MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _memsearch summarize \
       --plugin codex \
       --agent-name "$AGENT_NAME" \
-      2>/dev/null || true)
+      2>/dev/null) || SUMMARY_STATUS=$?
   elif command -v codex &>/dev/null; then
     local LLM_PROMPT
     LLM_PROMPT="${SYSTEM_PROMPT}
@@ -139,7 +140,8 @@ run_worker() {
 Here is the transcript:
 
 ${CONTENT}"
-    local SUMMARIZE_MODEL="gpt-5.1-codex-mini"
+    # gpt-5.1-codex-mini is rejected for ChatGPT-account Codex (#785).
+    local SUMMARIZE_MODEL="gpt-6-luna"
     if memsearch_available; then
       local CONFIG_MODEL
       CONFIG_MODEL=$(_memsearch config get plugins.codex.summarize.model 2>/dev/null || true)
@@ -156,7 +158,7 @@ ${CONTENT}"
         -c features.hooks=false \
         -c model_reasoning_effort='"low"' \
         -m "$SUMMARIZE_MODEL" \
-        "$LLM_PROMPT" 2>/dev/null || true)
+        "$LLM_PROMPT" 2>/dev/null) || SUMMARY_STATUS=$?
     else
       SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _run_in_project codex exec \
         --ephemeral \
@@ -165,8 +167,20 @@ ${CONTENT}"
         -c features.hooks=false \
         -c model_reasoning_effort='"low"' \
         -m "$SUMMARIZE_MODEL" \
-        "$LLM_PROMPT" 2>/dev/null || true)
+        "$LLM_PROMPT" 2>/dev/null) || SUMMARY_STATUS=$?
     fi
+  fi
+
+  # A failed summarizer call must not look like a summary: keep the fallback
+  # excerpt, but mark it so the failure is visible in the memory file.
+  local SUMMARY_FAILURE=""
+  if [ "$SUMMARY_STATUS" -eq 124 ]; then
+    SUMMARY_FAILURE="- Memory summary unavailable: summarizer timed out; showing the last message instead."
+  elif [ "$SUMMARY_STATUS" -ne 0 ]; then
+    SUMMARY_FAILURE="- Memory summary unavailable: summarizer exited with status ${SUMMARY_STATUS}; showing the last message instead."
+  fi
+  if [ -n "$SUMMARY_FAILURE" ]; then
+    SUMMARY=""
   fi
 
   if [ -z "$SUMMARY" ]; then
@@ -187,6 +201,10 @@ ${CONTENT}"
       SUMMARY="- Codex: ${TRUNCATED_MSG}"
     else
       SUMMARY="$CONTENT"
+    fi
+    if [ -n "$SUMMARY_FAILURE" ]; then
+      SUMMARY="${SUMMARY_FAILURE}
+${SUMMARY}"
     fi
   fi
 
