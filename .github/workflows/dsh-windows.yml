@@ -34,6 +34,6 @@ jobs:
         working-directory: plugins/dsh
         run: npm install --omit=peer --ignore-scripts --package-lock=false
       - name: Check native command launching
-        run: node --test plugins/dsh/tests/runtime.test.js
+        run: node --test plugins/dsh/tests/runtime.test.js plugins/dsh/tests/skill-paths.test.js
       - name: Check Python encoding and process handoff
         run: uv run --no-project --with pytest python -m pytest plugins/dsh/tests/test_runtime.py -q
