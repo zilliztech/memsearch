@@ -110,11 +110,6 @@ def _cfg_to_memsearch_kwargs(
     )
 
 
-def _merge_unique(configured: list[str], extra: tuple[str, ...]) -> list[str]:
-    """Append CLI list values to config values while preserving order."""
-    return list(dict.fromkeys([*configured, *extra]))
-
-
 def _normalize_compact_source(source: str | None) -> str | None:
     """Normalize compact --source paths to the absolute form used at index time.
 

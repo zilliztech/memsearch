@@ -202,6 +202,22 @@ def test_stdio_loop_survives_a_broken_line() -> None:
     assert lines[0]["id"] == 7
 
 
+def test_stdio_loop_survives_a_non_object_json_line() -> None:
+    lines_in = ["[1, 2, 3]", "null", json.dumps({"jsonrpc": "2.0", "id": 7, "method": "ping"})]
+    stdin = io.StringIO("\n".join(lines_in) + "\n")
+    stdout = io.StringIO()
+    serve(config=MemSearchConfig(), stdin=stdin, stdout=stdout)
+    lines = [json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0]["id"] == 7
+
+
+def test_initialize_returns_the_server_supported_protocol_version() -> None:
+    server = MCPServer(config=MemSearchConfig(), collection="test_collection")
+    reply = _request(server, "initialize", {"protocolVersion": "9999-99-99"})
+    assert reply["result"]["protocolVersion"] == "2024-11-05"
+
+
 def test_chinese_payload_survives_the_stdio_loop() -> None:
     query = "校机的向量服务端口"
     server = MCPServer(config=MemSearchConfig(), collection="test_collection")

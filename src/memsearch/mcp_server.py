@@ -24,6 +24,7 @@ interpreter that has memsearch importable.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
@@ -100,10 +101,24 @@ class MCPServer:
         self._knowledge_db = knowledge_db or os.environ.get(KNOWLEDGE_DB_ENV) or _auto_knowledge_db()
         self._ms = None
         self._store = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # ------------------------------------------------------------------
     # lazily created resources
     # ------------------------------------------------------------------
+
+    def _run_coro(self, coro):
+        """Run *coro* on the server's persistent event loop.
+
+        A fresh ``asyncio.run()`` per tool call would close its loop when it
+        returns, leaving the cached MemSearch instance's async HTTP clients
+        bound to a dead loop — the second search/embed under the default
+        openai provider then raises "RuntimeError: Event loop is closed".
+        One loop lives as long as the server instead.
+        """
+        if self._loop is None:
+            self._loop = asyncio.new_event_loop()
+        return self._loop.run_until_complete(coro)
 
     def _memsearch(self):
         """Return (and cache) a MemSearch instance for the configured collection."""
@@ -136,6 +151,10 @@ class MCPServer:
                     close()
         self._ms = None
         self._store = None
+        if self._loop is not None:
+            with contextlib.suppress(Exception):  # pragma: no cover - best effort
+                self._loop.close()
+            self._loop = None
 
     # ------------------------------------------------------------------
     # tool implementations
@@ -148,9 +167,7 @@ class MCPServer:
         limit = int(args.get("limit") or 5)
         source_prefix = args.get("source_prefix") or None
 
-        import asyncio
-
-        results = asyncio.run(self._memsearch().search(query, top_k=limit, source_prefix=source_prefix))
+        results = self._run_coro(self._memsearch().search(query, top_k=limit, source_prefix=source_prefix))
         if not results:
             return "(no match)"
 
@@ -180,8 +197,6 @@ class MCPServer:
             raise ValueError(f"path not found: {', '.join(missing)}")
         force = bool(args.get("force"))
 
-        import asyncio
-
         from .core import MemSearch
 
         kwargs = memsearch_kwargs_from_config(self._cfg)
@@ -189,7 +204,7 @@ class MCPServer:
         kwargs["paths"] = [str(Path(p).expanduser().resolve()) for p in paths]
         ms = MemSearch(**kwargs)
         try:
-            count = asyncio.run(ms.index(force=force))
+            count = self._run_coro(ms.index(force=force))
         finally:
             ms.close()
         return f"indexed {count} chunk(s) from {', '.join(paths)}"
@@ -207,11 +222,15 @@ class MCPServer:
         return "\n".join(lines)
 
     def tool_memory_expand(self, args: dict[str, Any]) -> str:
+        from .store import _escape_filter_value
+
         chunk_hash = str(args.get("chunk_id") or args.get("chunk_hash") or "").strip()
         if not chunk_hash:
             raise ValueError("chunk_id is required")
         lines_ctx = args.get("lines")
-        chunks = self._get_store().query(filter_expr=f'chunk_hash == "{chunk_hash}"')
+        chunks = self._get_store().query(
+            filter_expr=f'chunk_hash == "{_escape_filter_value(chunk_hash)}"'
+        )
         if not chunks:
             return f"chunk not found: {chunk_hash}"
         chunk = chunks[0]
@@ -248,10 +267,8 @@ class MCPServer:
         if not texts:
             raise ValueError("texts is required (string or list of strings)")
 
-        import asyncio
-
         provider = self._memsearch()._embedder
-        vectors = asyncio.run(provider.embed(texts))
+        vectors = self._run_coro(provider.embed(texts))
         include = bool(args.get("include_vector"))
         payload = {
             "model": provider.model_name,
@@ -286,7 +303,10 @@ class MCPServer:
         reranker = RemoteReranker(model=model.split(":", 1)[1])
         candidates = [{"content": doc} for doc in documents]
         ranked = reranker.rerank(query, candidates)
-        return "\n".join(f"{i}. score={r['score']:.6f}  {documents[i]}" for i, r in enumerate(ranked[: len(documents)]))
+        return "\n".join(
+            f"{i}. score={r['score']:.6f}  {r['content']}"
+            for i, r in enumerate(ranked[: len(documents)])
+        )
 
     def tool_knowledge_search(self, args: dict[str, Any]) -> str:
         query = str(args.get("query") or "").strip()
@@ -327,9 +347,7 @@ class MCPServer:
     # ------------------------------------------------------------------
 
     def _embed_texts(self, texts: list[str]) -> list[list[float]]:
-        import asyncio
-
-        return asyncio.run(self._memsearch()._embedder.embed(texts))
+        return self._run_coro(self._memsearch()._embedder.embed(texts))
 
     def _rerank_documents(self, query: str, documents: list[str]) -> list[float] | None:
         model = self._cfg.reranker.model or ""
@@ -491,7 +509,7 @@ class MCPServer:
                 "jsonrpc": "2.0",
                 "id": mid,
                 "result": {
-                    "protocolVersion": params.get("protocolVersion") or PROTOCOL_VERSION,
+                    "protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     "instructions": (
@@ -572,6 +590,10 @@ def serve(
             try:
                 message = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if not isinstance(message, dict):
+                # A valid JSON line that is not an object (null, list, …) has
+                # no id to reply to; skip it instead of crashing on .get().
                 continue
             try:
                 reply = server.handle(message)
