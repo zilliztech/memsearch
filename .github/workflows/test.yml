@@ -95,6 +95,9 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Install runtime dependencies
+        run: npm install --omit=peer --ignore-scripts --package-lock=false
+
       - name: Test package
         run: npm test
 

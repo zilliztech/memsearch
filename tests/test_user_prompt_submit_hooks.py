@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 CAPABILITY_MARKER = "[memsearch] Recall available if needed"
-RETRIEVED_MARKER = "[memsearch] Retrieved memory context attached."
 # Claude Code shows systemMessage to the user only; the model reads
 # hookSpecificOutput.additionalContext, so the Claude hook carries the hint in both.
 # Codex has no such split and keeps the plain systemMessage.
@@ -127,20 +126,9 @@ def test_capability_marker_is_synchronized_across_direct_consumers() -> None:
         Path("plugins/codex/hooks/user-prompt-submit.sh"),
         Path("plugins/codex/skills/memory-recall/SKILL.md"),
         Path("plugins/codex/README.md"),
+        Path("plugins/dsh/index.js"),
         Path("docs/platforms/codex/how-it-works.md"),
     ]
 
     for consumer in consumers:
         assert CAPABILITY_MARKER in consumer.read_text(encoding="utf-8"), consumer
-
-
-def test_retrieved_marker_is_synchronized_across_dsh_direct_consumers() -> None:
-    consumers = [
-        Path("plugins/dsh/index.js"),
-        Path("plugins/dsh/README.md"),
-        Path("docs/platforms/dsh/how-it-works.md"),
-        Path("plugins/dsh/tests/test_parse_transcript.py"),
-    ]
-
-    for consumer in consumers:
-        assert RETRIEVED_MARKER in consumer.read_text(encoding="utf-8"), consumer

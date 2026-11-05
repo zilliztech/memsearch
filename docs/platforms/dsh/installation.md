@@ -35,6 +35,8 @@ Use a local checkout when developing the plugin:
 
 ```bash
 git clone https://github.com/zilliztech/memsearch.git
+cd memsearch/plugins/dsh
+npm install --omit=peer
 dsh plugin --profile web add /absolute/path/to/memsearch/plugins/dsh
 ```
 
@@ -64,7 +66,7 @@ The plugin works without configuration. Its DSH profile settings control lifecyc
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `captureEnabled` | `true` | Capture completed turns into the daily memory journal |
-| `injectEnabled` | `true` | Search and inject returned memory candidates before the first model step |
+| `injectEnabled` | `true` | Remind the agent to use memory-recall before the first model step when memory exists |
 | `summarizeEnabled` | `true` | Summarize turns before writing them |
 | `summarizeMode` | `auto` | Use a configured API provider when present; otherwise use a one-shot DSH headless agent |
 
@@ -121,6 +123,7 @@ Removing the plugin does not delete `.memsearch` markdown files or the Milvus in
 
 - **No memory file appears:** confirm the plugin mounted in the DSH session log and that `captureEnabled` is still `true`.
 - **The recall skill is missing:** restart the profile after installation and confirm `@zilliz/memsearch-dsh` is present in that profile.
-- **Summarization reports an unavailable note:** verify `dsh` is on `PATH`, or check the configured `[plugins.dsh.summarize]` provider.
+- **A required command is missing:** make MemSearch and Python 3 available on the profile's `PATH`. `MEMSEARCH_CMD` and `MEMSEARCH_PYTHON` can select explicit executable paths. For native summaries, Desktop users can enable **Manage dsh Command… → Install**, or set `DSH_CLI` to the CLI entry. The bundled Windows `dsh.cmd` is supported. Quote paths containing spaces, then restart DSH so it inherits the updated environment.
+- **Summarization reports an unavailable note:** inspect the reported dependency or execution error. Once the command starts, check the headless profile's model configuration or the configured `[plugins.dsh.summarize]` provider.
 - **The web dock is absent:** the dock requires a web profile; capture, injection, and recall still work in TUI and headless profiles.
 - **First search cannot download the model:** pre-cache the ONNX model from an environment with access to Hugging Face, or configure another [embedding provider](../../home/configuration.md).

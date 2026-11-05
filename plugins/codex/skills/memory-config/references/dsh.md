@@ -67,7 +67,7 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
 - id: memsearch
   config:
     captureEnabled: true     # capture completed turns
-    injectEnabled: true      # inject returned memory candidates
+    injectEnabled: true      # remind the agent to use memory-recall
     summarizeEnabled: true   # summarize turns before writing
     summarizeMode: auto      # auto | dsh-headless | custom-llm
 ```
@@ -99,3 +99,13 @@ Restart the DSH profile after installing or updating the plugin so the
 `memory-recall` skill re-registers and the plugin rows reload. TOML changes
 apply on the next capture/recall/index/maintenance invocation; summarizer
 backend changes (`summarizeMode`) need the plugin config to reload.
+
+## Command availability
+
+For a missing-command warning, check the profile's `PATH` and explicit
+`DSH_CLI`, `MEMSEARCH_CMD`, or `MEMSEARCH_PYTHON` settings. Desktop can register
+its bundled CLI through **Manage dsh Command… → Install**; Windows uses
+`dsh.cmd`. Preserve quoted paths or JSON argument arrays and restart the profile
+after environment changes. Do not guess private Desktop/pnpm paths or silently
+change the selected summarization backend. If the command starts but fails,
+check its reported error and the selected profile/provider configuration.

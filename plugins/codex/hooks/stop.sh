@@ -349,7 +349,7 @@ if [ ${#CONTENT} -gt "$MAX_CONTENT_CHARS" ]; then
   CONTENT="$(printf '%s' "$CONTENT" | _truncate_chars "$MAX_CONTENT_CHARS")...(truncated)"
 fi
 
-WORK_FILE="$(mktemp "${TMPDIR:-/tmp}/memsearch-stop.XXXXXX.json")"
+WORK_FILE="$(mktemp "${TMPDIR:-/tmp}/memsearch-stop.XXXXXX")"
 python3 - "$WORK_FILE" "$NOW" "$MEMORY_FILE" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CONTENT" "$USER_QUESTION" "$LAST_MSG" <<'PY'
 from pathlib import Path
 import json

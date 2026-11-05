@@ -1,8 +1,8 @@
 <!--
   memsearch-dsh memory-recall skill body.
-  Registered at plugin load by plugins/dsh/index.js via ctx.skills.register()
+  Registered by plugins/dsh/index.js via ctx.skills.registerProvider()
   with metadata (name: memory-recall, description, whenToUse) supplied in code.
-  {{PLACEHOLDER}} tokens are substituted at registration time.
+  {{PLACEHOLDER}} tokens are substituted for the calling workspace when loaded.
 -->
 
 # Memory Recall
@@ -17,15 +17,15 @@ Use this skill when the user's question could benefit from historical context: t
 
 ### 1. Search for relevant chunks
 
-Run a semantic search over the project's memsearch collection. The collection is derived from the project directory (see `derive-collection.sh`); the plugin normally injects the resolved value as `{{COLLECTION}}`:
+Run a semantic search over the project's memsearch collection. The plugin derives the collection from the current working directory when this skill is loaded:
 
 ```bash
-embedding_args=()
-if [[ ! -e "$HOME/.memsearch/config.toml" && ! -e .memsearch.toml ]]; then
-  embedding_args=(--provider onnx)
-fi
-{{MEMSEARCH_CMD}} search "{{QUERY}}" "${embedding_args[@]}" --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
+{{MEMSEARCH_CMD}} search "{{QUERY}}" --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
 ```
+
+Before each search, check whether `~/.memsearch/config.toml` or the project's
+`.memsearch.toml` exists. If neither exists, add `--provider onnx` to the command.
+Otherwise, leave the provider unset so the existing configuration applies.
 
 Replace `{{QUERY}}` with a concise natural-language summary of what the user needs. The `--json-output` results contain `content`, `source`, `heading`, `score`, and `chunk_hash`.
 
@@ -48,7 +48,7 @@ When an expanded result contains an anchor comment like
 you can render the original conversation around that turn:
 
 ```bash
-python3 {{PLUGIN_DIR}}/scripts/parse-transcript.py --db "<path>" --turn <N> --context 3
+{{PYTHON_CMD}} "{{PLUGIN_DIR}}/scripts/parse-transcript.py" --db "<path>" --turn <N> --context 3
 ```
 
 Pass `--context 0` for just the target turn, or omit `--turn` to see the most recent turns.

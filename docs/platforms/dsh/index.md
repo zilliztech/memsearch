@@ -1,6 +1,6 @@
 # DeepSeek Harness Plugin
 
-**Persistent semantic memory for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** The native DSH plugin captures completed turns, recalls relevant work before the agent starts reasoning, and keeps the same markdown memory available to every other MemSearch platform plugin.
+**Persistent semantic memory for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).** The native DSH plugin captures completed turns, helps the agent recall relevant work on demand, and keeps the same markdown memory available to every other MemSearch platform plugin.
 
 ---
 
@@ -9,7 +9,7 @@
 DSH can host long-running web, TUI, and headless agent sessions across multiple projects. MemSearch adds a durable memory layer that follows each project instead of disappearing with the current conversation:
 
 - **Automatic capture** -- completed turns are summarized and appended to `.memsearch/memory/YYYY-MM-DD.md`
-- **Selective recall** -- relevant memories are injected before the first model step; unrelated turns add no context
+- **On-demand recall** -- a brief reminder lets the agent choose when to search past work
 - **Native skill integration** -- DSH registers the `memory-recall` skill for search, expansion, and transcript drill-down
 - **Cross-agent continuity** -- memories are shared with Claude Code, Codex, OpenClaw, and OpenCode when they use the same project
 - **Web memory dock** -- the web profile provides a compact skill-candidate review panel and a read-only `.memsearch` browser
@@ -47,7 +47,7 @@ Use memory-recall to find what we decided about the deployment architecture.
 | Event | MemSearch behavior |
 |-------|--------------------|
 | **A turn completes** | Summarizes the user, assistant, and tool activity into the project's daily markdown journal |
-| **A new turn begins** | Searches project memory and, when chunks are returned, injects candidate snippets before the first model step |
+| **A new turn begins** | Adds a brief memory-recall reminder before the first model step when memory exists |
 | **The agent needs exact history** | Uses `memory-recall` to search, expand a section, and inspect the original DSH transcript |
 | **A DSH session closes** | Runs enabled maintenance tasks when their configured interval is due |
 | **You open the web dock** | Lists skill candidates and previews supported `.memsearch` files without modifying them |
@@ -69,6 +69,6 @@ No export step or proprietary memory format is required.
 ## Next Steps
 
 - [Installation](installation.md) -- profiles, verification, configuration, updating, and uninstalling
-- [How It Works](how-it-works.md) -- capture, injection, recall, summarization, maintenance, and the web dock
+- [How It Works](how-it-works.md) -- capture, recall hints, summarization, maintenance, and the web dock
 - [Platform Comparison](../index.md) -- compare DSH with the other supported plugins
 - [Configuration](../../home/configuration.md) -- embedding providers, Milvus, and shared MemSearch settings

@@ -7,8 +7,8 @@ backed by a Milvus hybrid search index.
 
 ```
 capture  ── session/event turn/end ──> summarize (dsh-headless agent default, or custom-llm) ──> memory/YYYY-MM-DD.md
-inject   ── agent/pre-step step 1  ──> memsearch search ──> returned chunks injected (zero cost otherwise)
-recall   ── ctx.skills.register(memory-recall) ──> search → expand → transcript
+hint     ── agent/pre-step step 1  ──> remind the agent to use memory-recall when needed
+recall   ── native memory-recall skill ──> search → expand → transcript
 review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list candidates / queue review / install
 ```
 
@@ -22,6 +22,7 @@ review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list
 
 - A DSH profile (web / headless / tui) you want to attach memory to.
 - Node >= 22.19 (DSH's requirement).
+- Python 3 on the profile's `PATH` (`python3`, `python`, or the Windows `py -3` launcher).
 
 ## Install
 
@@ -34,6 +35,8 @@ dsh plugin --profile web add @zilliz/memsearch-dsh
 ### From source (development)
 
 ```bash
+cd /path/to/memsearch/plugins/dsh
+npm install --omit=peer
 dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 ```
 
@@ -75,7 +78,7 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `captureEnabled` | bool | `true` | Capture completed turns into memory. |
-| `injectEnabled` | bool | `true` | Inject returned memory candidates before each turn's first step. |
+| `injectEnabled` | bool | `true` | Remind the agent to use memory-recall before each turn's first step when memory exists. |
 | `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
 | `summarizeMode` | string | `auto` | Summarizer backend. `auto` (default) mirrors the other platform plugins: if `[plugins.dsh.summarize] provider` is set in memsearch config, it uses `custom-llm`; otherwise `dsh-headless` (zero-config DSH agent). Explicit `dsh-headless` / `custom-llm` pin the backend. |
 
@@ -147,7 +150,10 @@ a direct LLM call; configure nothing and you get a headless agent.
   the Web UI model picker) instead. The boot is asynchronous and fire-and-forget,
   so the few seconds of headless startup never block the conversation. Requires
   `dsh` on PATH or `DSH_CLI` set to the CLI
-  entry. The sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`; the plugin
+  entry. Desktop users can enable **Manage dsh Command… → Install** in the
+  application menu; the Windows `dsh.cmd` launcher uses Desktop's bundled
+  runtime. Restart DSH after changing its command environment.
+  The sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`; the plugin
   checks that flag and stays inert (no capture / inject / skill) inside the
   summarizer, so the summarizer's own session is never re-captured in a loop.
 - **`custom-llm`** — `scripts/summarize.py` imports memsearch's
@@ -184,14 +190,13 @@ through the DSH logger.
   hosts, not just the process's boot directory. Turns are serialized (LLM
   summarize calls never overlap) and `captureExists` dedup keeps each turn
   idempotent if its event replays.
-- **Inject** — on `agent/pre-step` at step 1, runs a bounded memsearch search
-  over the user's question. Only when the search returns chunks does it inject
-  them plus a `[memsearch] Retrieved memory context attached.` marker;
-  otherwise the decision is returned unchanged (zero context cost). The model
-  still evaluates whether each candidate chunk is relevant.
+- **Recall hint** — on `agent/pre-step` at step 1, adds a brief reminder to
+  use `memory-recall` when the project has memory files. The agent decides
+  whether past context is useful and invokes the skill when needed.
 - **Recall** — registers a `memory-recall` skill (invocable through DSH's
   native `skill` tool) that performs search → expand → transcript drill-down
-  and returns a curated summary.
+  and returns a curated summary. Its search collection is derived from the
+  current working directory when the skill is loaded.
 - **Maintenance** — runs the shared maintenance runner (PROJECT.md / USER.md
   upkeep and memory-to-skill distillation), triggered on `session/disposed`
   plus a 6-hourly fallback timer. Each task is a due-state machine: it runs at
@@ -254,3 +259,23 @@ files and the Milvus index are left untouched.
   plugins; see the OpenCode journal writer in
   [`scripts/capture.py`](../opencode/scripts/capture.py) for the shared
   heading and transcript-anchor format.
+
+### Command setup
+
+The plugin uses explicit command settings first.
+`DSH_CLI` selects the headless DSH entry, `MEMSEARCH_CMD` selects MemSearch,
+and `MEMSEARCH_PYTHON` selects the Python interpreter for helper scripts.
+Use an executable path, a quoted command with arguments, or a JSON argument
+array; a path containing spaces must remain one argument. An invalid explicit
+setting is reported rather than replaced with another installation.
+
+Without an explicit setting, DSH is resolved from `PATH`, then
+`~/.local/share/pnpm/dsh`. MemSearch uses `memsearch` on `PATH`, then
+`~/.local/bin/uvx`, then `uvx` on `PATH`.
+
+A missing DSH or Python command produces a dependency warning. Enable Desktop's
+CLI entry or configure the required command, then restart the profile. A command
+that starts but fails reports its execution error; check that command's profile,
+provider, and model configuration. The plugin does not change these settings or
+switch summary backends automatically. The Markdown journal retains the existing
+unavailable note and transcript anchor when summarization fails.

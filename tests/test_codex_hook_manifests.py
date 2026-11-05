@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -34,7 +35,9 @@ def test_marketplace_hooks_have_labels_and_existing_scripts() -> None:
             for group in groups:
                 for hook in group["hooks"]:
                     assert hook["statusMessage"].strip().startswith("MemSearch:")
-                    script = hook["command"].removeprefix("bash ${CLAUDE_PLUGIN_ROOT}/")
+                    argv = shlex.split(hook["command"])
+                    assert len(argv) == 2 and argv[0] == "bash"
+                    script = argv[1].removeprefix("${CLAUDE_PLUGIN_ROOT}/")
                     assert (PACKAGE / script).is_file()
 
 

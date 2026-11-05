@@ -99,6 +99,13 @@ def extract_task_json_output(output: str) -> str:
     return output
 
 
+def _reexec(argv: list[str], env: dict[str, str]) -> None:
+    """Windows exec launches a child; wait and propagate its actual exit status."""
+    if os.name == "nt":
+        raise SystemExit(subprocess.run(argv, env=env, check=False).returncode)
+    os.execvpe(argv[0], argv, env)
+
+
 def ensure_memsearch_importable(entrypoint: Path | None = None) -> None:
     entrypoint = entrypoint or Path(__file__).resolve()
     user_paths = [
@@ -137,8 +144,7 @@ def ensure_memsearch_importable(entrypoint: Path | None = None) -> None:
             if first_line.startswith("#!"):
                 python_bin = first_line[2:].strip().split()[0]
                 if python_bin:
-                    os.execvpe(
-                        python_bin,
+                    _reexec(
                         [python_bin, str(entrypoint), *sys.argv[1:]],
                         {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"},
                     )
@@ -148,8 +154,7 @@ def ensure_memsearch_importable(entrypoint: Path | None = None) -> None:
         return
 
     env = {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"}
-    os.execvpe(
-        uv,
+    _reexec(
         [
             uv,
             "run",

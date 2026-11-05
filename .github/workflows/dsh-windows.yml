@@ -1,0 +1,39 @@
+name: DSH Windows runtime
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/dsh/**'
+      - 'plugins/_shared/scripts/maintenance-runner.py'
+      - '.github/workflows/dsh-windows.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/dsh/**'
+      - 'plugins/_shared/scripts/maintenance-runner.py'
+      - '.github/workflows/dsh-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - name: Install plugin runtime dependencies
+        working-directory: plugins/dsh
+        run: npm install --omit=peer --ignore-scripts --package-lock=false
+      - name: Check native command launching
+        run: node --test plugins/dsh/tests/runtime.test.js
+      - name: Check Python encoding and process handoff
+        run: uv run --no-project --with pytest python -m pytest plugins/dsh/tests/test_runtime.py -q
