@@ -63,6 +63,19 @@ class RemoteReranker:
         # set for hosted rerank APIs that authenticate the endpoint with a
         # bearer token.
         self.api_key = api_key or os.environ.get(API_KEY_ENV_VAR) or ""
+        # A bearer token sent over plain http to a non-loopback host travels
+        # in cleartext.  Loopback stays allowed (SSH tunnels and local
+        # gateways terminate TLS elsewhere or need no transport security).
+        parsed = urlsplit(self.url)
+        if self.api_key and parsed.scheme != "https" and parsed.hostname not in (
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        ):
+            raise ValueError(
+                "refusing to send the reranker API key over plain http to a "
+                "non-loopback host; use an https URL or drop the key"
+            )
 
     def build_request(self, query: str, documents: list[str]) -> dict[str, Any]:
         """Build the rerank payload, preserving every candidate's text."""
@@ -115,6 +128,10 @@ class RemoteReranker:
             raise RuntimeError(f"Remote reranking failed (HTTP {exc.code})") from None
         except (urllib.error.URLError, http.client.HTTPException, TimeoutError):
             raise RuntimeError("Remote reranking request failed or timed out") from None
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            # A 200 with a non-JSON body is still a service failure; normalize
+            # it so callers catching RuntimeError see every failure path.
+            raise RuntimeError(f"Remote reranker returned a malformed response: {exc}") from None
         if not isinstance(result, dict):
             raise ValueError("Remote reranker returned an invalid response")
         return result
@@ -122,7 +139,11 @@ class RemoteReranker:
     def rerank(self, query: str, results: list[dict[str, Any]], *, top_k: int = 0) -> list[dict[str, Any]]:
         """Return copies of candidates sorted by score, retaining tie order.
 
-        ``top_k`` of 0 keeps every candidate the service ranked.
+        ``top_k`` of 0 keeps every candidate the service ranked.  An empty
+        ``results`` payload from the service raises like any other failure;
+        a *partial* response is kept — hosted rerank APIs legitimately cap
+        ``top_n`` below the request size, and the omissions are documented
+        (candidates the service leaves out are dropped).
         """
         if top_k < 0:
             raise ValueError("top_k must be non-negative")
@@ -130,6 +151,8 @@ class RemoteReranker:
             return []
         response = self.evaluate(query, [r["content"] for r in results])
         scored = self.scores(response, len(results))
+        if not scored:
+            raise RuntimeError("remote reranker returned no results")
         ranked = [
             {**results[index], "score": score}
             for index, score in sorted(scored.items(), key=lambda pair: (-pair[1], pair[0]))
