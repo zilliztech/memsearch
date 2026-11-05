@@ -16,6 +16,13 @@ from memsearch.remote_reranker import DEFAULT_URL, RemoteReranker
 from memsearch.reranker import rerank
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_reranker_environment(monkeypatch):
+    """Keep operator env (tunnel URLs, hosted keys) out of the contract tests."""
+    monkeypatch.delenv("MEMSEARCH_REMOTE_RERANKER_URL", raising=False)
+    monkeypatch.delenv("MEMSEARCH_REMOTE_RERANKER_API_KEY", raising=False)
+
+
 def response(scores):
     return {
         "model": "Qwen3-Reranker-8B",
@@ -87,6 +94,45 @@ def test_empty_candidates_need_no_request(monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", fail)
     assert RemoteReranker().rerank("query", []) == []
+
+
+def test_malformed_body_raises_runtime_error(monkeypatch):
+    # A 200 with a non-JSON body must surface as RuntimeError like every
+    # other transport failure, not as a raw JSONDecodeError.
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: io.BytesIO(b"<html>not json</html>"))
+    with pytest.raises(RuntimeError, match="malformed response"):
+        RemoteReranker().rerank("query", [{"content": "text"}])
+
+
+def test_empty_results_payload_raises(monkeypatch):
+    empty = {"model": "Qwen3-Reranker-8B", "results": []}
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: io.BytesIO(json.dumps(empty).encode()))
+    with pytest.raises(RuntimeError, match="no results"):
+        RemoteReranker().rerank("query", [{"content": "text"}])
+
+
+def test_bearer_header_follows_the_api_key(monkeypatch):
+    calls = []
+
+    def handler(request, timeout):
+        calls.append(request)
+        return io.BytesIO(json.dumps(response([0.5])).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", handler)
+    RemoteReranker(api_key="secret").rerank("query", [{"content": "text"}])
+    assert calls[-1].get_header("Authorization") == "Bearer secret"
+    RemoteReranker().rerank("query", [{"content": "text"}])
+    assert calls[-1].get_header("Authorization") is None
+
+
+def test_api_key_over_plain_http_is_restricted_to_loopback():
+    with pytest.raises(ValueError, match="plain http"):
+        RemoteReranker(url="http://relay.example.com/v1/rerank", api_key="secret")
+    # https to the same host is fine, and loopback stays allowed so SSH
+    # tunnels and local gateways keep working.
+    RemoteReranker(url="https://relay.example.com/v1/rerank", api_key="secret")
+    RemoteReranker(url="http://127.0.0.1:8081/v1/rerank", api_key="secret")
+    RemoteReranker(url="http://localhost:8081/v1/rerank", api_key="secret")
 
 
 @pytest.mark.parametrize("score", [None, True, "0.5", float("nan"), float("inf")])

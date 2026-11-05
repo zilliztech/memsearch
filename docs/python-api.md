@@ -102,7 +102,10 @@ candidate comparison with Voyage and its limitations.
 `remote:` selects a `/v1/rerank`-compatible HTTP endpoint — one you run
 yourself (vLLM and compatible services) or a hosted rerank API that
 authenticates with a bearer token via `MEMSEARCH_REMOTE_RERANKER_API_KEY`.
-The URL comes from `MEMSEARCH_REMOTE_RERANKER_URL`, or from the constructor
+When a key is set, plain `http` is only accepted for loopback hosts
+(`localhost`, `127.0.0.1`, `::1`) — SSH tunnels and local gateways; a
+non-loopback endpoint has to serve `https` so the key never travels in
+cleartext. The URL comes from `MEMSEARCH_REMOTE_RERANKER_URL`, or from the constructor
 when you build the adapter directly:
 
 ```python
