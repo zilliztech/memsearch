@@ -46,6 +46,10 @@ def test_default_config():
     assert cfg.plugins.codex.user_profile.output_file == ".memsearch/USER.md"
     assert cfg.plugins.dsh.summarize.provider == ""
     assert cfg.plugins.dsh.summarize.model == ""
+    assert cfg.quality_filter.enabled is True
+    assert cfg.quality_filter.min_content_length == 40
+    assert cfg.quality_filter.degrade_threshold == 60
+    assert cfg.quality_filter.reject_threshold == 30
 
 
 def test_load_toml_file(tmp_path: Path):
@@ -129,6 +133,20 @@ def test_resolve_priority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Untouched fields remain default
     assert cfg.embedding.provider == "openai"
     assert cfg.chunking.max_chunk_size == 1500
+
+
+def test_quality_filter_is_global_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    global_cfg = tmp_path / "global.toml"
+    project_cfg = tmp_path / ".memsearch.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", global_cfg)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", project_cfg)
+
+    save_config({"quality_filter": {"enabled": False, "reject_threshold": 25}}, global_cfg)
+    save_config({"quality_filter": {"enabled": True, "reject_threshold": 99}}, project_cfg)
+
+    cfg = resolve_config()
+    assert cfg.quality_filter.enabled is False
+    assert cfg.quality_filter.reject_threshold == 25
 
 
 def test_collection_priority_includes_caller_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
