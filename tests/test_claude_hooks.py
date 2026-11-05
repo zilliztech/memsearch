@@ -15,7 +15,7 @@ import pytest
 
 @pytest.mark.skipif(os.name != "posix", reason="tests the POSIX shell-form hook launcher")
 @pytest.mark.parametrize(
-    "directory", ["plugin", "plugin with spaces", "plugin\twith\ttabs", 'plugin\'s "$HOME"; [cache]']
+    "directory", ["plugin", "plugin with spaces", "plugin\twith\ttabs", 'plugin\'s "$HOME"; [cache]', "pl$HOMEx"]
 )
 @pytest.mark.parametrize(
     ("event", "hook"),
@@ -30,10 +30,15 @@ import pytest
     ],
     ids=lambda value: value if isinstance(value, str) else value["command"],
 )
-def test_claude_manifest_commands_preserve_plugin_path(tmp_path: Path, directory: str, event: str, hook: dict) -> None:
+def test_claude_manifest_commands_preserve_plugin_path_via_environment(
+    tmp_path: Path, directory: str, event: str, hook: dict
+) -> None:
     plugin_root = tmp_path / directory
     shutil.copytree(Path("plugins/claude-code"), plugin_root)
 
+    # This tests shell environment expansion, not Claude Code's host launcher.
+    # A host that substitutes paths into the command string needs a separate
+    # integration check; quotes alone do not protect arbitrary literal paths.
     # Exercise the manifest command, not a direct invocation of its script. The
     # real scripts' recursion guard prevents memory/index/model side effects
     # only after the shell has successfully located and launched the script.
