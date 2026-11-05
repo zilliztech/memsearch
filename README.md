@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/427b7152-bc16-408c-a8b0-59a2b05fd1e0" alt="memsearch demo" width="800">
+  <img src="https://github.com/user-attachments/assets/5d7ea7cd-7a01-471d-9f2d-cff45fd15696" alt="MemSearch saves a memory from Claude Code and recalls it in a later Codex session." width="800">
 </p>
 
 ## 📰 What's New
