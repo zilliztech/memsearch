@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -696,13 +697,84 @@ def _record_failure_state(
     _save_state(state_path, state)
 
 
+# A maintenance lock older than one default task interval (min_interval_hours
+# defaults to 24) cannot belong to a run that is still making progress: it is
+# the remains of a crashed holder, or its PID was recycled. Used as the
+# staleness backstop in _file_lock for holders we cannot prove dead.
+STALE_LOCK_AGE_SECONDS = 24 * 60 * 60
+
+
+def _read_lock_pid(path: Path) -> int | None:
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    try:
+        pid = int(content)
+    except ValueError:
+        return None
+    return pid if pid > 0 else None
+
+
+def _pid_is_alive(pid: int) -> bool | None:
+    """Best-effort liveness probe: True/False, or None when it cannot be proven.
+
+    On Windows os.kill(pid, 0) is not a probe: any non-CTRL signal makes it
+    TerminateProcess the target, so PIDs are never probed there and the lock
+    age alone decides staleness. On POSIX, PermissionError means the process
+    exists but belongs to another user, i.e. it is alive.
+    """
+    if os.name == "nt":
+        return None
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _lock_is_stale(path: Path) -> bool:
+    """Decide whether an existing lock file belongs to a dead holder (#788).
+
+    A lock whose holder PID is provably dead is stale immediately. Otherwise
+    (live PID, unparseable content, or a platform where liveness cannot be
+    probed safely) it is stale once older than STALE_LOCK_AGE_SECONDS: one
+    default maintenance interval bounds PID-reuse false positives while still
+    self-healing locks no probe can attribute.
+    """
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        # The lock vanished while we inspected it; the retry below decides.
+        return True
+    pid = _read_lock_pid(path)
+    if pid is not None and _pid_is_alive(pid) is False:
+        return True
+    return age > STALE_LOCK_AGE_SECONDS
+
+
 @contextlib.contextmanager
 def _file_lock(path: Path):
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
-        yield False
-        return
+        if not _lock_is_stale(path):
+            yield False
+            return
+        # Recover the stale lock and retry exactly once. If another process
+        # reclaimed it first, losing that race is equivalent to finding a
+        # live holder's lock.
+        with contextlib.suppress(OSError):
+            path.unlink()
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            yield False
+            return
     try:
         os.write(fd, str(os.getpid()).encode())
         yield True
