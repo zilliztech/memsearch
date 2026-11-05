@@ -5,12 +5,14 @@ on:
     paths:
       - 'plugins/codex/**'
       - 'tests/test_codex_stop_hook_*.py'
+      - 'tests/test_codex_install.py'
       - '.github/workflows/codex-macos.yml'
   push:
     branches: [main]
     paths:
       - 'plugins/codex/**'
       - 'tests/test_codex_stop_hook_*.py'
+      - 'tests/test_codex_install.py'
       - '.github/workflows/codex-macos.yml'
 
 permissions:
@@ -26,5 +28,5 @@ jobs:
         with:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v7
-      - name: Check native temporary files and capture workers
-        run: uv run --no-project --with pytest python -m pytest tests/test_codex_stop_hook_tmpfile.py tests/test_codex_stop_hook_utf8.py -q
+      - name: Check native temporary files, capture workers, and installer paths
+        run: uv run --no-project --with pytest python -m pytest tests/test_codex_stop_hook_tmpfile.py tests/test_codex_stop_hook_utf8.py tests/test_codex_install.py -q

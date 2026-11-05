@@ -39,7 +39,8 @@
     "plugin"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "test:integration": "node --test tests/maintenance.integration.js"
   },
   "dsh": {
     "bundle": {
