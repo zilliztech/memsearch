@@ -70,7 +70,7 @@ class KnowledgeStore:
         sql = "SELECT chunk_id, doc_id, base_id, idx, text, heading, context, embedding, embedding_model FROM chunk"
         return list(self._conn.execute(sql))
 
-    def _bm25(self, query: str, limit: int = 50) -> dict[str, float]:
+    def _bm25(self, query: str, limit: int = 50, base_id: str | None = None) -> dict[str, float]:
         """Return ``{chunk_id: bm25_score}`` for the query.
 
         The knowledge store indexes ``search_text`` with an FTS5
@@ -79,6 +79,11 @@ class KnowledgeStore:
         when the words appear in exactly that order and contiguously, which
         a natural-language question almost never does.  Each whitespace
         separated term is therefore quoted and OR-ed together.
+
+        When *base_id* is given the FTS hits are joined back to the chunk
+        table and restricted to that base — without the join, a hit from
+        another base would leak into the fused ranking (and crash the
+        ``by_id`` lookup, which only covers the filtered rows).
 
         FTS5 returns a *negative* score, where more negative means a better
         match; the ranking below keeps that order.
@@ -90,25 +95,22 @@ class KnowledgeStore:
         if not terms:
             return {}
         expression = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
+        sql = (
+            "SELECT c.chunk_id AS chunk_id, bm25(chunk_fts) AS score "
+            "FROM chunk_fts f JOIN chunk c ON c.fts_rowid = f.rowid "
+            "WHERE chunk_fts MATCH ?"
+        )
+        params: list[object] = [expression]
+        if base_id:
+            sql += " AND c.base_id = ?"
+            params.append(base_id)
+        sql += " ORDER BY score LIMIT ?"
+        params.append(limit)
         try:
-            rows = self._conn.execute(
-                "SELECT f.rowid AS rowid, bm25(chunk_fts) AS score "
-                "FROM chunk_fts f WHERE chunk_fts MATCH ? ORDER BY score LIMIT ?",
-                (expression, limit),
-            ).fetchall()
+            rows = self._conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
-        if not rows:
-            return {}
-        ids: dict[str, str] = {}
-        for row in self._conn.execute("SELECT chunk_id, fts_rowid FROM chunk"):
-            ids[str(row["fts_rowid"])] = row["chunk_id"]
-        out: dict[str, float] = {}
-        for row in rows:
-            chunk_id = ids.get(str(row["rowid"]))
-            if chunk_id:
-                out[chunk_id] = float(row["score"])
-        return out
+        return {row["chunk_id"]: float(row["score"]) for row in rows}
 
     def _dense(self, vectors: list[list[float]], rows: list[sqlite3.Row]) -> dict[str, float]:
         """Cosine similarity of the query vector against every stored vector.
@@ -205,7 +207,7 @@ class KnowledgeStore:
             if vectors:
                 dense = self._dense(vectors, rows)
 
-        bm25 = self._bm25(query, limit=candidates)
+        bm25 = self._bm25(query, limit=candidates, base_id=base_id)
 
         # Reciprocal rank fusion over the two rankings.  Only the head of
         # each ranking takes part — fusing every dense hit would drown the
