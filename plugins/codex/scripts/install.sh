@@ -9,22 +9,16 @@ set -euo pipefail
 # Determine install directory (parent of scripts/)
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-replace_text_in_file() {
-  local target_file="$1"
-  local old_text="$2"
-  local new_text="$3"
-
-  python3 - "$target_file" "$old_text" "$new_text" <<'PY'
+configure_recall_skill() {
+  python3 - "$1" "$INSTALL_DIR/scripts/derive-collection.sh" <<'PYTHON'
 from pathlib import Path
+import shlex
 import sys
 
-path = Path(sys.argv[1])
-old = sys.argv[2]
-new = sys.argv[3]
-
-text = path.read_text()
-path.write_text(text.replace(old, new))
-PY
+skill = Path(sys.argv[1])
+text = skill.read_text(encoding="utf-8")
+skill.write_text(text.replace("__DERIVE_COLLECTION_SCRIPT__", shlex.quote(sys.argv[2])), encoding="utf-8")
+PYTHON
 }
 
 ensure_hooks_enabled() {
@@ -203,20 +197,14 @@ for skill_name in memory-recall memory-config memory-to-skill; do
     rm -rf "$SKILL_DST"
   fi
 
-  # Copy (not symlink) so we can substitute __INSTALL_DIR__ placeholder
+  # The installed recall skill uses the helper from this plugin checkout.
   cp -r "$SKILL_SRC" "$SKILL_DST"
   echo "  ✓ Copied $skill_name skill to $SKILL_DST"
 done
 
-# --- 3. Replace __INSTALL_DIR__ placeholder in SKILL.md ---
-echo "[3/6] Configuring skill paths..."
-for skill_name in memory-recall memory-config memory-to-skill; do
-  SKILL_DST="$HOME/.agents/skills/$skill_name"
-  if [ -f "$SKILL_DST/SKILL.md" ]; then
-    replace_text_in_file "$SKILL_DST/SKILL.md" "__INSTALL_DIR__" "$INSTALL_DIR"
-    echo "  ✓ Updated $skill_name SKILL.md with install path: $INSTALL_DIR"
-  fi
-done
+# --- 3. Configure the collection helper in the installed recall skill ---
+echo "[3/6] Configuring the recall skill..."
+configure_recall_skill "$HOME/.agents/skills/memory-recall/SKILL.md"
 
 # --- 4. Install or update hooks.json ---
 echo "[4/6] Configuring hooks..."

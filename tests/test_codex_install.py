@@ -133,3 +133,40 @@ def test_codex_installer_quotes_hook_paths_and_preserves_existing_hooks(
         if previous is not None:
             assert installed == previous
         previous = installed
+
+
+@pytest.mark.skipif(os.name != "posix", reason="executes the installed skill with a POSIX shell")
+def test_installed_recall_skill_selects_the_capture_collection(tmp_path: Path) -> None:
+    plugin = tmp_path / "Developer's Application Support" / "plugins" / "codex"
+    shutil.copytree(Path("plugins/codex"), plugin)
+    home = tmp_path / "home"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "memsearch"
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GIT_CEILING_DIRECTORIES": str(tmp_path),
+    }
+    env.pop("MEMSEARCH_DIR", None)
+    subprocess.run(["bash", str(plugin / "scripts/install.sh")], env=env, check=True, capture_output=True)
+
+    skill = (home / ".agents/skills/memory-recall/SKILL.md").read_text(encoding="utf-8")
+    command = skill.split("## Project Collection", 1)[1].split("```", 2)[1].strip()
+    project = tmp_path / "project"
+    nested = project / "nested"
+    nested.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    shared = tmp_path / "shared memory"
+    shared.mkdir()
+    for cwd, overrides, expected_root in [
+        (home, {}, home),
+        (nested, {}, project),
+        (nested, {"MEMSEARCH_DIR": str(shared)}, shared),
+    ]:
+        expected = subprocess.check_output(["bash", str(plugin / "scripts/derive-collection.sh"), str(expected_root)])
+        actual = subprocess.check_output(["sh", "-c", command], cwd=cwd, env={**env, **overrides})
+        assert actual == expected
