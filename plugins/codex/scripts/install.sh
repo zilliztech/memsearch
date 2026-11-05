@@ -73,6 +73,7 @@ from pathlib import Path
 import json
 import math
 import os
+import shlex
 import sys
 
 hooks_file = Path(sys.argv[1])
@@ -142,6 +143,11 @@ hooks = data.setdefault("hooks", {})
 
 for event, details in spec.items():
     script = details["script"]
+    script_path = f"{install_dir}/hooks/{script}"
+    # Quote literal paths for POSIX shells. Native Windows uses a different
+    # command parser, so leave its existing command generation unchanged.
+    if os.name == "posix":
+        script_path = shlex.quote(script_path)
     cleaned = strip_old_memsearch(hooks.get(event, []), script)
     cleaned.append(
         {
@@ -149,7 +155,7 @@ for event, details in spec.items():
             "hooks": [
                 {
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/{script}",
+                    "command": f"bash {script_path}",
                     "timeout": details["timeout"],
                 }
             ],
