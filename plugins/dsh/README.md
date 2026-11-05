@@ -48,6 +48,23 @@ dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 > Replace `web` with your profile name (`headless`, `tui`, ...), and restart
 > DSH for the profile (or start a new session) so the plugin mounts.
 
+### Development tests
+
+Run `npm test` in `plugins/dsh` for the Node tests. The maintenance integration
+suite also requires the Python core from this checkout:
+
+```bash
+# From the repository root
+uv sync --locked
+cd plugins/dsh
+uv run --project ../.. npm run test:integration
+```
+
+The integration suite invokes the registered timer and session callbacks through
+runtime process spawning and the real Python maintenance runner. It replaces
+only native LLM generation with deterministic local output; no model service,
+embeddings, database, or running DSH host is needed. CI runs both suites.
+
 ### Manual patch insertion (no `dsh plugin`)
 
 Append this row to the profile's `cordis.patch.yml` and make sure
