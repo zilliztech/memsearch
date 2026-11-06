@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import sqlite3
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -333,3 +334,101 @@ def test_remote_adapter_and_mcp_share_partial_score_semantics(server, monkeypatc
     assert server._rerank_documents("q", ["omitted", "scored"]) == [None, -0.5]
     ranked = remote.RemoteReranker().rerank("q", [{"content": "omitted"}, {"content": "scored"}])
     assert [result["content"] for result in ranked] == ["scored"]
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups: honest failures, dispatch boundaries, knowledge races.
+# ---------------------------------------------------------------------------
+
+
+def _knowledge_store(tmp_path):
+    path = tmp_path / "knowledge.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE chunk (
+            chunk_id TEXT PRIMARY KEY, doc_id TEXT, base_id TEXT, idx INTEGER,
+            text TEXT, search_text TEXT, heading TEXT, context TEXT,
+            embedding BLOB, embedding_model TEXT, fts_rowid INTEGER
+        );
+        CREATE VIRTUAL TABLE chunk_fts USING fts5(
+            search_text, content='chunk', content_rowid='fts_rowid', tokenize='trigram'
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO chunk VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("doc", "doc", "base", 1, "服务端口 8080", "服务端口 8080", "", "", None, None, 1),
+    )
+    conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')")
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_unknown_tool_is_an_error_but_tool_keyerror_is_not(server, monkeypatch):
+    unknown = server.handle(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "no_such_tool", "arguments": {}}}
+    )
+    assert unknown["error"]["code"] == -32601
+
+    def explode(_args):
+        raise KeyError("internal")
+
+    monkeypatch.setattr(server, "tool_memory_stats", explode)
+    broken = call(server, "memory_stats", {})
+    assert broken["isError"] is True
+    assert "KeyError" in broken["content"][0]["text"]
+    assert "error" not in broken
+
+
+def test_configured_remote_reranker_failure_is_reported(monkeypatch, tmp_path):
+    # A configured-but-failing backend must surface as a tool error; only the
+    # absent adapter (before #833 ships) may degrade to unreranked results.
+    monkeypatch.setattr("memsearch.mcp_server._auto_knowledge_db", lambda: "")
+    srv = MCPServer(config=MemSearchConfig(), collection="test", knowledge_db=str(_knowledge_store(tmp_path)))
+    try:
+        fake = ModuleType("memsearch.remote_reranker")
+
+        class Reranker:
+            def __init__(self, **kwargs):
+                pass
+
+            def evaluate(self, query, documents):
+                raise RuntimeError("Remote reranking failed (HTTP 401)")
+
+        fake.RemoteReranker = Reranker
+        monkeypatch.setitem(sys.modules, fake.__name__, fake)
+        srv._cfg.reranker.model = "remote:fake"
+        reply = srv.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "knowledge_search", "arguments": {"query": "8080"}},
+            }
+        )
+        assert reply["result"]["isError"] is True
+        assert "HTTP 401" in reply["result"]["content"][0]["text"]
+    finally:
+        srv.close()
+
+
+def test_remote_adapter_absent_returns_fused_ranking(monkeypatch, tmp_path):
+    monkeypatch.setattr("memsearch.mcp_server._auto_knowledge_db", lambda: "")
+    srv = MCPServer(config=MemSearchConfig(), collection="test", knowledge_db=str(_knowledge_store(tmp_path)))
+    try:
+        monkeypatch.setitem(sys.modules, "memsearch.remote_reranker", None)
+        srv._cfg.reranker.model = "remote:fake"
+        reply = srv.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "knowledge_search", "arguments": {"query": "8080"}},
+            }
+        )
+        assert reply["result"]["isError"] is False
+        assert "服务端口 8080" in reply["result"]["content"][0]["text"]
+    finally:
+        srv.close()

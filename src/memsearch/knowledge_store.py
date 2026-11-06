@@ -79,7 +79,10 @@ class KnowledgeStore:
         by term: a single quoted phrase over the whole query only matches
         when the words appear in exactly that order and contiguously, which
         a natural-language question almost never does.  Each whitespace
-        separated term is therefore quoted and OR-ed together.
+        separated term is therefore quoted and OR-ed together.  Terms shorter
+        than the trigram window (one or two characters) fall back to a
+        parameterized ``LIKE`` scan over ``search_text`` with a nominal score,
+        so short Chinese keywords still retrieve when embedding is unavailable.
 
         When *base_id* is given the FTS hits are joined back to the chunk
         table and restricted to that base — without the join, a hit from
@@ -95,23 +98,45 @@ class KnowledgeStore:
         terms = [t for t in cleaned.split(" ") if len(t) >= 1]
         if not terms:
             return {}
-        expression = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
-        sql = (
-            "SELECT c.chunk_id AS chunk_id, bm25(chunk_fts) AS score "
-            "FROM chunk_fts f JOIN chunk c ON c.fts_rowid = f.rowid "
-            "WHERE chunk_fts MATCH ?"
-        )
-        params: list[object] = [expression]
-        if base_id:
-            sql += " AND c.base_id = ?"
-            params.append(base_id)
-        sql += " ORDER BY score LIMIT ?"
-        params.append(limit)
-        try:
-            rows = self._conn.execute(sql, params).fetchall()
-        except sqlite3.OperationalError:
-            return {}
-        return {row["chunk_id"]: -float(row["score"]) for row in rows}
+        # The FTS index tokenizes with trigrams, so terms shorter than three
+        # characters can never MATCH.  Route them to a parameterized substring
+        # scan instead — the documented keyword fallback for two-character
+        # Chinese words (端口, 城市, ...).  Like-hits carry a nominal score:
+        # they take part in the fusion but carry no ranking information of
+        # their own.
+        long_terms = [t for t in terms if len(t) >= 3]
+        short_terms = [t for t in terms if len(t) < 3]
+        hits: dict[str, float] = {}
+        if long_terms:
+            expression = " OR ".join('"' + t.replace('"', '""') + '"' for t in long_terms)
+            sql = (
+                "SELECT c.chunk_id AS chunk_id, bm25(chunk_fts) AS score "
+                "FROM chunk_fts f JOIN chunk c ON c.fts_rowid = f.rowid "
+                "WHERE chunk_fts MATCH ?"
+            )
+            params: list[object] = [expression]
+            if base_id:
+                sql += " AND c.base_id = ?"
+                params.append(base_id)
+            sql += " ORDER BY score LIMIT ?"
+            params.append(limit)
+            try:
+                rows = self._conn.execute(sql, params).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
+            hits = {row["chunk_id"]: -float(row["score"]) for row in rows}
+        for term in short_terms:
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            like_sql = "SELECT c.chunk_id AS chunk_id FROM chunk c WHERE c.search_text LIKE ? ESCAPE '\\'"
+            like_params: list[object] = [f"%{escaped}%"]
+            if base_id:
+                like_sql += " AND c.base_id = ?"
+                like_params.append(base_id)
+            like_sql += " LIMIT ?"
+            like_params.append(limit)
+            for row in self._conn.execute(like_sql, like_params).fetchall():
+                hits.setdefault(row["chunk_id"], 1.0)
+        return hits
 
     def _dense(
         self,
@@ -215,6 +240,12 @@ class KnowledgeStore:
             return []
         by_id = {row["chunk_id"]: row for row in rows}
 
+        # Read both rankings before the (potentially slow) embedding call, so
+        # a dsh-knowledge write racing the request cannot surface chunk IDs
+        # the first read never saw.  Fused hits are additionally clamped to
+        # the first-read rows below.
+        bm25 = self._bm25(query, limit=candidates, base_id=base_id)
+
         dense: dict[str, float] = {}
         if embed_fn is not None:
             try:
@@ -223,8 +254,6 @@ class KnowledgeStore:
                 vectors = []
             if vectors:
                 dense = self._dense(vectors, rows, embedding_model=embedding_model)
-
-        bm25 = self._bm25(query, limit=candidates, base_id=base_id)
 
         # Reciprocal rank fusion over the two rankings.  Only the head of
         # each ranking takes part — fusing every dense hit would drown the
@@ -239,6 +268,7 @@ class KnowledgeStore:
             return []
 
         ordered = sorted(fused.items(), key=lambda kv: -kv[1])[: max(candidates, limit)]
+        ordered = [(chunk_id, score) for chunk_id, score in ordered if chunk_id in by_id]
         hits = []
         for chunk_id, score in ordered:
             row = by_id[chunk_id]

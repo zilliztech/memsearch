@@ -131,3 +131,49 @@ def test_rerank_callback_failure_is_not_silently_ignored(knowledge):
 
     with pytest.raises(RuntimeError, match="reranker failed"):
         knowledge.search("needle", base_id="base", rerank_fn=fail)
+
+
+def test_concurrent_index_write_does_not_crash_search(knowledge):
+    # A dsh-knowledge write racing the embedding call must not surface chunk
+    # IDs the first read never saw — the KeyError used to escape the store
+    # and was misreported by the MCP dispatch layer as "unknown tool".
+    def embed_and_write(texts):
+        conn = sqlite3.connect(knowledge.path)
+        try:
+            conn.execute(
+                "INSERT INTO chunk VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                ("new", "new", "base", 9, "needle late", "needle late", "", "", None, None, 9),
+            )
+            conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')")
+            conn.commit()
+        finally:
+            conn.close()
+        return [[1.0, 0.0, 0.0]]
+
+    hits = knowledge.search("needle", base_id="base", limit=5, embed_fn=embed_and_write)
+    assert {hit["chunk_id"] for hit in hits} <= {"strong", "weak"}
+
+
+def test_short_chinese_keyword_matches_without_embedding(knowledge):
+    def embed_unavailable(texts):
+        raise RuntimeError("embedding service unavailable")
+
+    conn = sqlite3.connect(knowledge.path)
+    try:
+        conn.execute(
+            "INSERT INTO chunk VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("port", "port", "base", 8, "服务端口 8080", "服务端口 8080", "", "", None, None, 8),
+        )
+        conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    hits = knowledge.search("端口", base_id="base", limit=5, embed_fn=embed_unavailable)
+    assert [hit["chunk_id"] for hit in hits] == ["port"]
+
+
+def test_short_keyword_like_pattern_is_escaped(knowledge):
+    # Without LIKE escaping, "e%" would match every row containing "e".
+    hits = knowledge.search("e%", base_id="base", limit=5, embed_fn=None)
+    assert hits == []
