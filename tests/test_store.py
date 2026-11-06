@@ -554,3 +554,69 @@ def test_concurrent_open_is_not_reported_as_incompatibility(tmp_path: Path):
     finally:
         holder.kill()
         holder.wait(timeout=30)
+
+
+def test_rows_by_hashes_returns_rows_including_embeddings(store: MilvusStore):
+    chunks = [
+        {
+            "embedding": [1.0, 0.0, 0.0, 0.0],
+            "content": "alpha body",
+            "source": "test.md",
+            "heading": "Alpha",
+            "chunk_hash": "h1",
+            "heading_level": 1,
+            "start_line": 1,
+            "end_line": 5,
+        },
+        {
+            "embedding": [0.0, 1.0, 0.0, 0.0],
+            "content": "beta body",
+            "source": "test.md",
+            "heading": "Beta",
+            "chunk_hash": "h2",
+            "heading_level": 1,
+            "start_line": 6,
+            "end_line": 10,
+        },
+    ]
+    store.upsert(chunks)
+
+    rows = store.rows_by_hashes(["h1", "h2", "missing"])
+
+    assert {r["chunk_hash"] for r in rows} == {"h1", "h2"}
+    by_hash = {r["chunk_hash"]: r for r in rows}
+    assert by_hash["h1"]["embedding"] == [1.0, 0.0, 0.0, 0.0]
+    assert by_hash["h1"]["content"] == "alpha body"
+    assert by_hash["h1"]["start_line"] == 1
+    assert by_hash["h2"]["embedding"] == [0.0, 1.0, 0.0, 0.0]
+
+
+def test_rows_by_hashes_empty_input_queries_nothing(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    query = Mock(side_effect=AssertionError("empty lookup must not query"))
+    monkeypatch.setattr(store._client, "query", query)
+
+    assert store.rows_by_hashes([]) == []
+    query.assert_not_called()
+
+
+def test_rows_by_hashes_batches_the_filter_expression(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    store.upsert(
+        [
+            {
+                "embedding": [float(i), 0.0, 0.0, 0.0],
+                "content": f"body {i}",
+                "source": "test.md",
+                "heading": "H",
+                "chunk_hash": f"h{i}",
+                "heading_level": 1,
+                "start_line": i,
+                "end_line": i + 1,
+            }
+            for i in range(3)
+        ]
+    )
+    monkeypatch.setattr(store, "_HASH_QUERY_BATCH", 2)
+
+    rows = store.rows_by_hashes(["h0", "h1", "h2"])
+
+    assert {r["chunk_hash"] for r in rows} == {"h0", "h1", "h2"}
