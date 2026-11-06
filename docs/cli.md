@@ -706,6 +706,65 @@ $ memsearch expand a1b2c3d4e5f6 --json-output
 
 ---
 
+## `memsearch mcp`
+
+Run a [Model Context Protocol](https://modelcontextprotocol.io) server on
+stdio. The server exposes memsearch as MCP tools — `memory_search`,
+`memory_index`, `memory_stats`, `memory_expand`, `embed`, `rerank` and
+(optionally) `knowledge_search` — so any MCP client can query the same
+index the CLI uses.
+
+It speaks JSON-RPC 2.0 over stdin/stdout, one JSON object per line,
+UTF-8 (the server forces UTF-8 on the streams; the default Windows pipe
+encoding is the console code page and would corrupt Chinese payloads).
+
+### Options
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--provider` | `-p` | `openai` | Embedding provider |
+| `--model` | `-m` | provider default | Override the embedding model |
+| `--base-url` | | *(none)* | OpenAI-compatible API base URL |
+| `--api-key` | | *(none)* | API key for the embedding provider |
+| `--collection` | `-c` | `memsearch_chunks` | Milvus collection name |
+| `--default-collection` | | *(none)* | Integration fallback used only when global/project config and `--collection` do not set a collection |
+| `--milvus-uri` | | `~/.memsearch/milvus.db` | Milvus connection URI |
+| `--milvus-token` | | *(none)* | Milvus auth token |
+| `--reranker-model` | | *(config)* | Cross-encoder model for reranking (empty string disables) |
+| `--knowledge-db` | | *(auto)* | Knowledge store (SQLite) to expose as `knowledge_search`; defaults to the third-party dsh-knowledge plugin's store when present |
+| `--max-content-chars` | | `2000` | Truncate tool output content to this many characters |
+
+### Examples
+
+```bash
+# Codex (~/.codex/config.toml)
+[mcp_servers.memsearch]
+command = "memsearch"
+args = ["mcp"]
+
+# Claude Code
+claude mcp add memsearch -- memsearch mcp
+```
+
+### Notes
+
+- **Same configuration as the CLI.** `~/.memsearch/config.toml` →
+  project `.memsearch.toml` → flags. A self-hosted backend behind an SSH
+  tunnel is just an OpenAI-compatible `base_url`.
+- **The knowledge store is read-only.** `knowledge_search` opens the
+  SQLite file with `mode=ro`, so a running knowledge plugin is never
+  disturbed. The store of the third-party
+  [`dsh-knowledge`](https://github.com/Soren-ABT/dsh-knowledge) plugin is
+  auto-detected at the standard location; `--knowledge-db` (or
+  `MEMSEARCH_KNOWLEDGE_DB`) overrides it, and without any store the tool
+  is not advertised at all.
+- **Tools report errors as tool errors.** Invalid arguments come back
+  with `isError: true`; the server itself never dies on a bad call.
+
+> 📖 Full guide: [MCP server](mcp.md)
+
+---
+
 ## `memsearch transcript`
 
 > 🔌 **Plugin command.** This command is part of the [platform plugins](platforms/index.md)' three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
