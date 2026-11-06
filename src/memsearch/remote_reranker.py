@@ -6,7 +6,9 @@ Model names prefixed with ``remote:`` select this backend, e.g.
 loopback port used by an SSH tunnel to a self-hosted reranker deployment.
 Hosted rerank APIs serving the same payload shape are reached by pointing
 ``MEMSEARCH_REMOTE_RERANKER_URL`` at them and setting
-``MEMSEARCH_REMOTE_RERANKER_API_KEY`` for bearer authentication.
+``MEMSEARCH_REMOTE_RERANKER_API_KEY`` for bearer authentication. HTTP redirects
+are refused; configure the final endpoint URL directly so credentials and
+request data stay at the configured destination.
 
 The service scores every candidate against the query and returns
 ``results[]`` of ``{"index", "relevance_score"}`` — the shape served by vLLM's
@@ -31,6 +33,13 @@ DEFAULT_MODEL = "Qwen3-Reranker-8B"
 DEFAULT_URL = "http://127.0.0.1:8081/v1/rerank"
 URL_ENV_VAR = "MEMSEARCH_REMOTE_RERANKER_URL"
 API_KEY_ENV_VAR = "MEMSEARCH_REMOTE_RERANKER_API_KEY"
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects so credentials and content stay at the configured URL."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
+        return None
 
 
 class RemoteReranker:
@@ -67,10 +76,15 @@ class RemoteReranker:
         # in cleartext.  Loopback stays allowed (SSH tunnels and local
         # gateways terminate TLS elsewhere or need no transport security).
         parsed = urlsplit(self.url)
-        if self.api_key and parsed.scheme != "https" and parsed.hostname not in (
-            "localhost",
-            "127.0.0.1",
-            "::1",
+        if (
+            self.api_key
+            and parsed.scheme != "https"
+            and parsed.hostname
+            not in (
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            )
         ):
             raise ValueError(
                 "refusing to send the reranker API key over plain http to a "
@@ -122,7 +136,8 @@ class RemoteReranker:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            opener = urllib.request.build_opener(_NoRedirectHandler())
+            with opener.open(request, timeout=self.timeout) as response:
                 result = json.load(response)
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"Remote reranking failed (HTTP {exc.code})") from None
