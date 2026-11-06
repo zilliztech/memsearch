@@ -78,6 +78,20 @@ def _reconfigure_streams() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _integer_argument(args: dict[str, Any], name: str, *, default: int, minimum: int) -> int:
+    value = args.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
+    return value
+
+
+def _boolean_argument(args: dict[str, Any], name: str) -> bool:
+    value = args.get(name, False)
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be a boolean")
+    return value
+
+
 class MCPServer:
     """Serve memsearch tools over the Model Context Protocol.
 
@@ -101,6 +115,7 @@ class MCPServer:
         self._knowledge_db = knowledge_db or os.environ.get(KNOWLEDGE_DB_ENV) or _auto_knowledge_db()
         self._ms = None
         self._store = None
+        self._embedder = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # ------------------------------------------------------------------
@@ -125,13 +140,35 @@ class MCPServer:
         if self._ms is None:
             from .core import MemSearch
 
+            # A read-only handle must not outlive the Lite server it shares
+            # with a later writer or a dimension-aware MemSearch instance.
+            self._close_memory_resources()
             kwargs = memsearch_kwargs_from_config(self._cfg)
             kwargs["collection"] = self._collection
             self._ms = MemSearch(**kwargs)
         return self._ms
 
+    def _embedding_provider(self):
+        """Embedding alone does not require a Milvus collection or its schema."""
+        if self._ms is not None:
+            return self._ms._embedder
+        if self._embedder is None:
+            from .embeddings import get_provider
+
+            cfg = self._cfg.embedding
+            self._embedder = get_provider(
+                cfg.provider,
+                model=cfg.model or None,
+                batch_size=cfg.batch_size,
+                base_url=cfg.base_url or None,
+                api_key=cfg.api_key or None,
+            )
+        return self._embedder
+
     def _get_store(self):
-        """Return (and cache) a Milvus store for read-only operations."""
+        """Use the existing memory store or cache a read-only handle."""
+        if self._ms is not None:
+            return self._ms._store
         if self._store is None:
             from .store import MilvusStore
 
@@ -143,7 +180,7 @@ class MCPServer:
             )
         return self._store
 
-    def close(self) -> None:
+    def _close_memory_resources(self) -> None:
         for closable in (self._ms, self._store):
             close = getattr(closable, "close", None)
             if callable(close):
@@ -151,8 +188,13 @@ class MCPServer:
                     close()
         self._ms = None
         self._store = None
+
+    def close(self) -> None:
+        self._close_memory_resources()
+        self._embedder = None
         if self._loop is not None:
             with contextlib.suppress(Exception):  # pragma: no cover - best effort
+                self._loop.run_until_complete(self._loop.shutdown_asyncgens())
                 self._loop.close()
             self._loop = None
 
@@ -164,7 +206,7 @@ class MCPServer:
         query = str(args.get("query") or "").strip()
         if not query:
             raise ValueError("query is required")
-        limit = int(args.get("limit") or 5)
+        limit = _integer_argument(args, "limit", default=5, minimum=1)
         source_prefix = args.get("source_prefix") or None
 
         results = self._run_coro(self._memsearch().search(query, top_k=limit, source_prefix=source_prefix))
@@ -195,19 +237,25 @@ class MCPServer:
         missing = [p for p in paths if not Path(p).expanduser().exists()]
         if missing:
             raise ValueError(f"path not found: {', '.join(missing)}")
-        force = bool(args.get("force"))
+        force = _boolean_argument(args, "force")
 
         from .core import MemSearch
 
+        self._close_memory_resources()
         kwargs = memsearch_kwargs_from_config(self._cfg)
         kwargs["collection"] = self._collection
         kwargs["paths"] = [str(Path(p).expanduser().resolve()) for p in paths]
         ms = MemSearch(**kwargs)
         try:
-            count = self._run_coro(ms.index(force=force))
+            report = self._run_coro(ms.index_with_report(force=force))
         finally:
             ms.close()
-        return f"indexed {count} chunk(s) from {', '.join(paths)}"
+        if report.failed_files:
+            details = "; ".join(f"{failure.path}: {failure.error}" for failure in report.failed_files)
+            raise RuntimeError(
+                f"indexed {report.indexed_chunks} chunk(s); {len(report.failed_files)} file(s) failed: {details}"
+            )
+        return f"indexed {report.indexed_chunks} chunk(s) from {', '.join(paths)}"
 
     def tool_memory_stats(self, args: dict[str, Any]) -> str:
         count = self._get_store().count()
@@ -228,9 +276,7 @@ class MCPServer:
         if not chunk_hash:
             raise ValueError("chunk_id is required")
         lines_ctx = args.get("lines")
-        chunks = self._get_store().query(
-            filter_expr=f'chunk_hash == "{_escape_filter_value(chunk_hash)}"'
-        )
+        chunks = self._get_store().query(filter_expr=f'chunk_hash == "{_escape_filter_value(chunk_hash)}"')
         if not chunks:
             return f"chunk not found: {chunk_hash}"
         chunk = chunks[0]
@@ -247,7 +293,7 @@ class MCPServer:
         end_line = int(chunk.get("end_line", start_line))
 
         if lines_ctx is not None:
-            n = int(lines_ctx)
+            n = _integer_argument(args, "lines", default=0, minimum=0)
             ctx_start = max(0, start_line - 1 - n)
             ctx_end = min(len(all_lines), end_line + n)
             expanded = "\n".join(all_lines[ctx_start:ctx_end])
@@ -267,9 +313,9 @@ class MCPServer:
         if not texts:
             raise ValueError("texts is required (string or list of strings)")
 
-        provider = self._memsearch()._embedder
+        include = _boolean_argument(args, "include_vector")
+        provider = self._embedding_provider()
         vectors = self._run_coro(provider.embed(texts))
-        include = bool(args.get("include_vector"))
         payload = {
             "model": provider.model_name,
             "count": len(vectors),
@@ -303,10 +349,7 @@ class MCPServer:
         reranker = RemoteReranker(model=model.split(":", 1)[1])
         candidates = [{"content": doc} for doc in documents]
         ranked = reranker.rerank(query, candidates)
-        return "\n".join(
-            f"{i}. score={r['score']:.6f}  {r['content']}"
-            for i, r in enumerate(ranked[: len(documents)])
-        )
+        return "\n".join(f"{i}. score={r['score']:.6f}  {r['content']}" for i, r in enumerate(ranked[: len(documents)]))
 
     def tool_knowledge_search(self, args: dict[str, Any]) -> str:
         query = str(args.get("query") or "").strip()
@@ -318,18 +361,25 @@ class MCPServer:
                 f"(its store at {DEFAULT_KNOWLEDGE_DB} is picked up automatically), "
                 f"pass --knowledge-db, or set {KNOWLEDGE_DB_ENV}"
             )
-        limit = int(args.get("limit") or 5)
+        limit = _integer_argument(args, "limit", default=5, minimum=1)
         base_id = args.get("base_id") or None
 
         from .knowledge_store import KnowledgeStore
 
         store = KnowledgeStore(self._knowledge_db)
         try:
+            try:
+                provider = self._embedding_provider()
+            except Exception:
+                provider = None
             hits = store.search(
                 query,
                 limit=limit,
                 base_id=base_id,
-                embed_fn=self._embed_texts,
+                embed_fn=self._embed_texts if provider is not None else None,
+                embedding_model=(
+                    f"{self._cfg.embedding.provider}:{provider.model_name}" if provider is not None else None
+                ),
                 rerank_fn=self._rerank_documents,
             )
         finally:
@@ -347,9 +397,9 @@ class MCPServer:
     # ------------------------------------------------------------------
 
     def _embed_texts(self, texts: list[str]) -> list[list[float]]:
-        return self._run_coro(self._memsearch()._embedder.embed(texts))
+        return self._run_coro(self._embedding_provider().embed(texts))
 
-    def _rerank_documents(self, query: str, documents: list[str]) -> list[float] | None:
+    def _rerank_documents(self, query: str, documents: list[str]) -> list[float | None] | None:
         model = self._cfg.reranker.model or ""
         if not model.startswith("remote:"):
             return None
@@ -361,7 +411,7 @@ class MCPServer:
             scores = reranker.scores(response, len(documents))
         except Exception:
             return None
-        return [scores.get(i, 0.0) for i in range(len(documents))]
+        return [scores.get(i) for i in range(len(documents))]
 
     # ------------------------------------------------------------------
     # tool registry
@@ -380,7 +430,7 @@ class MCPServer:
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "natural language or keywords"},
-                        "limit": {"type": "integer", "description": "max hits (default 5)"},
+                        "limit": {"type": "integer", "minimum": 1, "description": "max hits (default 5)"},
                         "source_prefix": {
                             "type": "string",
                             "description": "only chunks whose source path starts with this prefix",
@@ -420,7 +470,7 @@ class MCPServer:
                     "type": "object",
                     "properties": {
                         "chunk_id": {"type": "string", "description": "chunk_hash from memory_search"},
-                        "lines": {"type": "integer", "description": "show N lines around the chunk"},
+                        "lines": {"type": "integer", "minimum": 0, "description": "show N lines around the chunk"},
                     },
                     "required": ["chunk_id"],
                 },
@@ -470,7 +520,7 @@ class MCPServer:
                         "type": "object",
                         "properties": {
                             "query": {"type": "string"},
-                            "limit": {"type": "integer", "description": "max hits (default 5)"},
+                            "limit": {"type": "integer", "minimum": 1, "description": "max hits (default 5)"},
                             "base_id": {"type": "string", "description": "restrict to one base id"},
                         },
                         "required": ["query"],
@@ -500,8 +550,10 @@ class MCPServer:
 
     def handle(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Handle one JSON-RPC message; return the reply (or None for notifications)."""
+        if "id" not in message:
+            return None
         method = message.get("method")
-        mid = message.get("id")
+        mid = message["id"]
         params = message.get("params") or {}
 
         if method == "initialize":
@@ -548,8 +600,6 @@ class MCPServer:
                     "isError": is_error,
                 },
             }
-        if mid is None:
-            return None
         return {
             "jsonrpc": "2.0",
             "id": mid,

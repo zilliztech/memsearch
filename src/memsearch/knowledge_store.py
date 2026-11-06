@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import array
 import contextlib
+import math
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
@@ -34,7 +35,7 @@ from typing import Any
 RRF_K = 60
 
 EmbedFn = Callable[[list[str]], list[list[float]]]
-RerankFn = Callable[[str, list[str]], list[float] | None]
+RerankFn = Callable[[str, list[str]], list[float | None] | None]
 
 
 class KnowledgeStore:
@@ -86,7 +87,7 @@ class KnowledgeStore:
         ``by_id`` lookup, which only covers the filtered rows).
 
         FTS5 returns a *negative* score, where more negative means a better
-        match; the ranking below keeps that order.
+        match; negate it so higher scores rank first, like dense scores.
         """
         cleaned = " ".join(query.split())
         if len(cleaned) < 2:
@@ -110,25 +111,37 @@ class KnowledgeStore:
             rows = self._conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
-        return {row["chunk_id"]: float(row["score"]) for row in rows}
+        return {row["chunk_id"]: -float(row["score"]) for row in rows}
 
-    def _dense(self, vectors: list[list[float]], rows: list[sqlite3.Row]) -> dict[str, float]:
+    def _dense(
+        self,
+        vectors: list[list[float]],
+        rows: list[sqlite3.Row],
+        embedding_model: str | None = None,
+    ) -> dict[str, float]:
         """Cosine similarity of the query vector against every stored vector.
 
         The stored blobs are L2-normalised float32, so the dot product is
         the cosine similarity.  numpy is used when available — the pure
         Python fallback is an order of magnitude slower on a few thousand
-        chunks of 2560 dimensions.
+        chunks of 2560 dimensions.  Both paths skip incompatible dimensions
+        and, when given, require an exact embedding model match.
         """
         if not vectors or not rows:
             return {}
         query = vectors[0]
+        if not query:
+            return {}
         qn = sum(x * x for x in query) ** 0.5 or 1.0
 
         blobs: list[tuple[str, bytes]] = []
         for row in rows:
             blob = row["embedding"]
-            if blob is None:
+            # Check each float32 blob before concatenating: differing vector
+            # lengths can otherwise fail the reshape or splice row boundaries.
+            if blob is None or len(blob) != len(query) * 4:
+                continue
+            if embedding_model is not None and row["embedding_model"] != embedding_model:
                 continue
             blobs.append((row["chunk_id"], blob))
         if not blobs:
@@ -138,10 +151,8 @@ class KnowledgeStore:
             import numpy as np
 
             matrix = np.frombuffer(b"".join(b for _id, b in blobs), dtype=np.float32)
-            matrix = matrix.reshape(len(blobs), -1)
+            matrix = matrix.reshape(len(blobs), len(query))
             q = np.asarray(query, dtype=np.float32)
-            if matrix.shape[1] != q.shape[0]:
-                return {}
             scores = matrix @ q / qn
             return {chunk_id: float(score) for (chunk_id, _b), score in zip(blobs, scores, strict=False)}
         except ImportError:
@@ -166,6 +177,7 @@ class KnowledgeStore:
         limit: int = 5,
         base_id: str | None = None,
         embed_fn: EmbedFn | None = None,
+        embedding_model: str | None = None,
         rerank_fn: RerankFn | None = None,
         candidates: int = 50,
         rerank_candidates: int = 15,
@@ -183,9 +195,14 @@ class KnowledgeStore:
         embed_fn:
             Callable embedding a list of texts — used for the dense half of
             the hybrid search.  Without it only BM25 runs.
+        embedding_model:
+            Exact stored model key (``provider:model_name``) for the query
+            embedding.  Without it only vector dimensions are checked.
         rerank_fn:
             Callable ``(query, documents) -> scores`` used for the final
-            cross-encoder pass.  Without it the fused ranking is returned.
+            cross-encoder pass.  Returning ``None`` keeps the fused ranking;
+            a ``None`` score drops that candidate.  Malformed scores or no
+            scored candidates raise, as do callback failures.
         candidates:
             How many hits of each retriever take part in the fusion.
         rerank_candidates:
@@ -205,7 +222,7 @@ class KnowledgeStore:
             except Exception:
                 vectors = []
             if vectors:
-                dense = self._dense(vectors, rows)
+                dense = self._dense(vectors, rows, embedding_model=embedding_model)
 
         bm25 = self._bm25(query, limit=candidates, base_id=base_id)
 
@@ -241,14 +258,21 @@ class KnowledgeStore:
 
         if rerank_fn is not None and hits:
             head = hits[: max(limit, min(rerank_candidates, len(hits)))]
-            try:
-                scores = rerank_fn(query, [h["text"] for h in head])
-            except Exception:
-                scores = None
-            if scores:
+            scores = rerank_fn(query, [h["text"] for h in head])
+            if scores is not None:
+                if not isinstance(scores, list) or (scores and len(scores) != len(head)):
+                    raise RuntimeError("Knowledge reranker returned an invalid score list")
+                ranked = []
                 for hit, score in zip(head, scores, strict=False):
+                    if score is None:
+                        continue
+                    if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+                        raise RuntimeError("Knowledge reranker returned a non-finite or non-numeric score")
                     hit["rerank_score"] = float(score)
-                head.sort(key=lambda h: -h["rerank_score"])
-                return head[:limit]
+                    ranked.append(hit)
+                if not ranked:
+                    raise RuntimeError("Knowledge reranker returned no scores")
+                ranked.sort(key=lambda h: -h["rerank_score"])
+                return ranked[:limit]
 
         return hits[:limit]
