@@ -67,7 +67,17 @@ mcpServers:
 
 Every tool returns a text block. Invalid arguments come back as
 `isError: true` with the reason, never as a crash — one bad call never
-kills the server.
+kills the server. Result limits must be positive integers, expansion
+context must be a non-negative integer, and boolean options require JSON
+booleans (for example `false`, not the string `"false"`). Notifications do
+not produce replies.
+
+If indexing fails for any file, `memory_index` returns `isError: true`
+with the indexed chunk count and failed-file details; a partial write is
+not reported as an entirely successful call. Subsequent reads reopen the
+collection so a collection created by indexing is visible in the same
+server session. `embed` uses the embedding provider directly and does not
+require a Milvus collection or a matching collection dimension.
 
 ### `memory_search`
 
@@ -134,6 +144,13 @@ same recipe the plugin uses:
 2. BM25 over the FTS5 trigram index,
 3. reciprocal rank fusion of the two rankings,
 4. an optional cross-encoder pass.
+
+Dense scores use only vectors whose dimensions and stored
+`provider:model_name` key match the query provider. Other chunks remain
+eligible for keyword matching. BM25 scores are normalized to higher-is-better
+before fusion. A partial rerank response drops candidates without scores;
+it never invents zero scores for them. An empty scoring response is an
+error. If embedding is unavailable, keyword retrieval remains available.
 
 The database is opened **read-only**, so a running knowledge plugin is
 never disturbed. The store is **auto-detected** at the standard location:
