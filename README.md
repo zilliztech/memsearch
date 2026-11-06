@@ -256,7 +256,7 @@ memsearch config set milvus.uri http://localhost:19530
 Each plugin keeps its native capture summarizer unless you override it explicitly:
 
 ```bash
-memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+memsearch config set plugins.codex.summarize.model gpt-6-luna
 memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 ```
 

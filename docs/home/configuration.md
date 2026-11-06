@@ -185,7 +185,7 @@ platform-specific override. These settings do not fall back to `llm.model`.
 
 ```bash
 memsearch config set plugins.claude-code.summarize.model haiku
-memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+memsearch config set plugins.codex.summarize.model gpt-6-luna
 memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 memsearch config set plugins.openclaw.summarize.model qwen3-coder
 ```
