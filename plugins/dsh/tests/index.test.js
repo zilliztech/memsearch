@@ -1155,12 +1155,49 @@ test('listSkillCandidates: malformed meta.json is skipped, not fatal', () => {
   assert.equal(out[0].occurrences, 0, 'missing occurrences defaults to 0')
 })
 
-test('resolveSkillInstallTarget: paths config entry wins, relative resolves against project', () => {
-  
-  const target = resolveSkillInstallTarget('memsearch', '/proj')
-  // No configured paths on this machine → DSH default ~/.agents/skills.
-  assert.ok(target.endsWith('/.agents/skills'), `expected ~/.agents/skills default, got ${target}`)
-})
+for (const [name, paths, expected, legacyOutput] of [
+  ['relative', ['./custom-skills'], (root) => `${root}/project/custom-skills`, "['./custom-skills']"],
+  ['absolute', ['/custom/skills'], () => '/custom/skills', "['/custom/skills']"],
+  ['home-relative', ['~/custom-skills'], () => `${os.homedir()}/custom-skills`, "['~/custom-skills']"],
+  ['first path only', ['first', 'second'], (root) => `${root}/project/first`, "['first', 'second']"],
+  ['quotes and spaces', ["skills' directory"], (root) => `${root}/project/skills' directory`, JSON.stringify(["skills' directory"])],
+  ['absolute with quote', ["/custom/skills' directory"], () => "/custom/skills' directory", JSON.stringify(["/custom/skills' directory"])],
+  ['empty', [], () => `${process.env.HOME || ''}/.agents/skills`, '[]'],
+  ['missing', undefined, () => `${process.env.HOME || ''}/.agents/skills`, '[]'],
+]) {
+  test(`resolveSkillInstallTarget: ${name} config paths`, () => {
+    const root = fs.mkdtempSync(`${os.tmpdir()}/msr-install-`)
+    try {
+      const script = `${root}/config.cjs`
+      // Model both real CLI formats: config get uses Python's list repr,
+      // while config list --json-output is the machine-readable interface.
+      fs.writeFileSync(script, `
+        const args = process.argv.slice(2)
+        if (args.join(' ') === 'config list --json-output') {
+          console.log(${JSON.stringify(JSON.stringify({ plugins: { dsh: { memory_to_skill: { paths } } } }))})
+        } else if (args.join(' ') === 'config get plugins.dsh.memory_to_skill.paths') {
+          console.log(${JSON.stringify(legacyOutput)})
+        } else { process.exit(1) }
+      `)
+      const command = [process.execPath, script]
+      assert.equal(resolveSkillInstallTarget(command, `${root}/project`), expected(root))
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+}
+
+for (const [name, script] of [
+  ['invalid JSON', "console.log('not JSON')"],
+  ['command failure', 'process.exit(1)'],
+]) {
+  test(`resolveSkillInstallTarget: ${name} falls back to DSH default`, () => {
+    assert.equal(
+      resolveSkillInstallTarget([process.execPath, '-e', script], '/proj'),
+      `${process.env.HOME || ''}/.agents/skills`,
+    )
+  })
+}
 
 test('registerSkillReviewRoutes: GET candidates returns parsed list, pending first', async () => {
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-route-')

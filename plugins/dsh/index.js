@@ -433,21 +433,27 @@ function listSkillCandidates(memsearchDir) {
  *
  * Mirrors the other platform plugins: the destination is the first entry of
  * `plugins.<agent>.memory_to_skill.paths` in memsearch config when the user
- * set one (relative entries resolve against the project dir); otherwise DSH's
- * default user-agents skill directory (`~/.agents/skills`), which the
+ * set one (relative entries resolve against the project dir). Bare `~` and
+ * `~/` expand against the home directory; Windows also accepts a backslash
+ * after `~`. Otherwise use DSH's default user-agents skill directory
+ * (`~/.agents/skills`), which the
  * `skill-filesystem` provider watches and loads automatically.
  */
 function resolveSkillInstallTarget(memsearchCmd, projectDir) {
-  const read = readMemsearchConfigValue(memsearchCmd, 'plugins.dsh.memory_to_skill.paths')
-  if (read.ok && read.value) {
-    try {
-      const paths = JSON.parse(read.value)
-      if (Array.isArray(paths) && paths.length > 0) {
-        const first = String(paths[0])
-        return join(first.startsWith('/') ? first : projectDir, first)
-      }
-    } catch { /* fall through to the DSH default */ }
-  }
+  try {
+    // `config get` renders lists with Python repr, not JSON. Use the CLI's
+    // existing machine-readable interface without changing scalar consumers.
+    const output = execCommandSync(memsearchCmd, ['config', 'list', '--json-output'], {
+      encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    const paths = JSON.parse(output)?.plugins?.dsh?.memory_to_skill?.paths
+    if (Array.isArray(paths) && paths.length > 0) {
+      const first = String(paths[0])
+      if (first === '~') return homedir()
+      if (first.startsWith('~/') || first.startsWith(`~${sep}`)) return join(homedir(), first.slice(2))
+      return resolve(projectDir, first)
+    }
+  } catch { /* fall through to the DSH default */ }
   return join(process.env.HOME || '', '.agents', 'skills')
 }
 
