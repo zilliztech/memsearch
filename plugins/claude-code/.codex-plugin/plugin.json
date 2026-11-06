@@ -1,0 +1,6 @@
+{
+  "name": "memsearch",
+  "description": "MemSearch marketplace hooks and skills",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.codex.json"
+}
