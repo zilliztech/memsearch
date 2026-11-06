@@ -116,8 +116,12 @@ def test_search_fuses_dense_and_bm25(store: KnowledgeStore) -> None:
         embed_fn=lambda texts: [[0.0, 1.0, 0.0]],
     )
     assert len(hits) == 2
-    assert hits[0]["chunk_id"] == "c2"  # dense favours c2, bm25 favours c2 as well
-    assert hits[0]["score"] > hits[1]["score"]
+    assert [hit["chunk_id"] for hit in hits] == ["c2", "c1"]
+    # Dense favours c2; the short-keyword fallback scores both rows equally
+    # on the bm25 side (neither carries ranking information), so the fused
+    # scores tie and the dense ranking breaks the tie first.
+    assert hits[0]["score"] >= hits[1]["score"]
+    assert hits[0]["dense_score"] == pytest.approx(1.0)
 
 
 def test_search_without_embedding_falls_back_to_bm25(store: KnowledgeStore) -> None:

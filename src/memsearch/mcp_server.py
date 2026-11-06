@@ -53,6 +53,17 @@ SERVER_VERSION = _package_version()
 #: Environment variable pointing at a DeepSeek Harness knowledge store.
 KNOWLEDGE_DB_ENV = "MEMSEARCH_KNOWLEDGE_DB"
 
+
+class UnknownToolError(KeyError):
+    """A tool name with no handler was requested.
+
+    Subclasses :class:`KeyError` so callers that treat unknown tools as
+    missing mapping entries keep working, while :meth:`MCPServer.handle` can
+    tell a bad tool name apart from a ``KeyError`` raised inside a tool
+    handler (which must surface as a tool error, not as "unknown tool").
+    """
+
+
 #: Default store location written by the third-party ``dsh-knowledge`` plugin
 #: (https://github.com/Soren-ABT/dsh-knowledge).  Not part of DeepSeek Harness
 #: itself — the tool is only exposed when this file (or an explicit override)
@@ -405,12 +416,13 @@ class MCPServer:
             return None
         try:
             from .remote_reranker import RemoteReranker
-
-            reranker = RemoteReranker(model=model.split(":", 1)[1])
-            response = reranker.evaluate(query, documents)
-            scores = reranker.scores(response, len(documents))
-        except Exception:
+        except ImportError:
+            # The remote adapter ships with the reranker PR; until it merges
+            # there is nothing to call, so keep the fused ranking.
             return None
+        reranker = RemoteReranker(model=model.split(":", 1)[1])
+        response = reranker.evaluate(query, documents)
+        scores = reranker.scores(response, len(documents))
         return [scores.get(i) for i in range(len(documents))]
 
     # ------------------------------------------------------------------
@@ -541,7 +553,7 @@ class MCPServer:
         }
         handler = handlers.get(name)
         if handler is None:
-            raise KeyError(name)
+            raise UnknownToolError(name)
         return handler(args)
 
     # ------------------------------------------------------------------
@@ -583,7 +595,7 @@ class MCPServer:
             try:
                 text = self._dispatch_tool(str(name), arguments)
                 is_error = False
-            except KeyError:
+            except UnknownToolError:
                 return {
                     "jsonrpc": "2.0",
                     "id": mid,
