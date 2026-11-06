@@ -238,8 +238,11 @@ def test_invalid_scores_fail(score):
         RemoteReranker.scores(result, 1)
 
 
-@pytest.mark.parametrize("index", [-1, 1, 4, "0", True, None])
+@pytest.mark.parametrize("index", [-1, 1, 4, "0", True, False, None])
 def test_invalid_indexes_fail(index):
+    # False (== 0) passes the range check for any count, so this case is what
+    # actually pins the isinstance-bool exclusion; True is rejected by the
+    # range check alone whenever the payload has a single candidate.
     result = response([0.5])
     result["results"][0]["index"] = index
     with pytest.raises(ValueError, match="index"):
