@@ -136,7 +136,10 @@ The service scores every candidate in one request and returns
 `{"results": [{"index", "relevance_score"}]}`. Candidates the service leaves
 out are dropped, so the caller sees exactly what the reranker ranked highest.
 Errors are surfaced to the caller; an unsuccessful request never silently
-becomes an unreranked result.
+becomes an unreranked result. HTTP redirects (301, 302, 303, 307, 308) raise
+`RuntimeError` with the HTTP status, including redirects within the same origin.
+Configure the final endpoint URL directly; credentials and request contents
+are never forwarded to a redirect destination.
 
 ### Context Manager
 

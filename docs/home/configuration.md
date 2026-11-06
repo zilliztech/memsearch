@@ -103,8 +103,11 @@ the request is built; without it, the default is
 to a machine on the LAN. Hosted relays that authenticate the endpoint take a
 bearer token from `MEMSEARCH_REMOTE_RERANKER_API_KEY` — with a key set,
 plain `http` is accepted only for loopback hosts (`localhost`, `127.0.0.1`,
-`::1`); non-loopback endpoints must serve `https`. Set the endpoint in the
-environment rather than in project config: a remote service is reachable only
+`::1`); non-loopback endpoints must serve `https`. HTTP redirects are refused,
+including redirects to the same origin; configure the final endpoint URL
+directly. A redirect raises an HTTP failure without forwarding the key or
+request contents to the destination. Set the endpoint in the environment
+rather than in project config: a remote service is reachable only
 from the host that opens the tunnel, and an untrusted project directory must
 not be able to redirect query and chunk text to an address of its choosing.
 
