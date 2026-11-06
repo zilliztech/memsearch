@@ -136,3 +136,9 @@ If you want to warm the cache ahead of time, run a dummy command once:
 ```bash
 memsearch search "warmup"
 ```
+
+## `memsearch index` aborts after printing "Indexed N chunks."
+
+On macOS with the `onnx` provider, an index run could finish, write every row, and then die with `Abort trap: 6` (exit 134), so callers that check the exit code saw a failure on complete data.
+
+The abort came from onnxruntime's own telemetry uploader, whose worker thread can outlive interpreter shutdown. memsearch now calls `onnxruntime.disable_telemetry_events()` before it creates any inference session, so no usage events are uploaded from an ONNX embedding or reranking run.
