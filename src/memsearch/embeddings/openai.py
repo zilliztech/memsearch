@@ -61,8 +61,10 @@ class OpenAIEmbedding:
         return await batched_embed(texts, self._embed_batch, self._batch_size)
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        from .utils import order_indexed_embeddings
+
         resp = await self._client.embeddings.create(input=texts, model=self._model, encoding_format="float")
-        return [item.embedding for item in resp.data]
+        return order_indexed_embeddings([(item.index, item.embedding) for item in resp.data], len(texts))
 
 
 _KNOWN_DIMENSIONS: dict[str, int] = {
