@@ -5,6 +5,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 
+def order_indexed_embeddings(
+    entries: list[tuple[int | None, list[float]]], expected_count: int, *, allow_unindexed: bool = False
+) -> list[list[float]]:
+    """Validate response indices and return embeddings in input order."""
+    indices = [index for index, _ in entries]
+    if allow_unindexed and len(indices) == expected_count and all(index is None for index in indices):
+        return [embedding for _, embedding in entries]
+    if (
+        len(indices) != expected_count
+        or any(not isinstance(index, int) or isinstance(index, bool) for index in indices)
+        or set(indices) != set(range(expected_count))
+    ):
+        raise ValueError("Invalid embedding indices in response")
+    return [embedding for _, embedding in sorted(entries, key=lambda entry: entry[0])]
+
+
 async def batched_embed(
     texts: list[str],
     embed_fn: Callable[[list[str]], Awaitable[list[list[float]]]],
