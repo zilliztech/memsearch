@@ -114,9 +114,9 @@ results = await mem.search("Why was the cache policy changed?", top_k=5)
 ```
 
 Like Jev, search fetches three times the requested `top_k`, reranks those
-candidates, and returns `top_k`. Through `reranker_model` the request timeout
-is the adapter default, 60 s. For candidates obtained elsewhere, or to bound
-the wait differently, use the adapter directly:
+candidates, and returns at most `top_k` results. Through `reranker_model` the
+request timeout is the adapter default, 60 s. For candidates obtained
+elsewhere, or to bound the wait differently, use the adapter directly:
 
 ```python
 from memsearch.remote_reranker import RemoteReranker
