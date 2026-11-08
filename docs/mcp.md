@@ -38,11 +38,15 @@ claude mcp add memsearch -- memsearch mcp
 ### DeepSeek Harness
 
 ```yaml
-# ~/.dsh/profiles/desktop/cordis.yml
-mcpServers:
-  - name: memsearch
-    command: memsearch
-    args: ["mcp"]
+# ~/.dsh/profiles/desktop/cordis.patch.yml
+- insert:
+    - id: memsearch-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: memsearch
+        transport: stdio
+        command: memsearch
+        args: ["mcp"]
 ```
 
 ## Transport
@@ -72,6 +76,10 @@ context must be a non-negative integer, and boolean options require JSON
 booleans (for example `false`, not the string `"false"`). Notifications do
 not produce replies.
 
+The `rerank` tool requires the remote reranker backend (`remote:` model in
+the `[reranker]` config). When that backend is not available, `rerank`
+reports an error and `memory_search` returns unreranked results.
+
 If indexing fails for any file, `memory_index` returns `isError: true`
 with the indexed chunk count and failed-file details; a partial write is
 not reported as an entirely successful call. Subsequent reads reopen the
@@ -97,6 +105,24 @@ The answer is a readable digest; every hit carries its `chunk_hash`, so
 校机的向量服务跑在 8080 端口。
     (chunk_id=8f3c…  lines 12-18)
 ```
+
+## Known limitations
+
+A long-lived MCP server session behaves differently from one-shot CLI invocations in three ways. None of them loses data, and your markdown files remain the source of truth throughout.
+
+### A collection created outside the session is not visible
+
+The server caches its Milvus handle on first use, including the answer that the collection does not exist. If `memsearch index` or a platform plugin creates the collection afterwards, the running server keeps reporting it as missing until you call the `memory_index` tool or restart the server.
+
+### The Milvus Lite file is locked while the server runs
+
+With the default local backend (`~/.memsearch/milvus.db`) the server holds the database open for its whole lifetime, so CLI commands against the same file fail until the server exits. If several processes must share one database, use Milvus Server via Docker or Zilliz Cloud.
+
+See [Getting Started — Milvus Backends](getting-started.md#milvus-backends) for the backend comparison.
+
+### Knowledge chunks written during a call appear on the next call
+
+`knowledge_search` answers from a snapshot taken when the call starts. If the dsh-knowledge plugin writes new chunks while a call is in flight, the reply does not include them; the next call does.
 
 ## Configuration
 
