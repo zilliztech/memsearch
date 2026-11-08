@@ -242,8 +242,11 @@ through the DSH logger.
       (relative entries resolve against the project dir), else the DSH default
       `~/.agents/skills`, which the `skill-filesystem` provider watches and
       loads automatically.
-  The project directory is resolved from the session id (its durable cwd), so
-  the panel reflects the project of the session you are viewing on a
+  The project directory is resolved from the session id: a live agent's
+  session cwd first, then the session's persisted header cwd (so merely
+  browsing an old conversation — no live agent yet — still shows that
+  conversation's project, not the boot directory), finally the process cwd.
+  The panel therefore reflects the project of the session you are viewing on a
   multi-project web surface. The routes are registered once the DSH web server
   service becomes available (the memsearch plugin mounts in the base bundle
   layer, before the web server starts; `apply` retries on a 1s unref'd timer).

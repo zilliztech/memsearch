@@ -538,18 +538,38 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
   // Project dir for a session id (its durable cwd), else the process cwd.
   // A long-lived web surface serves many projects, so we never assume the
   // boot dir is the only one (mirrors the capture path).
-  const projectDirForSession = (sessionId) => {
+  //
+  // Resolution order: a live agent's session cwd, then the session's persisted
+  // header cwd (session headers are immutable), then the process cwd. The
+  // middle step matters on multi-session web surfaces: merely browsing a
+  // conversation does not materialize a live agent for it, so without the
+  // persisted lookup every such request fell back to the boot dir and the
+  // review panel read the wrong project's `.memsearch`.
+  const persistedCwdCache = new Map()
+  const persistedProjectDir = async (sessionId) => {
+    if (persistedCwdCache.has(sessionId)) return persistedCwdCache.get(sessionId)
+    let cwd = undefined
+    try {
+      const stat = await ctx.sessionPersistence?.stat?.(sessionId)
+      cwd = stat?.header?.cwd
+    } catch { /* unknown or unreadable session — keep the boot-dir fallback */ }
+    if (typeof cwd === 'string' && cwd) persistedCwdCache.set(sessionId, cwd)
+    return cwd
+  }
+  const projectDirForSession = async (sessionId) => {
     const agent = ctx.agents?.get?.(sessionId)
-    return projectDirFor(agent?.session)
+    const liveCwd = projectDirFor(agent?.session)
+    if (agent?.session?.header?.cwd) return liveCwd
+    return (await persistedProjectDir(sessionId)) || liveCwd
   }
 
   registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/skill-candidates',
-    handler: (req, res) => {
+    handler: async (req, res) => {
       if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
       const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
-      const projectDir = projectDirForSession(sessionId)
+      const projectDir = await projectDirForSession(sessionId)
       const memoryDir = memsearchDirFor(projectDir)
       sendJson(res, 200, { candidates: listSkillCandidates(memoryDir) })
     },
@@ -586,7 +606,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       // install: background `memsearch skills install` to the resolved target.
       // Detached + unref so the install survives the DSH process; the
       // skill-filesystem watcher picks up the new SKILL.md automatically.
-      const projectDir = projectDirForSession(sessionId)
+      const projectDir = await projectDirForSession(sessionId)
       const target = resolveSkillInstallTarget(memsearchCmd, projectDir)
       const child = execCommand(memsearchCmd, ['skills', 'install', name, '--path', target], {
         cwd: projectDir,
@@ -610,7 +630,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' })
       const body = await readJsonBody(req)
       const { sessionId, scope } = body // scope: 'memsearch' (default) | 'candidates'
-      const projectDir = projectDirForSession(sessionId)
+      const projectDir = await projectDirForSession(sessionId)
       const memsearchDir = memsearchDirFor(projectDir)
       const dir = scope === 'candidates' ? join(memsearchDir, 'skill-candidates') : memsearchDir
       if (!existsSync(dir)) {
@@ -638,7 +658,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
       const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
       const relPath = new URL(req.url, 'http://localhost').searchParams.get('path') || ''
-      const projectDir = projectDirForSession(sessionId)
+      const projectDir = await projectDirForSession(sessionId)
       const memsearchDir = memsearchDirFor(projectDir)
       // Only ever list inside the project's .memsearch tree.
       const abs = safeJoinWithin(memsearchDir, relPath)
@@ -679,7 +699,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
       const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
       const relPath = new URL(req.url, 'http://localhost').searchParams.get('path') || ''
-      const projectDir = projectDirForSession(sessionId)
+      const projectDir = await projectDirForSession(sessionId)
       const memsearchDir = memsearchDirFor(projectDir)
       const abs = safeJoinWithin(memsearchDir, relPath)
       if (abs === null) return sendJson(res, 400, { error: 'path outside .memsearch' })

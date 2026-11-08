@@ -1199,6 +1199,110 @@ for (const [name, script] of [
   })
 }
 
+// A persisted-cwd fixture: no live agent, sessionPersistence.stat returns the
+// immutable session header (the shape dsh-session-persistence's stat() serves).
+function persistedCtx(statImpl, calls = []) {
+  return {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+    sessionPersistence: {
+      stat: async (sessionId) => { calls.push(sessionId); return statImpl(sessionId) },
+    },
+  }
+}
+
+for (const [name, sessionId, statBehavior] of [
+  ['stale session resolves through the persisted header', 'stale-1', 'persisted'],
+  ['unknown session falls back to the boot dir', 'ghost', 'missing'],
+  ['stat failure falls back to the boot dir', 'broken', 'throws'],
+]) {
+  test(`registerSkillReviewRoutes: GET candidates — ${name}`, async () => {
+    const bootDir = fs.mkdtempSync(os.tmpdir() + '/msr-stale-boot-')
+    const persistedDir = fs.mkdtempSync(os.tmpdir() + '/msr-stale-proj-')
+    // The persisted project holds a candidate; the boot dir holds none, so the
+    // response body tells which project directory the route resolved to.
+    fs.mkdirSync(`${persistedDir}/.memsearch/skill-candidates/persisted-one`, { recursive: true })
+    fs.writeFileSync(`${persistedDir}/.memsearch/skill-candidates/persisted-one/meta.json`,
+      JSON.stringify({ name: 'persisted-one', status: 'candidate' }))
+    fs.mkdirSync(`${bootDir}/.memsearch`, { recursive: true })
+    const routes = {}
+    const webServer = { register: (r) => { routes[r.path] = r } }
+    const calls = []
+    const ctx = persistedCtx((id) => {
+      if (statBehavior === 'throws') throw new Error('storage unavailable')
+      if (statBehavior === 'missing') return undefined
+      return { header: { id, cwd: persistedDir } }
+    }, calls)
+    const { registerSkillReviewRoutes } = await import('../index.js')
+    const prev = process.env.MEMSEARCH_DIR
+    const prevCwd = process.cwd()
+    delete process.env.MEMSEARCH_DIR // exercise the <project>/.memsearch resolution path
+    process.chdir(bootDir)
+    try {
+      registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+      const getRoute = routes['/memsearch-dsh/skill-candidates']
+      const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
+      await getRoute.handler({ method: 'GET', url: `/memsearch-dsh/skill-candidates?sessionId=${sessionId}` }, res)
+      assert.equal(res.status, 200)
+      assert.deepEqual(calls, [sessionId], 'stat consulted for the non-live session')
+      if (statBehavior === 'persisted') {
+        assert.deepEqual(res.body.candidates.map((c) => c.name), ['persisted-one'],
+          'stale session reads the persisted project, not the boot dir')
+      } else {
+        assert.deepEqual(res.body.candidates, [], 'unresolvable session falls back to the boot dir')
+      }
+    } finally {
+      process.chdir(prevCwd)
+      if (prev === undefined) delete process.env.MEMSEARCH_DIR
+      else process.env.MEMSEARCH_DIR = prev
+      fs.rmSync(bootDir, { recursive: true, force: true })
+      fs.rmSync(persistedDir, { recursive: true, force: true })
+    }
+  })
+}
+
+test('registerSkillReviewRoutes: persisted cwd is memoized; a live agent wins without stat', async () => {
+  const routes = {}
+  const webServer = { register: (r) => { routes[r.path] = r } }
+  const calls = []
+  let agentLive = false
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => (agentLive ? { session: { header: { cwd: 'S:/proj/live' } } } : undefined) },
+    logger: { warn: () => {} },
+    sessionPersistence: {
+      stat: async (sessionId) => { calls.push(sessionId); return { header: { id: sessionId, cwd: 'S:/proj/persisted' } } },
+    },
+  }
+  const { registerSkillReviewRoutes } = await import('../index.js')
+  const prev = process.env.MEMSEARCH_DIR
+  process.env.MEMSEARCH_DIR = fs.mkdtempSync(os.tmpdir() + '/msr-memo-')
+  try {
+    registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+    const getRoute = routes['/memsearch-dsh/skill-candidates']
+    const mkRes = () => {
+      const sink = { writeHead: (s) => { sink.status = s }, end: (b) => { sink.body = JSON.parse(b) } }
+      return sink
+    }
+    // Two requests with no live agent: stat consulted once, then memoized.
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, mkRes())
+    const second = mkRes()
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, second)
+    assert.equal(second.status, 200)
+    assert.deepEqual(calls, ['s-1'], 'stat called exactly once per session id')
+    // A live agent short-circuits: its session cwd wins and stat is never hit.
+    agentLive = true
+    const third = mkRes()
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, third)
+    assert.equal(third.status, 200)
+    assert.deepEqual(calls, ['s-1'], 'live agent resolution does not consult stat')
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prev
+  }
+})
+
 test('registerSkillReviewRoutes: GET candidates returns parsed list, pending first', async () => {
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-route-')
   const candDir = `${tmp}/skill-candidates`
@@ -1223,7 +1327,7 @@ test('registerSkillReviewRoutes: GET candidates returns parsed list, pending fir
     const getRoute = routes['/memsearch-dsh/skill-candidates']
     assert.ok(getRoute, 'GET route registered')
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates' }, res)
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates' }, res)
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.candidates.map((c) => c.name), ['alpha', 'zeta'], 'pending first')
     assert.equal(res.body.candidates[0].description, 'A')
@@ -1254,7 +1358,7 @@ test('registerSkillReviewRoutes: GET rejects non-GET, POST review injects into a
     const getRoute = routes['/memsearch-dsh/skill-candidates']
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
     getRoute.handler({ method: 'POST', url: '/x' }, res)
-    assert.equal(res.status, 405)
+    assert.equal(res.status, 405) // method check precedes any async project resolution
 
     const postRoute = routes['/memsearch-dsh/skill-review']
     const { EventEmitter } = await import('node:events')
@@ -1378,7 +1482,7 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
     assert.ok(route, 'list route registered')
 
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch' }, res)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch' }, res)
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.dirs.sort(), ['memory', 'skill-candidates'])
     assert.deepEqual(res.body.files, ['config.toml'])
@@ -1386,12 +1490,12 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
 
     // traversal blocked
     const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
     assert.equal(res2.status, 400)
 
     // A symlink inside .memsearch must not expose an outside directory.
     const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
     assert.equal(res3.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
@@ -1425,23 +1529,23 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
 
     // md file
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=skill-candidates%2Ffoo%2FSKILL.md' }, res)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=skill-candidates%2Ffoo%2FSKILL.md' }, res)
     assert.equal(res.status, 200)
     assert.ok(res.body.content.includes('# Foo'))
 
     // binary rejected
     const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=blob.bin' }, res2)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=blob.bin' }, res2)
     assert.equal(res2.status, 415)
 
     // traversal rejected
     const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
     assert.equal(res3.status, 400)
 
     // A text-looking symlink must not expose a file outside .memsearch.
     const res4 = { writeHead: (s) => { res4.status = s }, end: (b) => { res4.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
     assert.equal(res4.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
