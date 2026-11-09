@@ -24,11 +24,10 @@ export function deriveCollectionNameFromScript(
     }).trim();
   } catch {
     if (process.platform === "win32") {
-      // Match Git Bash's physical /c/path spelling when bash is unavailable.
-      const physical = realpathSync.native(projectDir).replaceAll("\\", "/");
-      const path = physical.replace(/^([a-z]):\//i, (_, drive: string) => "/" + drive.toLowerCase() + "/")
-        .replace(/\/$/, "");
-      const slug = posix.basename(path).replace(/[A-Z]/g, c => c.toLowerCase()).replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+      // Git Bash realpath -m keeps the host root's drive and short-path spelling.
+      const path = realpathSync(projectDir).replaceAll("\\", "/");
+      const slug = posix.basename(path).replace(/[A-Z]/g, c => c.toLowerCase())
+        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
       const hash = createHash("sha256").update(path).digest("hex").slice(0, 8);
       return `ms_${slug}_${hash}`;
     }
