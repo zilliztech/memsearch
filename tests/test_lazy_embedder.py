@@ -176,6 +176,8 @@ async def test_single_file_callers_preserve_provider_error(
                 await second.index_file(note)
         assert caught.value is error
         assert second.store.hashes_by_source(str(note.resolve())) == before
+        if operation == "compact":
+            core.compact_chunks.assert_not_awaited()
 
 
 @pytest.mark.parametrize("failure", ["load", "dimension"])

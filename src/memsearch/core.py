@@ -373,6 +373,7 @@ class MemSearch:
         all_chunks = self._store.query(filter_expr=filter_expr)
         if not all_chunks:
             return ""
+        _ = self._embedder  # fail before the LLM call and the file write
 
         summary = await compact_chunks(
             all_chunks,
