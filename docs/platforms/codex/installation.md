@@ -23,6 +23,30 @@ The installer:
 3. Enables `hooks = true` in `~/.codex/config.toml`
 4. Makes all scripts executable
 
+## Marketplace package compatibility
+
+Use the installer above for native Codex transcript capture. The `memsearch`
+marketplace entry points to the Claude Code package; it is not a replacement for
+the native Codex integration. Avoid enabling both sets of capture hooks.
+
+When that marketplace package is loaded by Codex, `.codex-plugin/plugin.json`
+selects `hooks/hooks.codex.json`. Its `SessionEnd` handler is synchronous with a
+three-second timeout, matching [Codex hook limits](https://learn.chatgpt.com/docs/hooks#sessionend).
+Claude Code continues to use `hooks/hooks.json`, including its asynchronous,
+ten-second `SessionEnd` handler. Other handler commands and timing are unchanged.
+
+Both manifests and the native installer provide `statusMessage` labels. Codex's
+`/hooks` list uses this field as the handler title; an absent or blank value is
+shown as `Unnamed hook`.
+
+The Codex-specific source path produces new hook keys. Existing per-handler
+enable/disable and trust settings for `hooks/hooks.json` do not transfer. After
+updating, inspect `/hooks`, disable unwanted handlers (especially if native
+capture is already installed), and review the definitions before trusting them.
+Editing a versioned plugin cache is temporary: package refreshes can replace
+those edits. Source installs remain under your control until you
+explicitly pull and rerun the installer.
+
 ## Usage
 
 ```bash
