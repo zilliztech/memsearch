@@ -25,7 +25,7 @@
         #   summarizeMode (string, default 'auto')
         #       -> 'auto'         if [plugins.dsh.summarize] provider is set in
         #                          memsearch config → custom-llm, else
-        #                          dsh-headless (zero-config)
+        #                          dsh-headless
         #       -> 'dsh-headless' one-shot dsh headless agent; the model is the
         #                          user's DSH default from settings.yaml
         #                          `agent-default-model`. Missing CLI fails

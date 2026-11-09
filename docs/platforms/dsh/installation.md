@@ -25,9 +25,23 @@ Install the published npm package into the profile you use:
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
-Replace `web` with another profile name when appropriate. The command adds the package to that profile and inserts the MemSearch plugin into its bundle layers.
+Replace `web` with the profile you use, then restart it or start a new session.
 
-Restart the profile, or begin a new DSH session, so the plugin mounts.
+### Native summary credentials
+
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
+If you set `DSH_HOME`, use `profiles/headless/cordis.patch.yml` under that
+directory. Keys exported in DSH's launch environment are already available to
+native summaries.
 
 ### Install from Source
 
@@ -44,12 +58,9 @@ The plugin is plain ESM with no build step. Restart the profile after changing t
 
 ## 3. Verify the Installation
 
-Complete a normal DSH turn, then check the project memory directory:
-
-```bash
-ls .memsearch/memory/
-cat .memsearch/memory/$(date +%Y-%m-%d).md
-```
+Complete a turn, then open today's file in the project's `.memsearch/memory/`
+directory and check for a summary of what you discussed. If the entry reports
+`MISSING_CREDENTIAL`, check the [native summary credentials](#native-summary-credentials).
 
 You can also ask DSH to use the registered skill:
 
@@ -61,7 +72,7 @@ In a web profile, look for the compact **MemSearch** capsule above the composer.
 
 ## Plugin Settings
 
-The plugin works without configuration. Its DSH profile settings control lifecycle behavior:
+The DSH profile settings control capture, recall hints, and summarization.
 
 | Setting | Default | Purpose |
 |---------|---------|---------|

@@ -25,13 +25,18 @@ uv tool install "memsearch[onnx]"
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
-Replace `web` with the DSH profile you use, then restart that profile or start a new session. Continue chatting normally; there is no save command to remember.
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
 
-After a completed turn, confirm that the daily memory journal exists:
-
-```bash
-ls .memsearch/memory/
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
 ```
+
+Replace `web` with the DSH profile you use. Restart it or start a new session,
+complete a turn, and check today's file in `.memsearch/memory/` for its summary.
 
 To recall previous work, ask naturally or name the registered skill:
 

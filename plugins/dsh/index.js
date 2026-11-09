@@ -1270,7 +1270,7 @@ export function apply(ctx, config = {}) {
   // necessarily `process.cwd()` — the boot directory. Turns are serialized
   // through a promise chain so LLM summarize calls never overlap, and the
   // `captureExists` dedup keeps a turn idempotent if its event replays.
-  const dependencyWarnings = new Set()
+  const captureWarnings = new Set()
   let captureChain = Promise.resolve()
   const enqueueCapture = (work) => {
     captureChain = captureChain
@@ -1302,9 +1302,14 @@ export function apply(ctx, config = {}) {
         // Collapse newlines so the reason stays a single `- ` bullet in the
         // daily file (summarize.py stderr can span lines).
         const reason = String(error.message).replace(/\s+/g, ' ').trim()
-        if (error.code !== 'MEMSEARCH_DEPENDENCY_MISSING' || !dependencyWarnings.has(reason)) {
-          ctx.logger.warn(`[memsearch] summarization failed (${reason}); wrote unavailable note`)
-          if (error.code === 'MEMSEARCH_DEPENDENCY_MISSING') dependencyWarnings.add(reason)
+        const missingCredential = opts.summarizeMode === 'dsh-headless' && /\bMISSING_CREDENTIAL\b/.test(reason)
+        const warning = missingCredential
+          ? 'DSH headless reported MISSING_CREDENTIAL. Use memory-config to check summary credentials.'
+          : `summarization failed (${reason}); wrote unavailable note`
+        const warnOnce = missingCredential || error.code === 'MEMSEARCH_DEPENDENCY_MISSING'
+        if (!warnOnce || !captureWarnings.has(warning)) {
+          ctx.logger.warn(`[memsearch] ${warning}`)
+          if (warnOnce) captureWarnings.add(warning)
         }
         body = `- Memory summary unavailable: ${reason}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
       }

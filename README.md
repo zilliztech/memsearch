@@ -116,19 +116,22 @@ $memory-recall what did we discuss about deployment?
 <summary><h3>For DeepSeek Harness Users</h3></summary>
 
 ```bash
-# Install the published plugin into your DSH profile
 uv tool install "memsearch[onnx]"
 dsh plugin --profile web add @zilliz/memsearch-dsh
-# Restart that DSH profile, or start a new session
 ```
 
-After installing, use DSH normally. Completed turns are captured automatically, and relevant memories are injected before the first model step only when they are useful.
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
 
-**Verify it's working:**
-
-```bash
-ls .memsearch/memory/
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
 ```
+
+Restart your DSH profile or start a new session. Complete a turn, then open
+today's file in `.memsearch/memory/` and check for a summary of what you discussed.
 
 **Recall memories** — ask naturally or tell DSH to use the registered `memory-recall` skill:
 
