@@ -244,6 +244,8 @@ def rerank(
     *,
     model_name: str = DEFAULT_RERANKER,
     top_k: int = 0,
+    url: str | None = None,
+    api_key: str | None = None,
 ) -> list[dict[str, Any]]:
     """Re-score search results with a cross-encoder.
 
@@ -266,6 +268,16 @@ def rerank(
     top_k:
         Return only the top-k results after reranking.
         0 means return all results (re-sorted).
+    url:
+        Optional explicit base URL for the ``remote:`` reranker service.
+        Takes precedence over ``MEMSEARCH_REMOTE_RERANKER_URL``; when
+        omitted the environment variable is used as a fallback.
+    api_key:
+        Optional API key for the ``remote:`` reranker service. Takes
+        precedence over ``MEMSEARCH_REMOTE_RERANKER_API_KEY``; when
+        omitted the environment variable is used as a fallback. This
+        lets config files (rather than process env) supply the key,
+        which matters when the host process scrubs credential env vars.
 
     Returns
     -------
@@ -283,7 +295,11 @@ def rerank(
     if model_name.startswith("remote:"):
         from .remote_reranker import RemoteReranker
 
-        return RemoteReranker(model=model_name.removeprefix("remote:")).rerank(query, results, top_k=top_k)
+        return RemoteReranker(
+            model=model_name.removeprefix("remote:"),
+            url=url,
+            api_key=api_key,
+        ).rerank(query, results, top_k=top_k)
 
     backend = _detect_backend()
     if backend == "onnx":

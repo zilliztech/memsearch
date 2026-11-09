@@ -73,6 +73,8 @@ class MemSearch:
         ignore_files: list[str] | None = None,
         exclude: list[str] | None = None,
         reranker_model: str = "",
+        reranker_url: str | None = None,
+        reranker_api_key: str | None = None,
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -95,6 +97,8 @@ class MemSearch:
             _create_if_missing=False,
         )
         self._reranker_model = reranker_model
+        self._reranker_url = reranker_url
+        self._reranker_api_key = reranker_api_key
 
     # ------------------------------------------------------------------
     # Indexing
@@ -260,7 +264,15 @@ class MemSearch:
             # Remote rerankers block on an HTTP request, so they must not run
             # on the event loop the way the in-process local backends do.
             if self._reranker_model.startswith(("jev:", "remote:")):
-                results = await asyncio.to_thread(rerank, query, results, model_name=self._reranker_model, top_k=top_k)
+                results = await asyncio.to_thread(
+                    rerank,
+                    query,
+                    results,
+                    model_name=self._reranker_model,
+                    top_k=top_k,
+                    url=self._reranker_url,
+                    api_key=self._reranker_api_key,
+                )
             else:
                 results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
         return results

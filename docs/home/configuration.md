@@ -120,6 +120,37 @@ unreranked order. See
 [Python API](../python-api.md#optional-remote-rerank-service) for
 programmatic use.
 
+### Rerank credentials in config
+
+The endpoint URL and bearer token for a `remote:` reranker can also be set in
+the **user-level** `~/.memsearch/config.toml` instead of the environment:
+
+```toml
+[reranker]
+model = "remote:Qwen3-Reranker-8B"
+url = "https://api.siliconflow.cn/v1/rerank"
+api_key = "sk-..."   # literal, or "env:MEMSEARCH_REMOTE_RERANKER_API_KEY"
+```
+
+Precedence is **config value → environment variable → built-in default**:
+an empty `url` falls back to `MEMSEARCH_REMOTE_RERANKER_URL`, and an empty
+`api_key` falls back to `MEMSEARCH_REMOTE_RERANKER_API_KEY`; both fall back to
+the in-code defaults when neither is set. `api_key` accepts the `env:VAR_NAME`
+syntax like every other credential field.
+
+This config-level option exists so a `remote:` reranker keeps working even when
+the host process scrubs credential environment variables before spawning
+memsearch (some host harnesses strip names matching
+`/KEY|SECRET|TOKEN|PASSWORD/i`). A literal `api_key` is stored in plaintext in
+the config file — the same trade-off as `embedding.api_key`.
+
+Project-local `.memsearch.toml` cannot set these fields (or `reranker.model`):
+the project-config layer is restricted to low-risk local indexing knobs and
+deliberately cannot redirect network endpoints or carry credentials, so an
+untrusted project directory cannot point query and chunk text at an address of
+its choosing. The transport rules from the previous section (https for
+non-loopback endpoints when a key is set, redirects refused) still apply.
+
 ## Index Exclusions
 
 Ignore support is explicit so upgrades do not silently change an existing
