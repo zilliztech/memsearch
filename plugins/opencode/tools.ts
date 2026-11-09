@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { type Scope, scopeArgs, sessionScope } from "./scope.ts";
-import { type Command, embeddingArgs, run } from "./runtime.ts";
+import { type Command, embeddingArgs, pythonEnv, pythonExecutable, run } from "./runtime.ts";
 import type { CaptureCoordinator } from "./capture.ts";
 
 const text = (max: number) => Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(max));
@@ -17,7 +17,7 @@ export const transcriptInput = Schema.Struct({
 
 export async function registerTools(ctx: Plugin.Context, scope: Scope, collection: string, command: Command, capture: Pick<CaptureCoordinator, "recover">, pluginDir: string, db: string) {
   const query = (args: string[], sessionID: string, signal: AbortSignal) =>
-    run(["python3"], [join(pluginDir, "scripts/capture.py"), ...scopeArgs(scope), "--db", db,
+    run([pythonExecutable()], [join(pluginDir, "scripts/capture.py"), ...scopeArgs(scope), "--db", db,
       "--collection", collection, "--command", JSON.stringify(command),
       "--query", JSON.stringify(args), "--session-id", sessionID], scope.root, signal)
       .catch(() => { throw new Error("MemSearch recall failed; check CLI/configuration and .memsearch/.index-state.json."); });
@@ -47,10 +47,10 @@ export async function registerTools(ctx: Plugin.Context, scope: Scope, collectio
       async execute(args, context) {
         const current = await sessionScope(ctx, scope, context.sessionID, db, pluginDir);
         const output = await new Promise<string>(resolve => {
-          execFile("python3", [join(pluginDir, "scripts/parse-transcript.py"), args.session_id, ...scopeArgs(current),
+          execFile(pythonExecutable(), [join(pluginDir, "scripts/parse-transcript.py"), args.session_id, ...scopeArgs(current),
             "--db", args.db_path ?? db, "--limit", String(args.limit ?? 20), "--context", String(args.context ?? 3),
             ...(args.turn_id ? ["--turn", args.turn_id] : []),
-          ], { cwd: current.root, signal: context.signal, timeout: 15_000, maxBuffer: 2 * 1024 * 1024, encoding: "utf8" },
+          ], { cwd: current.root, env: pythonEnv(), signal: context.signal, timeout: 15_000, maxBuffer: 2 * 1024 * 1024, encoding: "utf8" },
           (error, stdout, stderr) => resolve(error ? stderr.trim().slice(0, 1500) || "Transcript unavailable: helper failed or was cancelled." : stdout.trim()));
         });
         return { content: output, output };

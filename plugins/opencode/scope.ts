@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode/plugin";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, join } from "node:path";
-import { projectRoot, run } from "./runtime.ts";
+import { projectRoot, pythonExecutable, run } from "./runtime.ts";
 
 export interface Scope { root: string; projectID: string; workspaceID?: string }
 export function hostScope(ctx: Pick<Plugin.Context, "location">): Scope {
@@ -23,7 +23,7 @@ export async function sessionScope(ctx: Pick<Plugin.Context, "session">, scope: 
   // Host project IDs can change for the same checkout. The public SessionInfo
   // omits workspaceID in 2.0.32. Validate physical ownership and persisted
   // workspace in the read-only projection before allowing any memory access.
-  await run(["python3"], [join(pluginDir, "scripts/opencode_turns.py"), sessionID, ...scopeArgs(scope), "--db", db], root, undefined, 15_000);
+  await run([pythonExecutable()], [join(pluginDir, "scripts/opencode_turns.py"), sessionID, ...scopeArgs(scope), "--db", db], root, undefined, 15_000);
   return { ...scope, root };
 }
 

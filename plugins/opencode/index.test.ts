@@ -81,23 +81,23 @@ test("tools recover before recall, use literal argv/default collection and valid
   const root = mkdtempSync(join(tmpdir(), "memsearch-v2-tools-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const project = join(root, "project's space"); mkdirSync(project);
-  const database = join(root, "source # ?.db");
+  const database = join(root, "source # %.db");
   const db = new DatabaseSync(database);
   db.exec("CREATE TABLE session_v2(id TEXT, project_id TEXT, directory TEXT, workspace_id TEXT, parent_id TEXT, fork_session_id TEXT, fork_boundary TEXT); CREATE TABLE session_message(id TEXT, session_id TEXT, type TEXT, seq INTEGER, data TEXT)");
   db.prepare("INSERT INTO session_v2 VALUES(?,?,?,?,NULL,NULL,NULL)").run("session", "p", project, "ws"); db.close();
-  const cli = join(root, "memsearch");
+  const cli = join(root, "fixture-cli.py");
   const log = join(project, "argv.json");
   const repo = join(pluginDir, "../..");
   const source = join(project, "short.md");
-  writeFileSync(source, "## Fixture\n<!-- session:session turn:short db:fixture.db -->\n- A short memory.\n");
-  writeFileSync(cli, `#!${join(repo, ".venv/bin/python")}
-import json,os,sys
+  writeFileSync(source, "## Fixture\n<!-- session:session turn:short db:fixture.db -->\n- 中文记忆。\n");
+  const python = join(repo, process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python");
+  writeFileSync(cli, `import json,os,sys
 sys.path.insert(0, ${JSON.stringify(join(repo, "src"))})
 from memsearch import cli as core, core as backend, store
 from memsearch.config import MemSearchConfig
 assert os.path.exists("recovered")
 open("argv.json","w").write(json.dumps(sys.argv[1:]))
-chunk = {"chunk_hash": "short-hash", "content": "- A short memory.", "source": ${JSON.stringify(source)}, "heading": "Fixture", "heading_level": 2, "start_line": 3, "end_line": 3}
+chunk = {"chunk_hash": "short-hash", "content": "- 中文记忆。", "source": ${JSON.stringify(source)}, "heading": "Fixture", "heading_level": 2, "start_line": 3, "end_line": 3}
 class Search:
     def __init__(self, **kwargs): pass
     async def search(self, *args, **kwargs): return [chunk]
@@ -112,27 +112,27 @@ core._safe_resolve_config = lambda *args, **kwargs: MemSearchConfig()
 backend.MemSearch = Search
 store.MilvusStore = Store
 core.cli()
-`); chmodSync(cli, 0o755);
+`);
   const tools: any[] = [];
   let sessionRoot = project;
   const ctx = { tool: { transform: async (fn: any) => fn({ add: (tool: unknown) => tools.push(tool) }) },
     session: { get: async ({ sessionID }: { sessionID: string }) => { assert.equal(sessionID, "session"); return { projectID: "global", location: { directory: sessionRoot } }; } },
   } as unknown as Plugin.Context;
   let recovery = 0;
-  await registerTools(ctx, { root: project, projectID: "p", workspaceID: "ws" }, "fallback_collection", [cli], { recover: async () => { recovery++; writeFileSync(join(project, "recovered"), "yes"); return ""; } }, pluginDir, database);
+  await registerTools(ctx, { root: project, projectID: "p", workspaceID: "ws" }, "fallback_collection", [python, cli], { recover: async () => { recovery++; writeFileSync(join(project, "recovered"), "yes"); return ""; } }, pluginDir, database);
   assert.deepEqual(tools.map(t => t.name), ["memory_search", "memory_get", "memory_transcript"]);
   const context = { sessionID: "session", signal: new AbortController().signal };
   const query = 'literal $(touch SHOULD_NOT_EXIST) " quotes';
   const searched = await tools[0].execute({ query }, context);
   assert.equal(searched.content, searched.output);
   const resultChunks = JSON.parse(Schema.decodeUnknownSync(tools[0].output)(searched.output) as string);
-  assert.equal(resultChunks[0].content, "- A short memory.");
+  assert.equal(resultChunks[0].content, "- 中文记忆。");
   assert.equal(resultChunks[0].chunk_hash, "short-hash");
   const argv = JSON.parse(readFileSync(log, "utf8"));
   assert.deepEqual(argv.slice(0, 7), ["search", query, "--top-k", "5", "--json-output", "--default-collection", "fallback_collection"]);
   const expanded = await tools[1].execute({ chunk_hash: resultChunks[0].chunk_hash }, context);
   assert.equal(Schema.decodeUnknownSync(tools[1].output)(expanded.output), expanded.content);
-  assert.match(expanded.content, /A short memory/);
+  assert.match(expanded.content, /中文记忆。/);
   assert.match(expanded.content, /session:session turn:short db:fixture.db/);
   assert.deepEqual(JSON.parse(readFileSync(log, "utf8")), ["expand", "short-hash", "--default-collection", "fallback_collection"]);
   assert.equal(recovery, 2);

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import type { Command } from "./runtime.ts";
-import { embeddingArgs } from "./runtime.ts";
+import { embeddingArgs, pythonEnv, pythonExecutable } from "./runtime.ts";
 import { scopeArgs, type Scope } from "./scope.ts";
 
 export interface Batch { initialize: boolean; maintenance: boolean }
@@ -139,11 +139,11 @@ export async function nativeText(ctx: Pick<Plugin.Context, "agent" | "generate">
 
 export function helperRunner(ctx: Plugin.Context, pluginDir: string, scope: Scope, db: string, collection: string, command: Command): BatchRunner {
   return (batch, signal) => new Promise((resolve, reject) => {
-    const child = spawn("python3", [join(pluginDir, "scripts/capture.py"), ...scopeArgs(scope), "--db", db,
+    const child = spawn(pythonExecutable(), [join(pluginDir, "scripts/capture.py"), ...scopeArgs(scope), "--db", db,
       "--collection", collection, "--command", JSON.stringify(command),
       ...(embeddingArgs(scope.root).length ? ["--default-onnx"] : []),
       ...(batch.initialize ? ["--initialize"] : []), ...(batch.maintenance ? ["--maintenance"] : []),
-    ], { cwd: scope.root, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DIR: join(scope.root, ".memsearch") } });
+    ], { cwd: scope.root, stdio: ["pipe", "pipe", "pipe"], env: { ...pythonEnv(), MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DIR: join(scope.root, ".memsearch") } });
     let stopped = false;
     let done = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
