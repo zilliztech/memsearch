@@ -47,14 +47,25 @@ codex --yolo
 
 ### DeepSeek Harness Plugin
 
-Native DSH integration with automatic capture, selective pre-step injection, skill-based recall, background maintenance, and a compact web memory browser.
+MemSearch saves turn summaries and lets DSH recall them in later sessions.
 
 ```bash
 uv tool install "memsearch[onnx]"
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
-Use any DSH profile name in place of `web`, then restart that profile or begin a new session.
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
+Replace `web` with the profile you use. Restart it or start a new session,
+complete a turn, and check today's file in `.memsearch/memory/` for its summary.
 
 [:octicons-arrow-right-24: DeepSeek Harness Plugin docs](platforms/dsh/index.md){ .md-button .md-button--primary }
 

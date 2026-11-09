@@ -32,6 +32,16 @@ review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
 ### From source (development)
 
 ```bash
@@ -77,11 +87,10 @@ Append this row to the profile's `cordis.patch.yml` and make sure
       name: '@zilliz/memsearch-dsh'
 ```
 
-### Verify it loaded
+### Verify capture
 
-Start DSH and check the session log for the plugin mount, or confirm the
-`memory-recall` skill is available through the `skill` tool. Captured turns
-land in `<project>/.memsearch/memory/YYYY-MM-DD.md`.
+Complete a turn, then open today's file in `<project>/.memsearch/memory/`
+and check for a summary of what you discussed.
 
 ## Configuration
 
@@ -97,7 +106,7 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | `captureEnabled` | bool | `true` | Capture completed turns into memory. |
 | `injectEnabled` | bool | `true` | Remind the agent to use memory-recall before each turn's first step when memory exists. |
 | `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
-| `summarizeMode` | string | `auto` | Summarizer backend. `auto` (default) mirrors the other platform plugins: if `[plugins.dsh.summarize] provider` is set in memsearch config, it uses `custom-llm`; otherwise `dsh-headless` (zero-config DSH agent). Explicit `dsh-headless` / `custom-llm` pin the backend. |
+| `summarizeMode` | string | `auto` | Use `custom-llm` when `[plugins.dsh.summarize] provider` is set, or `dsh-headless` otherwise. Select either backend explicitly to pin it. |
 
 Everything else — provider/model, Milvus, collection, memory dir — comes from
 **memsearch config / environment**, exactly like the other platform plugins
@@ -153,14 +162,14 @@ a direct LLM call; configure nothing and you get a headless agent.
   - if `[plugins.dsh.summarize] provider` is set in memsearch config
     (`~/.memsearch/config.toml`, same place the other plugins read), use
     `custom-llm` with that provider/model;
-  - otherwise use `dsh-headless` (zero-config DSH agent).
+  - otherwise use `dsh-headless`.
   This means the plugin behaves like the other four: **configure a provider
   → direct LLM; configure nothing → headless**.
 - **`dsh-headless`** — boots a one-shot DSH headless agent
   (`dsh --profile headless "<summarize task>"`) to write the notes, mirroring
-  how the other plugins reuse their own agent's headless mode. Zero-config for
-  anyone already using DSH: the sub-agent's model is the deployment's
-  `agent-default-model` — the user layer of `~/.dsh/settings.yaml` (the same
+  how the other plugins reuse their own agent's headless mode. The sub-agent
+  uses the deployment's `agent-default-model` — the user layer of
+  `~/.dsh/settings.yaml` (the same
   selection the Web UI model settings write) wins over any patch, so **the
   `[plugins.dsh.summarize]` provider/model do NOT apply here** — change the
   model in DSH settings (`agent-default-model:` in `~/.dsh/settings.yaml`, or
