@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { posix } from "node:path";
 
 type CollectionCommandRunner = (
   file: string,
@@ -20,6 +23,14 @@ export function deriveCollectionNameFromScript(
       timeout: 5000,
     }).trim();
   } catch {
+    if (process.platform === "win32") {
+      // Git Bash realpath -m keeps the host root's drive and short-path spelling.
+      const path = realpathSync(projectDir).replaceAll("\\", "/");
+      const slug = posix.basename(path).replace(/[A-Z]/g, c => c.toLowerCase())
+        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+      const hash = createHash("sha256").update(path).digest("hex").slice(0, 8);
+      return `ms_${slug}_${hash}`;
+    }
     throw new Error("Could not derive a project-specific memory collection; refusing a shared fallback.");
   }
 }

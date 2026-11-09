@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import hashlib
 import importlib.util
 import json
@@ -16,6 +15,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import BinaryIO
 
 from opencode_turns import Scope, build_turns, get_db_path, open_source, project_root, session_ids, session_row
 
@@ -24,6 +24,35 @@ UNAVAILABLE = (
     "transcript content was omitted. Use the transcript anchor for details."
 )
 MAX_SUMMARY = 16000
+
+
+def acquire_lock(path: Path) -> BinaryIO:
+    """Hold an OS lock until the handle closes, including on process exit."""
+    handle = path.open("a+b")
+    try:
+        if os.name == "nt":
+            import errno
+            import msvcrt
+            import time
+
+            # Every process locks the same byte, even in an existing empty file.
+            handle.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno != errno.EACCES:
+                        raise
+                    time.sleep(0.05)
+        else:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        return handle
+    except BaseException:
+        handle.close()
+        raise
 
 
 @contextlib.contextmanager
@@ -35,8 +64,7 @@ def cli_lock():
     """
     state = Path.home() / ".memsearch"
     state.mkdir(parents=True, exist_ok=True)
-    with (state / ".opencode-cli.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with acquire_lock(state / ".opencode-cli.lock"):
         yield
 
 
@@ -121,8 +149,7 @@ class CaptureStore:
         self.memory = self.root / ".memsearch/memory"
         state = self.root / ".memsearch"
         state.mkdir(parents=True, exist_ok=True)
-        self.lock = (state / ".capture-v2.lock").open("a")
-        fcntl.flock(self.lock, fcntl.LOCK_EX)
+        self.lock = acquire_lock(state / ".capture-v2.lock")
         self.db = sqlite3.connect(state / "opencode-turns.db", timeout=5)
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
@@ -216,6 +243,9 @@ class CaptureStore:
             handle.write(entry[len(tail) :])
             handle.flush()
             os.fsync(handle.fileno())
+        if os.name == "nt":
+            # Windows supports flushing the file above, but not opening its parent with os.open.
+            return
         # Ensure the new journal's directory entry survives an abrupt process exit.
         fd = os.open(journal.parent, os.O_RDONLY)
         try:
