@@ -2728,14 +2728,16 @@ def test_plugin_common_keeps_win32_project_dir_absolute(
             env.pop(name, None)
         if project_dir is not None:
             env[project_dir_var] = project_dir
+        # Resolve Git Bash on PATH before Windows can choose the System32 WSL launcher.
         result = subprocess.run(
-            ["bash", "-c", probe, "bash", common_sh_abs],
+            [shutil.which("bash") or "bash", "-c", probe, "bash", common_sh_abs],
             cwd=repo,
             capture_output=True,
             text=True,
             env=env,
-            check=True,
+            check=False,
         )
+        assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout.splitlines()
 
     expected = resolve(None)
@@ -2779,13 +2781,14 @@ def test_plugin_common_win32_project_dir_outside_git_repo(tmp_path: Path, common
             env.pop(name, None)
         env[project_dir_var] = project_dir
         result = subprocess.run(
-            ["bash", "-c", probe, "bash", common_sh_abs],
+            [shutil.which("bash") or "bash", "-c", probe, "bash", common_sh_abs],
             cwd=other_repo,
             capture_output=True,
             text=True,
             env=env,
-            check=True,
+            check=False,
         )
+        assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout.splitlines()
 
     slash = resolve(project.as_posix())
