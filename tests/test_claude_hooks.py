@@ -2690,3 +2690,138 @@ esac
                 process.kill()
             process.wait(timeout=5)
             process.stdout.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Win32 drive paths only reach the hooks under Git Bash on Windows")
+@pytest.mark.parametrize("separator", ["\\", "/"], ids=["backslash", "slash"])
+@pytest.mark.parametrize(
+    ("common_sh", "project_dir_var"),
+    [(COMMON_SHS[0], "CLAUDE_PROJECT_DIR"), (COMMON_SHS[1], "MEMSEARCH_PROJECT_DIR")],
+    ids=PLUGIN_IDS,
+)
+def test_plugin_common_keeps_win32_project_dir_absolute(
+    tmp_path: Path, common_sh: str, project_dir_var: str, separator: str
+) -> None:
+    """Regression test for #752.
+
+    Claude Code on Windows hands the hooks a Win32 drive path (``C:\\repo`` or
+    ``C:/repo``). The absoluteness check used to treat it as relative and nest
+    it under ``$(pwd)``, which created ``<repo>/C:/.../.memsearch`` and hashed
+    the mangled path into a new collection name.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    git_root = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    probe = 'source "$1" </dev/null; ensure_memory_dir; printf "%s\\n%s\\n" "$MEMSEARCH_DIR" "$COLLECTION_NAME"'
+    common_sh_abs = Path(common_sh).resolve().as_posix()
+
+    def resolve(project_dir: str | None) -> list[str]:
+        env = {**os.environ, "HOME": str(tmp_path / "home"), "MEMSEARCH_DISABLE": ""}
+        for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR"):
+            env.pop(name, None)
+        if project_dir is not None:
+            env[project_dir_var] = project_dir
+        # Resolve Git Bash on PATH before Windows can choose the System32 WSL launcher.
+        result = subprocess.run(
+            [shutil.which("bash") or "bash", "-c", probe, "bash", common_sh_abs],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return result.stdout.splitlines()
+
+    expected = resolve(None)
+    assert expected[0] == f"{git_root}/.memsearch"
+    assert expected[1]
+    assert resolve(str(repo).replace("\\", separator)) == expected
+    assert sorted(entry.name for entry in repo.iterdir()) == [".git", ".memsearch"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Win32 drive paths only reach the hooks under Git Bash on Windows")
+@pytest.mark.parametrize(
+    ("common_sh", "project_dir_var"),
+    [(COMMON_SHS[0], "CLAUDE_PROJECT_DIR"), (COMMON_SHS[1], "MEMSEARCH_PROJECT_DIR")],
+    ids=PLUGIN_IDS,
+)
+def test_plugin_common_win32_project_dir_outside_git_repo(tmp_path: Path, common_sh: str, project_dir_var: str) -> None:
+    """Fallback branch of #752: a Win32 project dir that is not a git repo.
+
+    With no git root to normalize the path, the hook has to keep the host
+    path itself. Both drive-path spellings must land on the same
+    ``C:/.../.memsearch`` and the same collection name, and nothing may be
+    created under the hook's cwd (an unrelated repository here).
+    """
+    project = tmp_path / "workspace"
+    project.mkdir()
+    other_repo = tmp_path / "other"
+    other_repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(other_repo)], check=True)
+
+    probe = 'source "$1" </dev/null; ensure_memory_dir; printf "%s\n%s\n" "$MEMSEARCH_DIR" "$COLLECTION_NAME"'
+    common_sh_abs = Path(common_sh).resolve().as_posix()
+
+    def resolve(project_dir: str) -> list[str]:
+        env = {
+            **os.environ,
+            "HOME": str(tmp_path / "home"),
+            "GIT_CEILING_DIRECTORIES": str(tmp_path),
+            "MEMSEARCH_DISABLE": "",
+        }
+        for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR"):
+            env.pop(name, None)
+        env[project_dir_var] = project_dir
+        result = subprocess.run(
+            [shutil.which("bash") or "bash", "-c", probe, "bash", common_sh_abs],
+            cwd=other_repo,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return result.stdout.splitlines()
+
+    slash = resolve(project.as_posix())
+    assert slash[0] == f"{project.as_posix()}/.memsearch"
+    assert slash[1]
+    assert resolve(str(project)) == slash
+    assert sorted(entry.name for entry in project.iterdir()) == [".memsearch"]
+    assert sorted(entry.name for entry in other_repo.iterdir()) == [".git"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="uses a literal drive-like POSIX directory")
+@pytest.mark.parametrize(
+    ("common_sh", "project_dir_var"),
+    [(COMMON_SHS[0], "CLAUDE_PROJECT_DIR"), (COMMON_SHS[1], "MEMSEARCH_PROJECT_DIR")],
+    ids=PLUGIN_IDS,
+)
+@pytest.mark.parametrize("shell_os", ["msys", "linux-gnu"])
+def test_drive_path_classification(tmp_path: Path, common_sh: str, project_dir_var: str, shell_os: str) -> None:
+    # Supply the drive spelling itself to the hook. A literal C: directory
+    # lets the directory-exists check succeed in the Linux/macOS test suite.
+    drive_path = "C:/sample project"
+    (tmp_path / drive_path).mkdir(parents=True)
+    env = {**os.environ, "OSTYPE": shell_os, "HOME": str(tmp_path), "GIT_CEILING_DIRECTORIES": str(tmp_path)}
+    for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR", "MEMSEARCH_DISABLE"):
+        env.pop(name, None)
+    env[project_dir_var] = drive_path
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1" </dev/null; printf "%s" "$MEMORY_DIR"', "bash", Path(common_sh).resolve()],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    expected = drive_path if shell_os == "msys" else str(tmp_path / drive_path)
+    assert result.stdout == f"{expected}/.memsearch/memory"

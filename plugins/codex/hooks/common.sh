@@ -271,10 +271,12 @@ else
   fi
 fi
 
-case "$PROJECT_DIR" in
-  /*) ;;
-  *) PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
-esac
+# Git Bash accepts both drive-path spellings from Windows hosts.
+if [[ ( $OSTYPE == msys* || $OSTYPE == cygwin* ) && "$PROJECT_DIR" == [A-Za-z]:[/\\]* ]]; then
+  PROJECT_DIR="${PROJECT_DIR//\\//}"
+elif [[ "$PROJECT_DIR" != /* ]]; then
+  PROJECT_DIR="$(pwd)/$PROJECT_DIR"
+fi
 
 _GIT_ROOT="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then

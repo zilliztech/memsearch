@@ -34,10 +34,12 @@ if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
 else
   _PROJECT_DIR="$(pwd)"
 fi
-case "$_PROJECT_DIR" in
-  /*) ;;
-  *) _PROJECT_DIR="$(pwd)/$_PROJECT_DIR" ;;
-esac
+# Git Bash accepts both drive-path spellings from Windows hosts.
+if [[ ( $OSTYPE == msys* || $OSTYPE == cygwin* ) && "$_PROJECT_DIR" == [A-Za-z]:[/\\]* ]]; then
+  _PROJECT_DIR="${_PROJECT_DIR//\\//}"
+elif [[ "$_PROJECT_DIR" != /* ]]; then
+  _PROJECT_DIR="$(pwd)/$_PROJECT_DIR"
+fi
 _GIT_ROOT="$(git -C "$_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then
   _PROJECT_DIR="$_GIT_ROOT"
