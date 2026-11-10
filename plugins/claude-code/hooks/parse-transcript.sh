@@ -26,7 +26,13 @@ if [ "$LINE_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-python3 -c '
+# Stop sources this helper in a subshell with an already resolved interpreter.
+# Standalone use resolves its own interpreter without common.sh's hook setup.
+if ! declare -F run_python >/dev/null; then
+  source "$(dirname "${BASH_SOURCE[0]}")/python.sh"
+fi
+
+run_python -c '
 import json, sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 

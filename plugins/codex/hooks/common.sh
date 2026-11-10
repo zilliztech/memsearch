@@ -271,17 +271,12 @@ else
   fi
 fi
 
-case "$PROJECT_DIR" in
-  /*) ;;
-  # Windows: the hook cwd arrives as a Win32 drive path (C:/... or C:\...).
-  # Git Bash treats it as absolute, so keep it absolute and only swap the
-  # separators, which matters when no git root is found below. Do not
-  # canonicalize it (e.g. `cygpath -u` -> /c/...): the collection name is a
-  # hash of this string, so any respelling silently moves the project to a
-  # new, empty collection.
-  [A-Za-z]:[/\\]*) PROJECT_DIR="${PROJECT_DIR//\\//}" ;;
-  *) PROJECT_DIR="$(pwd)/$PROJECT_DIR" ;;
-esac
+# Git Bash accepts both drive-path spellings from Windows hosts.
+if [[ ( $OSTYPE == msys* || $OSTYPE == cygwin* ) && "$PROJECT_DIR" == [A-Za-z]:[/\\]* ]]; then
+  PROJECT_DIR="${PROJECT_DIR//\\//}"
+elif [[ "$PROJECT_DIR" != /* ]]; then
+  PROJECT_DIR="$(pwd)/$PROJECT_DIR"
+fi
 
 _GIT_ROOT="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then
@@ -391,8 +386,7 @@ run_maintenance() {
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
 
-# Kill any previously spawned background index processes for this project.
-# Also sweeps orphaned milvus_lite processes.
+# Stop previous background index tasks for this memory directory.
 kill_orphaned_index() {
   # Skip in child codex exec processes to avoid killing the parent's work
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
@@ -418,13 +412,7 @@ kill_orphaned_index() {
     done
   fi
 
-  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index exits)
-  orphans=$(pgrep -f "milvus_lite/lib/milvus" 2>/dev/null || true)
-  if [ -n "$orphans" ]; then
-    echo "$orphans" | while read -r opid; do
-      kill "$opid" 2>/dev/null || true
-    done
-  fi
+  # Milvus Lite manages its server lifetime; never sweep backend processes globally.
 }
 
 # --- Watch singleton management ---
@@ -478,7 +466,7 @@ start_watch() {
 
   # Lite (local .db): skip watch entirely — file lock prevents concurrent access.
   # Session-start does a one-time index() instead.
-  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]]; then
+  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]] && [[ "$_uri" != unix:* ]]; then
     return 0
   fi
 

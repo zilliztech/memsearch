@@ -15,6 +15,10 @@ content.
   not a fixture captured from a successful 0.153.4 runtime session.
 - `codex_rollout_mixed.jsonl` is a compatibility fixture that combines both
   schemas, two turn boundaries, legal repeated text, and assistant phases.
+- `codex_rollout_host_envelopes.jsonl` is a synthetic model of a leading
+  developer record, a bare AGENTS header with a composite instructions and
+  environment envelope, non-conversational turn records, and a later real user
+  message.
 
 A controlled Codex 0.147.0 TUI run produced the response-item-only
 conversational shape and the leading sequence of developer context, a

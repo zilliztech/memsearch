@@ -36,6 +36,7 @@ MemSearch(
     overlap_lines=2,
     ignore_files=None,
     exclude=None,
+    reranker_model="",
 )
 ```
 
@@ -54,6 +55,47 @@ MemSearch(
 | `overlap_lines` | `int` | `2` | Overlapping lines between adjacent chunks |
 | `ignore_files` | `list[str] \| None` | `None` | Ignore filenames discovered within each directory index root, for example `[".gitignore"]` |
 | `exclude` | `list[str] \| None` | `None` | Additional gitignore-style patterns relative to each directory index root |
+
+`reranker_model` defaults to an empty string (disabled). Set a local
+cross-encoder model ID or `jev:jev-latest` for remote Jev reranking.
+
+### Optional Jev reranking
+
+Set `TYPESAFE_API_KEY` in the environment, then select Jev explicitly:
+
+```python
+mem = MemSearch(paths=["./memory"], reranker_model="jev:jev-latest")
+results = await mem.search("Why was the cache policy changed?", top_k=5)
+```
+
+Search fetches three times the requested `top_k`, reranks those candidates, and
+returns `top_k`. Jev receives the query and full candidate contents over its
+remote API, using one independent Noul question per candidate in one request.
+It needs no local model weights or extra dependencies. Reranking is disabled
+by default. API failures and invalid responses raise errors rather than
+silently returning the original ranking. Oversized requests are not truncated;
+reduce the candidate count or chunk size if the service rejects them.
+
+For candidates obtained elsewhere, use the adapter directly:
+
+```python
+from memsearch.jev_reranker import JevReranker
+
+ranked = JevReranker().rerank(
+    "Why was the cache policy changed?",
+    [{"content": "The policy changed to prevent stale answers.", "source": "notes.md"}],
+    top_k=5,
+)
+```
+
+`JevReranker()` defaults to the official `jev-latest` alias. For a fixed version, use `JevReranker(model="jev-1.13.0")` (or `reranker_model="jev:jev-1.13.0"` through `MemSearch`). The API resolves the alias; `evaluate()` returns the actual version in its `model` field. See [official model aliases](https://docs.typesafe.ai/models#aliases).
+
+Other candidate fields are preserved, and `score` becomes the returned Noul
+probability. Ties retain the original order. This probability is used for
+ranking; no accept/reject threshold has been calibrated for this dataset.
+
+See the [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for the frozen
+candidate comparison with Voyage and its limitations.
 
 ### Context Manager
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable, Iterator
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -92,6 +92,7 @@ class MemSearch:
             collection=collection,
             dimension=self._embedder.dimension,
             description=description,
+            _create_if_missing=False,
         )
         self._reranker_model = reranker_model
 
@@ -110,6 +111,7 @@ class MemSearch:
 
     async def index_with_report(self, *, force: bool = False) -> IndexReport:
         """Scan paths and index all markdown files with structured status."""
+        self._store._ensure_collection_for_write()
         files = scan_paths(
             self._paths,
             ignore_files=self._ignore_files,
@@ -156,6 +158,7 @@ class MemSearch:
 
     async def index_file(self, path: str | Path) -> int:
         """Index a single file.  Returns number of chunks."""
+        self._store._ensure_collection_for_write()
         p = Path(path).expanduser().resolve()
         _st = p.stat()
         sf = ScannedFile(path=p, mtime=_st.st_mtime, size=_st.st_size)
@@ -241,6 +244,7 @@ class MemSearch:
             Each dict contains ``content``, ``source``, ``heading``,
             ``score``, and other metadata.
         """
+        self._store._require_collection()
         filter_expr = ""
         if source_prefix is not None:
             prefix = str(Path(source_prefix).expanduser().resolve())
@@ -253,7 +257,10 @@ class MemSearch:
         if self._reranker_model and results:
             from .reranker import rerank
 
-            results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+            if self._reranker_model.startswith("jev:"):
+                results = await asyncio.to_thread(rerank, query, results, model_name=self._reranker_model, top_k=top_k)
+            else:
+                results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
         return results
 
     # ------------------------------------------------------------------
@@ -324,11 +331,14 @@ class MemSearch:
         base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
         memory_dir = base / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
-        compact_file = memory_dir / f"{date.today()}.md"
-        compact_heading = "\n\n## Memory Compact\n\n"
+        # Time-stamp the heading (like the plugins' ``## Session HH:MM``) so two
+        # compactions on the same day stay distinguishable in the daily file.
+        now = datetime.now()
+        compact_file = memory_dir / f"{now.date()}.md"
+        compact_heading = f"\n\n## Memory Compact {now:%H:%M}\n\n"
         with open(compact_file, "a", encoding="utf-8") as f:
             if compact_file.stat().st_size == 0:
-                f.write(f"# {date.today()}\n")
+                f.write(f"# {now.date()}\n")
             f.write(compact_heading)
             f.write(summary)
             f.write("\n")

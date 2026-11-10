@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from .chunker import _HEADING_RE
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
@@ -30,6 +31,7 @@ from .index_state import (
     resolve_index_state_path,
 )
 from .io import read_utf8_text_replace
+from .store import CollectionNotFoundError
 
 try:
     from pymilvus.exceptions import MilvusException
@@ -405,6 +407,9 @@ def search(
                     click.echo(f"  ... [truncated, run 'memsearch expand {chunk_hash}' for full content]")
                 else:
                     click.echo(content)
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -428,7 +433,9 @@ def search(
 
 @cli.command()
 @click.argument("chunk_hash")
-@click.option("--section/--no-section", default=True, help="Show full heading section (default).")
+@click.option(
+    "--section/--no-section", default=True, help="Show full heading section (default) or only the chunk's own lines."
+)
 @click.option("--lines", "-n", default=None, type=int, help="Show N lines before/after instead of full section.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 @_common_options
@@ -450,7 +457,8 @@ def expand(
     """Expand a memory chunk to show full context. [Claude Code plugin: L2]
 
     Look up CHUNK_HASH in the index, then read the source markdown file
-    to return the surrounding context (full heading section by default).
+    to return the surrounding context (full heading section by default,
+    or the chunk's own lines with --no-section).
 
     Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
@@ -495,6 +503,17 @@ def expand(
             sys.exit(1)
 
         all_lines = read_utf8_text_replace(source_path).splitlines()
+        if start_line > len(all_lines):
+            click.echo(
+                f"Warning: chunk start_line {start_line} is past the end of {source} "
+                f"({len(all_lines)} lines); the index is out of sync with the file. "
+                "Re-run 'memsearch index <path>' to refresh it.",
+                err=True,
+            )
+
+        if lines is None and not section:
+            # Chunk-only view: same range as `--lines 0`
+            lines = 0
 
         if lines is not None:
             # Show N lines before/after the chunk
@@ -546,6 +565,9 @@ def expand(
                 click.echo(f"Session: {anchor['session']}  Turn: {anchor['turn']}")
                 click.echo(f"Transcript: {anchor['transcript']}")
             click.echo(f"\n{expanded}")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -564,27 +586,24 @@ def _extract_section(
     Walks backward to find the section heading, then forward to the next
     heading of equal or higher level (or EOF).
     """
-    # Find section start — walk backward to the heading
+    # Find section start — walk backward to the heading, starting at the
+    # chunk's own first line (clamped in case the file shrank since indexing)
     section_start = start_line - 1  # 0-indexed
     if heading_level > 0:
-        for i in range(start_line - 2, -1, -1):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_start = i
-                    break
+        for i in range(min(start_line, len(all_lines)) - 1, -1, -1):
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_start = i
+                break
 
     # Find section end — walk forward to the next heading of same or higher level
     section_end = len(all_lines)
     if heading_level > 0:
         for i in range(start_line, len(all_lines)):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_end = i
-                    break
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_end = i
+                break
 
     content = "\n".join(all_lines[section_start:section_end])
     return content, section_start + 1, section_end
@@ -812,6 +831,9 @@ def compact(
             click.echo(f"No chunks matched source: {normalized_source}")
         else:
             click.echo("No chunks to compact.")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -905,6 +927,9 @@ def stats(
         )
         count = store.count()
         click.echo(f"Total indexed chunks: {count}")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None

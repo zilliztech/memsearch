@@ -61,7 +61,7 @@ stateDiagram-v2
 
 The SessionStart hook handles several Codex-specific concerns:
 
-1. **Orphan cleanup** -- since Codex has no `SessionEnd` hook, orphaned `memsearch watch` and `memsearch index` processes from previous sessions are cleaned up here. Also sweeps orphaned `milvus_lite` processes.
+1. **Orphan cleanup** -- since Codex has no `SessionEnd` hook, orphaned `memsearch watch` and `memsearch index` processes from previous sessions are cleaned up here. Milvus Lite manages the lifetime of its own database service.
 
 2. **Bootstrap** -- if `memsearch` is not found in PATH, the hook auto-installs `uv` and warms up the `uvx` cache with `memsearch[onnx]`.
 

@@ -46,7 +46,7 @@ graph TB
         CX["Codex<br/>(Stop hook + Codex)"]
         DSH["DeepSeek Harness<br/>(turn event + headless agent)"]
         OC["OpenClaw<br/>(agent_end)"]
-        OO["OpenCode<br/>(SQLite daemon)"]
+        OO["OpenCode<br/>(session events + SQLite)"]
     end
 
     subgraph "Shared Memory"

@@ -13,6 +13,50 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.skipif(os.name != "posix", reason="tests the POSIX shell-form hook launcher")
+@pytest.mark.parametrize(
+    "directory", ["plugin", "plugin with spaces", "plugin\twith\ttabs", 'plugin\'s "$HOME"; [cache]', "pl$HOMEx"]
+)
+@pytest.mark.parametrize(
+    ("event", "hook"),
+    [
+        (event, hook)
+        for event, matchers in json.loads(Path("plugins/claude-code/hooks/hooks.json").read_text(encoding="utf-8"))[
+            "hooks"
+        ].items()
+        for matcher in matchers
+        for hook in matcher["hooks"]
+        if hook["type"] == "command"
+    ],
+    ids=lambda value: value if isinstance(value, str) else value["command"],
+)
+def test_claude_manifest_commands_preserve_plugin_path_via_environment(
+    tmp_path: Path, directory: str, event: str, hook: dict
+) -> None:
+    plugin_root = tmp_path / directory
+    shutil.copytree(Path("plugins/claude-code"), plugin_root)
+
+    # This tests shell environment expansion, not Claude Code's host launcher.
+    # A host that substitutes paths into the command string needs a separate
+    # integration check; quotes alone do not protect arbitrary literal paths.
+    # Exercise the manifest command, not a direct invocation of its script. The
+    # real scripts' recursion guard prevents memory/index/model side effects
+    # only after the shell has successfully located and launched the script.
+    result = subprocess.run(
+        ["sh", "-c", hook["command"]],
+        input=json.dumps({"hook_event_name": event}),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root), "MEMSEARCH_DISABLE": "1"},
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {}
+    assert result.stderr == ""
+
+
 def _write_executable(path: Path, source: str) -> None:
     path.write_text(source, encoding="utf-8")
     path.chmod(0o755)
@@ -35,6 +79,159 @@ def _write_claude_transcript(path: Path, *, turn_uuid: str) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+@pytest.fixture
+def claude_python_env(tmp_path: Path) -> dict[str, str]:
+    """Simulate Git Bash with controlled Python commands and optional jq."""
+    if os.name != "posix":
+        pytest.skip("uses POSIX executable symlinks to simulate Git Bash")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    store = tmp_path / "WindowsApps"
+    home.mkdir()
+    fake_bin.mkdir()
+    store.mkdir()
+    for name in (
+        "bash",
+        "cat",
+        "timeout",
+        "perl",
+        "dirname",
+        "git",
+        "basename",
+        "tr",
+        "sed",
+        "cut",
+        "sha256sum",
+        "date",
+        "wc",
+        "grep",
+        "mkdir",
+        "find",
+        "realpath",
+    ):
+        if executable := shutil.which(name):
+            (fake_bin / name).symlink_to(executable)
+    # Mask any interpreters in the user bin paths added by common.sh as well.
+    for name in ("python3", "python", "py"):
+        _write_executable(store / name, "#!/bin/sh\necho 'Python was not found' >&2\nexit 49\n")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/bin/sh
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    milvus.uri) echo "${MEMSEARCH_TEST_MILVUS_URI:-http://localhost:19530}" ;;
+  esac
+fi
+exit 0
+""",
+    )
+    return {
+        **os.environ,
+        "HOME": str(home),
+        # Keep this last so common.sh does not prepend it ahead of the stubs.
+        "PATH": os.pathsep.join([str(fake_bin), str(store), "/usr/local/bin"]),
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_NO_WATCH": "1",
+        "MEMSEARCH_TEST_PYTHON": sys.executable,
+    }
+
+
+@pytest.mark.parametrize("with_jq", [False, True], ids=["without-jq", "with-jq"])
+@pytest.mark.parametrize("interpreter", ["python3", "python", "py", "py-after-python2"])
+def test_claude_hooks_capture_with_working_python(
+    tmp_path: Path, claude_python_env: dict[str, str], interpreter: str, with_jq: bool
+) -> None:
+    env = claude_python_env
+    fake_bin = tmp_path / "bin"
+    install = tmp_path / "Python Install"
+    install.mkdir()
+    env["PATH"] = f"{install}{os.pathsep}{env['PATH']}"
+    if with_jq:
+        if not (jq := shutil.which("jq")):
+            pytest.skip("jq is not installed")
+        (fake_bin / "jq").symlink_to(jq)
+    if interpreter == "py-after-python2":
+        _write_executable(
+            install / "python",
+            '#!/bin/sh\nexec "$MEMSEARCH_TEST_PYTHON" -c '
+            "'import sys; sys.version_info = (2, 7); exec(sys.argv[1])' \"$2\"\n",
+        )
+    if interpreter in {"py", "py-after-python2"}:
+        _write_executable(
+            install / "py",
+            '#!/bin/sh\n[ "$1" = "-3" ] || exit 1\nshift\nexec "$MEMSEARCH_TEST_PYTHON" "$@"\n',
+        )
+    else:
+        (install / interpreter).symlink_to(sys.executable)
+    _write_executable(
+        fake_bin / "claude",
+        '#!/bin/sh\n[ "${1:-}" = "--help" ] && exit 0\ncat >/dev/null\necho "- User discussed Python detection."\n',
+    )
+    transcript = tmp_path / "session-python.jsonl"
+    _write_claude_transcript(transcript, turn_uuid="turn-python")
+
+    result = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/stop.sh"],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert result.stdout.strip() == "{}"
+    assert result.stderr == ""
+    journals = list((tmp_path / ".memsearch" / "memory").glob("*.md"))
+    assert len(journals) == 1
+    journal = journals[0].read_text(encoding="utf-8")
+    assert "User discussed Python detection." in journal
+    assert "turn:turn-python" in journal
+
+    # The parser is also a standalone helper, without common.sh's setup.
+    parsed = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/parse-transcript.sh", str(transcript)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert "[User]: Summarize this session" in parsed.stdout
+    hint = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/user-prompt-submit.sh"],
+        input=json.dumps({"prompt": "Explain how Python detection works in these hooks."}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    assert "Recall available if needed" in json.loads(hint.stdout)["systemMessage"]
+
+
+@pytest.mark.parametrize("with_jq", [False, True], ids=["without-jq", "with-jq"])
+def test_claude_session_start_reports_missing_python(
+    tmp_path: Path, claude_python_env: dict[str, str], with_jq: bool
+) -> None:
+    if with_jq:
+        if not (jq := shutil.which("jq")):
+            pytest.skip("jq is not installed")
+        (tmp_path / "bin" / "jq").symlink_to(jq)
+    # The diagnostic must remain valid JSON even with a Windows backend path.
+    claude_python_env["MEMSEARCH_TEST_MILVUS_URI"] = r'C:\Users\Jane "Doe"\milvus.db'
+    result = subprocess.run(
+        ["bash", "plugins/claude-code/hooks/session-start.sh"],
+        capture_output=True,
+        text=True,
+        env=claude_python_env,
+        check=True,
+    )
+    assert result.stderr == ""
+    status = json.loads(result.stdout)["systemMessage"]
+    assert "ERROR: no working Python 3 found" in status
+    assert "memory capture disabled" in status
 
 
 def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str]) -> str:
@@ -838,14 +1035,42 @@ exit 0
         assert hint in status
 
 
-def test_claude_stop_hook_writes_summary_without_safe_mode_flag(tmp_path: Path) -> None:
-    script = Path("plugins/claude-code/hooks/stop.sh")
-    plugin_root = Path("plugins/claude-code").resolve()
+@pytest.mark.parametrize(
+    ("root_state", "prompt_kind"),
+    [
+        ("valid", "bundled"),
+        ("unset", "bundled"),
+        ("empty", "bundled"),
+        ("wrong", "bundled"),
+        ("unset", "custom"),
+        ("unset", "missing-custom"),
+        ("unset", "inline"),
+    ],
+)
+def test_claude_stop_hook_writes_summary_without_safe_mode_flag(
+    tmp_path: Path, root_state: str, prompt_kind: str
+) -> None:
+    plugin_root = tmp_path / "plugin with spaces"
+    shutil.copytree("plugins/claude-code", plugin_root)
+    script = plugin_root / "hooks" / "stop.sh"
+    bundled_prompt = plugin_root / "prompts" / "summarize.txt"
+    expected_prompt = bundled_prompt.read_text(encoding="utf-8").replace("{{AGENT_NAME}}", "Claude Code").rstrip()
+    custom_prompt = ""
+    if prompt_kind == "custom":
+        custom_prompt = "custom prompt.txt"
+        (tmp_path / custom_prompt).write_text("Custom notes for {{AGENT_NAME}}.", encoding="utf-8")
+        expected_prompt = "Custom notes for Claude Code."
+    elif prompt_kind == "missing-custom":
+        custom_prompt = "missing prompt.txt"
+    elif prompt_kind == "inline":
+        bundled_prompt.unlink()
+        expected_prompt = "You are a third-person note-taker."
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
     memsearch_dir = tmp_path / ".memsearch"
     transcript = tmp_path / "session-123.jsonl"
     claude_args = tmp_path / "claude-args.txt"
+    claude_input = tmp_path / "claude-input.txt"
     home.mkdir()
     fake_bin.mkdir()
     transcript.write_text(
@@ -874,7 +1099,7 @@ if [ "$1" = "config" ] && [ "$2" = "get" ]; then
     plugins.claude-code.summarize.enabled) echo "true" ;;
     plugins.claude-code.summarize.model) echo "" ;;
     plugins.claude-code.summarize.provider) echo "" ;;
-    prompts.summarize) echo "" ;;
+    prompts.summarize) echo "$TEST_CUSTOM_PROMPT" ;;
     *) echo "" ;;
   esac
   exit 0
@@ -896,6 +1121,7 @@ if [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 printf '%s\n' "$@" > "$CLAUDE_ARGS_FILE"
+cat > "$CLAUDE_INPUT_FILE"
 echo "- User discussed a macOS stop hook regression."
 """,
         encoding="utf-8",
@@ -910,7 +1136,15 @@ echo "- User discussed a macOS stop hook regression."
         "CLAUDE_PROJECT_DIR": str(tmp_path),
         "MEMSEARCH_DIR": str(memsearch_dir),
         "CLAUDE_ARGS_FILE": str(claude_args),
+        "CLAUDE_INPUT_FILE": str(claude_input),
+        "TEST_CUSTOM_PROMPT": custom_prompt,
     }
+    if root_state == "unset":
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+    elif root_state == "empty":
+        env["CLAUDE_PLUGIN_ROOT"] = ""
+    elif root_state == "wrong":
+        env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "unrelated plugin")
     result = subprocess.run(
         ["bash", str(script)],
         input=json.dumps({"transcript_path": str(transcript)}),
@@ -925,6 +1159,9 @@ echo "- User discussed a macOS stop hook regression."
     assert len(memory_files) == 1
     memory_text = memory_files[0].read_text(encoding="utf-8")
     assert "macOS stop hook regression" in memory_text
+    assert "session:session-123 turn:turn-1" in memory_text
+    assert "Summarize this session" not in memory_text
+    assert claude_input.read_text(encoding="utf-8").startswith(expected_prompt)
 
     captured_args = claude_args.read_text(encoding="utf-8").splitlines()
     assert captured_args[:4] == ["-p", "--strict-mcp-config", "--tools", ""]
@@ -936,10 +1173,11 @@ echo "- User discussed a macOS stop hook regression."
     ("milvus_uri", "expected_index_calls", "expected_pgrep_calls"),
     [
         ("/tmp/memsearch-lite.db", 0, 0),
-        ("http://127.0.0.1:19530", 1, 2),
-        ("tcp://127.0.0.1:19530", 1, 2),
+        ("http://127.0.0.1:19530", 1, 1),
+        ("tcp://127.0.0.1:19530", 1, 1),
+        ("unix:/run/user/1000/memsearch/milvus.sock", 1, 1),
     ],
-    ids=["lite", "http-server", "tcp-server"],
+    ids=["lite", "http-server", "tcp-server", "unix-socket-server"],
 )
 def test_claude_stop_indexes_only_server(
     tmp_path: Path,
@@ -1154,6 +1392,96 @@ fi
     assert marker not in memory_text
     assert "transcript content was omitted" in memory_text
     assert "session:session turn:turn-failure" in memory_text
+
+
+@pytest.mark.parametrize("provider", ["", "native"], ids=["default", "explicit-native"])
+@pytest.mark.parametrize(
+    ("summary", "is_error"),
+    [
+        ("You've hit your limit · resets 11am (Africa/Johannesburg)", True),
+        ("API Error: 429 Too Many Requests", True),
+        ('API Error: 401 {"error":{"type":"authentication_error"}}', True),
+        ("- No significant changes.", False),
+        ("User investigated rate limits and authentication.", False),
+        ("- Added retries for rate limit exceeded responses and HTTP 401, 403, and 429 errors.", False),
+        ('- Documented the "You\'ve hit your limit" and "API Error: 429" notices.', False),
+        ("- User debugged retries.\nAPI Error: 429 was the response recorded in the transcript.", False),
+    ],
+    ids=[
+        "plan-limit",
+        "api-rate-limit",
+        "api-auth",
+        "short",
+        "plain-text",
+        "error-terms",
+        "quoted-errors",
+        "error-line",
+    ],
+)
+def test_claude_stop_hook_validates_native_summary_output(
+    tmp_path: Path, provider: str, summary: str, is_error: bool
+) -> None:
+    script = Path("plugins/claude-code/hooks/stop.sh")
+    home, fake_bin, memsearch_dir = tmp_path / "home", tmp_path / "bin", tmp_path / ".memsearch"
+    transcript = tmp_path / "session.jsonl"
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript, turn_uuid="turn-output")
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+if [ "$1" = config ] && [ "$2" = get ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    plugins.claude-code.summarize.enabled) echo true ;;
+    plugins.claude-code.summarize.provider) echo "$TEST_SUMMARIZE_PROVIDER" ;;
+    *) echo "" ;;
+  esac
+fi
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "claude",
+        """#!/usr/bin/env bash
+if [ "${1:-}" = --help ]; then exit 0; fi
+cat >/dev/null
+printf '%s\n' "$TEST_SUMMARY"
+exit 0
+""",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "TEST_SUMMARIZE_PROVIDER": provider,
+        "TEST_SUMMARY": summary,
+    }
+    result = subprocess.run(
+        ["bash", str(script)],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+    memory_text = next((memsearch_dir / "memory").glob("*.md")).read_text(encoding="utf-8")
+    assert json.loads(result.stdout) == {}
+    assert "## Session " in memory_text
+    assert "### " in memory_text
+    assert f"<!-- session:session turn:turn-output transcript:{transcript} -->" in memory_text
+    if is_error:
+        assert summary not in memory_text
+        assert "Memory summary unavailable: summarizer returned an error response" in memory_text
+        assert "transcript content was omitted" in memory_text
+        assert "Summarize this session" not in memory_text
+        assert "I explained the hook behavior." not in memory_text
+    else:
+        assert summary in memory_text
+        assert "Memory summary unavailable" not in memory_text
 
 
 def test_claude_stop_hook_groups_session_headings(tmp_path: Path) -> None:
@@ -1617,6 +1945,78 @@ exit 0
 
 
 @pytest.mark.parametrize(
+    "milvus_uri",
+    ["http://127.0.0.1:19530", "tcp://127.0.0.1:19530", "unix:/run/user/1000/memsearch/milvus.sock"],
+    ids=["http", "tcp", "unix-socket"],
+)
+@pytest.mark.parametrize(
+    ("script", "project_var"),
+    [
+        ("plugins/claude-code/hooks/session-start.sh", "CLAUDE_PROJECT_DIR"),
+        ("plugins/codex/hooks/session-start.sh", "MEMSEARCH_PROJECT_DIR"),
+    ],
+    ids=PLUGIN_IDS,
+)
+def test_session_start_watches_server_uris(tmp_path: Path, script: str, project_var: str, milvus_uri: str) -> None:
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    for directory in (project / ".memsearch", home / ".memsearch", fake_bin):
+        directory.mkdir(parents=True, exist_ok=True)
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+    call_log = tmp_path / "calls.log"
+    _write_executable(
+        fake_bin / "memsearch",
+        """#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MEMSEARCH_CALL_LOG"
+if [ "$1" = "config" ] && [ "$2" = "list" ]; then
+  printf '{"embedding":{"provider":"onnx","model":"tiny"},"milvus":{"uri":"%s"}}\n' "$TEST_MILVUS_URI"
+  exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "onnx" ;;
+    embedding.model) echo "tiny" ;;
+    milvus.uri) echo "$TEST_MILVUS_URI" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 9.9.9"
+fi
+exit 0
+""",
+    )
+    _write_executable(fake_bin / "curl", '#!/usr/bin/env bash\necho \'{"info":{"version":"9.9.9"}}\'\n')
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        project_var: str(project),
+        "MEMSEARCH_CALL_LOG": str(call_log),
+        "TEST_MILVUS_URI": milvus_uri,
+    }
+
+    subprocess.run(
+        ["bash", str(Path(script).resolve())],
+        input=json.dumps({"cwd": str(project)}),
+        capture_output=True,
+        text=True,
+        cwd=project,
+        env=env,
+        check=True,
+    )
+
+    assert _wait_for(
+        lambda: call_log.exists() and any(call.startswith("watch ") for call in call_log.read_text().splitlines()),
+        timeout=5.0,
+    )
+    calls = call_log.read_text(encoding="utf-8").splitlines()
+    assert not any(call.startswith("index ") for call in calls)
+
+
+@pytest.mark.parametrize(
     ("platform", "script", "project_var"),
     [
         ("claude-code", "plugins/claude-code/hooks/session-start.sh", "CLAUDE_PROJECT_DIR"),
@@ -1914,6 +2314,7 @@ echo '{"info":{"version":"2.0.0"}}'
             "BLOCKER_PID_FILE": str(blocker_pid_file),
             "BLOCKER_STARTED": str(blocker_started),
             "BLOCKER_RELEASE": str(blocker_release),
+            "REAL_PYTHON": sys.executable,
         }
     )
     state = tmp_path / ".memsearch" / ".index-state.json"
@@ -1922,6 +2323,10 @@ echo '{"info":{"version":"2.0.0"}}'
     _write_executable(
         fake_bin / "python3",
         """#!/usr/bin/env bash
+# Only block the index-state read, not interpreter detection or JSON helpers.
+if [ "${1:-}" != "-" ]; then
+  exec "$REAL_PYTHON" "$@"
+fi
 printf '%s' "$$" > "$BLOCKER_PID_FILE"
 : > "$BLOCKER_STARTED"
 i=0
@@ -2189,6 +2594,104 @@ def test_version_gt_orders_supported_versions(common_sh: str) -> None:
     assert got == want, [(c, g, w) for c, g, w in zip(cases, got, want, strict=True) if g != w]
 
 
+@pytest.mark.parametrize("common_sh", COMMON_SHS, ids=PLUGIN_IDS)
+@pytest.mark.parametrize("milvus_uri", ["local", "http://127.0.0.1:19530", "tcp://127.0.0.1:19530"])
+@pytest.mark.parametrize("mode", ["pidfile", "missing-pidfile", "child-guard"])
+def test_index_cleanup_preserves_active_lite_services(
+    tmp_path: Path, common_sh: str, milvus_uri: str, mode: str
+) -> None:
+    """Stop previous index tasks without terminating other database owners' services."""
+    home = tmp_path / "home"
+    memsearch_dir = tmp_path / ".memsearch"
+    fake_bin = tmp_path / "bin"
+    for folder in (home, memsearch_dir, fake_bin):
+        folder.mkdir()
+    own_db = tmp_path / "index.db"
+    other_db = tmp_path / "other app" / "index.db"
+    fake_milvus = fake_bin / "milvus_lite" / "lib" / "milvus"
+    fake_milvus.parent.mkdir(parents=True)
+    # These stand-ins model process ownership, not database behavior. Restore TERM
+    # in case the test runner ignores it, and use a readiness line before cleanup.
+    sleeper = (
+        f"#!{sys.executable}\n"
+        "import signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_DFL)\n"
+        "print('ready', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    _write_executable(fake_milvus, sleeper)
+    _write_executable(fake_bin / "index-task", sleeper)
+    processes = []
+
+    def spawn(argv: list[str]) -> subprocess.Popen:
+        process = subprocess.Popen(argv, stdout=subprocess.PIPE, text=True)
+        processes.append(process)
+        assert process.stdout.readline().strip() == "ready"
+        return process
+
+    try:
+        index = spawn([str(fake_bin / "index-task")])
+        own = spawn([str(fake_milvus), str(own_db), "unix:test.sock", "ERROR"])
+        other = spawn([str(fake_milvus), str(other_db), "unix:other.sock", "ERROR"])
+        pidfile = memsearch_dir / ".index.pid"
+        if mode != "missing-pidfile":
+            pidfile.write_text(str(index.pid), encoding="utf-8")
+        _write_executable(
+            fake_bin / "memsearch",
+            '#!/usr/bin/env bash\nif [ "$*" = "config get milvus.uri" ]; then echo "$TEST_MILVUS_URI"; fi\n',
+        )
+        # Limit process discovery to this test's PIDs, including when testing the
+        # old sweep. Never allow the hook to discover unrelated real processes.
+        _write_executable(
+            fake_bin / "pgrep",
+            """#!/usr/bin/env bash
+case "$*" in
+  *milvus_lite/lib/milvus*) printf '%s\n' "$TEST_OWN_PID" "$TEST_OTHER_PID" ;;
+  *'memsearch index '*) printf '%s\n' "$TEST_INDEX_PID" ;;
+  *) exit 1 ;;
+esac
+""",
+        )
+        env = {
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "CLAUDE_PROJECT_DIR": str(tmp_path),
+            "MEMSEARCH_PROJECT_DIR": str(tmp_path),
+            "MEMSEARCH_DIR": str(memsearch_dir),
+            "TEST_MILVUS_URI": str(own_db) if milvus_uri == "local" else milvus_uri,
+            "TEST_INDEX_PID": str(index.pid),
+            "TEST_OWN_PID": str(own.pid),
+            "TEST_OTHER_PID": str(other.pid),
+        }
+        if mode == "child-guard":
+            env["MEMSEARCH_NO_WATCH"] = "1"
+        subprocess.run(
+            ["bash", "-c", 'source "$1" < /dev/null; kill_orphaned_index', "bash", str(Path(common_sh).resolve())],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        if mode == "child-guard":
+            assert index.poll() is None
+            assert pidfile.exists()
+        else:
+            assert index.wait(timeout=5) == -signal.SIGTERM
+            assert not pidfile.exists()
+        # Waiting briefly also observes asynchronously delivered SIGTERM.
+        time.sleep(0.1)
+        assert own.poll() is None, "cleanup interrupted an active holder of the configured database"
+        assert other.poll() is None, "cleanup interrupted another application's database"
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+            process.stdout.close()
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Win32 drive paths only reach the hooks under Git Bash on Windows")
 @pytest.mark.parametrize("separator", ["\\", "/"], ids=["backslash", "slash"])
 @pytest.mark.parametrize(
@@ -2237,6 +2740,7 @@ def test_plugin_common_keeps_win32_project_dir_absolute(
 
     expected = resolve(None)
     assert expected[0] == f"{git_root}/.memsearch"
+    assert expected[1]
     assert resolve(str(repo).replace("\\", separator)) == expected
     assert sorted(entry.name for entry in repo.iterdir()) == [".git", ".memsearch"]
 
@@ -2292,98 +2796,29 @@ def test_plugin_common_win32_project_dir_outside_git_repo(tmp_path: Path, common
     assert sorted(entry.name for entry in other_repo.iterdir()) == [".git"]
 
 
-# The two tests above are skipped outside Windows because the leading `[ -d
-# "$CLAUDE_PROJECT_DIR" ]` guard only accepts a backslash-separated path as an
-# existing directory under Git Bash; POSIX `[ -d ]` never treats `\` as a
-# separator, so a real "C:\repo" can't be built as two directory levels here.
-# The forward-slash spelling has no such requirement — "C:/repo" is a
-# perfectly ordinary two-level POSIX path if a directory literally named
-# "C:" exists — so it can exercise the same case arm on every CI runner.
+@pytest.mark.skipif(os.name != "posix", reason="uses a literal drive-like POSIX directory")
 @pytest.mark.parametrize(
     ("common_sh", "project_dir_var"),
     [(COMMON_SHS[0], "CLAUDE_PROJECT_DIR"), (COMMON_SHS[1], "MEMSEARCH_PROJECT_DIR")],
     ids=PLUGIN_IDS,
 )
-def test_plugin_common_keeps_win32_project_dir_absolute_posix(
-    tmp_path: Path, common_sh: str, project_dir_var: str
-) -> None:
-    """POSIX-runnable companion to the Win32-only test above (#752, #753).
-
-    A literal directory named ``C:`` makes ``C:/repo`` a path that matches the
-    `[A-Za-z]:[/\\]*` case arm while also being a real, resolvable directory
-    on Linux/macOS, so this runs on every CI job instead of only Windows.
-    """
-    repo = tmp_path / "C:" / "repo"
-    repo.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    git_root = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-
-    probe = 'source "$1" </dev/null; ensure_memory_dir; printf "%s\\n%s\\n" "$MEMSEARCH_DIR" "$COLLECTION_NAME"'
-    common_sh_abs = Path(common_sh).resolve().as_posix()
-
-    env = {**os.environ, "HOME": str(tmp_path / "home"), "MEMSEARCH_DISABLE": ""}
-    for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR"):
+@pytest.mark.parametrize("shell_os", ["msys", "linux-gnu"])
+def test_drive_path_classification(tmp_path: Path, common_sh: str, project_dir_var: str, shell_os: str) -> None:
+    # Supply the drive spelling itself to the hook. A literal C: directory
+    # lets the directory-exists check succeed in the Linux/macOS test suite.
+    drive_path = "C:/sample project"
+    (tmp_path / drive_path).mkdir(parents=True)
+    env = {**os.environ, "OSTYPE": shell_os, "HOME": str(tmp_path), "GIT_CEILING_DIRECTORIES": str(tmp_path)}
+    for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR", "MEMSEARCH_DISABLE"):
         env.pop(name, None)
-    env[project_dir_var] = repo.as_posix()
+    env[project_dir_var] = drive_path
     result = subprocess.run(
-        ["bash", "-c", probe, "bash", common_sh_abs],
-        cwd=repo,
+        ["bash", "-c", 'source "$1" </dev/null; printf "%s" "$MEMORY_DIR"', "bash", Path(common_sh).resolve()],
+        cwd=tmp_path,
+        env=env,
         capture_output=True,
         text=True,
-        env=env,
         check=True,
     )
-    assert result.stdout.splitlines()[0] == f"{git_root}/.memsearch"
-    assert sorted(entry.name for entry in repo.iterdir()) == [".git", ".memsearch"]
-
-
-@pytest.mark.parametrize(
-    ("common_sh", "project_dir_var"),
-    [(COMMON_SHS[0], "CLAUDE_PROJECT_DIR"), (COMMON_SHS[1], "MEMSEARCH_PROJECT_DIR")],
-    ids=PLUGIN_IDS,
-)
-def test_plugin_common_win32_project_dir_outside_git_repo_posix(
-    tmp_path: Path, common_sh: str, project_dir_var: str
-) -> None:
-    """POSIX-runnable companion to the no-git-root Win32 test above (#752).
-
-    Same rationale as ``test_plugin_common_keeps_win32_project_dir_absolute_posix``:
-    a literal ``C:`` directory lets the forward-slash spelling run on every
-    CI runner instead of only Windows.
-    """
-    project = tmp_path / "C:" / "workspace"
-    project.mkdir(parents=True)
-    other_repo = tmp_path / "other"
-    other_repo.mkdir()
-    subprocess.run(["git", "init", "-q", str(other_repo)], check=True)
-
-    probe = 'source "$1" </dev/null; ensure_memory_dir; printf "%s\n%s\n" "$MEMSEARCH_DIR" "$COLLECTION_NAME"'
-    common_sh_abs = Path(common_sh).resolve().as_posix()
-
-    env = {
-        **os.environ,
-        "HOME": str(tmp_path / "home"),
-        "GIT_CEILING_DIRECTORIES": str(tmp_path),
-        "MEMSEARCH_DISABLE": "",
-    }
-    for name in ("MEMSEARCH_DIR", "CLAUDE_PROJECT_DIR", "MEMSEARCH_PROJECT_DIR"):
-        env.pop(name, None)
-    env[project_dir_var] = project.as_posix()
-    result = subprocess.run(
-        ["bash", "-c", probe, "bash", common_sh_abs],
-        cwd=other_repo,
-        capture_output=True,
-        text=True,
-        env=env,
-        check=True,
-    )
-    lines = result.stdout.splitlines()
-    assert lines[0] == f"{project.as_posix()}/.memsearch"
-    assert lines[1]
-    assert sorted(entry.name for entry in project.iterdir()) == [".memsearch"]
-    assert sorted(entry.name for entry in other_repo.iterdir()) == [".git"]
+    expected = drive_path if shell_os == "msys" else str(tmp_path / drive_path)
+    assert result.stdout == f"{expected}/.memsearch/memory"

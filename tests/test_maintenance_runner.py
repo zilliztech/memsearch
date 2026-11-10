@@ -153,65 +153,49 @@ def test_openclaw_native_runner_extracts_json_from_noisy_output(tmp_path: Path, 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
 
 
-def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("provider", ["native", "managed"])
+def test_opencode_maintenance_uses_injected_native_or_shared_api(tmp_path, monkeypatch, provider):
+    from memsearch import maintenance
+    from memsearch.config import MemSearchConfig
+
     runner = _load_runner()
-    home = tmp_path / "home"
-    project = tmp_path / "repo"
-    config_dir = tmp_path / "opencode-config-dir"
-    home.mkdir()
-    project.mkdir()
-    config_dir.mkdir()
+    cfg = MemSearchConfig()
+    cfg.plugins.opencode.project_review.enabled = True
+    cfg.plugins.opencode.project_review.provider = provider
+    cfg.plugins.opencode.project_review.model = "task-model"
+    memory = tmp_path / ".memsearch/memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-10-20.md").write_text("- Durable project decision: synthetic test.\n")
+    calls = []
 
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"username": "from-content", "plugin": ["content-plugin"]}')
-    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
-    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
+    def reply(ctx, prompt):
+        calls.append((ctx.task, ctx.task_config.model))
+        assert "synthetic test" in prompt
+        return json.dumps(
+            {"action": "replace", "reason": "test", "content": "# Project Memory\n\n- Synthetic decision."}
+        )
 
-    (project / "opencode.jsonc").write_text(
-        '{"model": "project/model", "plugin": ["project-plugin"]}',
-        encoding="utf-8",
-    )
-    (config_dir / "opencode.jsonc").write_text(
-        '{"model": "dir/model", "provider": {"openai": {"apiKey": "{file:token.txt}"}}, "plugin": ["dir-plugin"]}',
-        encoding="utf-8",
-    )
+    def native(ctx, prompt):
+        assert provider == "native"
+        return reply(ctx, prompt)
 
-    captured = {}
+    def managed(ctx, prompt, config):
+        assert provider == "managed" and config is cfg
+        return reply(ctx, prompt)
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
-        captured["cmd"] = cmd
-        captured["env"] = env
-        captured["cwd"] = cwd
-        return '{"action":"none","reason":"ok"}'
+    monkeypatch.setattr(maintenance, "run_task_llm", managed)
+    runner.run_maintenance("opencode", tmp_path, str(tmp_path / ".memsearch"), cfg, native_runner=native)
+    assert calls == [("project_review", "task-model")]
+    assert "Synthetic decision" in (tmp_path / ".memsearch/PROJECT.md").read_text()
+    runner.run_maintenance("opencode", tmp_path, str(tmp_path / ".memsearch"), cfg, native_runner=native)
+    assert len(calls) == 1  # Shared input digest / due-state retained.
 
-    monkeypatch.setattr(runner, "run_command", fake_run_command)
-    ctx = SimpleNamespace(
-        platform="opencode",
-        project_dir=project,
-        task_config=SimpleNamespace(model=""),
-    )
 
-    result = runner.run_native_provider(ctx, "maintenance prompt")
-
-    isolated_root = home / ".codex" / "tmp" / "opencode-memsearch-maintenance"
-    isolated_config = json.loads((isolated_root / "opencode" / "opencode.json").read_text(encoding="utf-8"))
-
-    assert json.loads(result) == {"action": "none", "reason": "ok"}
-    assert captured["cmd"] == ["opencode", "run", "maintenance prompt"]
-    assert captured["cwd"] == project
-    assert captured["env"]["XDG_CONFIG_HOME"] == str(isolated_root)
-    assert captured["env"]["XDG_DATA_HOME"] == str(isolated_root / "data")
-    assert captured["env"]["OPENCODE_CONFIG"] == ""
-    assert captured["env"]["OPENCODE_CONFIG_DIR"] == ""
-    assert captured["env"]["OPENCODE_CONFIG_CONTENT"] == ""
-    assert captured["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true"
-    assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
-    assert isolated_config["model"] == "dir/model"
-    assert isolated_config["username"] == "from-content"
-    assert isolated_config["provider"]["openai"]["apiKey"] == f"{{file:{config_dir / 'token.txt'}}}"
-    assert "plugin" not in isolated_config
+def test_opencode_cli_native_requires_live_callback(tmp_path):
+    runner = _load_runner()
+    ctx = SimpleNamespace(platform="opencode", project_dir=tmp_path, task_config=SimpleNamespace(model=""))
+    with pytest.raises(RuntimeError, match="generation callback"):
+        runner.run_native_provider(ctx, "prompt")
 
 
 def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, monkeypatch) -> None:

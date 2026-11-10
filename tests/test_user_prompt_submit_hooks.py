@@ -8,8 +8,20 @@ from pathlib import Path
 import pytest
 
 CAPABILITY_MARKER = "[memsearch] Recall available if needed"
-RETRIEVED_MARKER = "[memsearch] Retrieved memory context attached."
-EXPECTED_CAPABILITY_OUTPUT = json.dumps({"systemMessage": CAPABILITY_MARKER}, separators=(",", ": ")).encode() + b"\n"
+# Claude Code shows systemMessage to the user only; the model reads
+# hookSpecificOutput.additionalContext, so the Claude hook carries the hint in both.
+# Codex has no such split and keeps the plain systemMessage.
+EXPECTED_CAPABILITY_JSON = {
+    "claude-code": {
+        "systemMessage": CAPABILITY_MARKER,
+        "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": CAPABILITY_MARKER},
+    },
+    "codex": {"systemMessage": CAPABILITY_MARKER},
+}
+EXPECTED_CAPABILITY_OUTPUT = {
+    platform: json.dumps(payload, separators=(", ", ": ")).encode() + b"\n"
+    for platform, payload in EXPECTED_CAPABILITY_JSON.items()
+}
 HOOKS = {
     "claude-code": Path("plugins/claude-code/hooks/user-prompt-submit.sh"),
     "codex": Path("plugins/codex/hooks/user-prompt-submit.sh"),
@@ -72,9 +84,9 @@ def test_user_prompt_submit_long_prompt_emits_capability_without_search(tmp_path
     )
 
     assert result.returncode == 0, result.stderr.decode(errors="replace")
-    assert result.stdout == EXPECTED_CAPABILITY_OUTPUT
+    assert result.stdout == EXPECTED_CAPABILITY_OUTPUT[platform]
     assert result.stdout[-1:] == b"\n"
-    assert json.loads(result.stdout) == {"systemMessage": CAPABILITY_MARKER}
+    assert json.loads(result.stdout) == EXPECTED_CAPABILITY_JSON[platform]
     assert not call_log.exists(), "The capability hook must not invoke memsearch search or any other CLI command"
 
 
@@ -114,20 +126,9 @@ def test_capability_marker_is_synchronized_across_direct_consumers() -> None:
         Path("plugins/codex/hooks/user-prompt-submit.sh"),
         Path("plugins/codex/skills/memory-recall/SKILL.md"),
         Path("plugins/codex/README.md"),
+        Path("plugins/dsh/index.js"),
         Path("docs/platforms/codex/how-it-works.md"),
     ]
 
     for consumer in consumers:
         assert CAPABILITY_MARKER in consumer.read_text(encoding="utf-8"), consumer
-
-
-def test_retrieved_marker_is_synchronized_across_dsh_direct_consumers() -> None:
-    consumers = [
-        Path("plugins/dsh/index.js"),
-        Path("plugins/dsh/README.md"),
-        Path("docs/platforms/dsh/how-it-works.md"),
-        Path("plugins/dsh/tests/test_parse_transcript.py"),
-    ]
-
-    for consumer in consumers:
-        assert RETRIEVED_MARKER in consumer.read_text(encoding="utf-8"), consumer

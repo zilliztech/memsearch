@@ -31,6 +31,9 @@ class InMemoryStore:
         self._records_by_source: dict[str, list[dict[str, Any]]] = {}
         self.deleted_sources: list[str] = []
 
+    def _ensure_collection_for_write(self) -> None:
+        pass
+
     def hashes_by_source(self, source: str) -> set[str]:
         return {record["chunk_hash"] for record in self._records_by_source.get(source, [])}
 

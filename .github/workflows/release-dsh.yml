@@ -62,6 +62,10 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install runtime dependencies
+        if: steps.registry.outputs.exists == 'false'
+        run: npm install --omit=peer --ignore-scripts --package-lock=false
+
       - name: Test package
         if: steps.registry.outputs.exists == 'false'
         run: npm test

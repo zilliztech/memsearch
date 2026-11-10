@@ -44,11 +44,11 @@ The plugin defines 4 lifecycle hooks that map to Claude Code's session events:
 | Hook | Type | Async | Timeout | What It Does |
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch` for Server or a one-shot index for Lite, inject recent memories as cold-start context, display config and index status |
-| **UserPromptSubmit** | command | no | 15s | Return `systemMessage` capability hint "[memsearch] Recall available if needed" (skips prompts < 10 chars) |
+| **UserPromptSubmit** | command | no | 15s | Return the capability hint "[memsearch] Recall available if needed" as `systemMessage` for you and as `hookSpecificOutput.additionalContext` for Claude (skips prompts < 10 chars) |
 | **Stop** | command | **yes** | 120s | Parse and summarize the last turn, lazily create its session heading, append to the daily `.md`; re-index immediately only for Server |
 | **SessionEnd** | command | **yes** | 10s | Asynchronously stop any Server watcher and clean up plugin-owned background index processes |
 
-All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
+All hooks output JSON to stdout -- `additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}` for no-op. `systemMessage` is shown in your terminal only, so a hook whose hint also has to reach Claude returns `hookSpecificOutput.additionalContext` next to it. The `common.sh` shared library is sourced by every hook, providing JSON parsing, memsearch binary detection, and watch process management.
 
 ### Hook Lifecycle Diagram
 
@@ -68,7 +68,7 @@ stateDiagram-v2
     state Prompting {
         [*] --> UserInput
         UserInput --> Hint: UserPromptSubmit hook
-        Hint --> ClaudeProcesses: "[memsearch] Recall available if needed"
+        Hint --> ClaudeProcesses: systemMessage and additionalContext carry "[memsearch] Recall available if needed"
         ClaudeProcesses --> MemoryRecall: needs context?
         MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
@@ -102,9 +102,20 @@ The cold-start injection is critical for early-session context. Without it, Clau
 
 ### UserPromptSubmit -- The Recall Capability Hint
 
-A lightweight hook that returns a `systemMessage` capability hint: `[memsearch] Recall available if needed`. The hook does not search or imply a match; it keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke the memory-recall skill when a question benefits from historical context.
+A lightweight hook that returns the capability hint `[memsearch] Recall available if needed` in two fields: `systemMessage`, the one-liner you see in the terminal, and `hookSpecificOutput.additionalContext`, the field Claude Code forwards to the model on `UserPromptSubmit`. Both carry the same text, because `systemMessage` alone never reaches the model. The hook does not search or imply a match; it keeps Claude aware that the memory system exists, increasing the likelihood that it will invoke the memory-recall skill when a question benefits from historical context.
 
 The hook skips prompts shorter than 10 characters (e.g., "y", "ok") to avoid noise on trivial confirmations.
+
+**Checking that the hint was delivered.** The two fields arrive as two separate attachments in the session transcript, so delivery can be read off the runtime instead of guessed from Claude's answer:
+
+```bash
+claude -p "Explain what changed in this project recently." --debug-file /tmp/hook.log
+# newest transcript for this directory:
+TRANSCRIPT=$(ls -t ~/.claude/projects/$(pwd | sed 's#/#-#g')/*.jsonl | head -1)
+jq -c 'select(.type == "attachment") | .attachment | select(.hookEvent == "UserPromptSubmit")' "$TRANSCRIPT"
+```
+
+The turn writes one `hook_system_message` attachment, the one-liner shown in the terminal, and one `hook_additional_context` attachment whose `content` array holds the same marker, which is the copy the model is given. `/tmp/hook.log` records the same thing as `provided additionalContext (38 chars)`. Whether Claude then calls the memory-recall skill is its own decision and is deliberately not forced by this hook.
 
 ### Stop -- Capturing the Conversation
 
@@ -240,7 +251,7 @@ plugins/claude-code/
 │   ├── hooks.json               # Hook definitions (4 lifecycle hooks)
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
 │   ├── session-start.sh         # Start Server watch or Lite one-shot + inject context
-│   ├── user-prompt-submit.sh    # Lightweight systemMessage hint
+│   ├── user-prompt-submit.sh    # Hint in systemMessage and additionalContext
 │   ├── stop.sh                  # Parse transcript -> summarize -> lazily create heading -> append
 │   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser
 │   └── session-end.sh           # Async watcher and owned-index cleanup
@@ -258,7 +269,7 @@ plugins/claude-code/
 | `hooks.json` | Defines the 4 lifecycle hooks with their types, timeouts, and async flags. |
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). Changes here affect all hooks. |
 | `session-start.sh` | Starts the Server watcher or Lite one-shot index, reports persisted index health, reads recent memory files for cold-start injection, and checks for updates. |
-| `user-prompt-submit.sh` | Returns lightweight `systemMessage` hint. No search -- retrieval is handled by the memory-recall skill. |
+| `user-prompt-submit.sh` | Returns the lightweight capability hint in `systemMessage` (for you) and `hookSpecificOutput.additionalContext` (for Claude). No search -- retrieval is handled by the memory-recall skill. |
 | `stop.sh` | Extracts and validates the transcript, calls `parse-transcript.sh`, summarizes via native Haiku by default or a configured API provider, creates the session heading on the first captured turn, and appends with anchors. Server indexes immediately; Lite defers indexing to the next SessionStart. Has recursion guard (`stop_hook_active`) and sets `CLAUDECODE=` / `MEMSEARCH_NO_WATCH=1` on child processes. |
 | `parse-transcript.sh` | Standalone last-turn extractor using Python 3. Outputs role-labeled text. No `jq` dependency. |
 | `session-end.sh` | Asynchronously stops the Server watcher and cleans up plugin-owned background index processes. |

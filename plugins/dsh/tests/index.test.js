@@ -6,7 +6,7 @@ import os from 'node:os'
 
 import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
 
-async function withInjectionFixture(searchResults, assertion, oldCore = false) {
+async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '', configs = {}, scenario = {}) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
   const projectDir = `${root}/project`
   const memoryDir = `${root}/state/memory`
@@ -16,7 +16,14 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
   fs.mkdirSync(projectDir, { recursive: true })
   fs.mkdirSync(memoryDir, { recursive: true })
   fs.mkdirSync(fakeBin, { recursive: true })
-  fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
+  const home = `${root}/home`
+  fs.mkdirSync(home, { recursive: true })
+  if (configs.global !== undefined) {
+    fs.mkdirSync(`${home}/.memsearch`, { recursive: true })
+    fs.writeFileSync(`${home}/.memsearch/config.toml`, configs.global)
+  }
+  if (configs.project !== undefined) fs.writeFileSync(`${projectDir}/.memsearch.toml`, configs.project)
+  if (scenario.hasMemory !== false) fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
   fs.writeFileSync(resultFile, JSON.stringify(searchResults), 'utf-8')
   fs.writeFileSync(
     `${fakeBin}/memsearch`,
@@ -28,6 +35,7 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
       'fi\n' +
       'if [ "$1" = "config" ]; then exit 0; fi\n' +
       'if [ "$1" = "search" ]; then\n' +
+      '  if [ -n "$MEMSEARCH_TEST_SEARCH_ERROR" ]; then echo "$MEMSEARCH_TEST_SEARCH_ERROR" >&2; exit 1; fi\n' +
       '  cat "$MEMSEARCH_TEST_RESULT"\n' +
       '  exit 0\n' +
       'fi\n' +
@@ -52,21 +60,30 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
       const { apply } = await import(process.env.MEMSEARCH_PLUGIN_URL)
       const listeners = {}
       const registeredSkills = []
+      const providers = []
+      const warnings = []
       const ctx = {
-        logger: { warn: () => {}, debug: () => {} },
-        skills: { register: (skill) => registeredSkills.push(skill) },
+        logger: { warn: (message) => warnings.push(message), debug: () => {} },
+        skills: { register: (skill) => registeredSkills.push(skill), registerProvider: create => providers.push(create()) },
         on: (name, listener) => { listeners[name] = listener },
       }
-      apply(ctx, { captureEnabled: false })
+      const scenario = JSON.parse(process.env.MEMSEARCH_TEST_SCENARIO)
+      apply(ctx, { captureEnabled: false, ...scenario.config })
+      for (const provider of providers) {
+        for (const candidate of await provider.list({ cwd: process.env.MEMSEARCH_TEST_PROJECT })) {
+          registeredSkills.push(await provider.get(candidate, { cwd: process.env.MEMSEARCH_TEST_PROJECT }))
+        }
+      }
       const decision = {
-        kind: 'enter',
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'What did we decide about the release?' }] }],
+        kind: scenario.kind || 'enter',
+        metadata: { preserved: true },
+        messages: [{ role: 'user', content: [{ type: 'text', text: scenario.question || 'What did we decide about the release?' }] }],
       }
       let result = null
       let error = ''
       try {
         result = await listeners['agent/pre-step'](
-          { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: 1, signal: {} },
+          { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: scenario.step || 1, signal: { aborted: !!scenario.aborted } },
           async () => decision,
         )
       } catch (caught) {
@@ -76,13 +93,17 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
         unchanged: result === decision,
         result,
         error,
+        warnings,
         registeredSkillNames: registeredSkills.map((skill) => skill.name),
+        recallSkill: registeredSkills.find((skill) => skill.name === 'memory-recall')?.content,
       }))
     `
     const stdout = execFileSync(process.execPath, ['--input-type=module', '--eval', childSource], {
       encoding: 'utf-8',
+      cwd: projectDir,
       env: {
         ...process.env,
+        HOME: home,
         PATH: `${fakeBin}:${process.env.PATH}`,
         BASH_ENV: '/dev/null',
         MEMSEARCH_DIR: `${root}/state`,
@@ -92,16 +113,46 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false) {
         MEMSEARCH_TEST_PROJECT: projectDir,
         MEMSEARCH_TEST_RESULT: resultFile,
         MEMSEARCH_TEST_OLD_CORE: oldCore ? '1' : '0',
+        MEMSEARCH_TEST_SEARCH_ERROR: searchError,
+        MEMSEARCH_TEST_SCENARIO: JSON.stringify(scenario),
       },
     })
-    await assertion({ ...JSON.parse(stdout), callLog })
+    await assertion({ ...JSON.parse(stdout), callLog, home, projectDir, fakeBin, resultFile })
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
 }
 
+for (const [name, configs, useOnnx] of [
+  ['no configuration', {}, true],
+  ['existing global provider', { global: '[embedding]\nprovider = "ollama"\nmodel = "nomic-embed-text"\n' }, false],
+  ['existing empty global configuration', { global: '' }, false],
+  ['existing project configuration', { project: '[milvus]\ncollection = "existing_index"\n' }, false],
+]) {
+  test(`embedding defaults: ${name} applies consistently without changing configuration`, async () => {
+    await withInjectionFixture([], async ({ callLog, home, projectDir }) => {
+      const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
+      const embeddingCalls = calls.filter((call) => /^(search|index) /.test(call))
+      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 0)
+      assert.ok(embeddingCalls.some((call) => call.startsWith('index ')), 'startup index must run')
+      for (const call of embeddingCalls) {
+        assert.equal(/ --provider onnx(?: |$)/.test(call), useOnnx, call)
+        assert.ok(!call.includes('--force'), call)
+      }
+      assert.ok(!calls.some((call) => call.startsWith('config set ')))
+      for (const [file, expected] of [
+        [`${home}/.memsearch/config.toml`, configs.global],
+        [`${projectDir}/.memsearch.toml`, configs.project],
+      ]) {
+        if (expected === undefined) assert.equal(fs.existsSync(file), false)
+        else assert.equal(fs.readFileSync(file, 'utf-8'), expected)
+      }
+    }, false, '', configs)
+  })
+}
+
 test('detectDshCmd: prefers dsh on PATH as a plain argv', () => {
-  // DSH_CLI is checked after PATH; simulate PATH hit by masking DSH_CLI.
+  // Exercise PATH lookup without an explicit override.
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   try {
@@ -146,28 +197,14 @@ test('detectDshCmd: DSH_CLI with trailing spaces is trimmed', () => {
   }
 })
 
-test('summarizeTurn: explicit custom-llm mode dispatches to the LLM path', async () => {
-  // custom-llm mode spawns python3 summarize.py; without a real transcript we
-  // only assert it picks that branch (no crash before spawn).
-  const opts = { summarizeMode: 'custom-llm', agentName: 'X', summarizeProvider: '', summarizeModel: '' }
-  const ctx = { logger: { warn: () => {} } }
-  const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
-  // If dispatch is wrong (e.g. treats anything not dsh-headless as dsh), this
-  // would reject with a dsh-CLI error instead of the custom-llm path error.
+test('summarizeTurn: explicit custom-llm mode reports its missing dependency', async () => {
+  const previous = process.env.MEMSEARCH_PYTHON
   try {
-    await summarizeTurn(ctx, opts, render, process.cwd())
-    assert.fail('expected custom-llm summarizer to fail (no provider configured)')
-  } catch (error) {
-    // custom-llm path failure: summarize.py exits non-zero or times out, or
-    // python3 is missing — never a "dsh CLI not found" error.
-    assert.ok(
-      !/dsh CLI not found/.test(error.message),
-      `unexpected dsh CLI error: ${error.message}`,
-    )
-    assert.ok(
-      !/spawn .* ENOENT/.test(error.message),
-      `unexpected spawn ENOENT: ${error.message}`,
-    )
+    process.env.MEMSEARCH_PYTHON = '/definitely/not/a/python'
+    await assert.rejects(summarizeTurn({}, { summarizeMode: 'custom-llm' }, 'hello', process.cwd()), /Python 3 not found/)
+  } finally {
+    if (previous === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = previous
   }
 })
 
@@ -336,7 +373,7 @@ test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error'
   fs.mkdirSync(fakeBin, { recursive: true })
   fs.writeFileSync(
     `${fakeBin}/python3`,
-    '#!/bin/sh\necho "provider deepseek-zilliz not found in config" >&2\ncat > /dev/null\nexit 3\n',
+    '#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\necho "provider deepseek-zilliz not found in config" >&2\ncat > /dev/null\nexit 3\n',
     'utf-8',
   )
   fs.chmodSync(`${fakeBin}/python3`, 0o755)
@@ -416,7 +453,7 @@ test('summarizeTurn: custom-llm rejects an early stdin close', async () => {
   }
 })
 
-test('detectDshCmd: falls back to pnpm global bin directory', async () => {
+test('detectDshCmd: falls back to the pnpm global bin directory', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
@@ -447,7 +484,7 @@ test('apply: captureEnabled:false skips session/event capture listener', () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { captureEnabled: false })
@@ -460,7 +497,7 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { summarizeEnabled: false })
@@ -496,7 +533,7 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   // Default summarizeEnabled:true + auto resolves headless with no CLI → error
@@ -544,7 +581,7 @@ test('apply: multi-project capture writes to each project memory dir', async () 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   const prevCli = process.env.DSH_CLI
@@ -590,7 +627,7 @@ test('apply: MEMSEARCH_DSH_SUMMARIZE=1 makes the plugin inert', () => {
     process.env.MEMSEARCH_DSH_SUMMARIZE = '1'
     const ctx = {
       logger: { warn: () => {}, debug: () => {} },
-      skills: { register: () => {} },
+      skills: { register: () => {}, registerProvider: () => {} },
       on: (name, fn) => { listeners[name] = fn },
     }
     apply(ctx, {})
@@ -605,7 +642,7 @@ test('apply: custom-llm config is honored in summarizeMode', async () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { summarizeMode: 'custom-llm', summarizeProvider: 'p', summarizeModel: 'm' })
@@ -976,7 +1013,7 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { injectEnabled: false })
@@ -987,59 +1024,53 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   assert.equal(result.messages.length, 1, 'no memory message injected')
 })
 
-test('apply: empty search result keeps pre-step context unchanged while recall stays available', async () => {
-  await withInjectionFixture([], async ({ result, unchanged, registeredSkillNames, callLog }) => {
-    assert.equal(unchanged, true, 'empty search result must not inject a marker')
-    assert.equal(result.messages.length, 1)
-    assert.ok(
-      registeredSkillNames.includes('memory-recall'),
-      'native recall skill remains registered independently of automatic injection',
-    )
-    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-    const searches = calls.filter((call) => call.startsWith('search '))
-    assert.equal(searches.length, 1)
-    assert.ok(searches[0].includes('--default-collection '))
-    assert.ok(!searches[0].includes('--collection '))
-  })
-})
-
-test('apply: returned chunks inject one retrieved-context marker with plugin source metadata', async () => {
-  await withInjectionFixture(
-    [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],
-    async ({ result, unchanged, registeredSkillNames, callLog }) => {
-      assert.equal(unchanged, false)
+for (const [label, results] of [
+  ['empty search results', []],
+  ['available relevant results', [{ source: 'memory/2026-09-07.md:4', content: 'PINE-NEBULA-8643' }]],
+]) {
+  test(`recall hint: prompts for the skill without searching with ${label}`, async () => {
+    await withInjectionFixture(results, async ({ result, registeredSkillNames, callLog }) => {
       assert.equal(result.kind, 'enter')
+      assert.deepEqual(result.metadata, { preserved: true })
       assert.equal(result.messages.length, 2)
-      const injected = result.messages[1]
-      const text = injected.content[0].text
-      const marker = '[memsearch] Retrieved memory context attached.'
-      assert.equal(text.split(marker).length - 1, 1, 'exactly one retrieved-context marker')
-      assert.ok(text.includes('Retrieved memory candidates from past sessions:'))
-      assert.ok(text.includes('PINE-NEBULA-8643'))
-      assert.equal(injected.source.kind, 'plugin')
-      assert.equal(injected.source.plugin, 'memsearch')
-      assert.equal(injected.source.form, 'snapshot')
-      assert.equal(injected.source.sections[0].name, 'memsearch')
-      assert.equal(injected.source.sections[0].text, text)
-      assert.ok(
-        registeredSkillNames.includes('memory-recall'),
-        'native recall skill remains distinct from automatic injection',
-      )
+      const hint = result.messages[1]
+      assert.match(hint.content[0].text, /Recall available if needed/)
+      assert.match(hint.content[0].text, /memory-recall/)
+      assert.doesNotMatch(hint.content[0].text, /PINE-NEBULA|Retrieved memory/)
+      assert.equal(hint.source.kind, 'plugin:memsearch')
+      assert.equal(hint.source.form, 'snapshot')
+      assert.equal(hint.source.sections[0].text, hint.content[0].text)
+      assert.ok(registeredSkillNames.includes('memory-recall'))
       const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-      const searches = calls.filter((call) => call.startsWith('search '))
-      assert.equal(searches.length, 1)
-      assert.ok(searches[0].includes('--default-collection '))
-      assert.ok(!searches[0].includes('--collection '))
-    },
-  )
-})
+      assert.ok(!calls.some(call => call.startsWith('search ')))
+    })
+  })
+}
 
-test('apply: rejects an old core before a memory search', async () => {
-  await withInjectionFixture([], async ({ error, callLog }) => {
-    assert.match(error, /--default-collection support is required/)
-    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-    assert.ok(!calls.some((call) => call.startsWith('search ')))
-  }, true)
+for (const [label, scenario] of [
+  ['disabled', { config: { injectEnabled: false } }],
+  ['later model step', { step: 2 }],
+  ['rejected turn', { kind: 'reject' }],
+  ['aborted turn', { aborted: true }],
+  ['no memory files', { hasMemory: false }],
+]) {
+  test(`recall hint: leaves ${label} unchanged`, async () => {
+    await withInjectionFixture([], async ({ unchanged, registeredSkillNames, callLog }) => {
+      assert.equal(unchanged, true)
+      assert.ok(registeredSkillNames.includes('memory-recall'))
+      assert.ok(!fs.readFileSync(callLog, 'utf-8').split('\n').some(call => call.startsWith('search ')))
+    }, false, '', {}, scenario)
+  })
+}
+
+test('recall hint: a short prompt and unavailable search do not prevent the reminder', async () => {
+  await withInjectionFixture([], async ({ result, error, warnings, callLog }) => {
+    assert.equal(error, '')
+    assert.equal(result.messages.length, 2)
+    assert.match(result.messages[1].content[0].text, /memory-recall/)
+    assert.ok(!warnings.some(message => message.includes('search failed')))
+    assert.ok(!fs.readFileSync(callLog, 'utf-8').split('\n').some(call => call.startsWith('search ')))
+  }, true, 'Collection missing', {}, { question: 'OK' })
 })
 
 test('apply: registers a session/disposed maintenance listener', () => {
@@ -1049,7 +1080,7 @@ test('apply: registers a session/disposed maintenance listener', () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, {})
@@ -1124,11 +1155,152 @@ test('listSkillCandidates: malformed meta.json is skipped, not fatal', () => {
   assert.equal(out[0].occurrences, 0, 'missing occurrences defaults to 0')
 })
 
-test('resolveSkillInstallTarget: paths config entry wins, relative resolves against project', () => {
-  
-  const target = resolveSkillInstallTarget('memsearch', '/proj')
-  // No configured paths on this machine → DSH default ~/.agents/skills.
-  assert.ok(target.endsWith('/.agents/skills'), `expected ~/.agents/skills default, got ${target}`)
+for (const [name, paths, expected, legacyOutput] of [
+  ['relative', ['./custom-skills'], (root) => `${root}/project/custom-skills`, "['./custom-skills']"],
+  ['absolute', ['/custom/skills'], () => '/custom/skills', "['/custom/skills']"],
+  ['home-relative', ['~/custom-skills'], () => `${os.homedir()}/custom-skills`, "['~/custom-skills']"],
+  ['first path only', ['first', 'second'], (root) => `${root}/project/first`, "['first', 'second']"],
+  ['quotes and spaces', ["skills' directory"], (root) => `${root}/project/skills' directory`, JSON.stringify(["skills' directory"])],
+  ['absolute with quote', ["/custom/skills' directory"], () => "/custom/skills' directory", JSON.stringify(["/custom/skills' directory"])],
+  ['empty', [], () => `${process.env.HOME || ''}/.agents/skills`, '[]'],
+  ['missing', undefined, () => `${process.env.HOME || ''}/.agents/skills`, '[]'],
+]) {
+  test(`resolveSkillInstallTarget: ${name} config paths`, () => {
+    const root = fs.mkdtempSync(`${os.tmpdir()}/msr-install-`)
+    try {
+      const script = `${root}/config.cjs`
+      // Model both real CLI formats: config get uses Python's list repr,
+      // while config list --json-output is the machine-readable interface.
+      fs.writeFileSync(script, `
+        const args = process.argv.slice(2)
+        if (args.join(' ') === 'config list --json-output') {
+          console.log(${JSON.stringify(JSON.stringify({ plugins: { dsh: { memory_to_skill: { paths } } } }))})
+        } else if (args.join(' ') === 'config get plugins.dsh.memory_to_skill.paths') {
+          console.log(${JSON.stringify(legacyOutput)})
+        } else { process.exit(1) }
+      `)
+      const command = [process.execPath, script]
+      assert.equal(resolveSkillInstallTarget(command, `${root}/project`), expected(root))
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+}
+
+for (const [name, script] of [
+  ['invalid JSON', "console.log('not JSON')"],
+  ['command failure', 'process.exit(1)'],
+]) {
+  test(`resolveSkillInstallTarget: ${name} falls back to DSH default`, () => {
+    assert.equal(
+      resolveSkillInstallTarget([process.execPath, '-e', script], '/proj'),
+      `${process.env.HOME || ''}/.agents/skills`,
+    )
+  })
+}
+
+// A persisted-cwd fixture: no live agent, sessionPersistence.stat returns the
+// immutable session header (the shape dsh-session-persistence's stat() serves).
+function persistedCtx(statImpl, calls = []) {
+  return {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+    sessionPersistence: {
+      stat: async (sessionId) => { calls.push(sessionId); return statImpl(sessionId) },
+    },
+  }
+}
+
+for (const [name, sessionId, statBehavior] of [
+  ['stale session resolves through the persisted header', 'stale-1', 'persisted'],
+  ['unknown session falls back to the boot dir', 'ghost', 'missing'],
+  ['stat failure falls back to the boot dir', 'broken', 'throws'],
+]) {
+  test(`registerSkillReviewRoutes: GET candidates — ${name}`, async () => {
+    const bootDir = fs.mkdtempSync(os.tmpdir() + '/msr-stale-boot-')
+    const persistedDir = fs.mkdtempSync(os.tmpdir() + '/msr-stale-proj-')
+    // The persisted project holds a candidate; the boot dir holds none, so the
+    // response body tells which project directory the route resolved to.
+    fs.mkdirSync(`${persistedDir}/.memsearch/skill-candidates/persisted-one`, { recursive: true })
+    fs.writeFileSync(`${persistedDir}/.memsearch/skill-candidates/persisted-one/meta.json`,
+      JSON.stringify({ name: 'persisted-one', status: 'candidate' }))
+    fs.mkdirSync(`${bootDir}/.memsearch`, { recursive: true })
+    const routes = {}
+    const webServer = { register: (r) => { routes[r.path] = r } }
+    const calls = []
+    const ctx = persistedCtx((id) => {
+      if (statBehavior === 'throws') throw new Error('storage unavailable')
+      if (statBehavior === 'missing') return undefined
+      return { header: { id, cwd: persistedDir } }
+    }, calls)
+    const { registerSkillReviewRoutes } = await import('../index.js')
+    const prev = process.env.MEMSEARCH_DIR
+    const prevCwd = process.cwd()
+    delete process.env.MEMSEARCH_DIR // exercise the <project>/.memsearch resolution path
+    process.chdir(bootDir)
+    try {
+      registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+      const getRoute = routes['/memsearch-dsh/skill-candidates']
+      const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
+      await getRoute.handler({ method: 'GET', url: `/memsearch-dsh/skill-candidates?sessionId=${sessionId}` }, res)
+      assert.equal(res.status, 200)
+      assert.deepEqual(calls, [sessionId], 'stat consulted for the non-live session')
+      if (statBehavior === 'persisted') {
+        assert.deepEqual(res.body.candidates.map((c) => c.name), ['persisted-one'],
+          'stale session reads the persisted project, not the boot dir')
+      } else {
+        assert.deepEqual(res.body.candidates, [], 'unresolvable session falls back to the boot dir')
+      }
+    } finally {
+      process.chdir(prevCwd)
+      if (prev === undefined) delete process.env.MEMSEARCH_DIR
+      else process.env.MEMSEARCH_DIR = prev
+      fs.rmSync(bootDir, { recursive: true, force: true })
+      fs.rmSync(persistedDir, { recursive: true, force: true })
+    }
+  })
+}
+
+test('registerSkillReviewRoutes: persisted cwd is memoized; a live agent wins without stat', async () => {
+  const routes = {}
+  const webServer = { register: (r) => { routes[r.path] = r } }
+  const calls = []
+  let agentLive = false
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => (agentLive ? { session: { header: { cwd: 'S:/proj/live' } } } : undefined) },
+    logger: { warn: () => {} },
+    sessionPersistence: {
+      stat: async (sessionId) => { calls.push(sessionId); return { header: { id: sessionId, cwd: 'S:/proj/persisted' } } },
+    },
+  }
+  const { registerSkillReviewRoutes } = await import('../index.js')
+  const prev = process.env.MEMSEARCH_DIR
+  process.env.MEMSEARCH_DIR = fs.mkdtempSync(os.tmpdir() + '/msr-memo-')
+  try {
+    registerSkillReviewRoutes(ctx, webServer, 'memsearch')
+    const getRoute = routes['/memsearch-dsh/skill-candidates']
+    const mkRes = () => {
+      const sink = { writeHead: (s) => { sink.status = s }, end: (b) => { sink.body = JSON.parse(b) } }
+      return sink
+    }
+    // Two requests with no live agent: stat consulted once, then memoized.
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, mkRes())
+    const second = mkRes()
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, second)
+    assert.equal(second.status, 200)
+    assert.deepEqual(calls, ['s-1'], 'stat called exactly once per session id')
+    // A live agent short-circuits: its session cwd wins and stat is never hit.
+    agentLive = true
+    const third = mkRes()
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates?sessionId=s-1' }, third)
+    assert.equal(third.status, 200)
+    assert.deepEqual(calls, ['s-1'], 'live agent resolution does not consult stat')
+  } finally {
+    if (prev === undefined) delete process.env.MEMSEARCH_DIR
+    else process.env.MEMSEARCH_DIR = prev
+  }
 })
 
 test('registerSkillReviewRoutes: GET candidates returns parsed list, pending first', async () => {
@@ -1142,6 +1314,7 @@ test('registerSkillReviewRoutes: GET candidates returns parsed list, pending fir
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: () => undefined },
     logger: { warn: () => {} },
   }
@@ -1154,7 +1327,7 @@ test('registerSkillReviewRoutes: GET candidates returns parsed list, pending fir
     const getRoute = routes['/memsearch-dsh/skill-candidates']
     assert.ok(getRoute, 'GET route registered')
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates' }, res)
+    await getRoute.handler({ method: 'GET', url: '/memsearch-dsh/skill-candidates' }, res)
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.candidates.map((c) => c.name), ['alpha', 'zeta'], 'pending first')
     assert.equal(res.body.candidates[0].description, 'A')
@@ -1173,6 +1346,7 @@ test('registerSkillReviewRoutes: GET rejects non-GET, POST review injects into a
     inbox: { append: (target, msg) => { appended = { target, msg } } },
   }
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: (id) => (id === 'sess-1' ? fakeAgent : undefined) },
     logger: { warn: () => {} },
   }
@@ -1184,7 +1358,7 @@ test('registerSkillReviewRoutes: GET rejects non-GET, POST review injects into a
     const getRoute = routes['/memsearch-dsh/skill-candidates']
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
     getRoute.handler({ method: 'POST', url: '/x' }, res)
-    assert.equal(res.status, 405)
+    assert.equal(res.status, 405) // method check precedes any async project resolution
 
     const postRoute = routes['/memsearch-dsh/skill-review']
     const { EventEmitter } = await import('node:events')
@@ -1209,7 +1383,11 @@ test('registerSkillReviewRoutes: POST review with unknown session returns 404', 
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-route3-')
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp
@@ -1237,6 +1415,7 @@ test('registerSkillReviewRoutes: POST open-memsearch opens existing dir, 404 for
   const webServer = { register: (r) => { routes[r.path] = r } }
   let opened = null
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: () => undefined },
     logger: { warn: (m) => { opened = m } },
   }
@@ -1289,7 +1468,11 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
   fs.symlinkSync(outside, `${tmp}/outside-link`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp
@@ -1299,7 +1482,7 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
     assert.ok(route, 'list route registered')
 
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch' }, res)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch' }, res)
     assert.equal(res.status, 200)
     assert.deepEqual(res.body.dirs.sort(), ['memory', 'skill-candidates'])
     assert.deepEqual(res.body.files, ['config.toml'])
@@ -1307,12 +1490,12 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
 
     // traversal blocked
     const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=..%2F..%2Fetc' }, res2)
     assert.equal(res2.status, 400)
 
     // A symlink inside .memsearch must not expose an outside directory.
     const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/list-memsearch?path=outside-link' }, res3)
     assert.equal(res3.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
@@ -1331,7 +1514,11 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
   fs.symlinkSync(outside, `${tmp}/escape.md`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp
@@ -1342,23 +1529,23 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
 
     // md file
     const res = { writeHead: (s) => { res.status = s }, end: (b) => { res.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=skill-candidates%2Ffoo%2FSKILL.md' }, res)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=skill-candidates%2Ffoo%2FSKILL.md' }, res)
     assert.equal(res.status, 200)
     assert.ok(res.body.content.includes('# Foo'))
 
     // binary rejected
     const res2 = { writeHead: (s) => { res2.status = s }, end: (b) => { res2.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=blob.bin' }, res2)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=blob.bin' }, res2)
     assert.equal(res2.status, 415)
 
     // traversal rejected
     const res3 = { writeHead: (s) => { res3.status = s }, end: (b) => { res3.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=..%2F..%2Fetc%2Fpasswd' }, res3)
     assert.equal(res3.status, 400)
 
     // A text-looking symlink must not expose a file outside .memsearch.
     const res4 = { writeHead: (s) => { res4.status = s }, end: (b) => { res4.body = JSON.parse(b) } }
-    route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
+    await route.handler({ method: 'GET', url: '/memsearch-dsh/read-file?path=escape.md' }, res4)
     assert.equal(res4.status, 400)
   } finally {
     if (prev === undefined) delete process.env.MEMSEARCH_DIR

@@ -37,6 +37,7 @@ fi
 
 python3 -c '
 import json, sys
+import xml.etree.ElementTree as ET
 
 
 RESPONSE_TEXT_BLOCKS = {
@@ -101,23 +102,64 @@ def response_message(payload):
     }
 
 
-def is_host_instruction_envelope(text):
-    """Recognize the exact host wrapper shapes observed in Codex rollouts."""
+def is_environment_context_envelope(text):
+    """Recognize a complete structured Codex environment wrapper."""
     stripped = text.strip()
-    if stripped.startswith("# AGENTS.md instructions for "):
-        header, separator, body = stripped.partition("\n\n")
-        return bool(
-            separator
-            and header.startswith("# AGENTS.md instructions for ")
-            and body.startswith("<INSTRUCTIONS>")
-            and body.endswith("</INSTRUCTIONS>")
-        )
+    if not (stripped.startswith("<environment_context>\n") and stripped.endswith("\n</environment_context>")):
+        return False
+    try:
+        root = ET.fromstring(stripped)
+    except ET.ParseError:
+        return False
+    if root.tag != "environment_context":
+        return False
+
+    def has_nonempty_text(element):
+        return element is not None and element.text is not None and bool(element.text.strip())
+
+    has_stable_context = all(has_nonempty_text(root.find(field)) for field in ("current_date", "timezone"))
+    has_runtime = all(has_nonempty_text(root.find(field)) for field in ("cwd", "shell"))
+    filesystem = root.find("filesystem")
+    workspace_roots = filesystem.find("workspace_roots") if filesystem is not None else None
+    has_workspace = workspace_roots is not None and any(
+        has_nonempty_text(workspace_root) for workspace_root in workspace_roots.findall("root")
+    )
+    return has_stable_context and (has_runtime or has_workspace)
+
+
+def is_host_instruction_envelope(text):
+    """Recognize complete host wrapper shapes observed in Codex rollouts."""
+    stripped = text.strip()
+    if stripped == "":
+        return False
+
+    header, separator, body = stripped.partition("\n\n")
+    path_header_prefix = "# AGENTS.md instructions for "
+    path_qualifier = header[len(path_header_prefix) :] if header.startswith(path_header_prefix) else ""
+    is_path_agents_header = (
+        header.startswith(path_header_prefix)
+        and "\n" not in header
+        and "\r" not in header
+        and bool(path_qualifier.strip())
+        and path_qualifier == path_qualifier.strip()
+    )
+    is_agents_header = header == "# AGENTS.md instructions" or is_path_agents_header
+    if is_agents_header:
+        if not separator or not body.startswith("<INSTRUCTIONS>"):
+            return False
+        instructions_end = body.find("</INSTRUCTIONS>")
+        if instructions_end < 0:
+            return False
+        remainder = body[instructions_end + len("</INSTRUCTIONS>") :]
+        if not remainder:
+            return True
+        if not remainder.startswith("\n"):
+            return False
+        return is_environment_context_envelope(remainder[1:])
+
     if stripped.startswith("<user_instructions>\n") and stripped.endswith("\n</user_instructions>"):
         return True
-    if stripped.startswith("<environment_context>\n") and stripped.endswith("\n</environment_context>"):
-        required_fields = ("cwd", "shell", "current_date", "timezone")
-        return all(f"<{field}>" in stripped and f"</{field}>" in stripped for field in required_fields)
-    return False
+    return is_environment_context_envelope(stripped)
 
 
 def find_last_user_message(lines):
@@ -207,20 +249,27 @@ def normalize_record(raw_line):
 
 
 def has_later_user_message(records, index):
-    """Return whether the selected turn contains a later conversational user."""
-    return any(record and record.get("role") == "user" for record in records[index + 1 :])
+    """Find a later real user without scanning past a conversational assistant."""
+    for record in records[index + 1 :]:
+        if record is None or record.get("kind") == "developer":
+            continue
+        if record.get("role") == "assistant":
+            return False
+        if record.get("role") == "user" and not is_host_instruction_envelope(record["text"]):
+            return True
+    return False
 
 def format_turn(lines):
     """Format a turn into structured text for LLM summarization."""
     records = [normalize_record(raw_line) for raw_line in lines]
     messages = []
     previous_message = None
-    saw_conversational_user = False
+    saw_conversational_message = False
     saw_leading_developer = False
 
     for index, message in enumerate(records):
         if message and message.get("kind") == "developer":
-            if not saw_conversational_user and not messages:
+            if not saw_conversational_message and not messages:
                 saw_leading_developer = True
             previous_message = None
             continue
@@ -233,19 +282,21 @@ def format_turn(lines):
         if (
             message["source"] == "response_item"
             and message["role"] == "user"
-            and not saw_conversational_user
+            and not saw_conversational_message
             and saw_leading_developer
             and has_later_user_message(records, index)
             and is_host_instruction_envelope(message["text"])
         ):
+            # Filter only leading host-owned response_item wrappers. A filtered
+            # wrapper does not start the conversation, so consecutive wrappers
+            # before the real user message remain eligible for filtering.
             previous_message = None
             continue
 
         if not is_dual_written_duplicate(previous_message, message):
             messages.append(message)
+            saw_conversational_message = True
         previous_message = message
-        if message["role"] == "user":
-            saw_conversational_user = True
 
     if not messages:
         return ""

@@ -504,7 +504,9 @@ def test_save_config_expands_user_in_string_path(tmp_path: Path, monkeypatch: py
     """save_config should expand '~' when given a string path."""
     fake_home = tmp_path / "home"
     fake_home.mkdir()
+    # Windows expands '~' using USERPROFILE.
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
 
     path = "~/.memsearch/test-config.toml"
     data = {"embedding": {"provider": "google"}}
@@ -521,6 +523,7 @@ def test_load_config_file_expands_user_in_string_path(tmp_path: Path, monkeypatc
     config_dir = fake_home / ".memsearch"
     config_dir.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
 
     data = {"milvus": {"collection": "from-home"}}
     config_path = config_dir / "test-config.toml"

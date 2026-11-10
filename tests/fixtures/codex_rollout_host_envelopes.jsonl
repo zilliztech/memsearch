@@ -1,0 +1,9 @@
+{"type":"event_msg","payload":{"type":"task_started"}}
+{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"synthetic host policy"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\n\n<INSTRUCTIONS>\nSynthetic project rules.\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>/fixture</cwd>\n  <shell>bash</shell>\n  <current_date>2026-09-18</current_date>\n  <timezone>UTC</timezone>\n  <filesystem><workspace_roots><root>/fixture</root></workspace_roots><permission_profile>synthetic</permission_profile></filesystem>\n</environment_context>"}]}}
+{"type":"world_state","payload":{"cwd":"/fixture"}}
+{"type":"turn_context","payload":{"context":"synthetic metadata sentinel"}}
+{"type":"token_usage_record","payload":{"total_tokens":1}}
+{"type":"compacted","payload":{"replacement_history":[]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Remember the synthetic orchard marker."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The synthetic orchard marker is recorded."}]}}

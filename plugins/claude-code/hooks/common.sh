@@ -34,17 +34,12 @@ if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
 else
   _PROJECT_DIR="$(pwd)"
 fi
-case "$_PROJECT_DIR" in
-  /*) ;;
-  # Windows: CLAUDE_PROJECT_DIR arrives as a Win32 drive path (C:/... or C:\...).
-  # Git Bash treats it as absolute, so keep it absolute and only swap the
-  # separators, which matters when no git root is found below. Do not
-  # canonicalize it (e.g. `cygpath -u` -> /c/...): the collection name is a
-  # hash of this string, so any respelling silently moves the project to a
-  # new, empty collection.
-  [A-Za-z]:[/\\]*) _PROJECT_DIR="${_PROJECT_DIR//\\//}" ;;
-  *) _PROJECT_DIR="$(pwd)/$_PROJECT_DIR" ;;
-esac
+# Git Bash accepts both drive-path spellings from Windows hosts.
+if [[ ( $OSTYPE == msys* || $OSTYPE == cygwin* ) && "$_PROJECT_DIR" == [A-Za-z]:[/\\]* ]]; then
+  _PROJECT_DIR="${_PROJECT_DIR//\\//}"
+elif [[ "$_PROJECT_DIR" != /* ]]; then
+  _PROJECT_DIR="$(pwd)/$_PROJECT_DIR"
+fi
 _GIT_ROOT="$(git -C "$_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [ -n "$_GIT_ROOT" ]; then
   _PROJECT_DIR="$_GIT_ROOT"
@@ -120,7 +115,9 @@ else
   COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
 fi
 
-# --- JSON helpers (jq preferred, python3 fallback) ---
+source "$(dirname "${BASH_SOURCE[0]}")/python.sh"
+
+# --- JSON helpers (jq preferred, Python fallback) ---
 
 # _json_val <json_string> <dotted_key> [default]
 # Extract a value from JSON. Key supports dotted notation (e.g. "info.version").
@@ -133,7 +130,7 @@ _json_val() {
     # Build jq filter from dotted key: "info.version" → ".info.version"
     result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
   else
-    result=$(printf '%s' "$json" | python3 -c "
+    result=$(printf '%s' "$json" | run_python -c "
 import json, sys
 try:
     obj = json.load(sys.stdin)
@@ -166,7 +163,7 @@ _json_encode_str() {
   if command -v jq &>/dev/null; then
     printf '%s' "$str" | jq -Rs . 2>/dev/null && return 0
   fi
-  printf '%s' "$str" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null && return 0
+  printf '%s' "$str" | run_python -c "import json,sys; print(json.dumps(sys.stdin.read()))" 2>/dev/null && return 0
   # Last resort: simple quoting (no special char escaping)
   printf '"%s"' "$str"
   return 0
@@ -325,7 +322,7 @@ _pypi_latest_version() {
 index_state_warning() {
   local state_path="$MEMSEARCH_DIR/.index-state.json"
   [ -f "$state_path" ] || return 0
-  python3 - "$state_path" <<'PY' 2>/dev/null || true
+  run_python - "$state_path" <<'PY' 2>/dev/null || true
 import json
 import sys
 from datetime import datetime, timezone
@@ -377,10 +374,10 @@ run_memsearch() {
 }
 
 run_maintenance() {
-  if command -v python3 >/dev/null 2>&1; then
+  if python_available; then
     (
       cd "$_PROJECT_DIR"
-      MEMSEARCH_NO_WATCH=1 python3 "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
+      MEMSEARCH_NO_WATCH=1 run_python "$SCRIPT_DIR/../scripts/maintenance-runner.py" \
         --platform claude-code \
         --project-dir "$_PROJECT_DIR" \
         --memsearch-dir "$MEMSEARCH_DIR"
@@ -392,14 +389,7 @@ run_maintenance() {
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
 
-# Kill any previously spawned background index processes for this project.
-# Also sweeps orphaned milvus_lite processes, which outlive `memsearch index`
-# in Lite mode because milvus_lite does not exit when its parent process ends.
-#
-# Without this cleanup, rapid session open/close cycles (e.g. when Claude Code
-# freezes on startup and the user force-quits) accumulate dozens of orphaned
-# python/milvus processes that can consume tens of GB of virtual memory and
-# cause subsequent sessions to freeze due to resource exhaustion.
+# Stop previous background index tasks for this memory directory.
 kill_orphaned_index() {
   # Skip in child claude -p processes to avoid killing the current parent's work
   if [ "${MEMSEARCH_NO_WATCH:-}" = "1" ]; then
@@ -425,13 +415,7 @@ kill_orphaned_index() {
     done
   fi
 
-  # 3. Kill orphaned milvus_lite processes (they don't exit when memsearch index exits)
-  orphans=$(pgrep -f "milvus_lite/lib/milvus" 2>/dev/null || true)
-  if [ -n "$orphans" ]; then
-    echo "$orphans" | while read -r opid; do
-      kill "$opid" 2>/dev/null || true
-    done
-  fi
+  # Milvus Lite manages its server lifetime; never sweep backend processes globally.
 }
 
 # --- Watch singleton management ---
@@ -490,7 +474,7 @@ start_watch() {
 
   # Lite (local .db): skip watch entirely — file lock prevents concurrent access.
   # Session-start does a one-time index() instead.
-  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]]; then
+  if [[ "$_uri" != http* ]] && [[ "$_uri" != tcp* ]] && [[ "$_uri" != unix:* ]]; then
     return 0
   fi
 

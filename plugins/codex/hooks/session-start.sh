@@ -153,7 +153,7 @@ start_watch
 
 # Lite mode: one-time index since watch is not running.
 # Runs in background subshell to avoid blocking the hook.
-if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
+if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
   kill_orphaned_index
   (
     _index_args=("$MEMORY_DIR")

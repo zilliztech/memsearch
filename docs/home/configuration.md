@@ -46,6 +46,37 @@ memsearch config set embedding.provider onnx
 memsearch config set milvus.uri http://localhost:19530
 ```
 
+## Optional remote reranking
+
+Reranking is off by default (`reranker.model = ""`). Enable Jev explicitly in
+your trusted global configuration:
+
+```bash
+export TYPESAFE_API_KEY="your-key"
+memsearch config set reranker.model jev:jev-latest
+```
+
+The equivalent setting in `~/.memsearch/config.toml` is:
+
+```toml
+[reranker]
+model = "jev:jev-latest"
+```
+
+`jev-latest` follows the latest stable release, matching the [official SDK default](https://docs.typesafe.ai/models#aliases). To keep a specific version, use `jev:jev-1.13.0` instead. The published evaluation remains pinned to that version.
+
+This sends search queries and retrieved chunk text to the TypeSafe API. It does
+not change the embedding provider or require reindexing. Project-local config
+cannot enable this remote provider. To disable reranking:
+
+```bash
+memsearch config set reranker.model ""
+```
+
+Local cross-encoder model IDs continue to use the existing ONNX/PyTorch
+backends. See [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for results and
+[Python API](../python-api.md#optional-jev-reranking) for programmatic use.
+
 ## Index Exclusions
 
 Ignore support is explicit so upgrades do not silently change an existing
@@ -89,9 +120,14 @@ memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 
 ## Embedding Provider
 
+The Claude Code, Codex, OpenClaw, OpenCode, and DSH plugins select ONNX when no
+configuration exists and preserve existing configuration. The CLI defaults to
+OpenAI. The Python API also defaults to OpenAI and takes its settings directly
+as constructor arguments, such as `embedding_provider="onnx"` for local embeddings.
+
 | Provider | Install | API Key | Notes |
 |----------|---------|---------|-------|
-| **onnx** (default) | `pip install memsearch[onnx]` | No | Local, free, ~100MB model download |
+| **onnx** | `pip install memsearch[onnx]` | No | Local, free, ~558 MB model download |
 | openai | `pip install memsearch[openai]` | `OPENAI_API_KEY` | Best quality |
 | google | `pip install memsearch[google]` | `GOOGLE_API_KEY` | Gemini embeddings |
 | voyage | `pip install memsearch[voyage]` | `VOYAGE_API_KEY` | High quality |

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -13,7 +14,7 @@ from memsearch.store import MilvusStore, _local_open_error_message
 @pytest.fixture
 def store(tmp_path: Path):
     db = tmp_path / "test_milvus.db"
-    s = MilvusStore(uri=str(db), dimension=4)
+    s = MilvusStore(uri=str(db), dimension=4, _create_if_missing=True)
     yield s
     s.close()
 
@@ -47,6 +48,157 @@ def test_upsert_and_search(store: MilvusStore):
     results = store.search([1.0, 0.0, 0.0, 0.0], top_k=1)
     assert len(results) >= 1
     assert results[0]["content"] == "Hello world"
+
+
+def test_search_uses_metadata_fast_path_without_aggregate(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    stats = Mock(return_value={"row_count": 1})
+    aggregate = Mock(side_effect=AssertionError("aggregate query must not run"))
+    hybrid_search = Mock(return_value=[[]])
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="sealed") == []
+    stats.assert_called_once_with(store._collection)
+    aggregate.assert_not_called()
+    hybrid_search.assert_called_once()
+
+
+def test_search_empty_collection_uses_strong_count(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    aggregate = Mock(return_value=[{"count(*)": 0}])
+    hybrid_search = Mock(side_effect=AssertionError("empty collection must not be searched"))
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="empty") == []
+    aggregate.assert_called_once_with(
+        collection_name=store._collection,
+        filter="",
+        output_fields=["count(*)"],
+        consistency_level="Strong",
+    )
+    hybrid_search.assert_not_called()
+
+
+def test_search_growing_rows_continue_after_strong_count(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    aggregate = Mock(return_value=[{"count(*)": 1}])
+    hybrid_search = Mock(return_value=[[]])
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="growing") == []
+    aggregate.assert_called_once_with(
+        collection_name=store._collection,
+        filter="",
+        output_fields=["count(*)"],
+        consistency_level="Strong",
+    )
+    hybrid_search.assert_called_once()
+
+
+def test_search_propagates_strong_count_failure(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    failure = RuntimeError("strong count failed")
+    aggregate = Mock(side_effect=failure)
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="strong count failed") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="failure")
+
+    assert exc_info.value is failure
+    hybrid_search.assert_not_called()
+
+
+def test_search_propagates_metadata_failure(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    failure = RuntimeError("metadata failed")
+    stats = Mock(side_effect=failure)
+    aggregate = Mock()
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="metadata failed") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="failure")
+
+    assert exc_info.value is failure
+    aggregate.assert_not_called()
+    hybrid_search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        [],
+        [
+            {},
+        ],
+        [{"count(*)": "invalid"}],
+        [{"count(*)": False}],
+        [{"count(*)": 0.5}],
+        [{"count(*)": -0.5}],
+        [{"count(*)": -1}],
+        [{"count(*)": 0}, {"count(*)": 9}],
+    ],
+)
+def test_search_rejects_invalid_strong_count_response(
+    store: MilvusStore,
+    monkeypatch: pytest.MonkeyPatch,
+    response: list[dict[str, object]],
+):
+    aggregate = Mock(return_value=response)
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="Milvus returned") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="invalid")
+
+    assert store._collection in str(exc_info.value)
+    aggregate.assert_called_once()
+    hybrid_search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stats", [{}, {"row_count": False}, {"row_count": 0.5}, {"row_count": -0.5}, {"row_count": -1}]
+)
+def test_search_rejects_invalid_metadata_count(
+    store: MilvusStore,
+    monkeypatch: pytest.MonkeyPatch,
+    stats: dict[str, object],
+):
+    aggregate = Mock()
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value=stats))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="invalid metadata count") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="invalid")
+
+    assert store._collection in str(exc_info.value)
+    aggregate.assert_not_called()
+    hybrid_search.assert_not_called()
+
+
+def test_search_empty_lite_collection_returns_empty(store: MilvusStore):
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="empty") == []
+
+
+def test_count_keeps_metadata_semantics(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    stats = Mock(return_value={"row_count": 7})
+    aggregate = Mock(side_effect=AssertionError("count must keep metadata semantics"))
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+
+    assert store.count() == 7
+    stats.assert_called_once_with(store._collection)
+    aggregate.assert_not_called()
 
 
 def test_delete_by_source(store: MilvusStore):
@@ -136,7 +288,7 @@ def test_hybrid_search(store: MilvusStore):
 def test_dimension_mismatch(tmp_path: Path):
     db = str(tmp_path / "dim_test.db")
     # Create collection with dim=4
-    s1 = MilvusStore(uri=db, dimension=4)
+    s1 = MilvusStore(uri=db, dimension=4, _create_if_missing=True)
     s1.close()
     # Re-open with dim=8 — should raise ValueError
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
@@ -193,7 +345,7 @@ def test_collection_description(tmp_path: Path):
     """Description is best-effort metadata and is not required for search."""
     db = str(tmp_path / "desc_test.db")
     desc = "myproject | openai/text-embedding-3-small"
-    s = MilvusStore(uri=db, dimension=4, description=desc)
+    s = MilvusStore(uri=db, dimension=4, description=desc, _create_if_missing=True)
     info = s._client.describe_collection(s._collection)
     assert info.get("description", "") in ("", desc)
     s.upsert(
@@ -218,7 +370,7 @@ def test_collection_description(tmp_path: Path):
 def test_collection_description_empty_by_default(tmp_path: Path):
     """An empty description must not prevent collection creation."""
     db = str(tmp_path / "desc_default_test.db")
-    s = MilvusStore(uri=db, dimension=4)
+    s = MilvusStore(uri=db, dimension=4, _create_if_missing=True)
     info = s._client.describe_collection(s._collection)
     assert info.get("description") == ""
     s.close()
@@ -245,12 +397,45 @@ def test_windows_local_uri_reaches_milvus_client(monkeypatch: pytest.MonkeyPatch
         MilvusClient = FakeMilvusClient
 
     db = tmp_path / "windows-local.db"
+    db.touch()
     with monkeypatch.context() as patch:
         patch.setitem(sys.modules, "pymilvus", FakePyMilvus())
         patch.setattr(sys, "platform", "win32")
         s = MilvusStore(uri=str(db), dimension=None)
 
     assert connected["uri"] == str(db)
+    s.close()
+
+
+def test_unix_socket_uri_is_a_server_not_a_local_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """A unix: socket URI is a Milvus server, so it reaches the client unchanged and is never a Lite file."""
+    connected: dict[str, str] = {}
+
+    class FakeMilvusClient:
+        def __init__(self, *, uri: str):
+            connected["uri"] = uri
+
+        def has_collection(self, collection_name: str) -> bool:
+            return True
+
+        def load_collection(self, collection_name: str) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakePyMilvus:
+        MilvusClient = FakeMilvusClient
+
+    uri = "unix:/run/user/1000/memsearch/milvus.sock"
+    monkeypatch.chdir(tmp_path)
+    with monkeypatch.context() as patch:
+        patch.setitem(sys.modules, "pymilvus", FakePyMilvus())
+        s = MilvusStore(uri=uri, dimension=None)
+
+    assert not s._is_lite
+    assert connected["uri"] == uri
+    assert not (tmp_path / "unix:").exists()
     s.close()
 
 

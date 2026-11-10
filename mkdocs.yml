@@ -41,6 +41,7 @@ nav:
     - Design Philosophy: design-philosophy.md
     - Comparison with Alternatives: home/comparison.md
     - Embedding Model Evaluation: home/embedding-evaluation.md
+    - Reranking Evaluation: https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md
     - Quickstart: getting-started.md
     - FAQ: faq.md
     - Troubleshooting: troubleshooting.md

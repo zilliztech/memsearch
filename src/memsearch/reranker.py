@@ -4,11 +4,13 @@ Re-scores hybrid search results using a cross-encoder that reads query and
 document together, producing more accurate relevance scores than embedding
 similarity alone.
 
-Two backends are supported, auto-detected at runtime:
+Local backends are auto-detected at runtime:
   1. ONNX Runtime (preferred) — lightweight, CPU-only, included in ``memsearch[onnx]``
   2. sentence-transformers CrossEncoder — PyTorch-based, included in ``memsearch[local]``
 
 If neither is installed, reranking is silently skipped.
+
+Model names prefixed with ``jev:`` explicitly select the remote Jev API instead.
 """
 
 from __future__ import annotations
@@ -254,7 +256,8 @@ def rerank(
         Search results from MilvusStore.search(). Each dict must have
         a ``content`` key with the chunk text.
     model_name:
-        HuggingFace model ID for the cross-encoder.
+        HuggingFace model ID for the cross-encoder, or ``jev:jev-latest``
+        for remote reranking using ``TYPESAFE_API_KEY``.
     top_k:
         Return only the top-k results after reranking.
         0 means return all results (re-sorted).
@@ -266,6 +269,11 @@ def rerank(
     """
     if not results:
         return []
+
+    if model_name.startswith("jev:"):
+        from .jev_reranker import JevReranker
+
+        return JevReranker(model=model_name.removeprefix("jev:")).rerank(query, results, top_k=top_k)
 
     backend = _detect_backend()
     if backend == "onnx":

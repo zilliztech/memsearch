@@ -29,6 +29,9 @@ class RecordingStore:
     def __init__(self) -> None:
         self.records: list[dict[str, Any]] = []
 
+    def _ensure_collection_for_write(self) -> None:
+        pass
+
     def hashes_by_source(self, source: str) -> set[str]:
         return set()
 

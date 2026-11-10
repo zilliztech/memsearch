@@ -4,10 +4,21 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+import operator
 from pathlib import Path
 from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
+
+
+class CollectionNotFoundError(RuntimeError):
+    """Raised when a read targets a collection that has not been created."""
+
+    def __init__(self, collection: str, uri: str) -> None:
+        super().__init__(
+            f"Collection '{collection}' does not exist at '{uri}'. "
+            "Run 'memsearch index <path> ...' to create it, or verify --collection and --milvus-uri."
+        )
 
 
 def _escape_filter_value(value: str) -> str:
@@ -21,6 +32,19 @@ def _milvus_lite_major() -> int | None:
         return int(importlib.metadata.version("milvus-lite").split(".")[0])
     except (importlib.metadata.PackageNotFoundError, ValueError):
         return None
+
+
+def _non_negative_integer(value: Any) -> int:
+    """Return an integer-protocol value without accepting bools or truncation."""
+    if isinstance(value, bool):
+        raise ValueError("boolean values are not row counts")
+    try:
+        result = operator.index(value)
+    except TypeError as exc:
+        raise ValueError("row counts must be integers") from exc
+    if result < 0:
+        raise ValueError("row counts must be non-negative")
+    return result
 
 
 def _local_open_error_message(exc: Exception, resolved: str, major: int | None) -> str:
@@ -67,43 +91,61 @@ class MilvusStore:
         collection: str = DEFAULT_COLLECTION,
         dimension: int | None = 1536,
         description: str = "",
+        _create_if_missing: bool = False,
     ) -> None:
-        from pymilvus import MilvusClient
-
-        is_local = not uri.startswith(("http", "tcp"))
+        is_local = not uri.startswith(("http", "tcp", "unix:"))
         resolved = str(Path(uri).expanduser()) if is_local else uri
-        if is_local:
-            Path(resolved).parent.mkdir(parents=True, exist_ok=True)
-        connect_kwargs: dict[str, Any] = {"uri": resolved}
+        self._connect_kwargs: dict[str, Any] = {"uri": resolved}
         if token:
-            connect_kwargs["token"] = token
-        try:
-            self._client = MilvusClient(**connect_kwargs)
-        except Exception as exc:
-            if is_local:
-                raise RuntimeError(_local_open_error_message(exc, resolved, _milvus_lite_major())) from exc
-            raise
+            self._connect_kwargs["token"] = token
+        self._client: Any | None = None
         self._is_lite = is_local
         self._resolved_uri = resolved
         self._collection = collection
         self._dimension = dimension
         self._description = description
-        self._ensure_collection()
+        self._collection_exists = False
 
-    def _ensure_collection(self) -> None:
-        if self._client.has_collection(self._collection):
+        may_create = _create_if_missing and dimension is not None
+        if may_create or not is_local or Path(resolved).exists():
+            self._connect(create_local_storage=may_create)
+            self._ensure_collection(create_if_missing=may_create)
+
+    def _connect(self, *, create_local_storage: bool) -> None:
+        """Connect to Milvus, creating a local parent only for an authorized write."""
+        if self._client is not None:
+            return
+        if self._is_lite and create_local_storage:
+            Path(self._resolved_uri).parent.mkdir(parents=True, exist_ok=True)
+
+        from pymilvus import MilvusClient
+
+        try:
+            self._client = MilvusClient(**self._connect_kwargs)
+        except Exception as exc:
+            if self._is_lite:
+                raise RuntimeError(_local_open_error_message(exc, self._resolved_uri, _milvus_lite_major())) from exc
+            raise
+
+    def _ensure_collection(self, *, create_if_missing: bool = True) -> None:
+        client = self._connected_client()
+        if client.has_collection(self._collection):
+            self._collection_exists = True
             self._check_dimension()
             self._load_collection()
             return
 
+        self._collection_exists = False
+        if not create_if_missing:
+            return
         if self._dimension is None:
-            return  # read-only mode: don't create a new collection
+            raise ValueError("Cannot create a collection without an embedding dimension")
 
         from pymilvus import DataType, Function, FunctionType
 
         # Description is optional backend metadata. Indexing and search never
         # depend on it because some Milvus Lite versions do not return it.
-        schema = self._client.create_schema(
+        schema = client.create_schema(
             enable_dynamic_field=True,
             description=self._description,
         )
@@ -125,32 +167,50 @@ class MilvusStore:
             )
         )
 
-        index_params = self._client.prepare_index_params()
+        index_params = client.prepare_index_params()
         index_params.add_index(field_name="embedding", index_type="FLAT", metric_type="COSINE")
         index_params.add_index(field_name="sparse_vector", index_type="SPARSE_INVERTED_INDEX", metric_type="BM25")
 
-        self._client.create_collection(
+        client.create_collection(
             collection_name=self._collection,
             schema=schema,
             index_params=index_params,
         )
+        self._collection_exists = True
         self._load_collection()
+
+    def _ensure_collection_for_write(self) -> None:
+        """Create the collection lazily at the first authorized write boundary."""
+        if self._collection_exists:
+            return
+        if self._dimension is None:
+            raise CollectionNotFoundError(self._collection, self._resolved_uri)
+        self._connect(create_local_storage=True)
+        self._ensure_collection(create_if_missing=True)
+
+    def _require_collection(self) -> None:
+        """Fail a read before any backend operation when the collection is absent."""
+        if not self._collection_exists:
+            raise CollectionNotFoundError(self._collection, self._resolved_uri)
+
+    def _connected_client(self) -> Any:
+        if self._client is None:
+            raise CollectionNotFoundError(self._collection, self._resolved_uri)
+        return self._client
 
     def _load_collection(self) -> None:
         """Load the collection before query/search operations."""
+        client = self._connected_client()
         try:
-            self._client.load_collection(collection_name=self._collection)
+            client.load_collection(collection_name=self._collection)
         except TypeError:
-            self._client.load_collection(self._collection)
+            client.load_collection(self._collection)
 
     def _check_dimension(self) -> None:
         """Verify that the existing collection's embedding dimension matches."""
         if self._dimension is None:
             return  # no dimension specified — skip check (read-only mode)
-        try:
-            info = self._client.describe_collection(self._collection)
-        except Exception:
-            return  # best-effort; skip if describe is not supported
+        info = self._connected_client().describe_collection(self._collection)
         for field in info.get("fields", []):
             if field.get("name") == "embedding":
                 existing_dim = field.get("params", {}).get("dim")
@@ -172,7 +232,8 @@ class MilvusStore:
         """
         if not chunks:
             return 0
-        result = self._client.upsert(
+        self._ensure_collection_for_write()
+        result = self._connected_client().upsert(
             collection_name=self._collection,
             data=chunks,
         )
@@ -189,9 +250,13 @@ class MilvusStore:
         """Hybrid search: dense vector + BM25 full-text with RRF reranking."""
         from pymilvus import AnnSearchRequest, RRFRanker
 
-        # BM25 crashes on empty collections (avgdl=0 → NaN). See #306.
-        stats = self._client.get_collection_stats(self._collection)
-        if int(stats.get("row_count", 0)) == 0:
+        self._require_collection()
+        client = self._connected_client()
+
+        # BM25 crashes on empty collections (avgdl=0 → NaN). See #306. Remote
+        # Milvus metadata omits growing rows, so confirm zero metadata counts
+        # with a strong query before treating the collection as empty.
+        if self._collection_is_empty():
             return []
 
         req_kwargs: dict[str, Any] = {}
@@ -216,7 +281,7 @@ class MilvusStore:
 
         reqs = [dense_req, bm25_req]
         rrf_k = 60
-        results = self._client.hybrid_search(
+        results = client.hybrid_search(
             collection_name=self._collection,
             reqs=reqs,
             ranker=RRFRanker(k=rrf_k),
@@ -231,6 +296,40 @@ class MilvusStore:
         max_rrf = len(reqs) / (rrf_k + 1)
         return [{**hit["entity"], "score": hit["distance"] / max_rrf} for hit in results[0]]
 
+    def _collection_is_empty(self) -> bool:
+        """Return whether no sealed or growing rows exist in the collection."""
+        self._require_collection()
+        client = self._connected_client()
+        stats = client.get_collection_stats(self._collection)
+        try:
+            metadata_count = _non_negative_integer(stats["row_count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Milvus returned an invalid metadata count for collection '{self._collection}': {stats!r}"
+            ) from exc
+        if metadata_count > 0:
+            return False
+
+        results = client.query(
+            collection_name=self._collection,
+            filter="",
+            output_fields=["count(*)"],
+            consistency_level="Strong",
+        )
+        if not isinstance(results, list) or len(results) != 1:
+            raise RuntimeError(
+                f"Milvus returned an invalid count response for collection '{self._collection}': {results!r}; "
+                "expected exactly one aggregate row"
+            )
+
+        try:
+            row_count = _non_negative_integer(results[0]["count(*)"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Milvus returned an invalid count response for collection '{self._collection}': {results!r}"
+            ) from exc
+        return row_count == 0
+
     _QUERY_FIELDS: ClassVar[list[str]] = [
         "content",
         "source",
@@ -243,17 +342,19 @@ class MilvusStore:
 
     def query(self, *, filter_expr: str = "") -> list[dict[str, Any]]:
         """Retrieve chunks by scalar filter (no vector needed)."""
+        self._require_collection()
         kwargs: dict[str, Any] = {
             "collection_name": self._collection,
             "output_fields": self._QUERY_FIELDS,
             "filter": filter_expr if filter_expr else 'chunk_hash != ""',
         }
-        return self._client.query(**kwargs)
+        return self._connected_client().query(**kwargs)
 
     def hashes_by_source(self, source: str) -> set[str]:
         """Return all chunk_hash values for a given source file."""
+        self._require_collection()
         escaped = _escape_filter_value(source)
-        results = self._client.query(
+        results = self._connected_client().query(
             collection_name=self._collection,
             filter=f'source == "{escaped}"',
             output_fields=["chunk_hash"],
@@ -262,7 +363,8 @@ class MilvusStore:
 
     def indexed_sources(self) -> set[str]:
         """Return all distinct source values in the collection."""
-        results = self._client.query(
+        self._require_collection()
+        results = self._connected_client().query(
             collection_name=self._collection,
             filter='chunk_hash != ""',
             output_fields=["source"],
@@ -271,8 +373,9 @@ class MilvusStore:
 
     def delete_by_source(self, source: str) -> None:
         """Delete all chunks from a given source file."""
+        self._require_collection()
         escaped = _escape_filter_value(source)
-        self._client.delete(
+        self._connected_client().delete(
             collection_name=self._collection,
             filter=f'source == "{escaped}"',
         )
@@ -281,22 +384,27 @@ class MilvusStore:
         """Delete chunks by their content hashes (primary keys)."""
         if not hashes:
             return
-        self._client.delete(
+        self._require_collection()
+        self._connected_client().delete(
             collection_name=self._collection,
             ids=hashes,
         )
 
     def count(self) -> int:
-        """Return total number of stored chunks."""
-        stats = self._client.get_collection_stats(self._collection)
+        """Return the metadata row count, which may lag on Milvus Server."""
+        self._require_collection()
+        stats = self._connected_client().get_collection_stats(self._collection)
         return stats.get("row_count", 0)
 
     def drop(self) -> None:
         """Drop the entire collection."""
-        if self._client.has_collection(self._collection):
+        if self._client is not None and self._client.has_collection(self._collection):
             self._client.drop_collection(self._collection)
+            self._collection_exists = False
 
     def close(self) -> None:
+        if self._client is None:
+            return
         self._client.close()
         # Milvus Lite: release the server process to free the db file lock.
         # Without this, the milvus_lite subprocess outlives the parent and

@@ -65,8 +65,9 @@ if [ "$SUMMARIZE_ENABLED" = "false" ]; then
   exit 0
 fi
 
-# Parse transcript — extract the last turn only (one user question + all responses)
-PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
+# Parse in a subshell to reuse the resolved Python command without changing
+# this hook's state. Extract the last turn only (one question + all responses).
+PARSED=$(source "$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
 if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ] || [ "$PARSED" = "(no user message found)" ] || [ "$PARSED" = "(empty turn)" ]; then
   echo '{}'
@@ -80,7 +81,7 @@ MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
 
 # Extract session ID and last user turn UUID for progressive disclosure anchors
 SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
-LAST_USER_TURN_UUID=$(python3 -c "
+LAST_USER_TURN_UUID=$(run_python -c "
 import json, sys
 uuid = ''
 with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
@@ -111,8 +112,8 @@ if memsearch_available; then
 fi
 if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
   SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$PROMPT_FILE")
-elif [ -f "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt" ]; then
-  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt")
+elif [ -f "$SCRIPT_DIR/../prompts/summarize.txt" ]; then
+  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$SCRIPT_DIR/../prompts/summarize.txt")
 else
   SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. Write in third person. Mandatory language rule: write every bullet in the same primary language as the [User] text. If User mixes languages, use the dominant user-facing language. Do NOT answer User's question. Output ONLY bullet points."
 fi
@@ -177,6 +178,15 @@ ${PARSED}"
     2>/dev/null)
   SUMMARY_STATUS=$?
   set -e
+  # Native CLI errors can arrive on stdout even with a successful exit status.
+  # Match response prefixes only, not error terms mentioned in valid summaries.
+  if [ "$SUMMARY_STATUS" -eq 0 ]; then
+    case "$SUMMARY" in
+      "You've hit your limit"*|"API Error:"*)
+        SUMMARY_FAILURE="summarizer returned an error response"
+        ;;
+    esac
+  fi
 else
   SUMMARY_FAILURE="summarizer unavailable"
 fi
@@ -214,7 +224,7 @@ fi
 # Lite mode keeps the SessionStart one-shot index: restarting it after every
 # turn can permanently starve a slow index before it completes.
 _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
-if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]]; then
+if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]] || [[ "$_uri" == unix:* ]]; then
   kill_orphaned_index
   run_memsearch index "$MEMORY_DIR"
 fi

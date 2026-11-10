@@ -47,14 +47,25 @@ codex --yolo
 
 ### DeepSeek Harness Plugin
 
-Native DSH integration with automatic capture, selective pre-step injection, skill-based recall, background maintenance, and a compact web memory browser.
+MemSearch saves turn summaries and lets DSH recall them in later sessions.
 
 ```bash
 uv tool install "memsearch[onnx]"
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
-Use any DSH profile name in place of `web`, then restart that profile or begin a new session.
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
+Replace `web` with the profile you use. Restart it or start a new session,
+complete a turn, and check today's file in `.memsearch/memory/` for its summary.
 
 [:octicons-arrow-right-24: DeepSeek Harness Plugin docs](platforms/dsh/index.md){ .md-button .md-button--primary }
 
@@ -76,10 +87,10 @@ Three tools (`memory_search`, `memory_get`, `memory_transcript`) with per-worksp
 
 ### OpenCode Plugin
 
-TypeScript plugin with daemon-based capture from OpenCode's SQLite database.
+Persistent memory for OpenCode. Completed turns are summarized into Markdown, ready to recall in future sessions.
 
 ```bash
-bash memsearch/plugins/opencode/install.sh
+opencode plugin add @zilliz/memsearch-opencode
 ```
 
 [:octicons-arrow-right-24: OpenCode Plugin docs](platforms/opencode/index.md){ .md-button }
@@ -91,9 +102,9 @@ All platforms share the same markdown memory format and derive collection names 
 | | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Plugin type** | Shell hooks | Shell hooks | Native ESM plugin | TS plugin | TS plugin |
-| **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | SQLite daemon |
+| **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | Execution events + SQLite recovery |
 | **Recall** | SKILL.md (fork) | SKILL.md | Native skill | memory_search tool | memory_search tool |
-| **Install** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | npm + opencode.json |
+| **Install** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 

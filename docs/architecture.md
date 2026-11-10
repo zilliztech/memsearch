@@ -15,7 +15,7 @@ graph TB
         CX["Codex<br/>(Stop hook + Codex)"]
         DSH["DeepSeek Harness<br/>(turn event + headless agent)"]
         OC["OpenClaw<br/>(agent_end)"]
-        OO["OpenCode<br/>(SQLite daemon)"]
+        OO["OpenCode<br/>(session events + SQLite)"]
     end
 
     subgraph "Shared Memory"
@@ -52,6 +52,13 @@ graph LR
         RRF
     end
 ```
+
+When an optional reranker is configured, search fetches up to `3 * top_k`
+candidates from this RRF stage, then applies a local cross-encoder or remote
+[Jev reranker](home/configuration.md#optional-remote-reranking) and returns the
+best `top_k` results. Jev receives the query and candidate contents in one
+batched API request; the RRF fusion stage still runs first. This second stage
+is disabled by default.
 
 ### Ingest Flow
 

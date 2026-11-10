@@ -216,4 +216,4 @@ After the first download, the model is cached at `~/.cache/huggingface/hub/` and
 | Skill never triggers automatically | Manual `/memory-recall` test | Ensure prompt >= 10 chars; memsearch in PATH |
 | First session hangs | ONNX model downloading | Pre-download with warmup command |
 | Session summaries missing | Check `claude` CLI availability | Verify `claude` is in PATH |
-| Stale stats count | Normal for Milvus Server | Stats update after flush/compaction; search is always up-to-date |
+| Stale stats count | Normal for Milvus Server | Stats update after flush/compaction; a zero count no longer blocks growing-only search, while new rows in mixed collections still follow Milvus search consistency |

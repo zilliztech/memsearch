@@ -67,7 +67,7 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
 - id: memsearch
   config:
     captureEnabled: true     # capture completed turns
-    injectEnabled: true      # inject returned memory candidates
+    injectEnabled: true      # remind the agent to use memory-recall
     summarizeEnabled: true   # summarize turns before writing
     summarizeMode: auto      # auto | dsh-headless | custom-llm
 ```
@@ -88,6 +88,31 @@ There is no silent fallback between modes: the resolved backend is the one used.
 A failed summarization writes a short unavailable note, never a raw transcript
 dump.
 
+### Setting up native summaries
+
+During initial setup, if capture and summarization are enabled and the backend
+resolves to `dsh-headless`, check how the selected provider gets its API key.
+For a key supplied in the DSH service's launch environment, the summary process
+inherits it. For a key saved on the DSH **Models** page, filter the output of
+`dsh --profile headless --dump-config` locally to show only whether the
+`credentials` entry is enabled.
+
+If that entry is disabled, offer to enable the saved keys for all jobs using
+the `headless` profile. When the user chooses this option, update or add the
+following top-level entry in `$DSH_HOME/profiles/headless/cordis.patch.yml`
+(default `~/.dsh/profiles/headless/cordis.patch.yml`). Preserve the other
+entries and any existing credential settings.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
+Recheck the effective entry and verify the next completed turn writes a summary
+in the daily Markdown file. Use the same checks if web chat works but summaries
+report `MISSING_CREDENTIAL`.
+
 ## Native model defaults
 
 - `dsh-headless` and `native` maintenance use the DSH deployment's
@@ -99,3 +124,13 @@ Restart the DSH profile after installing or updating the plugin so the
 `memory-recall` skill re-registers and the plugin rows reload. TOML changes
 apply on the next capture/recall/index/maintenance invocation; summarizer
 backend changes (`summarizeMode`) need the plugin config to reload.
+
+## Command availability
+
+For a missing-command warning, check the profile's `PATH` and explicit
+`DSH_CLI`, `MEMSEARCH_CMD`, or `MEMSEARCH_PYTHON` settings. Desktop can register
+its bundled CLI through **Manage dsh Command… → Install**; Windows uses
+`dsh.cmd`. Preserve quoted paths or JSON argument arrays and restart the profile
+after environment changes. Do not guess private Desktop/pnpm paths or silently
+change the selected summarization backend. If the command starts but fails,
+check its reported error and the selected profile/provider configuration.
