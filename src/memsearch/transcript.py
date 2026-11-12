@@ -11,14 +11,16 @@ on-demand, and the background distillation tool calls it too — so the
 format-specific parsing lives in one place instead of being re-derived by each
 agent from raw JSONL.
 
-Auto-detected formats: Claude Code JSONL, Codex rollout JSONL, OpenClaw JSONL.
+Auto-detected formats: Claude Code JSONL, Codex rollout JSONL, OpenClaw JSONL and WorkBuddy JSONL.
 Unknown formats raise :class:`UnknownTranscriptFormat` so the caller can fall
 back to reading the file directly.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -72,6 +74,8 @@ def detect_format(entries: list[dict[str, Any]]) -> str:
             return "codex"
         if t == "message" and isinstance(obj.get("message"), dict) and "role" in obj["message"]:
             return "openclaw"
+        if t == "message" and obj.get("role") in ("user", "assistant") and "content" in obj:
+            return "workbuddy"
         if t in ("user", "assistant") and "message" in obj:
             return "claude"
     raise UnknownTranscriptFormat("could not recognize transcript format")
@@ -224,7 +228,65 @@ def _parse_openclaw(entries: list[dict[str, Any]]) -> list[Turn]:
     return turns
 
 
-_PARSERS = {"claude": _parse_claude, "codex": _parse_codex, "openclaw": _parse_openclaw}
+_HOST_TAGS = "system-reminder|user_context|additional_data|current_time|user_references|user_info|identity_context"
+_HOST_CONTEXT = re.compile(rf"<({_HOST_TAGS})\b[^>]*?(?:/\s*>|>.*?(?:</\1\s*>|$))", re.DOTALL)
+
+
+def _parse_workbuddy(entries: list[dict[str, Any]]) -> list[Turn]:
+    turns: list[Turn] = []
+    pending: dict[str, ToolCall] = {}
+    for obj in entries:
+        kind = obj.get("type")
+        if kind == "message" and obj.get("role") in ("user", "assistant"):
+            role, content = obj["role"], obj.get("content")
+            text = content if isinstance(content, str) else ""
+            if isinstance(content, list):
+                text = "\n".join(
+                    b["text"]
+                    for b in content
+                    if isinstance(b, dict)
+                    and b.get("type") in ("input_text", "output_text", "text")
+                    and isinstance(b.get("text"), str)
+                )
+            if role == "user":
+                text = re.sub(r"</?user_query\s*>", "", _HOST_CONTEXT.sub("", text))
+            if text.strip():
+                if role == "user":
+                    pending.clear()
+                turns.append(Turn(role, str(obj.get("id") or obj.get("uuid") or ""), text.strip()))
+        elif kind == "function_call":
+            args = obj.get("arguments", "")
+            if isinstance(args, str):
+                with contextlib.suppress(ValueError):
+                    args = json.loads(args)
+            tc = ToolCall(str(obj.get("name") or "tool"), _render_tool_input(args))
+            if not turns or turns[-1].role != "assistant":
+                turns.append(Turn("assistant"))
+            turns[-1].tools.append(tc)
+            call_id = obj.get("callId") or obj.get("call_id")
+            if isinstance(call_id, str):
+                pending[call_id] = tc
+        elif kind == "function_call_result":
+            call_id = obj.get("callId") or obj.get("call_id")
+            tc = pending.pop(call_id, None) if isinstance(call_id, str) else None
+            if tc is not None:
+                output = obj.get("output", "")
+                if isinstance(output, dict) and "content" in output:
+                    output = output["content"]
+                tc.output = _clip(output if isinstance(output, str) else json.dumps(output, ensure_ascii=False))
+    return turns
+
+
+def last_exchange(turns: list[Turn]) -> dict[str, str]:
+    """Return the last user anchor and spoken exchange; never send tool I/O to a summary provider."""
+    start = next((i for i in range(len(turns) - 1, -1, -1) if turns[i].role == "user"), None)
+    if start is None or not any(t.text for t in turns[start + 1 :]):
+        return {}
+    text = "\n".join(f"[{t.role.title()}]: {t.text}" for t in turns[start:] if t.text)
+    return {"turn": turns[start].uuid, "text": text}
+
+
+_PARSERS = {"claude": _parse_claude, "codex": _parse_codex, "openclaw": _parse_openclaw, "workbuddy": _parse_workbuddy}
 
 
 def parse_transcript(path: str | Path) -> list[Turn]:
@@ -242,6 +304,9 @@ def parse_transcript(path: str | Path) -> list[Turn]:
 def select_turns(turns: list[Turn], turn_id: str | None, context: int) -> list[Turn]:
     if not turn_id:
         return turns
+    for i, t in enumerate(turns):
+        if t.uuid == turn_id:
+            return turns[max(0, i - context) : i + context + 1]
     for i, t in enumerate(turns):
         if t.uuid and (t.uuid.startswith(turn_id) or turn_id.startswith(t.uuid[:8])):
             return turns[max(0, i - context) : i + context + 1]

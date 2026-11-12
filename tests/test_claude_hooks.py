@@ -21,9 +21,9 @@ import pytest
     ("event", "hook"),
     [
         (event, hook)
-        for event, matchers in json.loads(Path("plugins/claude-code/hooks/hooks.json").read_text(encoding="utf-8"))[
-            "hooks"
-        ].items()
+        for event, matchers in json.loads(
+            Path("plugins/claude-code/.claude-plugin/hooks.json").read_text(encoding="utf-8")
+        )["hooks"].items()
         for matcher in matchers
         for hook in matcher["hooks"]
         if hook["type"] == "command"

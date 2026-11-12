@@ -4,7 +4,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-( run_maintenance ) </dev/null &>/dev/null &
+if [ "$PLUGIN_PLATFORM" = claude-code ]; then
+  ( run_maintenance ) </dev/null &>/dev/null &
+fi
 
 stop_watch
 kill_orphaned_index

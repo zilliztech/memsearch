@@ -1,0 +1,51 @@
+{
+  "description": "memsearch memory hooks — automatic capture, search, and recall",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEBUDDY_PLUGIN_ROOT}/hooks/session-start.sh\" workbuddy",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEBUDDY_PLUGIN_ROOT}/hooks/user-prompt-submit.sh\" workbuddy",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEBUDDY_PLUGIN_ROOT}/hooks/stop.sh\" workbuddy",
+            "async": true,
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CODEBUDDY_PLUGIN_ROOT}/hooks/session-end.sh\" workbuddy",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

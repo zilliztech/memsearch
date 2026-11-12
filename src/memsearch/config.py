@@ -203,6 +203,7 @@ class PluginsConfig:
     claude_code: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     codex: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     opencode: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    workbuddy: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     openclaw: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     dsh: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
 
@@ -240,6 +241,7 @@ _PLUGIN_KEY_TO_FIELD = {
     "claude_code": "claude_code",
     "codex": "codex",
     "opencode": "opencode",
+    "workbuddy": "workbuddy",
     "openclaw": "openclaw",
     "dsh": "dsh",
 }
@@ -247,6 +249,7 @@ _PLUGIN_FIELD_TO_KEY = {
     "claude_code": "claude-code",
     "codex": "codex",
     "opencode": "opencode",
+    "workbuddy": "workbuddy",
     "openclaw": "openclaw",
     "dsh": "dsh",
 }

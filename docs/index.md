@@ -95,6 +95,9 @@ opencode plugin add @zilliz/memsearch-opencode
 
 [:octicons-arrow-right-24: OpenCode Plugin docs](platforms/opencode/index.md){ .md-button }
 
+??? info "WorkBuddy"
+    The [WorkBuddy preview](platforms/workbuddy.md) saves conversation summaries with your configured API provider and recalls them from the project's shared Markdown memory.
+
 ### One Memory, All Platforms
 
 All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.

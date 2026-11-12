@@ -1,0 +1,13 @@
+{
+  "name": "memsearch-workbuddy-preview",
+  "owner": {
+    "name": "Cheney Zhang"
+  },
+  "plugins": [
+    {
+      "name": "memsearch",
+      "description": "Project memory for WorkBuddy",
+      "source": "./plugins/claude-code"
+    }
+  ]
+}

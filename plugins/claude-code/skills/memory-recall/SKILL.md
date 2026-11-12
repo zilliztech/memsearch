@@ -9,7 +9,9 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 ## Project Collection
 
-Collection: !`bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi; fi'`
+Collection: !`bash -c 'plugin="${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT:-}}"; project="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; bash "$plugin/scripts/derive-collection.sh" "$project"'`
+
+In WorkBuddy, if the collection above was not expanded, run `bash "$CODEBUDDY_PLUGIN_ROOT/scripts/derive-collection.sh" "<project root>"` in the active workspace (use `$MEMSEARCH_DIR` if explicitly set). Use that collection for search and expand.
 
 ## Your Task
 

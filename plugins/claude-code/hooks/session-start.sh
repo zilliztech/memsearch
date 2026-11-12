@@ -2,18 +2,21 @@
 # SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Redirect stdin to /dev/null before sourcing common.sh.
-# common.sh does INPUT="$(cat)" which blocks indefinitely if stdin never
-# receives EOF (e.g. during `claude --resume` or any new session start on
-# macOS where Claude Code keeps the pipe open). session-start.sh never uses
-# INPUT, so it is safe to discard stdin entirely here.
-exec < /dev/null
+# Claude Code can keep this pipe open during resume. WorkBuddy delivers the
+# active workspace in the payload; common.sh bounds the read to two seconds.
+if [ "${1:-}" != "workbuddy" ]; then exec < /dev/null; fi
 source "$SCRIPT_DIR/common.sh"
 
 # Report this before config/bootstrap work. A fixed JSON message also works
 # without jq or Python, when dynamic status strings cannot be JSON-encoded.
 if ! python_available; then
   echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart Claude Code."}'
+  exit 0
+fi
+
+# The preview needs the matching CLI from the fork, including its JSONL reader.
+if [ "$PLUGIN_PLATFORM" = workbuddy ] && ! { command -v memsearch >/dev/null && _memsearch config get plugins.workbuddy.summarize.provider >/dev/null 2>&1; }; then
+  echo '{"systemMessage":"[memsearch] Install the WorkBuddy preview CLI from the same checkout, then restart WorkBuddy."}'
   exit 0
 fi
 
@@ -98,7 +101,7 @@ fi
 # Check PyPI for a newer version. The lookup is cached, so a slow or
 # unreachable index does not delay every session start.
 UPDATE_HINT=""
-if [ -n "$VERSION" ]; then
+if [ "$PLUGIN_PLATFORM" = claude-code ] && [ -n "$VERSION" ]; then
   LATEST=$(_pypi_latest_version)
   if [ -n "$LATEST" ] && _version_gt "$LATEST" "$VERSION"; then
     # Detect install method to suggest the right upgrade command.
@@ -136,6 +139,12 @@ else
   INDEX_WARNING=$(index_state_warning || true)
   if [ -n "$INDEX_WARNING" ]; then
     status+=" | ${INDEX_WARNING}"
+  fi
+fi
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  _wb_provider=$(_memsearch config get plugins.workbuddy.summarize.provider 2>/dev/null || true)
+  if [[ -z "$_wb_provider" || "$_wb_provider" == native ]] && [ "$(_memsearch config get plugins.workbuddy.summarize.enabled)" != false ]; then
+    status+=" | To save WorkBuddy memories, select an API provider in plugins.workbuddy.summarize.provider (memory-config)."
   fi
 fi
 SKILL_HINT=$(skill_candidate_hint || true)

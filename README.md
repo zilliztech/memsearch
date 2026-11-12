@@ -49,7 +49,7 @@
 
 ## 🧑‍💻 For Agent Users
 
-Pick your platform, install the plugin, and you're done. Each plugin captures conversations automatically and provides semantic recall with zero configuration.
+Choose your agent below for installation and configuration.
 
 <details open>
 <summary><h3>For Claude Code Users</h3></summary>
@@ -195,6 +195,13 @@ Completed turns are summarized into `.memsearch/memory/` and indexed for recall.
 Ask about previous decisions or debugging sessions, and OpenCode can search memory, expand relevant notes, and look up the original conversation. The `memory-recall`, `memory-config`, and `memory-to-skill` Skills are included.
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
+
+</details>
+
+<details>
+<summary><h3>For WorkBuddy Users</h3></summary>
+
+Install the [WorkBuddy preview](docs/platforms/workbuddy.md) from the fork's marketplace. It saves API-generated summaries in the same project memory as the other agents.
 
 </details>
 

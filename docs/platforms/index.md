@@ -1,6 +1,6 @@
 # Platform Overview
 
-memsearch provides plugins for 5 AI coding agent platforms. All plugins share the same core architecture: capture conversations to markdown, index with Milvus, recall via semantic search.
+The table compares the agent plugins maintained in the MemSearch repository. They capture conversations to Markdown, index them with Milvus, and recall them through semantic search.
 
 ---
 
@@ -18,7 +18,10 @@ memsearch provides plugins for 5 AI coding agent platforms. All plugins share th
 | **Embedding default** | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) | ONNX bge-m3 (CPU) |
 | **API key required** | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) | No (ONNX default) |
 
-Each plugin keeps its current native summarizer when the plugin-specific
+??? info "WorkBuddy"
+    Try the [WorkBuddy preview](workbuddy.md) for API-generated summaries, project-scoped search and access to the original conversation.
+
+The five plugins in the table keep their native summarizer when the plugin-specific
 provider setting is empty. Claude Code, Codex, OpenClaw, and OpenCode also
 accept `native`; DSH selects its headless-agent backend when the provider is
 unset. To override one plugin's native model, set
