@@ -3,6 +3,16 @@ import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 
+const PENDING_CANDIDATE = {
+  name: 'sample-skill',
+  status: 'candidate',
+  description: 'a distilled sample candidate',
+  sources: [],
+  occurrences: 1,
+  installedPaths: [],
+  reason: '',
+}
+
 function createHarness() {
   let cursor = 0
   let stateValues = []
@@ -71,7 +81,7 @@ function createHarness() {
     stateSetters = setters
   }
 
-  renderWith([[], false, true, {}, null, null])
+  renderWith([[PENDING_CANDIDATE], false, true, {}, null, null])
   const panelElement = dockRenderer({ sessionId: 'session-1' })
   const panelTree = panelElement.type(panelElement.props)
   const browserElement = findElement(panelTree, (element) => (
@@ -82,6 +92,7 @@ function createHarness() {
   return {
     Browser: browserElement.type,
     context,
+    dockRenderer,
     renderWith,
   }
 }
@@ -177,4 +188,33 @@ test('an older file response cannot replace a newer preview after rerender', asy
 
   assert.equal(previewUpdates.at(-1).text, 'SECOND')
   assert.ok(!previewUpdates.some((update) => update.text === 'FIRST'))
+})
+
+test('dock strip renders nothing while there is no pending candidate or toast', () => {
+  const { dockRenderer, renderWith } = createHarness()
+  renderWith([[], true, false, {}, null, null])
+  const element = dockRenderer({ sessionId: 'session-1' })
+  assert.equal(element.type(element.props), null, 'empty candidate list renders nothing')
+  renderWith([null, true, false, {}, null, null])
+  const loading = dockRenderer({ sessionId: 'session-1' })
+  assert.equal(loading.type(loading.props), null, 'loading state renders nothing')
+})
+
+test('a pending candidate keeps the strip and its capsule visible', () => {
+  const { dockRenderer, renderWith } = createHarness()
+  renderWith([[PENDING_CANDIDATE], true, false, {}, null, null])
+  const element = dockRenderer({ sessionId: 'session-1' })
+  const tree = element.type(element.props)
+  const capsule = findElement(tree, (element) => element.props?.className === 'msr-capsule')
+  assert.ok(capsule, 'collapsed capsule renders for a pending candidate')
+})
+
+test('toasts render even when no pending candidate keeps the strip hidden', () => {
+  const { dockRenderer, renderWith } = createHarness()
+  renderWith([[], true, false, {}, { kind: 'ok', text: 'Installing sample-skill' }, null])
+  const element = dockRenderer({ sessionId: 'session-1' })
+  const tree = element.type(element.props)
+  assert.ok(tree, 'root renders to host the toast')
+  const toast = findElement(tree, (element) => element.props?.className === 'msr-toast ok')
+  assert.ok(toast, 'toast survives the hidden strip')
 })

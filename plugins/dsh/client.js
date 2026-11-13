@@ -552,6 +552,10 @@ window.__ModuleLoader__.load({
       var pending = visible.filter(function (c) { return c.status === 'candidate' })
       var installed = visible.length - pending.length
       var loading = candidates[0] === null
+      // Only render the strip when there is something actionable: hide it
+      // entirely while loading and while no pending candidates remain. A new
+      // candidate distilled by maintenance brings it back on the next fetch.
+      var stripVisible = !loading && pending.length > 0
 
       var expand = function () {
         setCollapsed(false)
@@ -648,10 +652,12 @@ window.__ModuleLoader__.load({
           )
         : null
 
+      if (!stripVisible && toast[0] === null) return null
+
       return h(
         'div', { className: 'msr-root' },
-        collapsed[0] ? capsule : bar,
-        !collapsed[0] ? panel : null,
+        stripVisible ? (collapsed[0] ? capsule : bar) : null,
+        stripVisible && !collapsed[0] ? panel : null,
         toast[0] ? h('div', { className: 'msr-toast ' + toast[0].kind }, toast[0].text) : null
       )
     }
