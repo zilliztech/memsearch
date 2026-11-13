@@ -48,7 +48,7 @@ paths = []            # where installed skills are copied; empty = ask the user
 
 ## Native model defaults
 
-- Native summarize defaults to `gpt-5.1-codex-mini`.
+- Native summarize defaults to `gpt-6-luna`.
 - Native maintenance uses the Codex default unless `plugins.codex.<task>.model` is set.
 - `provider = ""` or `native` uses Codex's non-interactive native path.
 
