@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable, Iterator
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -21,6 +22,58 @@ from .scanner import ScannedFile, scan_paths, should_index_path
 from .store import MilvusStore
 
 logger = logging.getLogger(__name__)
+
+_JOURNAL_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _chunk_date(source: str) -> date | None:
+    """The date a chunk belongs to, taken from its source file name.
+
+    Daily journals are named ``YYYY-MM-DD.md``; the date must be the file's
+    basename prefix. Dates elsewhere in the path (parent directories, other
+    files) do not count — a chunk is either a dated journal entry or it has
+    no date at all.
+    """
+    name = source.replace("\\", "/").rsplit("/", 1)[-1]
+    match = _JOURNAL_DATE_RE.match(name)
+    if not match:
+        return None
+    try:
+        return date(int(match[1]), int(match[2]), int(match[3]))
+    except ValueError:  # e.g. 2026-02-30.md — a name, not a real date
+        return None
+
+
+def _resolve_date_window(
+    since: str | datetime | None, until: str | datetime | None
+) -> tuple[date | None, date | None] | None:
+    """Validate and normalize a since/until window; ``None`` when absent.
+
+    Either bound may be given alone (one-sided window). Raises ``ValueError``
+    on unusable input instead of silently ignoring it.
+    """
+    if since is None and until is None:
+        return None
+
+    def to_date(value: str | datetime | None, name: str) -> date | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                return date.fromisoformat(value.strip())
+            except ValueError as exc:
+                raise ValueError(f"invalid {name} date {value!r}: expected YYYY-MM-DD ({exc})") from exc
+        raise ValueError(f"invalid {name} date {value!r}: expected YYYY-MM-DD")
+
+    start = to_date(since, "since")
+    end = to_date(until, "until")
+    if start is not None and end is not None and start > end:
+        raise ValueError(f"since ({start.isoformat()}) is after until ({end.isoformat()})")
+    return start, end
 
 
 class MemSearch:
@@ -225,6 +278,8 @@ class MemSearch:
         *,
         top_k: int = 10,
         source_prefix: str | Path | None = None,
+        since: str | datetime | None = None,
+        until: str | datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Semantic search across indexed chunks.
 
@@ -237,12 +292,21 @@ class MemSearch:
         source_prefix:
             Optional path prefix to scope results. Only chunks whose
             ``source`` starts with this prefix are returned.
+        since:
+            Optional window start (``YYYY-MM-DD``, inclusive). Only chunks
+            whose source file carries a date (daily journals, e.g.
+            ``2026-06-01.md``) are returned when a window is given; chunks
+            from undated files are excluded.
+        until:
+            Optional window end (``YYYY-MM-DD``, inclusive).
 
         Returns
         -------
         list[dict]
             Each dict contains ``content``, ``source``, ``heading``,
-            ``score``, and other metadata.
+            ``score``, and other metadata. When a window is given, every
+            returned chunk lies inside ``[since, until]``; the result may be
+            shorter than ``top_k``.
         """
         self._store._require_collection()
         filter_expr = ""
@@ -251,9 +315,23 @@ class MemSearch:
             escaped = prefix.replace("\\", "\\\\").replace('"', '\\"')
             filter_expr = f'source like "{escaped}%"'
 
+        window = _resolve_date_window(since, until)
         embeddings = await self._embedder.embed([query])
         fetch_k = top_k * 3 if self._reranker_model else top_k
+        if window is not None:
+            # A window can drop most of the retrieved pool; fetch extra so
+            # the filtered set still fills top_k when the corpus allows.
+            fetch_k = max(fetch_k, top_k * 4)
         results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
+        if window is not None:
+            start, end = window
+            results = [
+                chunk
+                for chunk in results
+                if (chunk_date := _chunk_date(str(chunk.get("source", "")))) is not None
+                and (start is None or start <= chunk_date)
+                and (end is None or chunk_date <= end)
+            ]
         if self._reranker_model and results:
             from .reranker import rerank
 
@@ -261,6 +339,10 @@ class MemSearch:
                 results = await asyncio.to_thread(rerank, query, results, model_name=self._reranker_model, top_k=top_k)
             else:
                 results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
+        elif window is not None:
+            # No reranker to trim the pool: the window filter already ran, so
+            # only the top_k cap is left.
+            results = results[:top_k]
         return results
 
     # ------------------------------------------------------------------

@@ -347,6 +347,16 @@ def index(
     type=click.Path(),
     help="Only search chunks whose source path starts with this prefix.",
 )
+@click.option(
+    "--since",
+    default=None,
+    help="Only journal chunks dated YYYY-MM-DD or later (inclusive). Undated files are excluded.",
+)
+@click.option(
+    "--until",
+    default=None,
+    help="Only journal chunks dated YYYY-MM-DD or earlier (inclusive).",
+)
 @_common_options
 @click.option("--reranker-model", default=None, help="Cross-encoder model for reranking (empty string disables).")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
@@ -354,6 +364,8 @@ def search(
     query: str,
     top_k: int | None,
     source_prefix: str | None,
+    since: str | None,
+    until: str | None,
     provider: str | None,
     model: str | None,
     batch_size: int | None,
@@ -386,7 +398,7 @@ def search(
     ms = None
     try:
         ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
-        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix))
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, since=since, until=until))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:
@@ -414,6 +426,10 @@ def search(
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
+    except ValueError as e:
+        # Bad window arguments (--since/--until) are usage errors, not crashes.
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(2) from None
     finally:
         if ms is not None:
             ms.close()
