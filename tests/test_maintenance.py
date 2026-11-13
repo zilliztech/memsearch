@@ -682,7 +682,7 @@ def test_windows_memory_search_rejects_regex_pattern(tmp_path: Path, monkeypatch
 
 def test_windows_memory_search_rejects_paths_outside_roots(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
-    ctx, memory = _search_ctx(tmp_path)
+    ctx, _memory = _search_ctx(tmp_path)
     outside = tmp_path / "outside.md"
     outside.write_text("secret redis\n", encoding="utf-8")
 

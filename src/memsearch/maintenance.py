@@ -567,7 +567,7 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                 path = cwd / path
             # A colon anywhere except a drive designator is an NTFS alternate
             # data stream, which must not bypass the ordinary file boundary.
-            if ":" in str(path)[len(path.drive):]:
+            if ":" in str(path)[len(path.drive) :]:
                 raise ValueError("alternate data streams are not supported")
             # Reject lexical escapes (including UNC/device operands) before
             # resolve/stat can touch a location outside the configured roots.
@@ -623,8 +623,10 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                 raise ValueError("grep requires PATTERN PATH...")
             pattern = argv[index]
             if any(char in pattern for char in "\\.^$*+?[]{}()") or "\n" in pattern or "\r" in pattern:
-                raise ValueError("grep supports literal single-line PATTERN only; regular expressions are not supported")
-            operands = argv[index + 1:]
+                raise ValueError(
+                    "grep supports literal single-line PATTERN only; regular expressions are not supported"
+                )
+            operands = argv[index + 1 :]
             if any(raw.startswith("-") for raw in operands):
                 raise ValueError("grep options must precede PATTERN; use ./ for filenames beginning with '-'")
             paths = [checked_path(raw) for raw in operands]
@@ -666,9 +668,8 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
         for operand in paths:
             for path in files(operand):
                 if mode == "find":
-                    if name is None or fnmatch.fnmatchcase(path.name, name):
-                        if not emit(str(path)):
-                            return "".join(output)
+                    if (name is None or fnmatch.fnmatchcase(path.name, name)) and not emit(str(path)):
+                        return "".join(output)
                     continue
                 # Bound bytes before decoding. Binary files are explicitly skipped.
                 with path.open("rb") as stream:
@@ -683,9 +684,9 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                     if pattern not in line:
                         continue
                     count += 1
+                    if "l" in flags and not emit(str(path)):
+                        return "".join(output)
                     if "l" in flags:
-                        if not emit(str(path)):
-                            return "".join(output)
                         break
                     if "c" not in flags:
                         prefix = f"{path}:" if multiple else ""
@@ -693,9 +694,8 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                             prefix += f"{number}:"
                         if not emit(prefix + line):
                             return "".join(output)
-                if "c" in flags and "l" not in flags:
-                    if not emit((f"{path}:" if multiple else "") + str(count)):
-                        return "".join(output)
+                if "c" in flags and "l" not in flags and not emit((f"{path}:" if multiple else "") + str(count)):
+                    return "".join(output)
         return "".join(output)
     except (OSError, ValueError, RuntimeError) as exc:
         return f"Error: {exc}"[:MAX_COMMAND_OUTPUT]
