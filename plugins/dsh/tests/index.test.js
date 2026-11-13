@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 
-import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
+import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates, suggestedQueryFrom, recallHintFor } from '../index.js'
 
 async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '', configs = {}, scenario = {}) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
@@ -1036,6 +1036,7 @@ for (const [label, results] of [
       const hint = result.messages[1]
       assert.match(hint.content[0].text, /Recall available if needed/)
       assert.match(hint.content[0].text, /memory-recall/)
+      assert.match(hint.content[0].text, /Suggested first query: "What did we decide about the release\?"/)
       assert.doesNotMatch(hint.content[0].text, /PINE-NEBULA|Retrieved memory/)
       assert.equal(hint.source.kind, 'plugin:memsearch')
       assert.equal(hint.source.form, 'snapshot')
@@ -1551,4 +1552,51 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
     if (prev === undefined) delete process.env.MEMSEARCH_DIR
     else process.env.MEMSEARCH_DIR = prev
   }
+})
+
+// ---------------------------------------------------------------------------
+// Recall hint: query suggestion (query auto-construction from the prompt)
+// ---------------------------------------------------------------------------
+
+test('suggestedQueryFrom: builds a single-line query from the last user message', () => {
+  const messages = [{ role: 'user', content: [{ type: 'text', text: 'Why did we choose\n  Redis   for caching?' }] }]
+  assert.equal(suggestedQueryFrom(messages), "Why did we choose Redis for caching?")
+})
+
+test('suggestedQueryFrom: skips prompts too short to be a query', () => {
+  assert.equal(suggestedQueryFrom([{ role: 'user', content: 'continue' }]), '')
+  assert.equal(suggestedQueryFrom([{ role: 'user', content: '继续' }]), '')
+})
+
+test('suggestedQueryFrom: truncates long prompts with an ellipsis', () => {
+  const long = 'x'.repeat(300)
+  const suggested = suggestedQueryFrom([{ role: 'user', content: long }])
+  assert.equal(suggested.length, 161) // 160 chars + ellipsis
+  assert.ok(suggested.endsWith('…'))
+})
+
+test('suggestedQueryFrom: neutralizes quote-likes and braces', () => {
+  const suggested = suggestedQueryFrom([{ role: 'user', content: 'why did the "config" break {our} `deploy`?' }])
+  assert.equal(suggested, "why did the 'config' break 'our' 'deploy'?")
+})
+
+test('recallHintFor: appends the suggestion only when one exists', () => {
+  const decision = { messages: [{ role: 'user', content: 'Why did we pick leveldb for the userdb?' }] }
+  assert.match(recallHintFor(decision), /Suggested first query: "Why did we pick leveldb/)
+  assert.doesNotMatch(recallHintFor({ messages: [{ role: 'user', content: 'ok' }] }), /Suggested first query/)
+  assert.equal(recallHintFor(undefined), recallHintFor({ messages: [] }))
+})
+
+test('suggestedQueryFrom: string content and missing user messages', () => {
+  assert.equal(suggestedQueryFrom([{ role: 'user', content: 'a plain string prompt here' }]), 'a plain string prompt here')
+  assert.equal(suggestedQueryFrom([{ role: 'assistant', content: 'only an assistant' }]), '')
+  assert.equal(suggestedQueryFrom(undefined), '')
+})
+
+test('recall hint: short questions get the plain hint without a suggestion', async () => {
+  await withInjectionFixture([], async ({ result }) => {
+    const hint = result.messages[1]
+    assert.match(hint.content[0].text, /Recall available if needed/)
+    assert.doesNotMatch(hint.content[0].text, /Suggested first query/)
+  }, false, '', {}, { question: 'continue now please' })
 })
