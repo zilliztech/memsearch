@@ -41,7 +41,6 @@ from .maintenance import (
     _record_failure_state,
     _resolve_task_path,
     _save_state,
-    run_task_llm,
     run_task_llm_chain,
 )
 
@@ -189,8 +188,7 @@ def _parse_distill_response(raw: str) -> list[dict[str, Any]]:
         data = json.loads(text)
     except json.JSONDecodeError as e:
         raise RuntimeError(
-            f"memory_to_skill LLM did not return valid JSON: {e}; "
-            f"response started with {text[:120]!r}"
+            f"memory_to_skill LLM did not return valid JSON: {e}; response started with {text[:120]!r}"
         ) from e
     skills = data.get("skills")
     if not isinstance(skills, list):

@@ -349,19 +349,15 @@ def run_task_llm_chain(
     for model in chain:
         attempt_ctx = ctx if model is None else _ctx_with_model(ctx, model)
         try:
-            raw = (
-                llm_runner(attempt_ctx, prompt)
-                if llm_runner
-                else run_task_llm(attempt_ctx, prompt, cfg)
-            )
+            raw = llm_runner(attempt_ctx, prompt) if llm_runner else run_task_llm(attempt_ctx, prompt, cfg)
             if validate is not None:
                 validate(raw)
             return raw
-        except Exception as exc:  # noqa: BLE001 - the next model is the remedy
+        # Any failure counts as that model being unusable; the next model in
+        # the chain is the remedy.
+        except Exception as exc:
             failures.append(f"{model or '<provider default>'}: {type(exc).__name__}: {exc}")
-    raise RuntimeError(
-        "every configured model failed:\n  " + "\n  ".join(failures)
-    )
+    raise RuntimeError("every configured model failed:\n  " + "\n  ".join(failures))
 
 
 def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:

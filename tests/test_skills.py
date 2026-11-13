@@ -530,7 +530,17 @@ def test_distill_falls_back_to_next_model(tmp_path: Path) -> None:
         calls.append(attempt_ctx.task_config.model)
         if len(calls) == 1:
             return "prose, definitely not JSON"
-        return json.dumps({"skills": [{"name": "Fallback Flow", "description": "Captured via fallback.", "body": "## Fallback flow\n\n1. Step"}]})
+        return json.dumps(
+            {
+                "skills": [
+                    {
+                        "name": "Fallback Flow",
+                        "description": "Captured via fallback.",
+                        "body": "## Fallback flow\n\n1. Step",
+                    }
+                ]
+            }
+        )
 
     skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
 
