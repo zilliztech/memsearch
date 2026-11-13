@@ -21,15 +21,25 @@ The second command prints the selected provider, or a blank line on a fresh inst
 memsearch config set embedding.provider onnx
 ```
 
-WorkBuddy uses a named API provider to summarize completed turns. If you already have a provider configured in MemSearch, select it with `memsearch config set plugins.workbuddy.summarize.provider <provider-name>`.
+WorkBuddy uses a named API provider to summarize completed turns. If you already have one configured in MemSearch, select it with `memsearch config set plugins.workbuddy.summarize.provider <provider-name>`. Otherwise, choose the example below that matches your service. The summary model is independent of the model selected in WorkBuddy chat.
 
-For a new OpenAI provider, export your API key as `OPENAI_API_KEY` in your shell and run the commands below. Choose a model your key can access. These settings go in your user configuration and apply independently of the model selected in WorkBuddy chat.
+**OpenAI.** Export your OpenAI API key as `OPENAI_API_KEY` and choose a model your key can access.
 
 ```bash
 memsearch config set llm.providers.openai.type openai
 memsearch config set llm.providers.openai.model gpt-5-mini
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.workbuddy.summarize.provider openai
+```
+
+**OpenAI-compatible service or gateway.** Use the API key issued by your service and export it as `SUMMARY_API_KEY`. Replace the example base URL and model ID below with the values your service provides for its Chat Completions API. The client appends `/chat/completions` to the base URL, which often ends in `/v1`.
+
+```bash
+memsearch config set llm.providers.gateway.type openai-compatible
+memsearch config set llm.providers.gateway.base_url "https://gateway.example.com/v1"
+memsearch config set llm.providers.gateway.model "your-model-id"
+memsearch config set llm.providers.gateway.api_key env:SUMMARY_API_KEY
+memsearch config set plugins.workbuddy.summarize.provider gateway
 ```
 
 ## Enable the desktop plugin
