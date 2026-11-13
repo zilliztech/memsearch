@@ -2,18 +2,21 @@
 # SessionStart hook: start watch singleton + inject recent memory context.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Redirect stdin to /dev/null before sourcing common.sh.
-# common.sh does INPUT="$(cat)" which blocks indefinitely if stdin never
-# receives EOF (e.g. during `claude --resume` or any new session start on
-# macOS where Claude Code keeps the pipe open). session-start.sh never uses
-# INPUT, so it is safe to discard stdin entirely here.
-exec < /dev/null
+# Claude Code can keep this pipe open during resume. WorkBuddy delivers the
+# active workspace in the payload; common.sh bounds the read to two seconds.
+if [ "${1:-}" != "workbuddy" ]; then exec < /dev/null; fi
 source "$SCRIPT_DIR/common.sh"
 
 # Report this before config/bootstrap work. A fixed JSON message also works
 # without jq or Python, when dynamic status strings cannot be JSON-encoded.
 if ! python_available; then
-  echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart Claude Code."}'
+  echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart the app."}'
+  exit 0
+fi
+
+# WorkBuddy capture needs a CLI with the WorkBuddy provider and transcript parser.
+if [ "$PLUGIN_PLATFORM" = workbuddy ] && ! { command -v memsearch >/dev/null && _memsearch config get plugins.workbuddy.summarize.provider >/dev/null 2>&1; }; then
+  echo '{"systemMessage":"[memsearch] Install a MemSearch CLI with WorkBuddy support, then restart WorkBuddy. See the WorkBuddy installation guide."}'
   exit 0
 fi
 
@@ -98,7 +101,7 @@ fi
 # Check PyPI for a newer version. The lookup is cached, so a slow or
 # unreachable index does not delay every session start.
 UPDATE_HINT=""
-if [ -n "$VERSION" ]; then
+if [ "$PLUGIN_PLATFORM" = claude-code ] && [ -n "$VERSION" ]; then
   LATEST=$(_pypi_latest_version)
   if [ -n "$LATEST" ] && _version_gt "$LATEST" "$VERSION"; then
     # Detect install method to suggest the right upgrade command.
@@ -136,6 +139,12 @@ else
   INDEX_WARNING=$(index_state_warning || true)
   if [ -n "$INDEX_WARNING" ]; then
     status+=" | ${INDEX_WARNING}"
+  fi
+fi
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  _wb_provider=$(_memsearch config get plugins.workbuddy.summarize.provider 2>/dev/null || true)
+  if [[ -z "$_wb_provider" || "$_wb_provider" == native ]] && [ "$(_memsearch config get plugins.workbuddy.summarize.enabled)" != false ]; then
+    status+=" | To save WorkBuddy memories, select an API provider in plugins.workbuddy.summarize.provider (memory-config)."
   fi
 fi
 SKILL_HINT=$(skill_candidate_hint || true)
@@ -256,29 +265,30 @@ if [ "$CORE_COMPATIBLE" != true ] || [ "$KEY_MISSING" = true ]; then
   exit 0
 fi
 
-# Start memsearch watch (Server mode) or do one-time index (Lite mode).
-# start_watch() skips watch for Lite — file lock prevents concurrent access.
-start_watch
-
-# Lite mode: one-time index since watch is not running.
-# Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
-# Kill any previous background index first to prevent process accumulation across sessions.
-# If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
-if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
-  kill_orphaned_index
-  (
-    _index_args=("$MEMORY_DIR")
-    [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
-    [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
-    INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
-    if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
-      _reset_args=(--yes)
-      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
-      _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
-      _memsearch index "${_index_args[@]}" 2>/dev/null || true
-    fi
-  ) >/dev/null 2>&1 &
-  echo $! > "$INDEX_PIDFILE"
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  # Let an existing Claude Code or Codex scan of this directory finish.
+  if ! index_worker_running; then
+    ( index_workbuddy_memory ) </dev/null >/dev/null 2>&1 &
+  fi
+else
+  start_watch
+  # Claude Code uses a one-shot index for Lite, where a watch would hold the database lock.
+  if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
+    kill_orphaned_index
+    (
+      _index_args=("$MEMORY_DIR")
+      [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
+      [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
+      INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
+      if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
+        _reset_args=(--yes)
+        [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
+        _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
+        _memsearch index "${_index_args[@]}" 2>/dev/null || true
+      fi
+    ) >/dev/null 2>&1 &
+    echo $! > "$INDEX_PIDFILE"
+  fi
 fi
 
 # Always include status in systemMessage

@@ -26,10 +26,63 @@ for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
   [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
 done
 
+source "$(dirname "${BASH_SOURCE[0]}")/python.sh"
+
+# --- JSON helpers (jq preferred, Python fallback) ---
+
+# _json_val <json_string> <dotted_key> [default]
+# Extract a value from JSON. Key supports dotted notation (e.g. "info.version").
+# Returns the default (or empty string) if the key is missing or extraction fails.
+_json_val() {
+  local json="$1" key="$2" default="${3:-}"
+  local result=""
+
+  if command -v jq &>/dev/null; then
+    # Build jq filter from dotted key: "info.version" → ".info.version"
+    result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
+  else
+    result=$(printf '%s' "$json" | run_python -c "
+import json, sys
+try:
+    obj = json.load(sys.stdin)
+    val = obj
+    for k in sys.argv[1].split('.'):
+        val = val[k]
+    if val is None:
+        print('')
+    elif isinstance(val, bool):
+        print(str(val).lower())
+    else:
+        print(val)
+except Exception:
+    print('')
+" "$key" 2>/dev/null) || true
+  fi
+
+  if [ -z "$result" ]; then
+    printf '%s' "$default"
+  else
+    printf '%s' "$result"
+  fi
+  return 0
+}
+
 # Memory directory and memsearch state directory are project-scoped. A valid
 # host-provided project directory must win over the hook process cwd, which may
 # belong to an unrelated repository. Resolve a subdirectory to its own git root.
-if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
+PLUGIN_PLATFORM=claude-code
+if [ "${1:-}" = "workbuddy" ]; then
+  PLUGIN_PLATFORM=workbuddy
+  _PROJECT_DIR=$(_json_val "$INPUT" cwd "")
+  if [ ! -d "$_PROJECT_DIR" ]; then
+    _PROJECT_DIR="${CODEBUDDY_PROJECT_DIR:-}"
+  fi
+  if [ ! -d "$_PROJECT_DIR" ]; then
+    printf '%s\n' '[memsearch] WorkBuddy did not provide a workspace directory; skipping this hook.' >&2
+    echo '{}'
+    exit 0
+  fi
+elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "$CLAUDE_PROJECT_DIR" ]; then
   _PROJECT_DIR="$CLAUDE_PROJECT_DIR"
 else
   _PROJECT_DIR="$(pwd)"
@@ -114,47 +167,6 @@ if [ "$_MEMSEARCH_DIR_EXPLICIT" = "true" ]; then
 else
   COLLECTION_NAME=$("$(dirname "${BASH_SOURCE[0]}")/../scripts/derive-collection.sh" "$_PROJECT_DIR" 2>/dev/null || true)
 fi
-
-source "$(dirname "${BASH_SOURCE[0]}")/python.sh"
-
-# --- JSON helpers (jq preferred, Python fallback) ---
-
-# _json_val <json_string> <dotted_key> [default]
-# Extract a value from JSON. Key supports dotted notation (e.g. "info.version").
-# Returns the default (or empty string) if the key is missing or extraction fails.
-_json_val() {
-  local json="$1" key="$2" default="${3:-}"
-  local result=""
-
-  if command -v jq &>/dev/null; then
-    # Build jq filter from dotted key: "info.version" → ".info.version"
-    result=$(printf '%s' "$json" | jq -r ".${key} // empty" 2>/dev/null) || true
-  else
-    result=$(printf '%s' "$json" | run_python -c "
-import json, sys
-try:
-    obj = json.load(sys.stdin)
-    val = obj
-    for k in sys.argv[1].split('.'):
-        val = val[k]
-    if val is None:
-        print('')
-    elif isinstance(val, bool):
-        print(str(val).lower())
-    else:
-        print(val)
-except Exception:
-    print('')
-" "$key" 2>/dev/null) || true
-  fi
-
-  if [ -z "$result" ]; then
-    printf '%s' "$default"
-  else
-    printf '%s' "$result"
-  fi
-  return 0
-}
 
 # _json_encode_str <string>
 # Encode a string as a JSON string (with surrounding quotes).
@@ -388,6 +400,21 @@ run_maintenance() {
 # --- Index process cleanup ---
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
+
+index_worker_running() {
+  local pid
+  [ -f "$INDEX_PIDFILE" ] && read -r pid < "$INDEX_PIDFILE" &&
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# WorkBuddy refreshes on session events and leaves persistent workers to their host.
+index_workbuddy_memory() {
+  local args=(index)
+  [ -n "$COLLECTION_NAME" ] && args+=(--default-collection "$COLLECTION_NAME")
+  [ -n "$COLLECTION_DESC" ] && args+=(--description "$COLLECTION_DESC")
+  # The positional separator keeps this job outside older hosts' process sweeps.
+  _memsearch "${args[@]}" -- "$MEMORY_DIR"
+}
 
 # Stop previous background index tasks for this memory directory.
 kill_orphaned_index() {

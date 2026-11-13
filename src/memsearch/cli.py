@@ -17,6 +17,7 @@ from .config import (
     ConfigEnvVarError,
     MemSearchConfig,
     config_to_dict,
+    deep_merge,
     get_config_value,
     load_config_file,
     resolve_config,
@@ -843,7 +844,7 @@ def compact(
 
 
 @cli.command()
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (e.g. claude-code, workbuddy).")
 @click.option("--agent-name", default="", help="Agent display name for the summarize prompt.")
 def summarize(plugin: str, agent_name: str) -> None:
     """Summarize stdin using a configured memsearch-managed LLM provider."""
@@ -1259,7 +1260,8 @@ def config_init(project: bool) -> None:
         default=current.prompts.user_profile,
     )
 
-    save_config(result, target)
+    # The global wizard edits a subset of settings. Keep named providers and other unprompted keys.
+    save_config(deep_merge(existing, result), target)
     click.echo(f"\nConfig saved to {target}")
 
 
@@ -1488,12 +1490,13 @@ def skills_install(name: str, paths: tuple[str, ...]) -> None:
 @click.option("--turn", "-t", default=None, help="Target turn/session id (prefix match); shows surrounding context.")
 @click.option("--context", "-c", default=3, type=int, help="Turns of context to show before/after --turn.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
-def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool) -> None:
+@click.option("--for-summary", is_flag=True, hidden=True)
+def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool, for_summary: bool) -> None:
     """Show original conversation turns, with tool calls, from a session transcript.
 
     L3 of progressive recall (search -> expand -> transcript): pass the transcript
     path from a journal anchor to recover the exact commands, flags, and paths the
-    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw formats.
+    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw / WorkBuddy formats.
     """
     from . import transcript as transcript_mod
 
@@ -1508,6 +1511,9 @@ def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool)
     except (FileNotFoundError, OSError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1) from None
+    if for_summary:
+        click.echo(json.dumps(transcript_mod.last_exchange(turns), ensure_ascii=False))
+        return
     turns = transcript_mod.select_turns(turns, turn, context)
     if json_output:
         payload = [

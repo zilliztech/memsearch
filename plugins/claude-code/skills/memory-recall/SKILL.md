@@ -9,7 +9,15 @@ You are a memory retrieval agent for memsearch. Your job is to search past memor
 
 ## Project Collection
 
-Collection: !`bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh" "$root"; else bash "${CLAUDE_PLUGIN_ROOT}/scripts/derive-collection.sh"; fi; fi'`
+Run recall commands in the active workspace. Use the `--default-collection` value from the current project's MemSearch recall hint for both search and expand.
+
+If the hint is missing, use your normal Bash tool to run the bundled script from the active workspace:
+
+```bash
+bash "${CLAUDE_SKILL_DIR}/../../scripts/derive-collection.sh" --workspace
+```
+
+The path above is relative to this skill's directory. If your host displays the placeholder literally, resolve `../../scripts/derive-collection.sh` relative to the loaded `SKILL.md`. Continue with the collection name printed by the script (it starts with `ms_`).
 
 ## Your Task
 
@@ -35,9 +43,7 @@ Search for memories relevant to: $ARGUMENTS
 
 If the user's question is vague or you can't form a concrete search query, explore the raw markdown first — it is the source of truth for memory:
 
-- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; ls -t "$MDIR/memory/" | head -10` — recent daily logs
-- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; grep -h "^## " "$MDIR/memory/"*.md | sort -u | tail -40` — session headings across all days
-- `MDIR="${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.memsearch}"; cat "$MDIR/memory/<YYYY-MM-DD>.md"` — read a specific day
+Read recent daily journals in `.memsearch/memory/` at the project root, or in `$MEMSEARCH_DIR/memory/` if configured. Start with the latest date and scan the session headings for a useful search term.
 
 Once a concrete topic jumps out, go back to `memsearch search` with a specific query.
 

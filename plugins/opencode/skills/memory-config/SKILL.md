@@ -16,11 +16,12 @@ change, route the request using the flows below.
 
 ## Which agent am I running as?
 
-This skill is shared by five agent platforms, but platform-specific details
+This skill is shared across agent platforms, but platform-specific details
 (version-check commands, `plugins.<platform>.*` keys, native model defaults,
 restart guidance) live in per-platform reference files. Read ONLY the one file
 matching your current environment:
 
+- WorkBuddy → `references/workbuddy.md`
 - Claude Code → `references/claude-code.md`
 - Codex → `references/codex.md`
 - OpenClaw → `references/openclaw.md`
@@ -30,7 +31,7 @@ matching your current environment:
 If you are unsure which agent you are, check these environment markers:
 `DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;
 `~/.openclaw` → OpenClaw; `~/.config/opencode` → OpenCode;
-`CLAUDE_PLUGIN_ROOT` → Claude Code.
+`CODEBUDDY_PLUGIN_ROOT` in WorkBuddy → WorkBuddy; `CLAUDE_PLUGIN_ROOT` in Claude Code → Claude Code.
 
 Read that platform file before performing platform-specific diagnosis or
 configuration. Do not read the other platform files.
@@ -153,7 +154,7 @@ model defaults are in your platform reference file.
 
 ## Provider rules
 
-- `provider = ""` or `native` uses the host agent's non-interactive native path (see your platform reference file).
+- Hosts with a native summarizer use it when the provider is empty or `native`. WorkBuddy starts capturing turns once a named API provider is selected.
 - Any other provider value is a name that must exist under `[llm.providers.<name>]`.
 - Model resolution order is task-level `plugins.<platform>.<task>.model`, then named provider model, then built-in default.
 - API keys should be configured as env refs, not pasted into chat.

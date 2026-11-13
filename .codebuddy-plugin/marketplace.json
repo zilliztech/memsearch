@@ -1,0 +1,13 @@
+{
+  "name": "memsearch-workbuddy",
+  "owner": {
+    "name": "Zilliz"
+  },
+  "plugins": [
+    {
+      "name": "memsearch",
+      "description": "Project memory for WorkBuddy",
+      "source": "./plugins/claude-code"
+    }
+  ]
+}
