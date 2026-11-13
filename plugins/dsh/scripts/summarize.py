@@ -52,10 +52,40 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 # ---------------------------------------------------------------------------
 
 
+# Windows: a console child of a console-less parent allocates a fresh,
+# visible console window. The host spawns this summarizer detached from a
+# GUI process, so every child below needs the flag (see #853).
+_CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
 def _reexec(argv: list[str], env: dict[str, str]) -> None:
     """Windows exec launches a child; wait and propagate its actual exit status."""
     if os.name == "nt":
-        raise SystemExit(subprocess.run(argv, env=env, check=False).returncode)
+        # The host spawns this summarizer console-less and reads the summary
+        # from stdout; without CREATE_NO_WINDOW the uv child would allocate a
+        # fresh, visible console (popup), and without explicit handles the
+        # grandchild would write its summary into an invisible console instead
+        # of the host's pipe.
+        passthrough = {}
+        for name, stream in (("stdout", sys.stdout), ("stderr", sys.stderr)):
+            if stream is None:
+                continue
+            try:
+                stream.fileno()
+            except Exception:
+                continue
+            passthrough[name] = stream
+        with open(os.devnull, "rb") as devnull:
+            raise SystemExit(
+                subprocess.run(
+                    argv,
+                    env=env,
+                    check=False,
+                    creationflags=_CREATE_NO_WINDOW,
+                    stdin=devnull,
+                    **passthrough,
+                ).returncode
+            )
     os.execvpe(argv[0], argv, env)
 
 
@@ -115,6 +145,27 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
                     )
         except (OSError, UnicodeDecodeError):
             pass
+
+    # CREATE_NO_WINDOW on the uv child is not enough: the flag is not
+    # inherited by uv's own children, so the uv-spawned python allocates a
+    # fresh console of its own (the popup). Prefer the uv tool venv's python
+    # directly — the same interpreter `uv run --with memsearch[onnx]` resolves
+    # to for a `uv tool install`ed memsearch, with no intermediate console
+    # subprocess in the chain. On POSIX this never matches (the shebang branch
+    # above already re-execs into the venv interpreter). Probed before the uv
+    # lookup so the direct path also works where uv is not on PATH.
+    appdata = os.environ.get("APPDATA")
+    tool_dirs = [
+        os.environ.get("UV_TOOL_DIR"),
+        os.path.join(appdata, "uv", "tools") if appdata else None,
+    ]
+    for tool_dir in filter(None, tool_dirs):
+        venv_python = os.path.join(tool_dir, "memsearch", "Scripts", "python.exe")
+        if os.path.isfile(venv_python):
+            _reexec(
+                [venv_python, str(Path(__file__).resolve()), *sys.argv[1:]],
+                reexec_env,
+            )
 
     uv = shutil.which("uv")
     if not uv:
