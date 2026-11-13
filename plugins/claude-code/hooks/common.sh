@@ -401,6 +401,21 @@ run_maintenance() {
 
 INDEX_PIDFILE="$MEMSEARCH_DIR/.index.pid"
 
+index_worker_running() {
+  local pid
+  [ -f "$INDEX_PIDFILE" ] && read -r pid < "$INDEX_PIDFILE" &&
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# WorkBuddy refreshes on session events and leaves persistent workers to their host.
+index_workbuddy_memory() {
+  local args=(index)
+  [ -n "$COLLECTION_NAME" ] && args+=(--default-collection "$COLLECTION_NAME")
+  [ -n "$COLLECTION_DESC" ] && args+=(--description "$COLLECTION_DESC")
+  # The positional separator keeps this job outside older hosts' process sweeps.
+  _memsearch "${args[@]}" -- "$MEMORY_DIR"
+}
+
 # Stop previous background index tasks for this memory directory.
 kill_orphaned_index() {
   # Skip in child claude -p processes to avoid killing the current parent's work

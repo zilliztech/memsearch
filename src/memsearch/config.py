@@ -203,9 +203,9 @@ class PluginsConfig:
     claude_code: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     codex: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     opencode: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
-    workbuddy: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     openclaw: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
     dsh: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
+    workbuddy: PluginPlatformConfig = field(default_factory=PluginPlatformConfig)
 
 
 @dataclass

@@ -34,18 +34,6 @@
           }
         ]
       }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CODEBUDDY_PLUGIN_ROOT}/hooks/session-end.sh\" workbuddy",
-            "async": true,
-            "timeout": 10
-          }
-        ]
-      }
     ]
   }
 }

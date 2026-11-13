@@ -205,3 +205,69 @@ def test_workbuddy_recall_scope_without_plugin_environment(tmp_path):
         )
         assert result.stdout.strip() == expected
         assert result.stderr == ""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="executes the Bash marketplace hooks")
+@pytest.mark.parametrize("uri", ["./memory.db", "http://127.0.0.1:19530"])
+def test_workbuddy_leaves_other_hosts_workers_running(tmp_path, uri):
+    root = Path(__file__).resolve().parents[1] / "plugins/claude-code"
+    hooks = json.loads((root / ".codebuddy-plugin/hooks.json").read_text())["hooks"]
+    project = tmp_path / "shared project"
+    state = project / ".memsearch"
+    state.mkdir(parents=True)
+    home = tmp_path / "home"
+    bindir = home / ".local/bin"
+    bindir.mkdir(parents=True)
+    cli = bindir / "memsearch"
+    cli.write_text(
+        """#!/bin/sh
+case "$1 $2" in
+  'config list') printf '{"embedding":{"provider":"onnx"},"milvus":{"uri":"%s"}}\\n' "$TEST_URI" ;;
+  'config get') case "$3" in
+    milvus.uri) echo "$TEST_URI" ;;
+    plugins.workbuddy.summarize.provider) echo test ;;
+    embedding.provider) echo onnx ;;
+  esac ;;
+  'transcript '*) echo '{"turn":"123","text":"[User]: record this"}' ;;
+  'summarize '*) echo '- Recorded.' ;;
+  'index '*|'watch '*) echo "$*" >> "$HOME/jobs" ;;
+esac
+"""
+    )
+    cli.chmod(0o755)
+    transcript = project / "session.jsonl"
+    _history(transcript)
+    env = {"HOME": str(home), "PATH": f"{bindir}:{os.defpath}", "CODEBUDDY_PLUGIN_ROOT": str(root), "TEST_URI": uri}
+    jobs = home / "jobs"
+    with (
+        subprocess.Popen(["sleep", "60"], start_new_session=True) as watcher,
+        subprocess.Popen(["sleep", "60"]) as scan,
+    ):
+        try:
+            owners = {state / ".watch.pid": watcher, state / ".index.pid": scan}
+            for path, process in owners.items():
+                path.write_text(f"{process.pid}\n")
+            for event in ("SessionStart", "Stop", "SessionEnd"):
+                for matcher in hooks.get(event, []):
+                    for hook in matcher["hooks"]:
+                        subprocess.run(
+                            ["sh", "-c", hook["command"]],
+                            env=env,
+                            cwd=project,
+                            input=json.dumps({"cwd": str(project), "transcript_path": str(transcript)}),
+                            capture_output=True,
+                            text=True,
+                            check=True,
+                            timeout=10,
+                        )
+                for path, process in owners.items():
+                    assert process.poll() is None and path.read_text().strip() == str(process.pid)
+            assert list((state / "memory").glob("*.md"))
+            if uri.startswith("http"):
+                (command,) = jobs.read_text().splitlines()
+                assert command.startswith("index --default-collection ") and command.endswith(f" -- {state / 'memory'}")
+            else:
+                assert not jobs.exists()
+        finally:
+            watcher.terminate()
+            scan.terminate()

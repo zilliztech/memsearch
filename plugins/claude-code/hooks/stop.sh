@@ -243,8 +243,12 @@ fi
 # turn can permanently starve a slow index before it completes.
 _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
 if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]] || [[ "$_uri" == unix:* ]]; then
-  kill_orphaned_index
-  run_memsearch index "$MEMORY_DIR"
+  if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+    index_workbuddy_memory >/dev/null 2>&1 || true
+  else
+    kill_orphaned_index
+    run_memsearch index "$MEMORY_DIR"
+  fi
 fi
 
 echo '{}'

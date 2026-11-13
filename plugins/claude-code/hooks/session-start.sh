@@ -265,29 +265,30 @@ if [ "$CORE_COMPATIBLE" != true ] || [ "$KEY_MISSING" = true ]; then
   exit 0
 fi
 
-# Start memsearch watch (Server mode) or do one-time index (Lite mode).
-# start_watch() skips watch for Lite — file lock prevents concurrent access.
-start_watch
-
-# Lite mode: one-time index since watch is not running.
-# Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
-# Kill any previous background index first to prevent process accumulation across sessions.
-# If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
-if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
-  kill_orphaned_index
-  (
-    _index_args=("$MEMORY_DIR")
-    [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
-    [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
-    INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
-    if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
-      _reset_args=(--yes)
-      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
-      _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
-      _memsearch index "${_index_args[@]}" 2>/dev/null || true
-    fi
-  ) >/dev/null 2>&1 &
-  echo $! > "$INDEX_PIDFILE"
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  # Let an existing Claude Code or Codex scan of this directory finish.
+  if ! index_worker_running; then
+    ( index_workbuddy_memory ) </dev/null >/dev/null 2>&1 &
+  fi
+else
+  start_watch
+  # Claude Code uses a one-shot index for Lite, where a watch would hold the database lock.
+  if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]] && [[ "$MILVUS_URI" != unix:* ]]; then
+    kill_orphaned_index
+    (
+      _index_args=("$MEMORY_DIR")
+      [ -n "$COLLECTION_NAME" ] && _index_args+=(--default-collection "$COLLECTION_NAME")
+      [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
+      INDEX_OUTPUT=$(_memsearch index "${_index_args[@]}" 2>&1) || true
+      if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
+        _reset_args=(--yes)
+        [ -n "$COLLECTION_NAME" ] && _reset_args+=(--default-collection "$COLLECTION_NAME")
+        _memsearch reset "${_reset_args[@]}" 2>/dev/null || true
+        _memsearch index "${_index_args[@]}" 2>/dev/null || true
+      fi
+    ) >/dev/null 2>&1 &
+    echo $! > "$INDEX_PIDFILE"
+  fi
 fi
 
 # Always include status in systemMessage
