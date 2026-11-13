@@ -118,6 +118,8 @@ def _cfg_to_memsearch_kwargs(
         "ignore_files": _merge_unique(cfg.indexing.ignore_files, extra_ignore_files),
         "exclude": _merge_unique(cfg.indexing.exclude, extra_exclude),
         "reranker_model": cfg.reranker.model,
+        "reranker_url": cfg.reranker.url or None,
+        "reranker_api_key": cfg.reranker.api_key or None,
     }
 
 
