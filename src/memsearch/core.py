@@ -321,7 +321,7 @@ class MemSearch:
         if window is not None:
             # A window can drop most of the retrieved pool; fetch extra so
             # the filtered set still fills top_k when the corpus allows.
-            fetch_k = max(fetch_k, top_k * 4)
+            fetch_k = max(fetch_k, top_k * 8)
         results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
         if window is not None:
             start, end = window

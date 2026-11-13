@@ -148,6 +148,7 @@ async def test_window_result_may_be_shorter_than_top_k(tmp_path) -> None:
     mem = _make_memsearch(store)
     results = await mem.search("anything", top_k=50, since="2026-06-01", until="2026-06-02")
     assert 0 < len(results) < 50
+    assert store.calls == [400]  # window widens the fetch to top_k * 8
     assert all(r["source"] in {"2026-06-01.md", "2026-06-02.md"} for r in results)
 
 
