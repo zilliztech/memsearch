@@ -344,7 +344,7 @@ def last_maintenance_status(mem_root: Path) -> dict[str, Any]:
     if state_path.is_file():
         with contextlib.suppress(json.JSONDecodeError, OSError):
             state = json.loads(state_path.read_text(encoding="utf-8"))
-    for key, value in (state or {}).items():
+    for value in (state or {}).values():
         if isinstance(value, dict):
             entry = value
             break
