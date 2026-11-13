@@ -15,7 +15,6 @@ Usage
 
     memsearch mcp                       # honour ~/.memsearch/config.toml
     memsearch mcp -c my_collection      # explicit collection
-    memsearch mcp --knowledge-db ~/.dsh/storages/knowledge-chunks.sqlite
 
 The server has no third-party dependencies: the protocol is implemented
 with the standard library only, so it can be started by any Python 3.10+
@@ -27,7 +26,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -50,9 +48,6 @@ def _package_version() -> str:
 
 SERVER_VERSION = _package_version()
 
-#: Environment variable pointing at a DeepSeek Harness knowledge store.
-KNOWLEDGE_DB_ENV = "MEMSEARCH_KNOWLEDGE_DB"
-
 
 class UnknownToolError(KeyError):
     """A tool name with no handler was requested.
@@ -62,19 +57,6 @@ class UnknownToolError(KeyError):
     tell a bad tool name apart from a ``KeyError`` raised inside a tool
     handler (which must surface as a tool error, not as "unknown tool").
     """
-
-
-#: Default store location written by the third-party ``dsh-knowledge`` plugin
-#: (https://github.com/Soren-ABT/dsh-knowledge).  Not part of DeepSeek Harness
-#: itself — the tool is only exposed when this file (or an explicit override)
-#: exists.
-DEFAULT_KNOWLEDGE_DB = Path("~/.dsh/storages/knowledge-chunks.sqlite")
-
-
-def _auto_knowledge_db() -> str:
-    """Return the default dsh-knowledge store path if it exists, else ``""``."""
-    expanded = DEFAULT_KNOWLEDGE_DB.expanduser()
-    return str(expanded) if expanded.is_file() else ""
 
 
 def _reconfigure_streams() -> None:
@@ -117,13 +99,11 @@ class MCPServer:
         *,
         config: MemSearchConfig,
         collection: str | None = None,
-        knowledge_db: str | None = None,
         max_content_chars: int = 2000,
     ) -> None:
         self._cfg = config
         self._collection = collection or config.milvus.collection
         self._max_content_chars = max_content_chars
-        self._knowledge_db = knowledge_db or os.environ.get(KNOWLEDGE_DB_ENV) or _auto_knowledge_db()
         self._ms = None
         self._store = None
         self._embedder = None
@@ -362,69 +342,6 @@ class MCPServer:
         ranked = reranker.rerank(query, candidates)
         return "\n".join(f"{i}. score={r['score']:.6f}  {r['content']}" for i, r in enumerate(ranked[: len(documents)]))
 
-    def tool_knowledge_search(self, args: dict[str, Any]) -> str:
-        query = str(args.get("query") or "").strip()
-        if not query:
-            raise ValueError("query is required")
-        if not self._knowledge_db:
-            raise ValueError(
-                "no knowledge store found: install the dsh-knowledge plugin "
-                f"(its store at {DEFAULT_KNOWLEDGE_DB} is picked up automatically), "
-                f"pass --knowledge-db, or set {KNOWLEDGE_DB_ENV}"
-            )
-        limit = _integer_argument(args, "limit", default=5, minimum=1)
-        base_id = args.get("base_id") or None
-
-        from .knowledge_store import KnowledgeStore
-
-        store = KnowledgeStore(self._knowledge_db)
-        try:
-            try:
-                provider = self._embedding_provider()
-            except Exception:
-                provider = None
-            hits = store.search(
-                query,
-                limit=limit,
-                base_id=base_id,
-                embed_fn=self._embed_texts if provider is not None else None,
-                embedding_model=(
-                    f"{self._cfg.embedding.provider}:{provider.model_name}" if provider is not None else None
-                ),
-                rerank_fn=self._rerank_documents,
-            )
-        finally:
-            store.close()
-        if not hits:
-            return "(no match)"
-        return "\n\n".join(
-            f"[{i}] score={h['score']:.6f}  doc={h.get('doc_id', '')}  #{h.get('heading') or ''}\n"
-            f"{h['text'][: self._max_content_chars]}"
-            for i, h in enumerate(hits, 1)
-        )
-
-    # ------------------------------------------------------------------
-    # helpers used by the knowledge tool
-    # ------------------------------------------------------------------
-
-    def _embed_texts(self, texts: list[str]) -> list[list[float]]:
-        return self._run_coro(self._embedding_provider().embed(texts))
-
-    def _rerank_documents(self, query: str, documents: list[str]) -> list[float | None] | None:
-        model = self._cfg.reranker.model or ""
-        if not model.startswith("remote:"):
-            return None
-        try:
-            from .remote_reranker import RemoteReranker
-        except ImportError:
-            # The remote adapter ships with the reranker PR; until it merges
-            # there is nothing to call, so keep the fused ranking.
-            return None
-        reranker = RemoteReranker(model=model.split(":", 1)[1])
-        response = reranker.evaluate(query, documents)
-        scores = reranker.scores(response, len(documents))
-        return [scores.get(i) for i in range(len(documents))]
-
     # ------------------------------------------------------------------
     # tool registry
     # ------------------------------------------------------------------
@@ -520,25 +437,6 @@ class MCPServer:
                 },
             },
         ]
-        if self._knowledge_db and Path(self._knowledge_db).expanduser().exists():
-            tools.append(
-                {
-                    "name": "knowledge_search",
-                    "description": (
-                        "Hybrid search (dense vectors + BM25) over the knowledge store of the "
-                        "third-party dsh-knowledge DSH plugin, with cross-encoder reranking."
-                    ),
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"},
-                            "limit": {"type": "integer", "minimum": 1, "description": "max hits (default 5)"},
-                            "base_id": {"type": "string", "description": "restrict to one base id"},
-                        },
-                        "required": ["query"],
-                    },
-                }
-            )
         return tools
 
     def _dispatch_tool(self, name: str, args: dict[str, Any]) -> str:
@@ -549,7 +447,6 @@ class MCPServer:
             "memory_expand": self.tool_memory_expand,
             "embed": self.tool_embed,
             "rerank": self.tool_rerank,
-            "knowledge_search": self.tool_knowledge_search,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -623,7 +520,6 @@ def serve(
     *,
     config: MemSearchConfig,
     collection: str | None = None,
-    knowledge_db: str | None = None,
     max_content_chars: int = 2000,
     stdin=None,
     stdout=None,
@@ -641,7 +537,6 @@ def serve(
         server = MCPServer(
             config=config,
             collection=collection,
-            knowledge_db=knowledge_db,
             max_content_chars=max_content_chars,
         )
     try:

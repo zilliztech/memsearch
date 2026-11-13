@@ -676,8 +676,7 @@ args = ["mcp"]
 ```
 
 Tools: `memory_search`, `memory_index`, `memory_stats`, `memory_expand`,
-`embed`, `rerank` and — when the dsh-knowledge plugin's store is present —
-`knowledge_search`.
+`embed` and `rerank`.
 
 > 📖 Full guide: [MCP server docs](https://zilliztech.github.io/memsearch/mcp/)
 

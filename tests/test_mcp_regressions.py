@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import sqlite3
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -17,8 +16,7 @@ from memsearch.mcp_server import MCPServer, serve
 
 
 @pytest.fixture
-def server(monkeypatch):
-    monkeypatch.setattr("memsearch.mcp_server._auto_knowledge_db", lambda: "")
+def server():
     srv = MCPServer(config=MemSearchConfig(), collection="test")
     yield srv
     srv.close()
@@ -61,11 +59,9 @@ def test_invalid_force_is_rejected_before_creating_backend(server, monkeypatch, 
 
 
 @pytest.mark.parametrize("value", [-1, 0, True, "2", 1.5])
-@pytest.mark.parametrize("tool", ["memory_search", "knowledge_search"])
-def test_invalid_limit_is_rejected_before_using_backend(server, monkeypatch, tool, value):
+def test_invalid_limit_is_rejected_before_using_backend(server, monkeypatch, value):
     monkeypatch.setattr(server, "_memsearch", lambda: pytest.fail("invalid limit reached backend"))
-    server._knowledge_db = "not-opened.sqlite"
-    reply = call(server, tool, {"query": "needle", "limit": value})
+    reply = call(server, "memory_search", {"query": "needle", "limit": value})
     assert reply["isError"] is True
     assert "limit" in reply["content"][0]["text"]
 
@@ -296,74 +292,9 @@ def test_rerank_scores_stay_with_their_documents(server, monkeypatch):
     assert "wrong" not in text
 
 
-def test_partial_rerank_does_not_invent_zero_scores(server, monkeypatch):
-    fake = ModuleType("memsearch.remote_reranker")
-
-    class Reranker:
-        def __init__(self, **kwargs):
-            pass
-
-        def evaluate(self, query, documents):
-            return {"results": []}
-
-        def scores(self, response, count):
-            return {1: -0.5}
-
-    fake.RemoteReranker = Reranker
-    monkeypatch.setitem(sys.modules, fake.__name__, fake)
-    server._cfg.reranker.model = "remote:fake"
-    assert server._rerank_documents("q", ["omitted", "scored"]) == [None, -0.5]
-
-
-def test_remote_adapter_and_mcp_share_partial_score_semantics(server, monkeypatch):
-    remote = pytest.importorskip("memsearch.remote_reranker", reason="remote adapter is supplied by PR #833")
-    import email.message
-    import urllib.response
-
-    def respond(handler, request):
-        body = json.dumps({"results": [{"index": 1, "relevance_score": -0.5}]}).encode()
-        response = urllib.response.addinfourl(io.BytesIO(body), email.message.Message(), request.full_url, 200)
-        response.msg = "OK"
-        return response
-
-    monkeypatch.setattr("urllib.request.HTTPSHandler.https_open", respond)
-    monkeypatch.setattr("urllib.request.getproxies", dict)
-    monkeypatch.setenv("MEMSEARCH_REMOTE_RERANKER_URL", "https://review.invalid/v1/rerank")
-    monkeypatch.delenv("MEMSEARCH_REMOTE_RERANKER_API_KEY", raising=False)
-    server._cfg.reranker.model = "remote:review"
-    assert server._rerank_documents("q", ["omitted", "scored"]) == [None, -0.5]
-    ranked = remote.RemoteReranker().rerank("q", [{"content": "omitted"}, {"content": "scored"}])
-    assert [result["content"] for result in ranked] == ["scored"]
-
-
 # ---------------------------------------------------------------------------
-# Review follow-ups: honest failures, dispatch boundaries, knowledge races.
+# Review follow-ups: honest failures and dispatch boundaries.
 # ---------------------------------------------------------------------------
-
-
-def _knowledge_store(tmp_path):
-    path = tmp_path / "knowledge.sqlite"
-    conn = sqlite3.connect(path)
-    conn.executescript(
-        """
-        CREATE TABLE chunk (
-            chunk_id TEXT PRIMARY KEY, doc_id TEXT, base_id TEXT, idx INTEGER,
-            text TEXT, search_text TEXT, heading TEXT, context TEXT,
-            embedding BLOB, embedding_model TEXT, fts_rowid INTEGER
-        );
-        CREATE VIRTUAL TABLE chunk_fts USING fts5(
-            search_text, content='chunk', content_rowid='fts_rowid', tokenize='trigram'
-        );
-        """
-    )
-    conn.execute(
-        "INSERT INTO chunk VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-        ("doc", "doc", "base", 1, "服务端口 8080", "服务端口 8080", "", "", None, None, 1),
-    )
-    conn.execute("INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild')")
-    conn.commit()
-    conn.close()
-    return path
 
 
 def test_unknown_tool_is_an_error_but_tool_keyerror_is_not(server, monkeypatch):
@@ -380,55 +311,3 @@ def test_unknown_tool_is_an_error_but_tool_keyerror_is_not(server, monkeypatch):
     assert broken["isError"] is True
     assert "KeyError" in broken["content"][0]["text"]
     assert "error" not in broken
-
-
-def test_configured_remote_reranker_failure_is_reported(monkeypatch, tmp_path):
-    # A configured-but-failing backend must surface as a tool error; only the
-    # absent adapter (before #833 ships) may degrade to unreranked results.
-    monkeypatch.setattr("memsearch.mcp_server._auto_knowledge_db", lambda: "")
-    srv = MCPServer(config=MemSearchConfig(), collection="test", knowledge_db=str(_knowledge_store(tmp_path)))
-    try:
-        fake = ModuleType("memsearch.remote_reranker")
-
-        class Reranker:
-            def __init__(self, **kwargs):
-                pass
-
-            def evaluate(self, query, documents):
-                raise RuntimeError("Remote reranking failed (HTTP 401)")
-
-        fake.RemoteReranker = Reranker
-        monkeypatch.setitem(sys.modules, fake.__name__, fake)
-        srv._cfg.reranker.model = "remote:fake"
-        reply = srv.handle(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "knowledge_search", "arguments": {"query": "8080"}},
-            }
-        )
-        assert reply["result"]["isError"] is True
-        assert "HTTP 401" in reply["result"]["content"][0]["text"]
-    finally:
-        srv.close()
-
-
-def test_remote_adapter_absent_returns_fused_ranking(monkeypatch, tmp_path):
-    monkeypatch.setattr("memsearch.mcp_server._auto_knowledge_db", lambda: "")
-    srv = MCPServer(config=MemSearchConfig(), collection="test", knowledge_db=str(_knowledge_store(tmp_path)))
-    try:
-        monkeypatch.setitem(sys.modules, "memsearch.remote_reranker", None)
-        srv._cfg.reranker.model = "remote:fake"
-        reply = srv.handle(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "knowledge_search", "arguments": {"query": "8080"}},
-            }
-        )
-        assert reply["result"]["isError"] is False
-        assert "服务端口 8080" in reply["result"]["content"][0]["text"]
-    finally:
-        srv.close()

@@ -13,7 +13,6 @@ identically whichever way you drive it.
 ```bash
 memsearch mcp                      # honours ~/.memsearch/config.toml
 memsearch mcp -c my_collection     # explicit collection
-memsearch mcp --knowledge-db ~/.dsh/storages/knowledge-chunks.sqlite
 ```
 
 ## Connecting a client
@@ -67,7 +66,6 @@ claude mcp add memsearch -- memsearch mcp
 | `memory_expand` | Expand one chunk to its full heading section (progressive disclosure: search → expand → transcript). |
 | `embed` | Embed text with the configured provider. |
 | `rerank` | Cross-encoder rerank of documents against a query. |
-| `knowledge_search` | *Optional* — hybrid search over a DeepSeek Harness knowledge store, exposed only when a store is configured. |
 
 Every tool returns a text block. Invalid arguments come back as
 `isError: true` with the reason, never as a crash — one bad call never
@@ -120,10 +118,6 @@ With the default local backend (`~/.memsearch/milvus.db`) the server holds the d
 
 See [Getting Started — Milvus Backends](getting-started.md#milvus-backends) for the backend comparison.
 
-### Knowledge chunks written during a call appear on the next call
-
-`knowledge_search` answers from a snapshot taken when the call starts. If the dsh-knowledge plugin writes new chunks while a call is in flight, the reply does not include them; the next call does.
-
 ## Configuration
 
 The MCP server uses the **same configuration resolution as the CLI**:
@@ -158,32 +152,6 @@ The reranker endpoint is read from `MEMSEARCH_REMOTE_RERANKER_URL`
 > An explicit config value wins over the `--default-collection` the
 > plugins pass.
 
-## The knowledge store tool
-
-`knowledge_search` reads the store of the **third-party
-[`dsh-knowledge`](https://github.com/Soren-ABT/dsh-knowledge) DSH plugin** —
-not DeepSeek Harness itself. The plugin keeps its chunks in a SQLite file at
-`~/.dsh/storages/knowledge-chunks.sqlite`, and the tool queries it with the
-same recipe the plugin uses:
-
-1. dense scan over the stored (L2-normalised) vectors,
-2. BM25 over the FTS5 trigram index,
-3. reciprocal rank fusion of the two rankings,
-4. an optional cross-encoder pass.
-
-Dense scores use only vectors whose dimensions and stored
-`provider:model_name` key match the query provider. Other chunks remain
-eligible for keyword matching. BM25 scores are normalized to higher-is-better
-before fusion. A partial rerank response drops candidates without scores;
-it never invents zero scores for them. An empty scoring response is an
-error. If embedding is unavailable, keyword retrieval remains available.
-
-The database is opened **read-only**, so a running knowledge plugin is
-never disturbed. The store is **auto-detected** at the standard location:
-if the file exists, the tool is advertised; on machines without the
-plugin, the tool is simply absent. `--knowledge-db` or the
-`MEMSEARCH_KNOWLEDGE_DB` environment variable override the location.
-
 ## Relationship to the plugins
 
 The Codex, Claude Code and DSH plugins are **hooks + skills**: they write
@@ -200,4 +168,4 @@ has.
 | extras | — | embedding + rerank backends as tools |
 
 Use both when you can: the plugin keeps the memory up to date, the MCP
-server lets the model query it (and the knowledge base) directly.
+server lets the model query it directly.

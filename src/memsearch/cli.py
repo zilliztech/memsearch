@@ -419,11 +419,6 @@ def search(
     help="Cross-encoder model for reranking (empty string disables).",
 )
 @click.option(
-    "--knowledge-db",
-    default=None,
-    help="Path to a knowledge store (SQLite) to expose as the knowledge_search tool.",
-)
-@click.option(
     "--max-content-chars",
     default=2000,
     type=int,
@@ -440,7 +435,6 @@ def mcp(
     milvus_uri: str | None,
     milvus_token: str | None,
     reranker_model: str | None,
-    knowledge_db: str | None,
     max_content_chars: int,
 ) -> None:
     """Run an MCP server on stdio that exposes memsearch tools.
@@ -471,7 +465,6 @@ def mcp(
     serve(
         config=cfg,
         collection=cfg.milvus.collection,
-        knowledge_db=knowledge_db,
         max_content_chars=max_content_chars,
     )
 
