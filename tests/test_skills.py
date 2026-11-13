@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from memsearch import skills as skills_mod
-from memsearch.config import MemSearchConfig
+from memsearch.config import LLMProviderConfig, MemSearchConfig
 
 
 def _enable(cfg: MemSearchConfig, *, min_occurrences: int = 3) -> None:
@@ -511,3 +511,29 @@ def test_cli_distill_native_gives_guidance_not_crash(monkeypatch) -> None:
     assert result.exit_code == 2
     assert "needs an API provider" in result.stderr
     assert "Native maintenance providers" not in (result.stderr + result.output)  # no raw traceback
+
+
+def test_distill_falls_back_to_next_model(tmp_path: Path) -> None:
+    """A distillation task that gets unusable JSON retries with the next configured model."""
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()
+    _enable(cfg)
+    task_cfg = cfg.plugins.claude_code.memory_to_skill
+    task_cfg.provider = "openai"
+    task_cfg.model = "primary-model"
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai", fallback_models=["backup-1"])
+
+    calls: list[str | None] = []
+
+    def runner(attempt_ctx, prompt: str) -> str:
+        calls.append(attempt_ctx.task_config.model)
+        if len(calls) == 1:
+            return "prose, definitely not JSON"
+        return json.dumps({"skills": [{"name": "Fallback Flow", "description": "Captured via fallback.", "body": "## Fallback flow\n\n1. Step"}]})
+
+    skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
+
+    assert calls == ["primary-model", "backup-1"]
+    names = [meta["name"] for meta in skills_mod.list_candidates(project / ".memsearch")]
+    assert "fallback-flow" in names

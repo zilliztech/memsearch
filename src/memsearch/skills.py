@@ -42,6 +42,7 @@ from .maintenance import (
     _resolve_task_path,
     _save_state,
     run_task_llm,
+    run_task_llm_chain,
 )
 
 # Cap each existing skill body included in the revision prompt, to bound size.
@@ -187,7 +188,10 @@ def _parse_distill_response(raw: str) -> list[dict[str, Any]]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"memory_to_skill LLM did not return valid JSON: {e}") from e
+        raise RuntimeError(
+            f"memory_to_skill LLM did not return valid JSON: {e}; "
+            f"response started with {text[:120]!r}"
+        ) from e
     skills = data.get("skills")
     if not isinstance(skills, list):
         raise RuntimeError("memory_to_skill response must contain a 'skills' list")
@@ -452,7 +456,7 @@ def distill(
             prompt = _build_distill_prompt(
                 ctx, min_occurrences=task_cfg.min_occurrences, existing=list_candidates(mem_root), cfg=cfg
             )
-            raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
+            raw = run_task_llm_chain(ctx, prompt, cfg, llm_runner=llm_runner, validate=_parse_distill_response)
             candidates = _parse_distill_response(raw)
 
             created: list[str] = []
