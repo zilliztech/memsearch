@@ -10,13 +10,13 @@ source "$SCRIPT_DIR/common.sh"
 # Report this before config/bootstrap work. A fixed JSON message also works
 # without jq or Python, when dynamic status strings cannot be JSON-encoded.
 if ! python_available; then
-  echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart Claude Code."}'
+  echo '{"systemMessage": "[memsearch] ERROR: no working Python 3 found (tried python3, python, py -3) — memory capture disabled. Install Python 3 and restart the app."}'
   exit 0
 fi
 
-# The preview needs the matching CLI from the fork, including its JSONL reader.
+# WorkBuddy capture needs a CLI with the WorkBuddy provider and transcript parser.
 if [ "$PLUGIN_PLATFORM" = workbuddy ] && ! { command -v memsearch >/dev/null && _memsearch config get plugins.workbuddy.summarize.provider >/dev/null 2>&1; }; then
-  echo '{"systemMessage":"[memsearch] Install the WorkBuddy preview CLI from the same checkout, then restart WorkBuddy."}'
+  echo '{"systemMessage":"[memsearch] Install a MemSearch CLI with WorkBuddy support, then restart WorkBuddy. See the WorkBuddy installation guide."}'
   exit 0
 fi
 

@@ -155,7 +155,7 @@ model defaults are in your platform reference file.
 
 ## Provider rules
 
-- `provider = ""` or `native` uses the host agent's non-interactive native path (see your platform reference file).
+- Hosts with a native summarizer use it when the provider is empty or `native`. WorkBuddy starts capturing turns once a named API provider is selected.
 - Any other provider value is a name that must exist under `[llm.providers.<name>]`.
 - Model resolution order is task-level `plugins.<platform>.<task>.model`, then named provider model, then built-in default.
 - API keys should be configured as env refs, not pasted into chat.

@@ -74,7 +74,7 @@ nav:
     - CLI Reference: cli.md
     - Python API: python-api.md
     - Integrations: integrations.md
-  - WorkBuddy Preview: platforms/workbuddy.md
+  - WorkBuddy: platforms/workbuddy.md
   - Platform Comparison: platforms/index.md
 
 markdown_extensions:

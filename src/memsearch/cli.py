@@ -17,6 +17,7 @@ from .config import (
     ConfigEnvVarError,
     MemSearchConfig,
     config_to_dict,
+    deep_merge,
     get_config_value,
     load_config_file,
     resolve_config,
@@ -1259,7 +1260,8 @@ def config_init(project: bool) -> None:
         default=current.prompts.user_profile,
     )
 
-    save_config(result, target)
+    # The global wizard edits a subset of settings. Keep named providers and other unprompted keys.
+    save_config(deep_merge(existing, result), target)
     click.echo(f"\nConfig saved to {target}")
 
 

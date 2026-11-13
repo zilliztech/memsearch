@@ -1,7 +1,7 @@
 {
-  "name": "memsearch-workbuddy-preview",
+  "name": "memsearch-workbuddy",
   "owner": {
-    "name": "Cheney Zhang"
+    "name": "Zilliz"
   },
   "plugins": [
     {

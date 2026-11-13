@@ -177,6 +177,23 @@ def test_config_init_project_writes_only_allowlisted_keys(monkeypatch) -> None:
     }
 
 
+def test_global_config_init_keeps_workbuddy_provider(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "config.toml"
+    provider = {"type": "openai", "model": "summary-model", "api_key": "env:SUMMARY_API_KEY"}
+    save_config(
+        {"llm": {"providers": {"team": provider}}, "plugins": {"workbuddy": {"summarize": {"provider": "team"}}}},
+        target,
+    )
+    monkeypatch.setattr(cli_module, "GLOBAL_CONFIG_PATH", target)
+    monkeypatch.setattr(cli_module, "resolve_config", MemSearchConfig)
+
+    result = CliRunner().invoke(cli, ["config", "init"], input="\n" * 100)
+    assert result.exit_code == 0, result.output
+    data = load_config_file(target)
+    assert data["llm"]["providers"]["team"] == provider
+    assert data["plugins"]["workbuddy"]["summarize"]["provider"] == "team"
+
+
 def test_config_init_preserves_explicitly_disabled_ignore_files(monkeypatch) -> None:
     cfg = MemSearchConfig()
     monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
