@@ -697,3 +697,19 @@ def test_dict_to_config_accepts_empty_section_dicts() -> None:
     assert cfg.embedding.provider == "openai"
     assert cfg.milvus.collection == "memsearch_chunks"
     assert cfg.watch.debounce_ms == 1500
+
+
+def test_llm_provider_fallback_models_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """fallback_models should round-trip through TOML as a list of models."""
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", cfg_path)
+    monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", tmp_path / "nope.toml")
+    set_config_value("llm.providers.openai.type", "openai")
+    set_config_value("llm.providers.openai.model", "gpt-test")
+    set_config_value("llm.providers.openai.fallback_models", '["backup-a", "backup-b"]')
+
+    cfg = resolve_config()
+    assert cfg.llm.providers["openai"].fallback_models == ["backup-a", "backup-b"]
+
+    saved = load_config_file(cfg_path)
+    assert saved["llm"]["providers"]["openai"]["fallback_models"] == ["backup-a", "backup-b"]

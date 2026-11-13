@@ -10,7 +10,7 @@ import re
 import shlex
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -115,7 +115,7 @@ def run_due_tasks(
             )
             try:
                 prompt = _build_prompt(ctx, cfg)
-                raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
+                raw = run_task_llm_chain(ctx, prompt, cfg, llm_runner=llm_runner, validate=_parse_task_response)
                 parsed = _parse_task_response(raw)
                 now = _now()
 
@@ -292,6 +292,72 @@ def _read_recent_journals(
     if budget <= len(marker):
         return text[-budget:]
     return marker + text[-(budget - len(marker)) :]
+
+
+def _provider_model_chain(ctx: TaskContext, cfg: MemSearchConfig) -> list[str | None]:
+    """The models to try for one task, in order.
+
+    One entry means "make a single attempt": the host-native path, an unknown
+    provider, or a provider with just its own model. ``None`` means "let the
+    provider pick".
+    """
+    provider_name = (ctx.task_config.provider or "native").strip()
+    if provider_name in {"", "native"}:
+        return [None]
+    provider_cfg = cfg.llm.providers.get(provider_name)
+    if provider_cfg is None:
+        return [None]
+    primary = (ctx.task_config.model or provider_cfg.model or "").strip()
+    chain: list[str] = []
+    for candidate in [primary, *list(getattr(provider_cfg, "fallback_models", []) or [])]:
+        name = (candidate or "").strip()
+        if name and name not in chain:
+            chain.append(name)
+    return chain or [None]
+
+
+def _ctx_with_model(ctx: TaskContext, model: str) -> TaskContext:
+    """The same task context with its model overridden, for one fallback attempt."""
+    if is_dataclass(ctx) and is_dataclass(ctx.task_config):
+        return replace(ctx, task_config=replace(ctx.task_config, model=model))
+    import copy as _copy
+
+    attempt = _copy.copy(ctx)
+    task_config = _copy.copy(ctx.task_config)
+    task_config.model = model
+    attempt.task_config = task_config
+    return attempt
+
+
+def run_task_llm_chain(
+    ctx: TaskContext,
+    prompt: str,
+    cfg: MemSearchConfig,
+    *,
+    llm_runner: Callable[[TaskContext, str], str] | None = None,
+    validate: Callable[[str], Any] | None = None,
+) -> str:
+    """Run the task prompt, trying each configured model until one yields usable output.
+
+    An endpoint that answers with a tool call it was told not to, or with prose
+    where JSON was asked for, is not a reason to lose the whole task: the next
+    model in ``[llm.providers.<name>].fallback_models`` is tried, and the first
+    usable answer wins. ``validate`` raises on an unusable reply (a parse error).
+    """
+    chain = _provider_model_chain(ctx, cfg)
+    failures: list[str] = []
+    for model in chain:
+        attempt_ctx = ctx if model is None else _ctx_with_model(ctx, model)
+        try:
+            raw = llm_runner(attempt_ctx, prompt) if llm_runner else run_task_llm(attempt_ctx, prompt, cfg)
+            if validate is not None:
+                validate(raw)
+            return raw
+        # Any failure counts as that model being unusable; the next model in
+        # the chain is the remedy.
+        except Exception as exc:
+            failures.append(f"{model or '<provider default>'}: {type(exc).__name__}: {exc}")
+    raise RuntimeError("every configured model failed:\n  " + "\n  ".join(failures))
 
 
 def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:

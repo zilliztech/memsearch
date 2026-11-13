@@ -615,3 +615,108 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert run_memory_command(f"find {memory} -name '*.md'", ctx) == "local output"
     assert "encoding" not in calls[-1][1]
     assert "errors" not in calls[-1][1]
+
+
+def test_provider_model_chain_uses_fallback_models(tmp_path: Path) -> None:
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(provider="openai", model="primary-model"),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    cfg = MemSearchConfig()
+    cfg.llm.providers["openai"] = LLMProviderConfig(
+        type="openai", model="provider-model", fallback_models=["primary-model", "backup-1", "backup-2"]
+    )
+
+    assert maintenance._provider_model_chain(ctx, cfg) == ["primary-model", "backup-1", "backup-2"]
+
+
+def test_provider_model_chain_single_attempt_for_native_and_unknown(tmp_path: Path) -> None:
+    cfg = MemSearchConfig()
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai", fallback_models=["backup-1"])
+
+    native_ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    unknown_ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(provider="no-such-provider"),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+
+    assert maintenance._provider_model_chain(native_ctx, cfg) == [None]
+    assert maintenance._provider_model_chain(unknown_ctx, cfg) == [None]
+
+
+def test_run_task_llm_chain_tries_next_model_with_overridden_context(tmp_path: Path) -> None:
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(provider="openai", model="primary-model"),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    cfg = MemSearchConfig()
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai", fallback_models=["backup-1"])
+
+    seen_models: list[str | None] = []
+
+    def runner(attempt_ctx: TaskContext, prompt: str) -> str:
+        seen_models.append(attempt_ctx.task_config.model)
+        if len(seen_models) == 1:
+            raise RuntimeError("primary endpoint exploded")
+        return '{"action":"none","reason":"ok"}'
+
+    raw = maintenance.run_task_llm_chain(ctx, "prompt", cfg, llm_runner=runner, validate=_parse_task_response)
+
+    assert raw == '{"action":"none","reason":"ok"}'
+    assert seen_models == ["primary-model", "backup-1"]
+    # The original context is not mutated by the attempts.
+    assert ctx.task_config.model == "primary-model"
+
+
+def test_run_task_llm_chain_reports_every_failure(tmp_path: Path) -> None:
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(provider="openai", model="primary-model"),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    cfg = MemSearchConfig()
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai", fallback_models=["backup-1"])
+
+    def runner(attempt_ctx: TaskContext, prompt: str) -> str:
+        if attempt_ctx.task_config.model == "primary-model":
+            raise RuntimeError("boom")
+        return "this is prose, not a maintenance object"
+
+    with pytest.raises(RuntimeError, match="every configured model failed") as excinfo:
+        maintenance.run_task_llm_chain(ctx, "prompt", cfg, llm_runner=runner, validate=_parse_task_response)
+
+    message = str(excinfo.value)
+    assert "primary-model" in message and "RuntimeError: boom" in message
+    assert "backup-1" in message and "did not return valid JSON" in message
