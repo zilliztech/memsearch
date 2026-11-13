@@ -21,4 +21,8 @@ fi
 # systemMessage is shown to the user in the terminal only; on UserPromptSubmit the
 # model sees hookSpecificOutput.additionalContext (or plain stdout), so the hint has
 # to travel in both to keep the visible one-liner and actually reach Claude.
-echo '{"systemMessage": "[memsearch] Recall available if needed", "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "[memsearch] Recall available if needed"}}'
+hint="[memsearch] Recall available if needed"
+if [ -n "$COLLECTION_NAME" ]; then
+  hint+=". For this project use --default-collection $COLLECTION_NAME for search and expand."
+fi
+printf '{"systemMessage":"[memsearch] Recall available if needed","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":%s}}\n' "$(_json_encode_str "$hint")"

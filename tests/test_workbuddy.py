@@ -157,3 +157,51 @@ def test_workbuddy_marketplace_stop(tmp_path):
     assert f"session:session turn:message-0002 transcript:{path}" in journal.read_text()
     assert not (tmp_path / ".memsearch").exists()
     assert not (home / "unexpected-native").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="executes the Bash marketplace hook")
+def test_workbuddy_recall_scope_without_plugin_environment(tmp_path):
+    root = Path(__file__).resolve().parents[1] / "plugins/claude-code"
+    skill_dir = root / "skills/memory-recall"
+    skill = (skill_dir / "SKILL.md").read_text()
+    assert "!`" not in skill
+    fallback = skill.split("```bash\n", 1)[1].split("\n```", 1)[0]
+    # The skill loader substitutes this path in the text. The subsequent
+    # command tool gets no plugin or skill environment variables.
+    fallback = fallback.replace("${CLAUDE_SKILL_DIR}", str(skill_dir))
+    config = json.loads((root / ".codebuddy-plugin/hooks.json").read_text())
+    hook = config["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    project = tmp_path / "work space"
+    project.mkdir()
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    nested = project / "nested"
+    nested.mkdir()
+    other = tmp_path / "outside git"
+    other.mkdir()
+    shared = tmp_path / "shared memory"
+    shared.mkdir()
+    for workspace, scope, override in [
+        (nested, project, {}),
+        (other, other, {}),
+        (nested, shared, {"MEMSEARCH_DIR": str(shared)}),
+    ]:
+        env = {"PATH": f"{Path(sys.executable).parent}:{os.defpath}", "HOME": str(tmp_path), **override}
+        expected = subprocess.check_output(
+            ["bash", root / "scripts/derive-collection.sh", scope], env=env, text=True
+        ).strip()
+        reply = subprocess.run(
+            ["sh", "-c", hook],
+            cwd=tmp_path,
+            env={**env, "CODEBUDDY_PLUGIN_ROOT": str(root)},
+            input=json.dumps({"cwd": str(workspace), "prompt": "Recall the staging cache lifetime"}),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        hint = json.loads(reply.stdout)["hookSpecificOutput"]["additionalContext"]
+        assert f"--default-collection {expected} " in hint
+        result = subprocess.run(
+            ["sh", "-c", fallback], cwd=workspace, env=env, capture_output=True, text=True, check=True
+        )
+        assert result.stdout.strip() == expected
+        assert result.stderr == ""
