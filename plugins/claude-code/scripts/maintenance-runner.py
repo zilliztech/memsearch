@@ -27,6 +27,11 @@ DEFAULT_NATIVE_MODELS = {
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
 }
 
+# Windows: a console child of a console-less parent allocates a fresh,
+# visible console window. Hosts spawn this runner detached from a GUI
+# process, so every child below needs the flag (see #853).
+_CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
 
 def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> str:
     result = subprocess.run(
@@ -37,6 +42,7 @@ def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int)
         cwd=str(cwd),
         timeout=timeout,
         check=False,
+        creationflags=_CREATE_NO_WINDOW,
     )
     stdout = (result.stdout or "").strip()
     stderr = (result.stderr or "").strip()
@@ -75,6 +81,7 @@ def claude_safe_mode_args() -> list[str]:
             text=True,
             timeout=5,
             check=False,
+            creationflags=_CREATE_NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError):
         _CLAUDE_SAFE_MODE_ARGS = []
@@ -102,7 +109,33 @@ def extract_task_json_output(output: str) -> str:
 def _reexec(argv: list[str], env: dict[str, str]) -> None:
     """Windows exec launches a child; wait and propagate its actual exit status."""
     if os.name == "nt":
-        raise SystemExit(subprocess.run(argv, env=env, check=False).returncode)
+        # The parent may have no console (hosts spawn this detached), so the
+        # child needs CREATE_NO_WINDOW to stay invisible - and the parent's own
+        # stdout/stderr have to be passed explicitly, otherwise the child writes
+        # into a fresh invisible console and the caller never sees the output.
+        # Pass the parent's own handles through when they are usable, so the
+        # child keeps writing where the caller reads; fall back to inheriting
+        # when a host closed them.
+        passthrough = {}
+        for name, stream in (("stdout", sys.stdout), ("stderr", sys.stderr)):
+            if stream is None:
+                continue
+            try:
+                stream.fileno()
+            except Exception:
+                continue
+            passthrough[name] = stream
+        with open(os.devnull, "rb") as devnull:
+            raise SystemExit(
+                subprocess.run(
+                    argv,
+                    env=env,
+                    check=False,
+                    creationflags=_CREATE_NO_WINDOW,
+                    stdin=devnull,
+                    **passthrough,
+                ).returncode
+            )
     os.execvpe(argv[0], argv, env)
 
 
@@ -149,11 +182,29 @@ def ensure_memsearch_importable(entrypoint: Path | None = None) -> None:
                         {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"},
                     )
 
+    env = {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"}
+    # CREATE_NO_WINDOW on the uv child is not enough: the flag is not
+    # inherited by uv's own children, so the uv-spawned python allocates a
+    # fresh console of its own (the popup). Prefer the uv tool venv's python
+    # directly — the same interpreter `uv run --with memsearch[onnx]` resolves
+    # to for a `uv tool install`ed memsearch, with no intermediate console
+    # subprocess in the chain. On POSIX this never matches (the shebang branch
+    # above already re-execs into the venv interpreter). Probed before the uv
+    # lookup so the direct path also works where uv is not on PATH.
+    appdata = os.environ.get("APPDATA")
+    tool_dirs = [
+        os.environ.get("UV_TOOL_DIR"),
+        os.path.join(appdata, "uv", "tools") if appdata else None,
+    ]
+    for tool_dir in filter(None, tool_dirs):
+        venv_python = os.path.join(tool_dir, "memsearch", "Scripts", "python.exe")
+        if os.path.isfile(venv_python):
+            _reexec([venv_python, str(entrypoint), *sys.argv[1:]], env)
+
     uv = shutil.which("uv")
     if not uv:
         return
 
-    env = {**os.environ, "MEMSEARCH_MAINTENANCE_UV_BOOTSTRAP": "1"}
     _reexec(
         [
             uv,
