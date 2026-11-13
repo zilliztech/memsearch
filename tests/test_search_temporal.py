@@ -46,6 +46,7 @@ class FakeStore:
 
     def search(self, embedding, *, query_text="", top_k=10, filter_expr=""):
         self.calls.append(top_k)
+        self.last_expr = filter_expr
         return [dict(chunk, score=0.5) for chunk in self.chunks[:top_k]]
 
 
@@ -189,6 +190,38 @@ def test_chunk_date_helpers() -> None:
     assert _chunk_date("PROJECT.md") is None
     assert _chunk_date("2026-02-30.md") is None  # a name, not a real date
     assert _chunk_date("memory.md") is None
+
+
+def test_month_patterns_span_and_cap() -> None:
+    from memsearch.core import _month_patterns
+
+    assert _month_patterns(date(2026, 11, 1), date(2026, 11, 14)) == ["%2026-11-%"]
+    assert _month_patterns(date(2025, 12, 31), date(2026, 1, 1)) == ["%2025-12-%", "%2026-01-%"]
+    assert _month_patterns(None, date(2026, 1, 1)) == []  # one-sided: no prefilter
+    assert _month_patterns(date(2010, 1, 1), date(2026, 1, 1)) == []  # absurd range: prefilter off
+
+
+def test_window_prefilter_enters_the_engine_query(tmp_path) -> None:
+    """组合缝隙: the month pattern must ride inside filter_expr to the engine."""
+    store = FakeStore(_journal_chunks())
+    mem = _make_memsearch(store)
+    import asyncio
+
+    asyncio.run(mem.search("q", since="2026-06-01", until="2026-06-02"))
+    expr = getattr(store, "last_expr", "")
+    assert expr == 'source like "%2026-06-%"'
+
+
+def test_window_prefilter_composes_with_source_prefix(tmp_path) -> None:
+    store = FakeStore(_journal_chunks())
+    mem = _make_memsearch(store)
+    import asyncio
+
+    asyncio.run(mem.search("q", source_prefix="/proj", since="2026-06-01", until="2026-06-02"))
+    expr = getattr(store, "last_expr", "")
+    assert expr.startswith('(source like "')
+    assert ") and (" in expr  # prefix filter AND month prefilter composed
+    assert "%2026-06-%" in expr
 
 
 def test_resolve_date_window_accepts_datetime_and_date() -> None:

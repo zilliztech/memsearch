@@ -76,6 +76,30 @@ def _resolve_date_window(
     return start, end
 
 
+_MAX_MONTH_PATTERNS = 36
+
+
+def _month_patterns(start: date | None, end: date | None) -> list[str]:
+    """Milvus ``like`` patterns for the months a window spans, oldest first.
+
+    ``None`` bounds are unbounded, which cannot be expressed as a finite
+    pattern list — an empty list disables the engine-side prefilter and the
+    exact post-filter remains the only (correct but recall-limited) gate.
+    """
+    if start is None or end is None:
+        return []
+    patterns: list[str] = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        if len(patterns) >= _MAX_MONTH_PATTERNS:
+            return []  # absurd range: prefilter off, post-filter still holds
+        patterns.append(f"%{year}-{month:02d}-%")
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return patterns
+
+
 class MemSearch:
     """High-level API for semantic memory search.
 
@@ -316,11 +340,19 @@ class MemSearch:
             filter_expr = f'source like "{escaped}%"'
 
         window = _resolve_date_window(since, until)
+        if window is not None:
+            start, end = window
+            # Push the window down into the engine: a month-pattern prefilter
+            # keeps out-of-window (often dominant) chunks out of the fetch
+            # pool entirely. The exact post-filter below remains the
+            # correctness boundary — month patterns only narrow the scan.
+            months = _month_patterns(start, end)
+            if months:
+                like = " or ".join(f'source like "{m}"' for m in months)
+                filter_expr = like if not filter_expr else f"({filter_expr}) and ({like})"
         embeddings = await self._embedder.embed([query])
         fetch_k = top_k * 3 if self._reranker_model else top_k
         if window is not None:
-            # A window can drop most of the retrieved pool; fetch extra so
-            # the filtered set still fills top_k when the corpus allows.
             fetch_k = max(fetch_k, top_k * 8)
         results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
         if window is not None:
