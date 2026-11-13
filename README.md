@@ -201,7 +201,7 @@ Ask about previous decisions or debugging sessions, and OpenCode can search memo
 <details>
 <summary><h3>For WorkBuddy Users</h3></summary>
 
-In WorkBuddy, add `zilliztech/memsearch` under **Skills → Kits**, install **memsearch**, and select a named API provider for summaries. See the [WorkBuddy setup guide](docs/platforms/workbuddy.md) for the CLI and provider settings.
+Follow the [WorkBuddy setup guide](docs/platforms/workbuddy.md) to install the CLI and configure a summary API provider. Then add `zilliztech/memsearch` under **Skills → Kits** and install **memsearch**.
 
 </details>
 

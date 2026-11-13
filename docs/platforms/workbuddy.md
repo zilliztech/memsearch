@@ -2,22 +2,28 @@
 
 MemSearch saves completed WorkBuddy conversations as short Markdown notes in `.memsearch/memory/`. WorkBuddy can search those notes in a new session and follow a note back to the original conversation and tool output. Agents working in the same project share the notes and their index.
 
-## Install
+## Install the CLI
 
-1. Install the MemSearch CLI on the machine running WorkBuddy. The plugin needs Bash and Python 3.10 or later. On Windows, make Git Bash available to the desktop app.
+On the machine running WorkBuddy, install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make Bash and Python 3.10 or later available to the desktop app. On Windows, use Git Bash.
 
-    ```bash
-    uv tool install --upgrade "memsearch[onnx]"
-    memsearch config get plugins.workbuddy.summarize.provider
-    ```
+```bash
+uv tool install --upgrade "memsearch[onnx]"
+memsearch config get plugins.workbuddy.summarize.provider
+```
 
-    An empty result means the CLI recognizes WorkBuddy and you can configure a provider. If the command reports an unknown key, install the CLI from the same source checkout as the plugin by running `uv tool install --force ".[onnx]"` in the repository root.
+The second command prints the selected provider, or a blank line on a fresh install. If your shell cannot find `memsearch`, run `uv tool update-shell` and open a new terminal. If it reports an unknown key, your CLI predates WorkBuddy support. To use a source checkout, run `uv tool install --force ".[onnx]"` from the repository root.
 
-2. In WorkBuddy, open **Skills → Kits** (技能 → 套件), click **＋** to add a marketplace, and enter `zilliztech/memsearch`. Install **memsearch** from **memsearch-workbuddy** and restart WorkBuddy. To test a source checkout, use its absolute directory path as the marketplace source.
+## Configure memory
 
-## Configure summaries
+**First-time MemSearch users:** select local ONNX embeddings before configuring summaries. This keeps indexing and search on your machine. **If you already use MemSearch, keep your current embedding configuration and skip this command.**
 
-WorkBuddy uses a named API provider for summaries. If you already use one with MemSearch, run `memsearch config set plugins.workbuddy.summarize.provider <provider-name>`. For example, to configure an OpenAI provider:
+```bash
+memsearch config set embedding.provider onnx
+```
+
+WorkBuddy uses a named API provider to summarize completed turns. If you already have a provider configured in MemSearch, select it with `memsearch config set plugins.workbuddy.summarize.provider <provider-name>`.
+
+For a new OpenAI provider, export your API key as `OPENAI_API_KEY` in your shell and run the commands below. Choose a model your key can access. These settings go in your user configuration and apply independently of the model selected in WorkBuddy chat.
 
 ```bash
 memsearch config set llm.providers.openai.type openai
@@ -26,7 +32,11 @@ memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.workbuddy.summarize.provider openai
 ```
 
-Choose a model your API key can use, and make the referenced environment variable available to the WorkBuddy desktop process. These commands write to your user configuration. The summary model is independent of the chat model selected in WorkBuddy. New installations use local ONNX embeddings by default.
+## Enable the desktop plugin
+
+In WorkBuddy, open **Skills → Kits** (技能 → 套件), click **＋** to add a marketplace, and enter `zilliztech/memsearch`. Install **memsearch** from **memsearch-workbuddy**, then fully quit and reopen the app with the API key available to it. On macOS, if you exported the key in Terminal, run `open -a WorkBuddy` from that same terminal after quitting the app.
+
+For a source checkout, enter the absolute path to the repository root as the marketplace source.
 
 ## Check capture and recall
 
