@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import hashlib
 import json
 import os
 import re
 import shlex
+import stat as stat_module
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -489,7 +491,16 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     if re.search(r"[|;&<>`$(){}]", command):
         return "Error: shell metacharacters are not allowed"
     try:
-        argv = shlex.split(command)
+        if os.name == "nt":
+            # POSIX shlex would eat native Windows path separators. Keep its
+            # quote handling but disable backslash escapes; no shell is used.
+            lexer = shlex.shlex(command, posix=True)
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            lexer.escape = ""
+            argv = list(lexer)
+        else:
+            argv = shlex.split(command)
     except ValueError as e:
         return f"Error: {e}"
     if not argv:
@@ -511,6 +522,8 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
             return checked
         return _run_restricted(argv, ctx.project_dir)
     if executable in {"find", "grep"}:
+        if os.name == "nt":
+            return _run_windows_memory_search(argv, ctx.project_dir, allowed_roots)
         checked = _validate_paths_in_args(argv[1:], allowed_roots, cwd=ctx.project_dir, allow_hash=False)
         if checked:
             return checked
@@ -521,6 +534,165 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
             return checked
         return _run_restricted(argv, ctx.project_dir)
     return f"Error: command {executable!r} is not allowed"
+
+
+def _entry_is_reparse(st: os.stat_result) -> bool:
+    """True for symlink/reparse entries, which the search never traverses.
+
+    Windows reports reparse points through ``st_file_attributes``; POSIX has
+    no such field (hence ``getattr``), so symlinks are detected via the mode.
+    """
+    return bool(getattr(st, "st_file_attributes", 0) & 0x400) or stat_module.S_ISLNK(st.st_mode)
+
+
+def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[Path]) -> str:
+    """Small read-only find/grep subset, with no executable or shell dispatch.
+
+    find PATH [-maxdepth N] -type f [-name GLOB]; grep [-rlnc] PATTERN
+    PATH... . PATTERN is literal text (regular expressions are rejected).
+    Links/reparse points are never traversed. Resource limits fail explicitly.
+    """
+    try:
+        roots = [root.resolve(strict=True) for root in allowed_roots if root.exists()]
+
+        def checked_path(raw: str) -> Path:
+            path = Path(raw).expanduser()
+            if not path.is_absolute():
+                path = cwd / path
+            # A colon anywhere except a drive designator is an NTFS alternate
+            # data stream, which must not bypass the ordinary file boundary.
+            if ":" in str(path)[len(path.drive):]:
+                raise ValueError("alternate data streams are not supported")
+            # Reject lexical escapes (including UNC/device operands) before
+            # resolve/stat can touch a location outside the configured roots.
+            lexical = Path(os.path.abspath(path))
+            if not any(_is_relative_to(lexical, root) for root in roots):
+                raise ValueError(f"path {raw!r} is outside allowed memory roots")
+            resolved = path.resolve(strict=True)
+            if not any(_is_relative_to(resolved, root) for root in roots):
+                raise ValueError(f"path {raw!r} is outside allowed memory roots")
+            for part in (path, *path.parents):
+                if _entry_is_reparse(part.lstat()):
+                    raise ValueError(f"links/reparse points are not supported: {raw!r}")
+            return path
+
+        mode = argv[0]
+        depth_limit = None
+        name = None
+        flags: set[str] = set()
+        if mode == "find":
+            if len(argv) < 2 or argv[1].startswith("-"):
+                raise ValueError("find requires PATH [-maxdepth N] -type f [-name GLOB]")
+            paths = [checked_path(argv[1])]
+            options: dict[str, str] = {}
+            index = 2
+            while index < len(argv):
+                option = argv[index]
+                if option not in {"-maxdepth", "-type", "-name"} or option in options or index + 1 >= len(argv):
+                    raise ValueError(f"unsupported find option: {option!r}")
+                options[option] = argv[index + 1]
+                index += 2
+            if options.get("-type") != "f":
+                raise ValueError("find supports only -type f")
+            if "-maxdepth" in options:
+                if not options["-maxdepth"].isascii() or not options["-maxdepth"].isdecimal():
+                    raise ValueError("-maxdepth requires a nonnegative integer")
+                depth_limit = int(options["-maxdepth"])
+            name = options.get("-name")
+            if name is not None and ("/" in name or "\\" in name):
+                raise ValueError("-name must be a basename glob")
+            recursive = True
+        else:
+            index = 1
+            while index < len(argv) and argv[index].startswith("-"):
+                option = argv[index]
+                if option == "--":
+                    index += 1
+                    break
+                if len(option) < 2 or not set(option[1:]) <= set("rlnc"):
+                    raise ValueError(f"unsupported grep option: {option!r}")
+                flags.update(option[1:])
+                index += 1
+            if len(argv) - index < 2:
+                raise ValueError("grep requires PATTERN PATH...")
+            pattern = argv[index]
+            if any(char in pattern for char in "\\.^$*+?[]{}()") or "\n" in pattern or "\r" in pattern:
+                raise ValueError("grep supports literal single-line PATTERN only; regular expressions are not supported")
+            operands = argv[index + 1:]
+            if any(raw.startswith("-") for raw in operands):
+                raise ValueError("grep options must precede PATTERN; use ./ for filenames beginning with '-'")
+            paths = [checked_path(raw) for raw in operands]
+            recursive = "r" in flags
+            if not recursive and any(path.is_dir() for path in paths):
+                raise ValueError("grep directory operands require -r")
+
+        output: list[str] = []
+        output_size = 0
+        visited = 0
+        scanned_bytes = 0
+
+        def emit(text: str) -> bool:
+            nonlocal output_size
+            remaining = MAX_COMMAND_OUTPUT - output_size
+            if remaining <= 0:
+                return False
+            piece = ("\n" if output else "") + text
+            output.append(piece[:remaining])
+            output_size += len(piece[:remaining])
+            return len(piece) < remaining
+
+        def files(path: Path, depth: int = 0):
+            nonlocal visited
+            visited += 1
+            if visited > 10_000:
+                raise ValueError("search entry limit exceeded (10000)")
+            # Check every entry before opening or descending, including junctions.
+            if _entry_is_reparse(path.lstat()):
+                return
+            checked_path(str(path))
+            if path.is_file():
+                yield path
+            elif path.is_dir() and recursive and (depth_limit is None or depth < depth_limit):
+                for child in path.iterdir():
+                    yield from files(child, depth + 1)
+
+        multiple = len(paths) > 1 or recursive
+        for operand in paths:
+            for path in files(operand):
+                if mode == "find":
+                    if name is None or fnmatch.fnmatchcase(path.name, name):
+                        if not emit(str(path)):
+                            return "".join(output)
+                    continue
+                # Bound bytes before decoding. Binary files are explicitly skipped.
+                with path.open("rb") as stream:
+                    data = stream.read(2_000_001)
+                scanned_bytes += len(data)
+                if len(data) > 2_000_000 or scanned_bytes > 20_000_000:
+                    raise ValueError("grep byte limit exceeded (2MB/file, 20MB/search)")
+                if b"\0" in data:
+                    continue
+                count = 0
+                for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+                    if pattern not in line:
+                        continue
+                    count += 1
+                    if "l" in flags:
+                        if not emit(str(path)):
+                            return "".join(output)
+                        break
+                    if "c" not in flags:
+                        prefix = f"{path}:" if multiple else ""
+                        if "n" in flags:
+                            prefix += f"{number}:"
+                        if not emit(prefix + line):
+                            return "".join(output)
+                if "c" in flags and "l" not in flags:
+                    if not emit((f"{path}:" if multiple else "") + str(count)):
+                        return "".join(output)
+        return "".join(output)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return f"Error: {exc}"[:MAX_COMMAND_OUTPUT]
 
 
 def _validate_paths_in_args(args: list[str], allowed_roots: list[Path], *, cwd: Path, allow_hash: bool) -> str:

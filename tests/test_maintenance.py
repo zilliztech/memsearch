@@ -612,6 +612,127 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert calls[-1][1]["encoding"] == "utf-8"
     assert calls[-1][1]["errors"] == "strict"
 
-    assert run_memory_command(f"find {memory} -name '*.md'", ctx) == "local output"
+    assert run_memory_command(f"find {memory} -type f -name '*.md'", ctx) == "local output"
     assert "encoding" not in calls[-1][1]
     assert "errors" not in calls[-1][1]
+
+
+def _search_ctx(tmp_path: Path) -> tuple[TaskContext, Path]:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-06-01.md").write_text(
+        "### 09:00\n- alpha entry about the redis cache\n- beta entry about kubernetes\n",
+        encoding="utf-8",
+    )
+    (memory / "notes").mkdir()
+    (memory / "notes" / "deep.md").write_text("### 10:00\n- gamma entry about redis eviction\n", encoding="utf-8")
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    return ctx, memory
+
+
+def test_windows_memory_search_finds_files_by_name(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"find {memory} -type f -name '*.md'", ctx)
+
+    assert out.count(".md") >= 2
+    assert "2026-06-01.md" in out and "deep.md" in out
+
+
+def test_windows_memory_search_maxdepth_stops_descending(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"find {memory} -type f -maxdepth 1 -name '*.md'", ctx)
+
+    assert "2026-06-01.md" in out
+    assert "deep.md" not in out
+
+
+def test_windows_memory_search_grep_literal_with_line_numbers(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"grep -n redis {memory / '2026-06-01.md'}", ctx)
+
+    assert "2:- alpha entry about the redis cache" in out
+    assert "kubernetes" not in out
+
+
+def test_windows_memory_search_rejects_regex_pattern(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"grep 'redis.*cache' {memory / '2026-06-01.md'}", ctx)
+
+    assert out.startswith("Error:")
+    assert "literal" in out
+
+
+def test_windows_memory_search_rejects_paths_outside_roots(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret redis\n", encoding="utf-8")
+
+    out = run_memory_command(f"grep redis {outside}", ctx)
+
+    assert "outside allowed memory roots" in out
+
+
+def test_windows_memory_search_rejects_colon_operands(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"grep redis {memory / 'we:ird.md'}", ctx)
+
+    assert "alternate data streams" in out
+
+
+def test_windows_memory_search_never_traverses_symlinks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret redis\n", encoding="utf-8")
+    link = memory / "link"
+    try:
+        link.symlink_to(outside, target_is_directory=False)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable on this host")
+
+    out = run_memory_command(f"grep redis {link}", ctx)
+
+    assert "secret" not in out
+    assert out.startswith("Error:")
+
+
+def test_windows_memory_search_output_is_capped(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+    big = memory / "big.md"
+    big.write_text("redis line\n" * 3000, encoding="utf-8")
+
+    out = run_memory_command(f"grep redis {big}", ctx)
+
+    assert len(out) <= maintenance.MAX_COMMAND_OUTPUT
+
+
+def test_run_memory_command_routes_find_and_grep_through_subset_on_windows(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance.os, "name", "nt")
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"grep -rn redis {memory}", ctx)
+
+    assert "2026-06-01.md" in out and "deep.md" in out
+    assert "redis" in out
