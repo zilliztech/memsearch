@@ -539,10 +539,47 @@ def test_last_maintenance_status_reads_failure(tmp_path: Path) -> None:
 
     status = skills_mod.last_maintenance_status(mem_root)
 
-    assert status["task"] == ""  # the state file does not carry the task name
+    assert status["task"] == "codex.project_review"  # the state key names the task
     assert status["last_action"] == "error"
     assert status["last_failed_at"] == "2026-11-08T00:30:00+00:00"
     assert "provider timeout" in status["last_error"]
+
+
+def test_last_maintenance_status_picks_the_most_recent_task(tmp_path: Path) -> None:
+    """With several task entries, the latest last_checked_at wins, key as task."""
+    project = tmp_path / "repo"
+    mem_root = project / ".memsearch"
+    mem_root.mkdir(parents=True)
+    (mem_root / ".maintenance-state.json").write_text(
+        json.dumps(
+            {
+                "codex.memory_to_skill": {
+                    "last_action": "replace",
+                    "last_checked_at": "2026-11-08T01:00:00+00:00",
+                    "last_success_at": "2026-11-08T01:00:00+00:00",
+                },
+                "codex.project_review": {
+                    "last_action": "error",
+                    "last_checked_at": "2026-11-08T02:00:00+00:00",
+                    "last_failed_at": "2026-11-08T02:00:00+00:00",
+                    "last_error": "RuntimeError: newer task failed",
+                },
+                "codex.user_profile": {
+                    "last_action": "error",
+                    "last_checked_at": "2026-11-08T00:30:00+00:00",
+                    "last_failed_at": "2026-11-08T00:30:00+00:00",
+                    "last_error": "RuntimeError: older task failed",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = skills_mod.last_maintenance_status(mem_root)
+
+    assert status["task"] == "codex.project_review"
+    assert status["last_action"] == "error"
+    assert "newer task failed" in status["last_error"]
 
 
 def test_last_maintenance_status_missing_or_broken_state_is_empty(tmp_path: Path) -> None:

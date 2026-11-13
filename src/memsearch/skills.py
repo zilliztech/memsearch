@@ -332,31 +332,45 @@ def candidate_review_summary(mem_root: Path) -> dict[str, Any]:
 
 
 def last_maintenance_status(mem_root: Path) -> dict[str, Any]:
-    """The last maintenance outcome, including a failure and its reason.
+    """The most recent maintenance outcome, including a failure and its reason.
 
-    The state file is the only place a background failure is recorded: the
-    plugin logs a warning the host may never show, so a task that failed
-    silently looked like a task that simply had nothing to do.
+    The state file holds one entry per task, keyed ``<platform>.<task>``; the
+    entry with the latest ``last_checked_at`` wins and its key is reported as
+    ``task``. The state file is the only place a background failure is
+    recorded: the plugin logs a warning the host may never show, so a task
+    that failed silently looked like a task that simply had nothing to do.
     """
     state_path = mem_root / ".maintenance-state.json"
-    entry: dict[str, Any] = {}
     state = None
     if state_path.is_file():
         with contextlib.suppress(json.JSONDecodeError, OSError):
             state = json.loads(state_path.read_text(encoding="utf-8"))
-    for value in (state or {}).values():
-        if isinstance(value, dict):
-            entry = value
-            break
-    if not entry:
+    best_key = ""
+    best_entry: dict[str, Any] = {}
+    best_order = float("-inf")
+    for key, value in (state or {}).items():
+        if not isinstance(value, dict):
+            continue
+        checked = str(value.get("last_checked_at") or "")
+        try:
+            # Timestamps are written by _save_state as UTC ISO-8601; parse so
+            # string quirks cannot reorder them, unparseable sorts oldest.
+            order = datetime.fromisoformat(checked).timestamp() if checked else float("-inf")
+        except ValueError:
+            order = float("-inf")
+        if order > best_order or (order == best_order and key > best_key):
+            best_order = order
+            best_key = str(key)
+            best_entry = value
+    if not best_entry:
         return {}
     return {
-        "task": str(entry.get("task") or ""),
-        "last_action": str(entry.get("last_action") or ""),
-        "last_checked_at": str(entry.get("last_checked_at") or ""),
-        "last_success_at": str(entry.get("last_success_at") or ""),
-        "last_failed_at": str(entry.get("last_failed_at") or ""),
-        "last_error": str(entry.get("last_error") or ""),
+        "task": best_key,
+        "last_action": str(best_entry.get("last_action") or ""),
+        "last_checked_at": str(best_entry.get("last_checked_at") or ""),
+        "last_success_at": str(best_entry.get("last_success_at") or ""),
+        "last_failed_at": str(best_entry.get("last_failed_at") or ""),
+        "last_error": str(best_entry.get("last_error") or ""),
     }
 
 
