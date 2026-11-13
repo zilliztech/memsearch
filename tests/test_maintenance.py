@@ -641,7 +641,7 @@ def _search_ctx(tmp_path: Path) -> tuple[TaskContext, Path]:
 
 
 def test_windows_memory_search_finds_files_by_name(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"find {memory} -type f -name '*.md'", ctx)
@@ -651,7 +651,7 @@ def test_windows_memory_search_finds_files_by_name(tmp_path: Path, monkeypatch) 
 
 
 def test_windows_memory_search_maxdepth_stops_descending(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"find {memory} -type f -maxdepth 1 -name '*.md'", ctx)
@@ -661,7 +661,7 @@ def test_windows_memory_search_maxdepth_stops_descending(tmp_path: Path, monkeyp
 
 
 def test_windows_memory_search_grep_literal_with_line_numbers(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"grep -n redis {memory / '2026-06-01.md'}", ctx)
@@ -671,7 +671,7 @@ def test_windows_memory_search_grep_literal_with_line_numbers(tmp_path: Path, mo
 
 
 def test_windows_memory_search_rejects_regex_pattern(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"grep 'redis.*cache' {memory / '2026-06-01.md'}", ctx)
@@ -681,7 +681,7 @@ def test_windows_memory_search_rejects_regex_pattern(tmp_path: Path, monkeypatch
 
 
 def test_windows_memory_search_rejects_paths_outside_roots(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
     outside = tmp_path / "outside.md"
     outside.write_text("secret redis\n", encoding="utf-8")
@@ -692,7 +692,7 @@ def test_windows_memory_search_rejects_paths_outside_roots(tmp_path: Path, monke
 
 
 def test_windows_memory_search_rejects_colon_operands(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"grep redis {memory / 'we:ird.md'}", ctx)
@@ -701,7 +701,7 @@ def test_windows_memory_search_rejects_colon_operands(tmp_path: Path, monkeypatc
 
 
 def test_windows_memory_search_never_traverses_symlinks(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
     outside = tmp_path / "outside.md"
     outside.write_text("secret redis\n", encoding="utf-8")
@@ -718,7 +718,7 @@ def test_windows_memory_search_never_traverses_symlinks(tmp_path: Path, monkeypa
 
 
 def test_windows_memory_search_output_is_capped(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
     big = memory / "big.md"
     big.write_text("redis line\n" * 3000, encoding="utf-8")
@@ -729,7 +729,7 @@ def test_windows_memory_search_output_is_capped(tmp_path: Path, monkeypatch) -> 
 
 
 def test_run_memory_command_routes_find_and_grep_through_subset_on_windows(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(maintenance.os, "name", "nt")
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
     ctx, memory = _search_ctx(tmp_path)
 
     out = run_memory_command(f"grep -rn redis {memory}", ctx)

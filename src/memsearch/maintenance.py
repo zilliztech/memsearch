@@ -33,6 +33,12 @@ MAX_PROMPT_CHARS = 80_000
 MAX_COMMAND_OUTPUT = 12_000
 MAX_TOOL_CALLS = 3
 
+# Windows gate for the find/grep subset and path-separator-aware splitting.
+# A module constant rather than an inline os.name check: pathlib dispatches on
+# os.name at every Path() call, so tests that patch os.name would break Path
+# itself; patching this constant keeps the platform seam in one place.
+_ON_WINDOWS = os.name == "nt"
+
 
 @dataclass
 class MaintenanceResult:
@@ -491,7 +497,7 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     if re.search(r"[|;&<>`$(){}]", command):
         return "Error: shell metacharacters are not allowed"
     try:
-        if os.name == "nt":
+        if _ON_WINDOWS:
             # POSIX shlex would eat native Windows path separators. Keep its
             # quote handling but disable backslash escapes; no shell is used.
             lexer = shlex.shlex(command, posix=True)
@@ -522,7 +528,7 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
             return checked
         return _run_restricted(argv, ctx.project_dir)
     if executable in {"find", "grep"}:
-        if os.name == "nt":
+        if _ON_WINDOWS:
             return _run_windows_memory_search(argv, ctx.project_dir, allowed_roots)
         checked = _validate_paths_in_args(argv[1:], allowed_roots, cwd=ctx.project_dir, allow_hash=False)
         if checked:
