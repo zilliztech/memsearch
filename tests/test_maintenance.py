@@ -615,3 +615,234 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert run_memory_command(f"find {memory} -name '*.md'", ctx) == "local output"
     assert "encoding" not in calls[-1][1]
     assert "errors" not in calls[-1][1]
+
+
+def _openai_task_context(tmp_path: Path) -> TaskContext:
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    return TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+
+
+def _openai_tool_call(arguments: str = '{"command":"cat /etc/passwd"}') -> SimpleNamespace:
+    return SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="run_memory_command", arguments=arguments),
+    )
+
+
+class _ScriptedCompletions:
+    """create() pops scripted responses and records every call's kwargs."""
+
+    def __init__(self, script: list[SimpleNamespace]) -> None:
+        self.script = script
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.script.pop(0)
+
+
+def _install_fake_openai(monkeypatch, completions: _ScriptedCompletions) -> None:
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=completions)
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+
+def _response(content: str | None, tool_calls=None) -> SimpleNamespace:
+    class FakeMessage(SimpleNamespace):
+        def model_dump(self, exclude_none=True):
+            dumped: dict = {"role": "assistant", "content": self.content}
+            if self.tool_calls:
+                dumped["tool_calls"] = [
+                    {
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments,
+                        },
+                    }
+                    for call in self.tool_calls
+                ]
+            return dumped
+
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=FakeMessage(content=content, tool_calls=tool_calls),
+                finish_reason="stop" if tool_calls is None else "tool_calls",
+            )
+        ]
+    )
+
+
+def test_openai_maintenance_closing_request_still_declares_tools(tmp_path, monkeypatch) -> None:
+    """The closing request keeps its shape: tools declared, tool_choice="none"."""
+    from memsearch import maintenance as maintenance_module
+
+    drill = [_response(None, tool_calls=[_openai_tool_call()])] * maintenance_module.MAX_TOOL_CALLS
+    completions = _ScriptedCompletions([*drill, _response('{"action":"none","reason":"ok"}')])
+    _install_fake_openai(monkeypatch, completions)
+
+    result = maintenance_module._run_openai_with_tools(
+        _openai_task_context(tmp_path),
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    assert len(completions.calls) == maintenance_module.MAX_TOOL_CALLS + 1
+    assert completions.calls[0]["tool_choice"] == "auto"
+    closing = completions.calls[-1]
+    assert closing["tool_choice"] == "none"
+    assert closing["tools"] == completions.calls[0]["tools"]
+
+
+def test_openai_maintenance_retries_without_tools_when_none_returns_tool_call(tmp_path, monkeypatch) -> None:
+    """An endpoint that answers tool_choice="none" with a tool call gets a tool-less retry."""
+    from memsearch import maintenance as maintenance_module
+
+    drill = [_response(None, tool_calls=[_openai_tool_call()])] * maintenance_module.MAX_TOOL_CALLS
+    completions = _ScriptedCompletions(
+        [*drill, _response(None, tool_calls=[_openai_tool_call()]), _response('{"action":"none","reason":"ok"}')]
+    )
+    _install_fake_openai(monkeypatch, completions)
+
+    result = maintenance_module._run_openai_with_tools(
+        _openai_task_context(tmp_path),
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    assert len(completions.calls) == maintenance_module.MAX_TOOL_CALLS + 2
+    assert "tools" in completions.calls[-2]
+    assert "tools" not in completions.calls[-1]
+
+
+def test_openai_maintenance_retries_without_tools_when_closing_request_rejected(tmp_path, monkeypatch) -> None:
+    """An endpoint that rejects tool_choice="none" outright (HTTP 400) also gets the retry."""
+    from memsearch import maintenance as maintenance_module
+
+    class RejectingCompletions(_ScriptedCompletions):
+        def create(self, **kwargs):
+            if kwargs.get("tool_choice") == "none":
+                raise RuntimeError("tool_choice: only auto is supported")
+            return super().create(**kwargs)
+
+    drill = [_response(None, tool_calls=[_openai_tool_call()])] * maintenance_module.MAX_TOOL_CALLS
+    completions = RejectingCompletions([*drill, _response('{"action":"none","reason":"ok"}')])
+    _install_fake_openai(monkeypatch, completions)
+
+    result = maintenance_module._run_openai_with_tools(
+        _openai_task_context(tmp_path),
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    assert len(completions.calls) == maintenance_module.MAX_TOOL_CALLS + 1
+    assert "tools" not in completions.calls[-1]
+
+
+def test_openai_maintenance_raises_when_tool_requested_after_withdrawal(tmp_path, monkeypatch) -> None:
+    from memsearch import maintenance as maintenance_module
+
+    drill = [_response(None, tool_calls=[_openai_tool_call()])] * maintenance_module.MAX_TOOL_CALLS
+    completions = _ScriptedCompletions(
+        [*drill, _response(None, tool_calls=[_openai_tool_call()]), _response(None, tool_calls=[_openai_tool_call()])]
+    )
+    _install_fake_openai(monkeypatch, completions)
+
+    with pytest.raises(RuntimeError, match="does not honour tool_choice=none"):
+        maintenance_module._run_openai_with_tools(
+            _openai_task_context(tmp_path),
+            "prompt",
+            "openai",
+            "gpt-5-mini",
+            LLMProviderConfig(type="openai"),
+        )
+
+
+def test_openai_maintenance_reports_empty_final_answer(tmp_path, monkeypatch) -> None:
+    from memsearch import maintenance as maintenance_module
+
+    completions = _ScriptedCompletions([_response("   ")])
+    _install_fake_openai(monkeypatch, completions)
+
+    with pytest.raises(RuntimeError, match="returned no text"):
+        maintenance_module._run_openai_with_tools(
+            _openai_task_context(tmp_path),
+            "prompt",
+            "openai",
+            "gpt-5-mini",
+            LLMProviderConfig(type="openai"),
+        )
+
+
+def test_openai_maintenance_tolerates_invalid_tool_arguments(tmp_path, monkeypatch) -> None:
+    """Broken tool arguments become a tool-message error, not a crashed drill."""
+    from memsearch import maintenance as maintenance_module
+
+    completions = _ScriptedCompletions(
+        [
+            _response(None, tool_calls=[_openai_tool_call(arguments="not json {")]),
+            _response('{"action":"none","reason":"ok"}'),
+        ]
+    )
+    _install_fake_openai(monkeypatch, completions)
+
+    result = maintenance_module._run_openai_with_tools(
+        _openai_task_context(tmp_path),
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    followup = completions.calls[1]["messages"][-1]
+    assert followup["role"] == "tool"
+    assert "invalid memory tool arguments" in followup["content"]
+
+
+def test_openai_maintenance_rejects_non_object_tool_arguments(tmp_path, monkeypatch) -> None:
+    from memsearch import maintenance as maintenance_module
+
+    completions = _ScriptedCompletions(
+        [
+            _response(None, tool_calls=[_openai_tool_call(arguments='[1, 2]')]),
+            _response('{"action":"none","reason":"ok"}'),
+        ]
+    )
+    _install_fake_openai(monkeypatch, completions)
+
+    result = maintenance_module._run_openai_with_tools(
+        _openai_task_context(tmp_path),
+        "prompt",
+        "openai",
+        "gpt-5-mini",
+        LLMProviderConfig(type="openai"),
+    )
+
+    assert result == '{"action":"none","reason":"ok"}'
+    followup = completions.calls[1]["messages"][-1]
+    assert "must be a JSON object" in followup["content"]

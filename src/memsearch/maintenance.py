@@ -352,7 +352,7 @@ def _run_openai_with_tools(
     tools = [_openai_memory_tool_schema()]
     chosen_model = model or "gpt-5-mini"
     tool_call_count = 0
-    for _ in range(MAX_TOOL_CALLS):
+    while tool_call_count < MAX_TOOL_CALLS:
         resp = client.chat.completions.create(
             model=chosen_model,
             messages=messages,
@@ -362,13 +362,20 @@ def _run_openai_with_tools(
         msg = resp.choices[0].message
         tool_calls = msg.tool_calls or []
         if not tool_calls:
-            return msg.content or ""
+            return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
         messages.append(msg.model_dump(exclude_none=True))
         for call in tool_calls:
             if tool_call_count < MAX_TOOL_CALLS:
-                args = json.loads(call.function.arguments or "{}")
-                output = run_memory_command(str(args.get("command", "")), ctx)
                 tool_call_count += 1
+                try:
+                    args = json.loads(call.function.arguments or "{}")
+                except (json.JSONDecodeError, TypeError) as exc:
+                    output = f"Error: invalid memory tool arguments: {exc}"
+                else:
+                    if not isinstance(args, dict):
+                        output = "Error: memory tool arguments must be a JSON object"
+                    else:
+                        output = run_memory_command(str(args.get("command", "")), ctx)
             else:
                 output = "Error: memory tool call limit reached"
             messages.append(
@@ -378,13 +385,56 @@ def _run_openai_with_tools(
                     "content": output,
                 }
             )
+    # The closing request keeps the tools and asks for none of them, which is
+    # the OpenAI way to say "answer now". Some endpoints do not implement that
+    # choice: Z.AI (Zhipu GLM) documents tool_choice as "only auto" and
+    # rejects every other value. A gateway in front of such an endpoint either
+    # rejects the request outright or answers with tool calls anyway. When
+    # either happens, the same intent is expressed by declaring no tools at
+    # all, which every endpoint understands. The tools stay available for the
+    # whole drill, so only this last answer loses them.
+    closing_failure: str | None = None
+    try:
+        resp = client.chat.completions.create(
+            model=chosen_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="none",
+        )
+        msg = resp.choices[0].message
+        if not msg.tool_calls:
+            return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
+        closing_failure = "the endpoint answered tool_choice=none with a tool call"
+    except Exception as exc:  # noqa: BLE001 - the tool-less retry below is the remedy
+        closing_failure = f"the closing request failed: {type(exc).__name__}: {exc}"
     resp = client.chat.completions.create(
         model=chosen_model,
         messages=messages,
-        tools=tools,
-        tool_choice="none",
     )
-    return resp.choices[0].message.content or ""
+    msg = resp.choices[0].message
+    if msg.tool_calls:
+        raise RuntimeError(
+            "memory distillation final request asked for a tool even after the "
+            f"tools were withdrawn ({closing_failure}); the endpoint does not "
+            "honour tool_choice=none"
+        )
+    return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
+
+
+def _answer_text(msg: Any, finish_reason: Any) -> str:
+    """The assistant text of a reply, or an error naming why there is none.
+
+    An empty answer is reported with the reply's own diagnostics: the caller
+    of a distillation task needs to tell "the model said nothing" apart from
+    "the model answered with something unusable".
+    """
+    content = msg.content or ""
+    if content.strip():
+        return content
+    raise RuntimeError(
+        "memory distillation final request returned no text; "
+        f"tool_calls={len(msg.tool_calls or [])}, finish_reason={finish_reason!r}"
+    )
 
 
 def _openai_memory_tool_schema() -> dict[str, Any]:
