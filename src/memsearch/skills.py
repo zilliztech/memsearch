@@ -17,6 +17,7 @@ journals and the semantic ``PROJECT.md`` / ``USER.md`` files.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -326,6 +327,36 @@ def candidate_review_summary(mem_root: Path) -> dict[str, Any]:
         "new_count": new_count,
         "updated_count": updated_count,
         "pending_names": [str(meta.get("name", "")) for meta in pending if meta.get("name")],
+        "last_maintenance": last_maintenance_status(mem_root),
+    }
+
+
+def last_maintenance_status(mem_root: Path) -> dict[str, Any]:
+    """The last maintenance outcome, including a failure and its reason.
+
+    The state file is the only place a background failure is recorded: the
+    plugin logs a warning the host may never show, so a task that failed
+    silently looked like a task that simply had nothing to do.
+    """
+    state_path = mem_root / ".maintenance-state.json"
+    entry: dict[str, Any] = {}
+    state = None
+    if state_path.is_file():
+        with contextlib.suppress(json.JSONDecodeError, OSError):
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+    for key, value in (state or {}).items():
+        if isinstance(value, dict):
+            entry = value
+            break
+    if not entry:
+        return {}
+    return {
+        "task": str(entry.get("task") or ""),
+        "last_action": str(entry.get("last_action") or ""),
+        "last_checked_at": str(entry.get("last_checked_at") or ""),
+        "last_success_at": str(entry.get("last_success_at") or ""),
+        "last_failed_at": str(entry.get("last_failed_at") or ""),
+        "last_error": str(entry.get("last_error") or ""),
     }
 
 
