@@ -201,6 +201,140 @@ def test_count_keeps_metadata_semantics(store: MilvusStore, monkeypatch: pytest.
     aggregate.assert_not_called()
 
 
+class _FakeQueryIterator:
+    """Serves queued batches from next(), then an empty batch, like pymilvus."""
+
+    def __init__(self, batches: list[list[dict]]):
+        self._batches = list(batches)
+        self.closed = False
+
+    def next(self) -> list[dict]:
+        return self._batches.pop(0) if self._batches else []
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _PageOnlyClient:
+    """A client with no query_iterator, serving rows through query(offset, limit)."""
+
+    def __init__(self, rows: list[dict]):
+        self._rows = rows
+        self.offsets: list[int] = []
+
+    def query(self, **kwargs):
+        offset = kwargs["offset"]
+        self.offsets.append(offset)
+        return self._rows[offset : offset + kwargs["limit"]]
+
+
+def test_indexed_sources_aggregates_query_iterator_batches(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    """Sources are gathered from every iterator batch, never from one unpaginated query (#750).
+
+    A single query returns one row per chunk, so on a large collection the
+    response crosses pymilvus's 4 MiB gRPC receive limit, and Milvus Lite
+    silently truncates it at 16,383 rows — dropping sources from cleanup.
+    """
+    iterator = _FakeQueryIterator(
+        [
+            [{"source": f"docs/{i}.md"} for i in range(2)],
+            [{"source": "docs/0.md"}, {"source": "notes/3.md"}],
+        ]
+    )
+    iterator_factory = Mock(return_value=iterator)
+    unpaginated = Mock(side_effect=AssertionError("indexed_sources must not issue one unpaginated query"))
+    monkeypatch.setattr(store._client, "query_iterator", iterator_factory)
+    monkeypatch.setattr(store._client, "query", unpaginated)
+
+    sources = store.indexed_sources()
+
+    assert sources == {"docs/0.md", "docs/1.md", "notes/3.md"}
+    iterator_factory.assert_called_once_with(
+        collection_name=store._collection,
+        batch_size=store._QUERY_PAGE_SIZE,
+        filter='chunk_hash != ""',
+        output_fields=["source"],
+    )
+    assert iterator.closed
+    unpaginated.assert_not_called()
+
+
+def test_hashes_by_source_aggregates_query_iterator_batches(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    """Per-file hash lookups page too, or files with 16k+ chunks lose stale chunks (#750)."""
+    iterator = _FakeQueryIterator(
+        [
+            [{"chunk_hash": "h0"}],
+            [{"chunk_hash": "h1"}, {"chunk_hash": "h2"}],
+        ]
+    )
+    iterator_factory = Mock(return_value=iterator)
+    monkeypatch.setattr(store._client, "query_iterator", iterator_factory)
+
+    hashes = store.hashes_by_source("a.md")
+
+    assert hashes == {"h0", "h1", "h2"}
+    iterator_factory.assert_called_once_with(
+        collection_name=store._collection,
+        batch_size=store._QUERY_PAGE_SIZE,
+        filter='source == "a.md"',
+        output_fields=["chunk_hash"],
+    )
+    assert iterator.closed
+
+
+@pytest.mark.parametrize("total_rows", [2_000, 2_500])
+def test_indexed_sources_pages_by_offset_when_iterator_is_unavailable(
+    store: MilvusStore, monkeypatch: pytest.MonkeyPatch, total_rows: int
+):
+    """A client without query_iterator still reaches every source via offset paging (#750).
+
+    2,000 rows terminate on an empty page, 2,500 on a short page — both must
+    aggregate every row instead of just the first response.
+    """
+    client = _PageOnlyClient([{"source": f"docs/{i}.md"} for i in range(total_rows)])
+    monkeypatch.setattr(store, "_client", client)
+
+    sources = store.indexed_sources()
+
+    assert len(sources) == total_rows
+    assert client.offsets == [0, store._QUERY_PAGE_SIZE, 2 * store._QUERY_PAGE_SIZE]
+
+
+def test_indexed_sources_falls_back_when_iterator_creation_fails(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    """A backend that rejects query_iterator degrades to offset paging instead of failing (#750)."""
+    client = _PageOnlyClient([{"source": f"docs/{i}.md"} for i in range(1_200)])
+    monkeypatch.setattr(store, "_client", client)
+    monkeypatch.setattr(
+        client,
+        "query_iterator",
+        Mock(side_effect=RuntimeError("iterator not supported")),
+        raising=False,
+    )
+
+    sources = store.indexed_sources()
+
+    assert len(sources) == 1_200
+    assert client.offsets == [0, store._QUERY_PAGE_SIZE]
+
+
+def test_indexed_sources_propagates_iterator_failure_mid_stream(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    """A batch failure after iteration started must surface, not pass off partial rows (#750)."""
+    monkeypatch.setattr(
+        store._client,
+        "query_iterator",
+        Mock(return_value=_FakeQueryIterator([])),
+    )
+    iterator = store._client.query_iterator.return_value
+    monkeypatch.setattr(
+        iterator,
+        "next",
+        Mock(side_effect=[[{"source": "docs/0.md"}], RuntimeError("iterator failed on batch 2")]),
+    )
+
+    with pytest.raises(RuntimeError, match="iterator failed on batch 2"):
+        store.indexed_sources()
+
+
 def test_delete_by_source(store: MilvusStore):
     chunks = [
         {

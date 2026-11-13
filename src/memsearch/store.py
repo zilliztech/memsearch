@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.metadata
 import logging
 import operator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -350,26 +351,65 @@ class MilvusStore:
         }
         return self._connected_client().query(**kwargs)
 
+    _QUERY_PAGE_SIZE: ClassVar[int] = 1_000
+
+    def _paged_query(self, *, filter_expr: str, output_fields: list[str]) -> Iterator[dict[str, Any]]:
+        """Yield query rows in bounded batches instead of one unpaginated response.
+
+        One row is returned per matching chunk, so a single query response grows
+        with the whole collection and crosses pymilvus's default 4 MiB gRPC
+        receive limit on large indexes (#750); Milvus Lite does not even raise —
+        it silently truncates at 16,383 rows. ``query_iterator`` keeps each
+        response to one batch. Backends that cannot serve it fall back to
+        offset/limit paging, which Milvus rejects with an error once
+        ``offset + limit`` exceeds 16,384 — a loud failure is preferred there
+        over silently dropping rows.
+        """
+        client = self._connected_client()
+        base: dict[str, Any] = {
+            "collection_name": self._collection,
+            "filter": filter_expr,
+            "output_fields": output_fields,
+        }
+        try:
+            iterator = client.query_iterator(batch_size=self._QUERY_PAGE_SIZE, **base)
+        except Exception as exc:
+            logger.warning(
+                "query_iterator unavailable (%s: %s); paging query results with offset/limit",
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            try:
+                while True:
+                    batch = iterator.next()
+                    if not batch:
+                        return
+                    yield from batch
+            finally:
+                iterator.close()
+            return
+
+        offset = 0
+        while True:
+            page = client.query(offset=offset, limit=self._QUERY_PAGE_SIZE, **base)
+            yield from page
+            if len(page) < self._QUERY_PAGE_SIZE:
+                return
+            offset += len(page)
+
     def hashes_by_source(self, source: str) -> set[str]:
         """Return all chunk_hash values for a given source file."""
         self._require_collection()
         escaped = _escape_filter_value(source)
-        results = self._connected_client().query(
-            collection_name=self._collection,
-            filter=f'source == "{escaped}"',
-            output_fields=["chunk_hash"],
-        )
-        return {r["chunk_hash"] for r in results}
+        rows = self._paged_query(filter_expr=f'source == "{escaped}"', output_fields=["chunk_hash"])
+        return {r["chunk_hash"] for r in rows}
 
     def indexed_sources(self) -> set[str]:
         """Return all distinct source values in the collection."""
         self._require_collection()
-        results = self._connected_client().query(
-            collection_name=self._collection,
-            filter='chunk_hash != ""',
-            output_fields=["source"],
-        )
-        return {r["source"] for r in results}
+        rows = self._paged_query(filter_expr='chunk_hash != ""', output_fields=["source"])
+        return {r["source"] for r in rows}
 
     def delete_by_source(self, source: str) -> None:
         """Delete all chunks from a given source file."""
