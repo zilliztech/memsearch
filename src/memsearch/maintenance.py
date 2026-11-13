@@ -405,7 +405,9 @@ def _run_openai_with_tools(
         if not msg.tool_calls:
             return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
         closing_failure = "the endpoint answered tool_choice=none with a tool call"
-    except Exception as exc:  # noqa: BLE001 - the tool-less retry below is the remedy
+    # Any rejection (HTTP 400 included) counts as the gateway refusing the
+    # closing shape; the tool-less retry below is the remedy.
+    except Exception as exc:
         closing_failure = f"the closing request failed: {type(exc).__name__}: {exc}"
     resp = client.chat.completions.create(
         model=chosen_model,

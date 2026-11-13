@@ -829,7 +829,7 @@ def test_openai_maintenance_rejects_non_object_tool_arguments(tmp_path, monkeypa
 
     completions = _ScriptedCompletions(
         [
-            _response(None, tool_calls=[_openai_tool_call(arguments='[1, 2]')]),
+            _response(None, tool_calls=[_openai_tool_call(arguments="[1, 2]")]),
             _response('{"action":"none","reason":"ok"}'),
         ]
     )
