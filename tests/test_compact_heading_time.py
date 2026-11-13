@@ -27,6 +27,7 @@ def make_memsearch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, clock: list[
     ms = MemSearch.__new__(MemSearch)
     ms._paths = [str(tmp_path)]
     ms._store = FakeStore()
+    ms._embedder_instance = object()  # compact() loads the provider before the LLM call
 
     async def fake_compact_chunks(*_args: Any, **_kwargs: Any) -> str:
         return "- a summary line"
