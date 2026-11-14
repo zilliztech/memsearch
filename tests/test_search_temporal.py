@@ -292,9 +292,11 @@ def test_cli_bad_since_is_a_usage_error_not_a_traceback(tmp_path, monkeypatch) -
     assert "Traceback" not in (result.output + getattr(result, "stderr", ""))
 
 
-def test_cli_no_window_leaves_core_defaults(tmp_path, monkeypatch) -> None:
+def test_cli_no_window_leaves_call_shape_unchanged(tmp_path, monkeypatch) -> None:
+    """Without a window the search call carries no window kwargs at all —
+    consumers that stub search with the old fixed signature keep working."""
     result = _run_cli(monkeypatch, ["search", "q"])
     assert result.exit_code == 0, result.output
     ms = _RecordingMemSearch.instances[0]
-    assert ms.search_args["since"] is None
-    assert ms.search_args["until"] is None
+    assert "since" not in ms.search_args
+    assert "until" not in ms.search_args

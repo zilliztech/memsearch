@@ -398,7 +398,8 @@ def search(
     ms = None
     try:
         ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
-        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, since=since, until=until))
+        window_kwargs = {"since": since, "until": until} if (since or until) else {}
+        results = _run(ms.search(query, top_k=top_k or 5, source_prefix=source_prefix, **window_kwargs))
         if json_output:
             click.echo(json.dumps(results, indent=2, ensure_ascii=False))
         else:
