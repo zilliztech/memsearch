@@ -68,7 +68,7 @@ The SessionStart hook handles several Codex-specific concerns:
 3. **Config setup** -- defaults to `onnx` provider if no config file exists (no API key needed).
 
 4. **Watch vs. one-time index** -- detects the Milvus backend:
-    - **Server mode** (`http://` or `tcp://` URI): starts `memsearch watch` as a persistent background process via `setsid`
+    - **Server mode** (`http://` or `tcp://` URI): starts `memsearch watch` as a persistent background process via `setsid`; the watcher holds a filesystem ownership lock so duplicate starts exit without process inspection
     - **Lite mode** (local `.db` file): runs a one-time `memsearch index` in a background subshell (watch would fail due to Milvus Lite's file lock)
 
 5. **Cold-start injection** -- injects memory file count and date range as `additionalContext`, with a hint to use `$memory-recall`.
