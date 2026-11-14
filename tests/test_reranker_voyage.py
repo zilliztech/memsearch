@@ -245,6 +245,9 @@ class _FakeStore:
     def __init__(self) -> None:
         self.requested_top_k: int | None = None
 
+    def _require_collection(self) -> None:
+        pass
+
     def search(self, embedding, *, query_text, top_k, filter_expr):
         self.requested_top_k = top_k
         return _results(top_k)
