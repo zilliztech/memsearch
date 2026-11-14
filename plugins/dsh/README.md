@@ -1,5 +1,7 @@
 # @zilliz/memsearch-dsh
 
+English | [中文](README.zh.md)
+
 MemSearch plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH).
 It gives DSH persistent, cross-agent memory on the same `.memsearch/memory/`
 markdown store used by the Claude Code, Codex, OpenClaw, and OpenCode plugins,
