@@ -100,6 +100,14 @@ class RerankerConfig:
 
 
 @dataclass
+class LLMAuditConfig:
+    """Background LLM call audit settings ([llm_audit] section)."""
+
+    enabled: bool = True
+    retention_days: int = 90
+
+
+@dataclass
 class LLMConfig:
     """LLM settings for memsearch-managed summarization jobs.
 
@@ -218,6 +226,7 @@ class MemSearchConfig:
     watch: WatchConfig = field(default_factory=WatchConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    llm_audit: LLMAuditConfig = field(default_factory=LLMAuditConfig)
     prompts: PromptsConfig = field(default_factory=PromptsConfig)
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
 
@@ -232,6 +241,7 @@ _SECTION_CLASSES: dict[str, type] = {
     "watch": WatchConfig,
     "reranker": RerankerConfig,
     "llm": LLMConfig,
+    "llm_audit": LLMAuditConfig,
     "prompts": PromptsConfig,
     "plugins": PluginsConfig,
 }
