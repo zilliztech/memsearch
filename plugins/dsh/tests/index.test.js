@@ -1598,5 +1598,5 @@ test('recall hint: short questions get the plain hint without a suggestion', asy
     const hint = result.messages[1]
     assert.match(hint.content[0].text, /Recall available if needed/)
     assert.doesNotMatch(hint.content[0].text, /Suggested first query/)
-  }, false, '', {}, { question: 'continue now please' })
+  }, false, '', {}, { question: 'opt 2' })
 })
