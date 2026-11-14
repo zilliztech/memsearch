@@ -57,6 +57,8 @@ export const inject = ['agents', 'skills', 'sessionPersistence']
 
 const DEFAULT_AGENT_NAME = 'DeepSeek Harness'
 const RECALL_HINT = '[memsearch] Recall available if needed. Use the memory-recall skill when the question could benefit from past sessions, decisions, or work in this project.'
+const SUGGEST_MIN_CHARS = 16
+const SUGGEST_MAX_CHARS = 160
 const SUMMARIZE_TIMEOUT_MS = 30000
 const CAPTURE_MAX_CHARS = 6000
 const DAILY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/
@@ -1184,6 +1186,44 @@ function registerMemoryToSkillSkill(ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Recall hint: query suggestion (the recallContextTurns idea, one turn)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a ready-to-use memory-recall query from the triggering user message,
+ * so the agent does not have to re-derive one. Empty when the prompt is too
+ * short to be a meaningful query, or when there is no user message.
+ * @param messages - the decision's message list (last user message wins).
+ */
+export function suggestedQueryFrom(messages, { minChars = SUGGEST_MIN_CHARS, maxChars = SUGGEST_MAX_CHARS } = {}) {
+  const lastUser = [...(Array.isArray(messages) ? messages : [])]
+    .reverse()
+    .find((message) => message?.role === 'user')
+  if (!lastUser) return ''
+  const content = Array.isArray(lastUser.content)
+    ? lastUser.content.map((part) => (typeof part === 'string' ? part : part?.text || '')).join(' ')
+    : typeof lastUser.content === 'string'
+      ? lastUser.content
+      : ''
+  let text = content.replace(/\s+/g, ' ').trim()
+  if (text.length < minChars) return ''
+  if (text.length > maxChars) text = `${text.slice(0, maxChars).trimEnd()}…`
+  // Quote-likes and braces would break the quoted hint format; neutralize them.
+  text = text.replace(/["`{}]/g, "'")
+  return text
+}
+
+/**
+ * The pre-step hint text: the base reminder, plus a suggested first query
+ * when the triggering prompt is meaty enough to be one.
+ * @param decision - the pre-step decision carrying this turn's messages.
+ */
+export function recallHintFor(decision) {
+  const suggested = suggestedQueryFrom(decision?.messages)
+  return suggested ? `${RECALL_HINT} Suggested first query: "${suggested}"` : RECALL_HINT
+}
+
+// ---------------------------------------------------------------------------
 // Plugin entry
 // ---------------------------------------------------------------------------
 
@@ -1275,7 +1315,7 @@ export function apply(ctx, config = {}) {
       const memoryDir = memoryDirFor(projectDirFor(agent.session))
       if (!hasMemoryFiles(memoryDir)) return decision
 
-      const memoryMessage = await createMemoryMessage(ctx, RECALL_HINT)
+      const memoryMessage = await createMemoryMessage(ctx, recallHintFor(decision))
       return {
         ...decision,
         messages: [...decision.messages, memoryMessage],
