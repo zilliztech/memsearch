@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Callable, Iterator
 from datetime import datetime
@@ -179,8 +180,17 @@ class MemSearch:
         chunk_ids = {compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) for c in chunks}
         old_ids = self._store.hashes_by_source(source)
 
-        # Delete stale chunks that are no longer in the file
+        # Chunks no longer present in the file. IDs embed line numbers, so
+        # text inserted above a chunk marks that chunk stale too (#786).
         stale = old_ids - chunk_ids
+
+        # Read stale rows before deleting them: a stale chunk whose text is
+        # unchanged carries an embedding its line-shifted successor can adopt.
+        reusable: dict[str, list[float]] = {}
+        if stale and not force and chunks:
+            reusable = _reusable_embeddings(self._store.rows_by_hashes(list(stale)), model)
+
+        # Delete stale chunks that are no longer in the file
         if stale:
             self._store.delete_by_hashes(list(stale))
 
@@ -189,13 +199,25 @@ class MemSearch:
 
         if not force:
             # Only embed chunks whose ID doesn't already exist
-            chunks = [
+            new_chunks = [
                 c
                 for c in chunks
                 if compute_chunk_id(c.source, c.start_line, c.end_line, c.content_hash, model) not in old_ids
             ]
-            if not chunks:
-                return 0
+
+            # Rewriting shifted-but-unchanged chunks with their stored
+            # embeddings avoids re-embedding identical text (#786).
+            shifted = [c for c in new_chunks if c.content_hash in reusable]
+            if shifted:
+                embeddings = [reusable[c.content_hash] for c in shifted]
+                self._store.upsert(_records_for_chunks(shifted, embeddings, model))
+                logger.info("Reused %d stored embeddings for line-shifted chunks in %s", len(shifted), source)
+                new_chunks = [c for c in new_chunks if c.content_hash not in reusable]
+
+            if not new_chunks:
+                return len(shifted)
+
+            return await self._embed_and_store(new_chunks) + len(shifted)
 
         return await self._embed_and_store(chunks)
 
@@ -483,6 +505,34 @@ def _source_under_any_root(source: str, roots: list[Path]) -> bool:
             continue
         return True
     return False
+
+
+def _reusable_embeddings(rows: list[dict[str, Any]], model: str) -> dict[str, list[float]]:
+    """Map content hash -> stored embedding for rows whose vector can be reused.
+
+    A row qualifies only when its ID still recomputes from its own stored
+    fields under the current embedding model — proof the row was embedded by
+    that model, so a model change still forces a full re-embed. Keying by
+    content hash lets a chunk whose line numbers shifted adopt the embedding
+    of its unchanged text (#786).
+    """
+    reusable: dict[str, list[float]] = {}
+    for row in rows:
+        content = row.get("content")
+        embedding = row.get("embedding")
+        if not isinstance(content, str) or not isinstance(embedding, list):
+            continue
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+        if compute_chunk_id(
+            row.get("source", ""),
+            row.get("start_line", 0),
+            row.get("end_line", 0),
+            content_hash,
+            model,
+        ) != row.get("chunk_hash"):
+            continue
+        reusable.setdefault(content_hash, embedding)
+    return reusable
 
 
 def _records_for_chunks(chunks: list[Chunk], embeddings: list[list[float]], model: str) -> list[dict[str, Any]]:
