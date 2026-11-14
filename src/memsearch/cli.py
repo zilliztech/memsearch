@@ -420,6 +420,99 @@ def search(
 
 
 # ======================================================================
+# Synthesize command (reflect layer)
+#
+# search returns ranked chunks; synthesize adds a conclusion step: the top-K
+# chunks for a question go to a memsearch-managed LLM, and the answer is
+# grounded in the memories. Empty retrieval short-circuits without any LLM
+# call, so an empty memory base can never produce a hallucinated answer.
+# ======================================================================
+
+
+@cli.command()
+@click.argument("question")
+@click.option("--top-k", "-k", default=8, type=int, help="Number of memory chunks to ground the answer in.")
+@click.option("--max-context-chars", default=None, type=int, help="Character budget for the retrieved context.")
+@click.option("--since", default=None, help="Restrict grounding chunks to journals dated YYYY-MM-DD or later.")
+@click.option("--until", default=None, help="Restrict grounding chunks to journals dated YYYY-MM-DD or earlier.")
+@click.option(
+    "--llm-provider", default="openai", help="LLM backend for the answer (openai/openai-compatible/anthropic/gemini)."
+)
+@click.option("--llm-model", default=None, help="Override the LLM model.")
+@click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM.")
+@click.option("--llm-api-key", default=None, help="API key for the LLM (supports env:VAR_NAME).")
+@_common_options
+def synthesize(
+    question: str,
+    top_k: int,
+    max_context_chars: int | None,
+    since: str | None,
+    until: str | None,
+    llm_provider: str,
+    llm_model: str | None,
+    llm_base_url: str | None,
+    llm_api_key: str | None,
+    provider: str | None,
+    model: str | None,
+    batch_size: int | None,
+    base_url: str | None,
+    api_key: str | None,
+    collection: str | None,
+    default_collection: str | None,
+    milvus_uri: str | None,
+    milvus_token: str | None,
+) -> None:
+    """Answer QUESTION from the top-K memories, via a managed LLM."""
+    from .core import MemSearch
+    from .synthesize import synthesize as _synthesize
+
+    cfg = _safe_resolve_config(
+        _build_cli_overrides(
+            provider=provider,
+            model=model,
+            batch_size=batch_size,
+            base_url=base_url,
+            api_key=api_key,
+            collection=collection,
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+        ),
+        default_overrides=_build_cli_overrides(collection=default_collection),
+    )
+    ms = None
+    try:
+        ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
+        result = _run(
+            _synthesize(
+                ms,
+                question,
+                top_k=top_k,
+                max_context_chars=max_context_chars or 16000,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                llm_base_url=llm_base_url,
+                llm_api_key=llm_api_key,
+                since=since,
+                until=until,
+            )
+        )
+        click.echo(result)
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
+    except MilvusException as e:
+        click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
+        raise SystemExit(1) from None
+    except ValueError as e:
+        # Bad arguments (top_k, unknown provider) are usage errors.
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(2) from None
+    finally:
+        if ms is not None:
+            ms.close()
+
+
+# ======================================================================
 # Expand command (progressive disclosure L2)
 #
 # Shows the full heading section around a chunk, used by the Claude Code
