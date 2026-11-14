@@ -35,6 +35,29 @@ before it is merged. It can only set low-risk local indexing keys:
 endpoints, API keys, prompt files, and `plugins.*` automation in global config
 or pass them as explicit CLI flags.
 
+## Captured-memory quality filter
+
+Supporting capture plugins can score a pending journal section before writing it.
+The scorer is deterministic (no model call) and uses configured length, repetition,
+meta-memory, and near-duplicate penalties. It is **fail-open**: an unavailable or
+malformed integration verdict must preserve the existing capture behaviour.
+
+Keep this trusted automation policy in `~/.memsearch/config.toml`, not a project
+`.memsearch.toml`:
+
+```toml
+[quality_filter]
+enabled = true
+min_content_length = 40
+degrade_threshold = 60
+reject_threshold = 30
+```
+
+A score at or above `degrade_threshold` writes normally; one at or above
+`reject_threshold` is a degraded write; lower scores are rejected by the
+integration. `memsearch quality --json-output` reads a candidate from stdin and
+returns the deterministic verdict without changing a journal or index.
+
 ## Quick Setup
 
 ```bash
