@@ -73,7 +73,6 @@ class MemSearch:
         ignore_files: list[str] | None = None,
         exclude: list[str] | None = None,
         reranker_model: str = "",
-        reranker_provider: str = "",
     ) -> None:
         self._paths = [str(p) for p in (paths or [])]
         self._max_chunk_size = max_chunk_size
@@ -96,10 +95,6 @@ class MemSearch:
             _create_if_missing=False,
         )
         self._reranker_model = reranker_model
-        self._reranker_provider = reranker_provider
-        # A provider alone is enough to enable reranking; the backend supplies
-        # its own default model when none is configured.
-        self._rerank_enabled = bool(reranker_model or reranker_provider)
 
     # ------------------------------------------------------------------
     # Indexing
@@ -257,21 +252,15 @@ class MemSearch:
             filter_expr = f'source like "{escaped}%"'
 
         embeddings = await self._embedder.embed([query])
-        fetch_k = top_k * 3 if self._rerank_enabled else top_k
+        fetch_k = top_k * 3 if self._reranker_model else top_k
         results = self._store.search(embeddings[0], query_text=query, top_k=fetch_k, filter_expr=filter_expr)
-        if self._rerank_enabled and results:
+        if self._reranker_model and results:
             from .reranker import rerank
 
-            if self._reranker_model.startswith("jev:"):
+            if self._reranker_model.startswith(("jev:", "voyage:")):
                 results = await asyncio.to_thread(rerank, query, results, model_name=self._reranker_model, top_k=top_k)
             else:
-                results = rerank(
-                    query,
-                    results,
-                    model_name=self._reranker_model,
-                    top_k=top_k,
-                    provider=self._reranker_provider,
-                )
+                results = rerank(query, results, model_name=self._reranker_model, top_k=top_k)
         return results
 
     # ------------------------------------------------------------------

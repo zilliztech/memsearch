@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 import types
 
 import pytest
@@ -21,6 +22,7 @@ def _install_fake_voyageai(monkeypatch, *, record: dict, order: list[int]):
             record["documents"] = documents
             record["model"] = model
             record["top_k"] = top_k
+            record["thread"] = threading.current_thread()
             selected = order if top_k is None else order[:top_k]
             return types.SimpleNamespace(
                 results=[
@@ -38,11 +40,11 @@ def _results(n: int = 3) -> list[dict]:
     return [{"content": f"chunk {i}", "source": f"/tmp/{i}.md"} for i in range(n)]
 
 
-def test_voyage_provider_reranks_via_the_api(monkeypatch):
+def test_voyage_prefix_reranks_via_the_api(monkeypatch):
     record: dict = {}
     _install_fake_voyageai(monkeypatch, record=record, order=[2, 0, 1])
 
-    out = reranker.rerank("why did it fail", _results(), model_name="rerank-3", provider="voyage")
+    out = reranker.rerank("why did it fail", _results(), model_name="voyage:rerank-3")
 
     assert record["model"] == "rerank-3"
     assert record["query"] == "why did it fail"
@@ -53,58 +55,38 @@ def test_voyage_provider_reranks_via_the_api(monkeypatch):
     assert out[0]["score"] > out[1]["score"] > out[2]["score"]
 
 
-def test_voyage_provider_falls_back_to_default_model(monkeypatch):
-    record: dict = {}
-    _install_fake_voyageai(monkeypatch, record=record, order=[0, 1, 2])
-
-    reranker.rerank("q", _results(), model_name="", provider="voyage")
-
-    assert record["model"] == reranker.DEFAULT_VOYAGE_RERANKER
-
-
-def test_voyage_provider_passes_top_k_through(monkeypatch):
+def test_voyage_passes_top_k_through(monkeypatch):
     record: dict = {}
     _install_fake_voyageai(monkeypatch, record=record, order=[2, 0, 1])
 
-    out = reranker.rerank("q", _results(), model_name="rerank-3", top_k=2, provider="voyage")
+    out = reranker.rerank("q", _results(), model_name="voyage:rerank-3", top_k=2)
 
     assert record["top_k"] == 2
     assert [r["content"] for r in out] == ["chunk 2", "chunk 0"]
 
 
-def test_voyage_provider_top_k_zero_requests_all(monkeypatch):
+def test_voyage_top_k_zero_requests_all(monkeypatch):
     record: dict = {}
     _install_fake_voyageai(monkeypatch, record=record, order=[1, 0, 2])
 
-    out = reranker.rerank("q", _results(), model_name="rerank-3", top_k=0, provider="voyage")
+    out = reranker.rerank("q", _results(), model_name="voyage:rerank-3", top_k=0)
 
     assert record["top_k"] is None
     assert len(out) == 3
 
 
-def test_voyage_provider_skips_when_voyageai_is_not_installed(monkeypatch):
+def test_voyage_skips_when_voyageai_is_not_installed(monkeypatch):
     # A None entry in sys.modules makes `import voyageai` raise ImportError.
     monkeypatch.setitem(sys.modules, "voyageai", None)
     monkeypatch.setattr(reranker, "_voyage_client", None)
     original = _results()
 
-    out = reranker.rerank("q", original, model_name="rerank-3", provider="voyage")
+    out = reranker.rerank("q", original, model_name="voyage:rerank-3")
 
     assert out == original
 
 
-def test_unknown_provider_skips_reranking(monkeypatch):
-    record: dict = {}
-    _install_fake_voyageai(monkeypatch, record=record, order=[2, 1, 0])
-    original = _results()
-
-    out = reranker.rerank("q", original, model_name="rerank-3", provider="nope")
-
-    assert out == original
-    assert record == {}, "an unknown provider must not reach any backend"
-
-
-def test_local_provider_does_not_reach_voyage(monkeypatch):
+def test_local_model_does_not_reach_voyage(monkeypatch):
     record: dict = {}
     _install_fake_voyageai(monkeypatch, record=record, order=[2, 1, 0])
     monkeypatch.setattr(reranker, "_detect_backend", lambda: "none")
@@ -112,7 +94,7 @@ def test_local_provider_does_not_reach_voyage(monkeypatch):
 
     out = reranker.rerank("q", original, model_name=reranker.DEFAULT_RERANKER)
 
-    assert record == {}, "the default local provider must not call the Voyage API"
+    assert record == {}, "a local model id must not call the Voyage API"
     assert out == original
 
 
@@ -120,7 +102,7 @@ def test_empty_results_short_circuit(monkeypatch):
     record: dict = {}
     _install_fake_voyageai(monkeypatch, record=record, order=[])
 
-    assert reranker.rerank("q", [], model_name="rerank-3", provider="voyage") == []
+    assert reranker.rerank("q", [], model_name="voyage:rerank-3") == []
     assert record == {}
 
 
@@ -170,13 +152,7 @@ def test_missing_voyageai_still_honours_top_k(monkeypatch):
     monkeypatch.setitem(sys.modules, "voyageai", None)
     monkeypatch.setattr(reranker, "_voyage_client", None)
 
-    out = reranker.rerank("q", _results(9), model_name="rerank-3", top_k=3, provider="voyage")
-
-    assert [r["content"] for r in out] == ["chunk 0", "chunk 1", "chunk 2"]
-
-
-def test_unknown_provider_still_honours_top_k():
-    out = reranker.rerank("q", _results(9), model_name="rerank-3", top_k=3, provider="nope")
+    out = reranker.rerank("q", _results(9), model_name="voyage:rerank-3", top_k=3)
 
     assert [r["content"] for r in out] == ["chunk 0", "chunk 1", "chunk 2"]
 
@@ -206,7 +182,7 @@ def test_voyage_api_error_degrades_to_unranked_results(monkeypatch, caplog):
     original = _results()
 
     with caplog.at_level(logging.WARNING, logger="memsearch.reranker"):
-        out = reranker.rerank("q", original, model_name="rerank-3", provider="voyage")
+        out = reranker.rerank("q", original, model_name="voyage:rerank-3")
 
     assert out == original
     assert "AuthenticationError" in caplog.text
@@ -215,7 +191,7 @@ def test_voyage_api_error_degrades_to_unranked_results(monkeypatch, caplog):
 def test_voyage_api_error_still_honours_top_k(monkeypatch):
     _install_failing_voyageai(monkeypatch)
 
-    out = reranker.rerank("q", _results(9), model_name="rerank-3", top_k=3, provider="voyage")
+    out = reranker.rerank("q", _results(9), model_name="voyage:rerank-3", top_k=3)
 
     assert [r["content"] for r in out] == ["chunk 0", "chunk 1", "chunk 2"]
 
@@ -224,7 +200,7 @@ def test_non_voyage_exception_still_propagates(monkeypatch):
     _install_failing_voyageai(monkeypatch, exc_name="RuntimeError")
 
     with pytest.raises(RuntimeError, match="boom"):
-        reranker.rerank("q", _results(), model_name="rerank-3", provider="voyage")
+        reranker.rerank("q", _results(), model_name="voyage:rerank-3")
 
 
 # ======================================================================
@@ -264,11 +240,25 @@ async def test_search_does_not_over_deliver_when_reranking_degrades(monkeypatch)
     ms = MemSearch.__new__(MemSearch)
     ms._embedder = _FakeEmbedder()
     ms._store = _FakeStore()
-    ms._reranker_model = ""
-    ms._reranker_provider = "voyage"
-    ms._rerank_enabled = True
+    ms._reranker_model = "voyage:rerank-3"
 
     out = await ms.search("q", top_k=10)
 
     assert ms._store.requested_top_k == 30, "search() over-fetches candidates for the reranker"
     assert len(out) == 10, "the caller asked for 10 results and must not get the raw candidate list"
+
+
+@pytest.mark.asyncio
+async def test_search_runs_voyage_off_the_event_loop(monkeypatch):
+    from memsearch.core import MemSearch
+
+    record: dict = {}
+    _install_fake_voyageai(monkeypatch, record=record, order=[2, 0, 1])
+    ms = MemSearch.__new__(MemSearch)
+    ms._embedder = _FakeEmbedder()
+    ms._store = _FakeStore()
+    ms._reranker_model = "voyage:rerank-3"
+
+    await ms.search("q", top_k=1)
+
+    assert record["thread"] is not threading.main_thread(), "a blocking HTTP call must not stall the event loop"

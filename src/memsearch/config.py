@@ -96,8 +96,7 @@ class WatchConfig:
 
 @dataclass
 class RerankerConfig:
-    provider: str = ""  # "voyage" for the hosted API; empty = local cross-encoder
-    model: str = ""  # empty = disabled, unless provider is set
+    model: str = ""  # empty = disabled; set to model ID to enable
 
 
 @dataclass
