@@ -161,7 +161,9 @@ def _split_large_section(
     current_start = 0
 
     def _emit(content: str, start_line: int, end_line: int) -> None:
-        if content:
+        # Same bar as whole sections: a split part that is only comments or
+        # headings embeds as "" and fails the batch.
+        if _has_meaningful_content(content):
             chunks.append(
                 Chunk(
                     content=content,

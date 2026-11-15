@@ -251,3 +251,13 @@ def test_long_cjk_text_splits_on_fullwidth_semicolon() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert all(chunk.content.endswith(semicolon) for chunk in chunks[:-1])
+
+
+def test_split_section_drops_comment_only_part():
+    # A comment-only paragraph that lands in its own split part is empty once
+    # comments are stripped for embedding, and embedding APIs reject "".
+    paragraphs = [f"Paragraph {i} " + "x" * 80 for i in range(6)]
+    md = "## Session\n\n" + "\n\n".join(paragraphs) + "\n\n<!-- session:abc turn:def -->\n"
+    chunks = chunk_markdown(md, max_chunk_size=200, overlap_lines=0)
+    assert len(chunks) > 1
+    assert all(clean_content_for_embedding(c.content) for c in chunks)
