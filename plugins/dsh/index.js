@@ -61,6 +61,8 @@ const SUMMARIZE_TIMEOUT_MS = 30000
 const CAPTURE_MAX_CHARS = 6000
 const DAILY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/
 const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h; runner's due-state gates actual runs
+// Three sequential tasks, each allowed ten minutes, plus startup and cleanup.
+const MAINTENANCE_TIMEOUT_MS = (3 * 600 + 60) * 1000
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -365,7 +367,7 @@ function runMaintenance(ctx, projectDir, memsearchDir) {
   const child = execCommand(python,
     [runner, '--platform', 'dsh', '--project-dir', projectDir, '--memsearch-dir', memsearchDir], {
     cwd: projectDir,
-    timeout: 180000,
+    timeout: MAINTENANCE_TIMEOUT_MS,
     maxBuffer: 4 * 1024 * 1024,
     detached: true,
     stdio: 'ignore',
