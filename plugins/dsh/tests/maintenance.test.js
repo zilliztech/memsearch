@@ -5,6 +5,46 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+test('maintenance watchdog allows three sequential ten-minute calls', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'memsearch maintenance budget '))
+  try {
+    const command = path.join(root, 'command.cjs')
+    const done = path.join(root, 'done')
+    fs.writeFileSync(command, `
+      if (process.argv[2]?.endsWith('maintenance-runner.py')) {
+        // Accelerate elapsed time by 1000x; three nine-minute calls.
+        setTimeout(() => require('node:fs').writeFileSync(process.env.BUDGET_DONE, 'done'), 3 * 540)
+      }
+    `)
+    const script = `
+      import fs from 'node:fs'
+      import { setTimeout as delay } from 'node:timers/promises'
+      const original = globalThis.setTimeout
+      globalThis.setTimeout = (fn, ms, ...args) => original(fn, ms / 1000, ...args)
+      const { runMaintenance } = await import(process.env.BUDGET_PLUGIN)
+      const warnings = []
+      runMaintenance({ logger: { warn(text) { warnings.push(text) } } }, process.cwd(), process.cwd())
+      const deadline = Date.now() + 5000
+      while (!fs.existsSync(process.env.BUDGET_DONE) && !warnings.length && Date.now() < deadline) await delay(20)
+      await delay(50)
+      process.stdout.write(JSON.stringify({ warnings, done: fs.existsSync(process.env.BUDGET_DONE) }))
+    `
+    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: root,
+      env: {
+        ...process.env,
+        MEMSEARCH_PYTHON: JSON.stringify([process.execPath, command]),
+        BUDGET_PLUGIN: new URL('../index.js', import.meta.url).href,
+        BUDGET_DONE: done,
+      },
+      encoding: 'utf8', timeout: 10000,
+    })
+    assert.deepEqual(JSON.parse(output), { warnings: [], done: true })
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 for (const trigger of ['timer', 'session/disposed']) {
   for (const scope of ['project', 'custom', 'missing-memory']) {
     test(`maintenance ${trigger} uses the ${scope} root`, () => {

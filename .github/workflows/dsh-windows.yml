@@ -5,12 +5,16 @@ on:
     paths:
       - 'plugins/dsh/**'
       - 'plugins/_shared/scripts/maintenance-runner.py'
+      - 'src/memsearch/_maintenance_lock.py'
+      - 'tests/test_maintenance_lock.py'
       - '.github/workflows/dsh-windows.yml'
   push:
     branches: [main]
     paths:
       - 'plugins/dsh/**'
       - 'plugins/_shared/scripts/maintenance-runner.py'
+      - 'src/memsearch/_maintenance_lock.py'
+      - 'tests/test_maintenance_lock.py'
       - '.github/workflows/dsh-windows.yml'
 
 permissions:
@@ -36,4 +40,4 @@ jobs:
       - name: Check native command launching
         run: node --test plugins/dsh/tests/runtime.test.js plugins/dsh/tests/skill-paths.test.js
       - name: Check Python encoding and process handoff
-        run: uv run --no-project --with pytest python -m pytest plugins/dsh/tests/test_runtime.py -q
+        run: uv run --no-project --with pytest --with filelock --with psutil python -m pytest plugins/dsh/tests/test_runtime.py tests/test_maintenance_lock.py -q

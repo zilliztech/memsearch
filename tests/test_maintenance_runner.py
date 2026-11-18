@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -203,6 +204,7 @@ def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, mon
     captured = {}
 
     def fake_run_command(cmd, *, env, cwd, timeout):
+        assert timeout == 600
         captured["cmd"] = cmd
         captured["env"] = env
         captured["cwd"] = cwd
@@ -252,11 +254,9 @@ def test_run_command_raises_with_exit_details(tmp_path: Path, monkeypatch) -> No
     runner = _load_runner()
 
     def fake_run(*_args, **_kwargs):
-        return subprocess.CompletedProcess(
-            args=["tool"], returncode=2, stdout="partial output", stderr="bad credentials"
-        )
+        return SimpleNamespace(returncode=2, communicate=lambda **kwargs: ("partial output", "bad credentials"))
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_run)
 
     with pytest.raises(RuntimeError) as exc_info:
         runner.run_command(["tool", "run", "x" * 200], env={}, cwd=tmp_path, timeout=1)
@@ -272,8 +272,52 @@ def test_run_command_success_prefers_stdout(tmp_path: Path, monkeypatch) -> None
     runner = _load_runner()
 
     def fake_run(*_args, **_kwargs):
-        return subprocess.CompletedProcess(args=["tool"], returncode=0, stdout='{"ok": true}', stderr="warning")
+        return SimpleNamespace(returncode=0, communicate=lambda **kwargs: ('{"ok": true}', "warning"))
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_run)
 
     assert runner.run_command(["tool"], env={}, cwd=tmp_path, timeout=1) == '{"ok": true}'
+
+
+@pytest.mark.parametrize("task", ["project_review", "memory_to_skill"])
+def test_timed_out_maintenance_records_failure_and_retries(tmp_path, task):
+    from memsearch.config import MemSearchConfig
+
+    runner = _load_runner()
+    memory = tmp_path / ".memsearch/memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-11-18.md").write_text("- Retry this synthetic maintenance task.\n")
+    output = tmp_path / ".memsearch/PROJECT.md"
+    output.write_text("Existing project memory.\n")
+    cfg = MemSearchConfig()
+    getattr(cfg.plugins.dsh, task).enabled = True
+
+    def slow(ctx, prompt):
+        return runner.run_command(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            env=os.environ.copy(),
+            cwd=tmp_path,
+            timeout=0.2,
+        )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=slow)
+    state_path = tmp_path / ".memsearch/.maintenance-state.json"
+    state = json.loads(state_path.read_text())[f"dsh.{task}"]
+    assert state["last_action"] == "error"
+    assert "TimeoutExpired" in state["last_error"]
+    assert output.read_text() == "Existing project memory.\n"
+    assert not (tmp_path / f".memsearch/.maintenance-dsh-{task}.lock").exists()
+    response = json.dumps({"action": "none", "reason": "retry succeeded", "skills": []})
+    calls = []
+
+    def success(ctx, prompt):
+        calls.append(ctx.task)
+        return response
+
+    runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=success)
+    state = json.loads(state_path.read_text())[f"dsh.{task}"]
+    assert state["last_success_at"]
+    assert "last_error" not in state
+    runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=success)
+    assert calls == [task], "a completed retry must restore the normal due-state gate"

@@ -26,6 +26,23 @@ DEFAULT_NATIVE_MODELS = {
     "openclaw": "",
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
 }
+DSH_MAINTENANCE_TIMEOUT_SECONDS = 600
+
+
+def _kill_command_tree(process: subprocess.Popen) -> None:
+    import psutil
+
+    try:
+        parent = psutil.Process(process.pid)
+        children = parent.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return
+    # Keep the caller in its host's process group: the outer watchdog can
+    # still terminate the entire runner tree if this inner cleanup fails.
+    for child in [*reversed(children), parent]:
+        with contextlib.suppress(psutil.NoSuchProcess):
+            child.kill()
+
 
 # Windows: a console child of a console-less parent allocates a fresh,
 # visible console window. Hosts spawn this runner detached from a GUI
@@ -34,26 +51,37 @@ _CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 
 def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> str:
-    result = subprocess.run(
+    process = subprocess.Popen(
         cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=env,
         cwd=str(cwd),
-        timeout=timeout,
-        check=False,
         creationflags=_CREATE_NO_WINDOW,
     )
-    stdout = (result.stdout or "").strip()
-    stderr = (result.stderr or "").strip()
-    if result.returncode != 0:
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_command_tree(process)
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            # An escaped descendant may retain a pipe. Closing a buffered
+            # stream here can block on Windows' communicate reader thread;
+            # reap the direct child without waiting indefinitely for EOF.
+            process.wait(timeout=5)
+        raise
+    stdout = (stdout or "").strip()
+    stderr = (stderr or "").strip()
+    if process.returncode != 0:
         detail = "\n".join(part for part in (stdout, stderr) if part)
         if len(detail) > 2000:
             detail = detail[:1975] + "... [truncated]"
         command = " ".join(shlex.quote(_describe_arg(part)) for part in cmd)
         if len(command) > 300:
             command = command[:275] + "... [truncated]"
-        message = f"Command failed ({result.returncode}): {command}"
+        message = f"Command failed ({process.returncode}): {command}"
         if detail:
             message = f"{message}\n{detail}"
         raise RuntimeError(message)
@@ -317,7 +345,7 @@ def run_native_provider(ctx, prompt: str) -> str:
         cmd.append(prompt)
         env["MEMSEARCH_DSH_SUMMARIZE"] = "1"  # keep the plugin inert inside the sub-agent
         env["MEMSEARCH_DISABLE"] = "1"
-        out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=180)
+        out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=DSH_MAINTENANCE_TIMEOUT_SECONDS)
         return extract_task_json_output(out)
 
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
