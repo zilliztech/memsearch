@@ -2,15 +2,57 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(os.environ.get("MEMSEARCH_RUNTIME_ROOT", Path(__file__).resolve().parents[3]))
+
+
+def test_maintenance_timeout_stops_descendants_and_can_retry(tmp_path):
+    import runpy
+
+    import psutil
+
+    runner = runpy.run_path(str(ROOT / "plugins/_shared/scripts/maintenance-runner.py"))
+    child_pid = tmp_path / "child.pid"
+    code = (
+        "import subprocess,sys,time; from pathlib import Path; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+        "Path(sys.argv[1]).write_text(str(child.pid)); time.sleep(60)"
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            runner["run_command"](
+                [sys.executable, "-c", code, str(child_pid)],
+                env=os.environ.copy(),
+                cwd=tmp_path,
+                timeout=2,
+            )
+        assert time.monotonic() - started < 10
+        pid = int(child_pid.read_text())
+        with contextlib.suppress(psutil.NoSuchProcess):
+            assert psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+        assert (
+            runner["run_command"](
+                [sys.executable, "-c", "print('retry succeeded')"],
+                env=os.environ.copy(),
+                cwd=tmp_path,
+                timeout=5,
+            )
+            == "retry succeeded"
+        )
+    finally:
+        if child_pid.exists():
+            with contextlib.suppress(psutil.NoSuchProcess):
+                psutil.Process(int(child_pid.read_text())).kill()
 
 
 @pytest.mark.parametrize("encoding", ["cp936", "cp1251"])
