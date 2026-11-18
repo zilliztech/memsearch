@@ -61,9 +61,10 @@ def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int)
         try:
             process.communicate(timeout=5)
         except subprocess.TimeoutExpired:
-            # Bound cleanup even if an escaped descendant still owns a pipe.
-            process.stdout.close()
-            process.stderr.close()
+            # An escaped descendant may retain a pipe. Closing a buffered
+            # stream here can block on Windows' communicate reader thread;
+            # reap the direct child without waiting indefinitely for EOF.
+            process.wait(timeout=5)
         raise
     stdout = (stdout or "").strip()
     stderr = (stderr or "").strip()

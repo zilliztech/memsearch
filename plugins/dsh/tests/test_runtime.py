@@ -55,6 +55,36 @@ def test_maintenance_timeout_stops_descendants_and_can_retry(tmp_path):
                 psutil.Process(int(child_pid.read_text())).kill()
 
 
+def test_maintenance_timeout_does_not_block_closing_inherited_pipe(tmp_path):
+    import runpy
+
+    import psutil
+
+    runner = runpy.run_path(str(ROOT / "plugins/_shared/scripts/maintenance-runner.py"))
+    pid_file = tmp_path / "detached-child.pid"
+    # The launcher exits before the timeout, so its child's new parent can no
+    # longer be discovered through it. Its inherited output pipe stays open.
+    code = (
+        "import subprocess,sys; from pathlib import Path; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)']); "
+        "Path(sys.argv[1]).write_text(str(child.pid))"
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            runner["run_command"](
+                [sys.executable, "-c", code, str(pid_file)],
+                env=os.environ.copy(),
+                cwd=tmp_path,
+                timeout=1,
+            )
+        assert time.monotonic() - started < 10
+    finally:
+        if pid_file.exists():
+            with contextlib.suppress(psutil.NoSuchProcess):
+                psutil.Process(int(pid_file.read_text())).kill()
+
+
 @pytest.mark.parametrize("encoding", ["cp936", "cp1251"])
 def test_summary_stdin_uses_utf8(encoding: str) -> None:
     expected = "会议摘要:中文 \N{MULTIPLICATION SIGN} 😀\n"
