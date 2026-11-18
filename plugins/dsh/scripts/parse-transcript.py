@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -60,7 +61,13 @@ def _zstd_decompress(raw: bytes) -> bytes:
         raise RuntimeError(
             "cannot decompress session.jsonl.zstd: install the Python `zstandard` package or the `zstd` CLI binary"
         )
-    result = subprocess.run([zstd_bin, "-d", "-c"], input=raw, capture_output=True, check=False)
+    result = subprocess.run(
+        [zstd_bin, "-d", "-c"],
+        input=raw,
+        capture_output=True,
+        check=False,
+        **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}),
+    )
     if result.returncode != 0:
         raise RuntimeError(f"zstd -d failed: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout

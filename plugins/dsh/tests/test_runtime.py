@@ -166,3 +166,85 @@ raise RuntimeError('bootstrap returned instead of handing off')
     if "summarize" in script:
         assert payload["transcript"] == "保留的对话"
     assert b"child failure detail" in result.stderr
+
+
+def _windows_reexec_probe(tmp_path: Path, script: str, *, via_uv=False, streams="open"):
+    """Exercise the Node host -> Python -> child chain with real Windows handles."""
+    import shutil
+
+    report = tmp_path / "child.json"
+    child = tmp_path / "child.py"
+    child.write_text(
+        "import ctypes,json,sys\nfrom pathlib import Path\n"
+        "payload={'console':ctypes.windll.kernel32.GetConsoleWindow(),'stdin':sys.stdin.read()}\n"
+        f"Path({str(report)!r}).write_text(json.dumps(payload))\n"
+        "print('摘要 中文 \N{MULTIPLICATION SIGN}')\nprint('child failure detail',file=sys.stderr)\nsys.exit(7)\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "parent.py"
+    parent.write_text(
+        "import os,runpy,subprocess,sys\n"
+        "source,child,uv,streams=sys.argv[1:]\n"
+        "module=runpy.run_path(source)\n"
+        "command=[sys.executable,child]\n"
+        "if uv:\n"
+        "    command=[uv,'run','--offline','--no-project','--no-config','--python',sys.executable,'python',child]\n"
+        "if streams=='closed':\n"
+        "    sys.stdout.close();sys.stderr.close()\n"
+        "elif streams=='missing':\n"
+        "    sys.stdout=None;sys.stderr=None\n"
+        "module['_reexec'](command,os.environ.copy())\n",
+        encoding="utf-8",
+    )
+    host = tmp_path / "host.mjs"
+    host.write_text(
+        "const cfg=JSON.parse(process.argv[2]);\n"
+        "const {spawnCommand}=await import(cfg.runtime);\n"
+        "const child=spawnCommand(cfg.python,cfg.args,{detached:cfg.detached});\n"
+        "let stdout='',stderr='';\n"
+        "child.stdout.setEncoding('utf8').on('data',x=>stdout+=x);\n"
+        "child.stderr.setEncoding('utf8').on('data',x=>stderr+=x);\n"
+        "child.stdin.end();\n"
+        "child.on('close',code=>process.stdout.write(JSON.stringify({code,stdout,stderr})));\n"
+        "child.on('error',error=>{console.error(error);process.exit(1)});\n",
+        encoding="utf-8",
+    )
+    uv = shutil.which("uv") if via_uv else ""
+    if via_uv:
+        assert uv, "the Windows runtime job must provide uv"
+    cfg = {
+        "runtime": (ROOT / "plugins/dsh/runtime.js").as_uri(),
+        "python": sys.executable,
+        "args": [str(parent), str(ROOT / "plugins" / script), str(child), uv, streams],
+        "detached": "maintenance-runner" in script,
+    }
+    result = subprocess.run(
+        ["node", str(host), json.dumps(cfg)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["code"] == 7, payload
+    assert json.loads(report.read_text()) == {"console": 0, "stdin": ""}
+    return payload
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows console allocation")
+@pytest.mark.parametrize("script", ["dsh/scripts/summarize.py", "_shared/scripts/maintenance-runner.py"])
+@pytest.mark.parametrize("via_uv", [False, True])
+def test_hidden_reexec_preserves_output_and_exit_status(tmp_path, script, via_uv):
+    result = _windows_reexec_probe(tmp_path, script, via_uv=via_uv)
+    assert result["stdout"].strip() == "摘要 中文 \N{MULTIPLICATION SIGN}"
+    assert "child failure detail" in result["stderr"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows console allocation")
+@pytest.mark.parametrize("script", ["dsh/scripts/summarize.py", "_shared/scripts/maintenance-runner.py"])
+@pytest.mark.parametrize("streams", ["closed", "missing"])
+def test_hidden_reexec_handles_unavailable_host_streams(tmp_path, script, streams):
+    result = _windows_reexec_probe(tmp_path, script, streams=streams)
+    assert result["stdout"] == result["stderr"] == ""
