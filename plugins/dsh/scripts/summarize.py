@@ -52,9 +52,7 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 # ---------------------------------------------------------------------------
 
 
-# Windows: a console child of a console-less parent allocates a fresh,
-# visible console window. The host spawns this summarizer detached from a
-# GUI process, so every child below needs the flag (see #853).
+# Keep helper processes hidden when invoked from a Windows GUI host.
 _CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 
