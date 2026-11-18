@@ -161,7 +161,9 @@ def _split_large_section(
     current_start = 0
 
     def _emit(content: str, start_line: int, end_line: int) -> None:
-        if content:
+        # A split part containing only comments would become an empty embedding
+        # input. Keep non-empty fragments, including one-character remainders.
+        if clean_content_for_embedding(content):
             chunks.append(
                 Chunk(
                     content=content,
