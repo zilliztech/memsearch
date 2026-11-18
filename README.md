@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <strong>English</strong> | <a href="README.zh.md">简体中文</a>
+</p>
+
+<p align="center">
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/pypi/v/memsearch?style=flat-square&color=blue" alt="PyPI"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/claude-code/"><img src="https://img.shields.io/badge/Claude_Code-plugin-c97539?style=flat-square&logo=claude&logoColor=white" alt="Claude Code"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/codex/"><img src="https://img.shields.io/badge/Codex-plugin-ff6b35?style=flat-square" alt="Codex"></a>
