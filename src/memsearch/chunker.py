@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 # Minimum meaningful text length after stripping metadata noise.
@@ -77,6 +79,32 @@ def compute_chunk_id(
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+def iter_headings(lines: list[str]) -> Iterator[tuple[int, int, str]]:
+    """Yield heading positions outside fenced code blocks."""
+    fence_char = ""
+    fence_length = 0
+    for index, line in enumerate(lines):
+        fence = _FENCE_RE.match(line)
+        if fence_char:
+            if (
+                fence
+                and fence.group(1)[0] == fence_char
+                and len(fence.group(1)) >= fence_length
+                and not fence.group(2).strip()
+            ):
+                fence_char = ""
+            continue
+        if fence:
+            delimiter, info = fence.groups()
+            if delimiter[0] != "`" or "`" not in info:
+                fence_char = delimiter[0]
+                fence_length = len(delimiter)
+                continue
+        heading = _HEADING_RE.match(line)
+        if heading:
+            yield index, len(heading.group(1)), heading.group(2).strip()
+
+
 def chunk_markdown(
     text: str,
     source: str = "",
@@ -91,12 +119,7 @@ def chunk_markdown(
     forward to preserve continuity.
     """
     lines = text.split("\n")
-    # Find all heading positions
-    heading_positions: list[tuple[int, int, str]] = []  # (line_idx, level, title)
-    for i, line in enumerate(lines):
-        m = _HEADING_RE.match(line)
-        if m:
-            heading_positions.append((i, len(m.group(1)), m.group(2).strip()))
+    heading_positions = list(iter_headings(lines))
 
     # Build sections between headings
     sections: list[tuple[int, int, str, int]] = []  # (start, end, heading, level)

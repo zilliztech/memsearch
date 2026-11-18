@@ -262,3 +262,21 @@ def test_expand_no_section_explicit_lines_take_precedence(
         assert f"lines {expected_start}-{expected_end}" in result.output
         assert expected_content in result.output
     assert "### 10:01" not in result.output
+
+
+@pytest.mark.parametrize("start_line", [1, 4, 6])
+def test_expand_keeps_fenced_commands_with_their_explanation(start_line: int) -> None:
+    lines = [
+        "## Build",
+        "Run in order.",
+        "```sh",
+        "# Compile",
+        "make build",
+        "```",
+        "Done.",
+        "## Next",
+        "More notes",
+    ]
+    content, start, end = _extract_section(lines, start_line, heading_level=2)
+    assert (start, end) == (1, 7)
+    assert content == "\n".join(lines[:7])

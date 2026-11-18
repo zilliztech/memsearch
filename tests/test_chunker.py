@@ -299,3 +299,26 @@ def test_split_section_preserves_anchor_with_body():
     assert any(anchor in chunk.content and paragraphs[0] in chunk.content for chunk in chunks)
     assert all(clean_content_for_embedding(chunk.content) for chunk in chunks)
     assert all(chunk.source == "daily.md" and chunk.heading == "10:00" for chunk in chunks)
+
+
+@pytest.mark.parametrize(
+    ("opener", "closer"),
+    [("```sh", "```"), ("~~~sh", "~~~"), ("   ````markdown", " `````")],
+)
+def test_code_comments_do_not_split_heading_sections(opener: str, closer: str) -> None:
+    text = f"## Build\nRun in order.\n{opener}\n# Compile\nmake build\n{closer}\nDone.\n## Next\nMore notes"
+    chunks = chunk_markdown(text)
+    assert [chunk.heading for chunk in chunks] == ["Build", "Next"]
+    assert chunks[0].content == text.split("\n## Next")[0]
+    assert (chunks[0].start_line, chunks[0].end_line) == (1, 7)
+
+
+@pytest.mark.parametrize("inner", ["~~~", "```", "```` not a closing fence"])
+def test_only_matching_fence_closes_code_block(inner: str) -> None:
+    text = f"## Build\n````markdown\n{inner}\n# Code example\nbody\n````\n## Next\nNotes"
+    assert [chunk.heading for chunk in chunk_markdown(text)] == ["Build", "Next"]
+
+
+def test_unclosed_fence_keeps_hash_lines_in_the_current_section() -> None:
+    text = "## Build\n```sh\n# Compile\nmake build"
+    assert [chunk.heading for chunk in chunk_markdown(text)] == ["Build"]

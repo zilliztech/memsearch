@@ -10,7 +10,7 @@ from pathlib import Path
 
 import click
 
-from .chunker import _HEADING_RE
+from .chunker import iter_headings
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
@@ -587,23 +587,16 @@ def _extract_section(
     Walks backward to find the section heading, then forward to the next
     heading of equal or higher level (or EOF).
     """
-    # Find section start — walk backward to the heading, starting at the
-    # chunk's own first line (clamped in case the file shrank since indexing)
     section_start = start_line - 1  # 0-indexed
-    if heading_level > 0:
-        for i in range(min(start_line, len(all_lines)) - 1, -1, -1):
-            m = _HEADING_RE.match(all_lines[i])
-            if m and len(m.group(1)) <= heading_level:
-                section_start = i
-                break
-
-    # Find section end — walk forward to the next heading of same or higher level
     section_end = len(all_lines)
     if heading_level > 0:
-        for i in range(start_line, len(all_lines)):
-            m = _HEADING_RE.match(all_lines[i])
-            if m and len(m.group(1)) <= heading_level:
-                section_end = i
+        for index, level, _title in iter_headings(all_lines):
+            if level > heading_level:
+                continue
+            if index < start_line:
+                section_start = index
+            else:
+                section_end = index
                 break
 
     content = "\n".join(all_lines[section_start:section_end])
