@@ -171,6 +171,7 @@ raise RuntimeError('bootstrap returned instead of handing off')
 def _windows_reexec_probe(tmp_path: Path, script: str, *, via_uv=False, streams="open"):
     """Exercise the Node host -> Python -> child chain with real Windows handles."""
     import shutil
+    import zipfile
 
     report = tmp_path / "child.json"
     child = tmp_path / "child.py"
@@ -181,14 +182,25 @@ def _windows_reexec_probe(tmp_path: Path, script: str, *, via_uv=False, streams=
         "print('摘要 中文 \N{MULTIPLICATION SIGN}')\nprint('child failure detail',file=sys.stderr)\nsys.exit(7)\n",
         encoding="utf-8",
     )
+    # An empty local wheel makes uv exercise its --with environment without
+    # downloading MemSearch, models, or other runtime dependencies.
+    wheel = tmp_path / "memsearch_console_fixture-0.0.0-py3-none-any.whl"
+    if via_uv:
+        dist = "memsearch_console_fixture-0.0.0.dist-info"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr(
+                f"{dist}/METADATA", "Metadata-Version: 2.1\nName: memsearch-console-fixture\nVersion: 0.0.0\n"
+            )
+            archive.writestr(f"{dist}/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
+            archive.writestr(f"{dist}/RECORD", "")
     parent = tmp_path / "parent.py"
     parent.write_text(
         "import os,runpy,subprocess,sys\n"
-        "source,child,uv,streams=sys.argv[1:]\n"
+        "source,child,uv,streams,wheel=sys.argv[1:]\n"
         "module=runpy.run_path(source)\n"
         "command=[sys.executable,child]\n"
         "if uv:\n"
-        "    command=[uv,'run','--offline','--no-project','--no-config','--python',sys.executable,'python',child]\n"
+        "    command=[uv,'run','--offline','--no-project','--no-config','--python',sys.executable,'--with',wheel,'python',child]\n"
         "if streams=='closed':\n"
         "    sys.stdout.close();sys.stderr.close()\n"
         "elif streams=='missing':\n"
@@ -215,7 +227,7 @@ def _windows_reexec_probe(tmp_path: Path, script: str, *, via_uv=False, streams=
     cfg = {
         "runtime": (ROOT / "plugins/dsh/runtime.js").as_uri(),
         "python": sys.executable,
-        "args": [str(parent), str(ROOT / "plugins" / script), str(child), uv, streams],
+        "args": [str(parent), str(ROOT / "plugins" / script), str(child), uv, streams, str(wheel)],
         "detached": "maintenance-runner" in script,
     }
     result = subprocess.run(
