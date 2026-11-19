@@ -48,7 +48,7 @@ def _provider(type_: str, model: str = "", base_url: str = "", api_key: str = ""
 def make_config(**overrides) -> SimpleNamespace:
     providers = {
         "deepseek": _provider("openai", "deepseek-chat", "https://api.deepseek.com", "env:DSK"),
-        "local-anthropic": _provider("anthropic", "claude-sonnet-4-6"),
+        "local-anthropic": _provider("anthropic", "claude-sonnet-5-5"),
     }
     llm = SimpleNamespace(provider="", model="", base_url="", api_key="", providers=providers)
     compact = SimpleNamespace(llm_provider="", llm_model="", base_url="", api_key="")
@@ -105,10 +105,10 @@ class TestResolveLlmSettings:
         config = make_config()
         config.llm.provider = ""
         config.compact.llm_provider = "anthropic"
-        config.compact.llm_model = "claude-sonnet-4-6"
+        config.compact.llm_model = "claude-sonnet-5-5"
         provider_type, model, _, _ = summarize._resolve_llm_settings(config, "", "")
         assert provider_type == "anthropic"
-        assert model == "claude-sonnet-4-6"
+        assert model == "claude-sonnet-5-5"
 
     def test_plugins_dsh_summarize_provider(self) -> None:
         """[plugins.dsh.summarize] provider is used when no CLI arg is passed."""

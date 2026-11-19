@@ -49,6 +49,41 @@ def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monke
     assert captured == {"model": "gemini-test", "provider_type": "gemini"}
 
 
+def test_anthropic_tool_runner_defaults_to_current_sonnet(tmp_path: Path, monkeypatch) -> None:
+    """The Anthropic tool runner falls back to the current default Sonnet model."""
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured["model"] = kwargs["model"]
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")])
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+
+    result = maintenance._run_anthropic_with_tools(ctx, "prompt", None, LLMProviderConfig())
+
+    assert result == "ok"
+    assert captured == {"model": "claude-sonnet-5-5"}
+
+
 def test_read_recent_journals_replaces_invalid_utf8_bytes(tmp_path: Path) -> None:
     memory = tmp_path / "memory"
     memory.mkdir()

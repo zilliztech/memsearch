@@ -164,8 +164,25 @@ async def test_compact_chunks_dispatches_to_anthropic(monkeypatch) -> None:
     )
 
     assert result == "anthropic-summary"
-    assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["model"] == "claude-sonnet-5-5"
     assert "memory chunk" in captured["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_summarize_text_dispatches_to_anthropic(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_anthropic(prompt: str, model: str) -> str:
+        captured["prompt"] = prompt
+        captured["model"] = model
+        return "anthropic-note"
+
+    monkeypatch.setattr(compact_module, "_compact_anthropic", fake_anthropic)
+
+    result = await compact_module.summarize_text("note text", llm_provider="anthropic")
+
+    assert result == "anthropic-note"
+    assert captured == {"prompt": "note text", "model": "claude-sonnet-5-5"}
 
 
 @pytest.mark.asyncio

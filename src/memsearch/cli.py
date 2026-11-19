@@ -1136,7 +1136,7 @@ def config_init(project: bool) -> None:
     click.echo("  Plugin summarization uses plugins.<platform>.summarize.model.")
     _llm_defaults = {
         "openai": "gpt-5-mini",
-        "anthropic": "claude-sonnet-4-6",
+        "anthropic": "claude-sonnet-5-5",
         "gemini": "gemini-3-flash-preview",
     }
     result["llm"] = {}

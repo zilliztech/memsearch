@@ -554,7 +554,7 @@ async def agent_chat(user_input: str) -> str:
 
     # 2. Think — call Claude with memory context
     resp = llm.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
         max_tokens=1024,
         system=f"You have these memories:\n{context}",
         messages=[{"role": "user", "content": user_input}],

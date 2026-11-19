@@ -194,6 +194,29 @@ def test_global_config_init_keeps_workbuddy_provider(tmp_path: Path, monkeypatch
     assert data["plugins"]["workbuddy"]["summarize"]["provider"] == "team"
 
 
+def test_global_config_init_suggests_current_anthropic_default_model(tmp_path: Path, monkeypatch) -> None:
+    """The wizard's suggested Anthropic model tracks the code default for the provider."""
+    target = tmp_path / "config.toml"
+    monkeypatch.setattr(cli_module, "GLOBAL_CONFIG_PATH", target)
+    monkeypatch.setattr(cli_module, "resolve_config", MemSearchConfig)
+
+    captured_defaults: dict[str, object] = {}
+
+    def fake_prompt(text, default="", **_kwargs):
+        captured_defaults[text] = default
+        if text == "  Provider (empty/openai/anthropic/gemini)":
+            return "anthropic"
+        return default
+
+    monkeypatch.setattr(cli_module.click, "prompt", fake_prompt)
+    monkeypatch.setattr(cli_module.click, "confirm", lambda _text, default=False, **_kwargs: default)
+
+    result = CliRunner().invoke(cli, ["config", "init"])
+
+    assert result.exit_code == 0, result.output
+    assert captured_defaults["  Model"] == "claude-sonnet-5-5"
+
+
 def test_config_init_preserves_explicitly_disabled_ignore_files(monkeypatch) -> None:
     cfg = MemSearchConfig()
     monkeypatch.setattr(cli_module, "resolve_config", lambda: cfg)
