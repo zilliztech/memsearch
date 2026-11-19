@@ -1,5 +1,7 @@
 """Tests for the markdown chunker."""
 
+import pytest
+
 from memsearch.chunker import chunk_markdown, clean_content_for_embedding
 
 
@@ -251,3 +253,49 @@ def test_long_cjk_text_splits_on_fullwidth_semicolon() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 24 for chunk in chunks)
     assert all(chunk.content.endswith(semicolon) for chunk in chunks[:-1])
+
+
+def test_split_section_drops_comment_only_part():
+    # A comment-only paragraph that lands in its own split part is empty once
+    # comments are stripped for embedding, and embedding APIs reject "".
+    paragraphs = [f"Paragraph {i} " + "x" * 80 for i in range(6)]
+    md = "## Session\n\n" + "\n\n".join(paragraphs) + "\n\n<!-- session:abc turn:def -->\n"
+    chunks = chunk_markdown(md, max_chunk_size=200, overlap_lines=0)
+    assert len(chunks) > 1
+    assert all(clean_content_for_embedding(c.content) for c in chunks)
+
+
+def test_split_section_drops_comment_only_part_with_default_overlap():
+    body = "\n\n\n".join(f"- Item {i}: " + "x" * 60 for i in range(20))
+    md = "### 10:00\n\n" + body + "\n\n\n<!-- session:abc turn:def -->\n"
+
+    chunks = chunk_markdown(md)
+
+    assert len(md) > 1500
+    assert chunks
+    assert all(clean_content_for_embedding(c.content) for c in chunks)
+    for paragraph in body.split("\n\n\n"):
+        assert any(paragraph in chunk.content for chunk in chunks)
+
+
+@pytest.mark.parametrize("tail", ["7", "中"])
+def test_split_long_line_preserves_one_character_remainder(tail):
+    md = "a" * 1500 + tail
+
+    chunks = chunk_markdown(md)
+
+    assert "".join(chunk.content for chunk in chunks) == md
+    assert chunks[-1].content == tail
+
+
+def test_split_section_preserves_anchor_with_body():
+    anchor = "<!-- session:abc turn:def transcript:/tmp/conversation.jsonl -->"
+    paragraphs = [f"Paragraph {i} " + "x" * 80 for i in range(6)]
+    md = "### 10:00\n" + anchor + "\n" + "\n\n".join(paragraphs)
+
+    chunks = chunk_markdown(md, source="daily.md", max_chunk_size=200, overlap_lines=0)
+
+    assert len(chunks) > 1
+    assert any(anchor in chunk.content and paragraphs[0] in chunk.content for chunk in chunks)
+    assert all(clean_content_for_embedding(chunk.content) for chunk in chunks)
+    assert all(chunk.source == "daily.md" and chunk.heading == "10:00" for chunk in chunks)

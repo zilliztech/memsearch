@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from ._maintenance_lock import file_lock as _file_lock
 from .compact import summarize_text
 from .config import (
     LLMProviderConfig,
@@ -378,13 +380,70 @@ def _run_openai_with_tools(
                     "content": output,
                 }
             )
-    resp = client.chat.completions.create(
-        model=chosen_model,
-        messages=messages,
-        tools=tools,
-        tool_choice="none",
+    # Preserve the normal closing request; retry only a proven incompatibility.
+    try:
+        resp = client.chat.completions.create(
+            model=chosen_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="none",
+        )
+    except openai.APIStatusError as exc:
+        if not _unsupported_tool_choice(exc):
+            raise
+        closing_failure = f"tool_choice=none was rejected (HTTP {exc.status_code})"
+    else:
+        if not resp.choices[0].message.tool_calls:
+            return _openai_final_text(resp.choices[0])
+        closing_failure = "the endpoint returned tool calls despite tool_choice=none"
+
+    # Keep the completed drill history, without adding unanswered tool calls
+    # from the rejected closing response. Never execute more tools here.
+    resp = client.chat.completions.create(model=chosen_model, messages=messages)
+    if resp.choices[0].message.tool_calls:
+        raise RuntimeError(f"Memory maintenance final request returned tool calls without tools ({closing_failure})")
+    return _openai_final_text(resp.choices[0])
+
+
+def _unsupported_tool_choice(exc: Any) -> bool:
+    """Recognize an explicit parameter/value rejection, not an arbitrary API error."""
+    if exc.status_code not in (400, 422):
+        return False
+    body = exc.body if isinstance(exc.body, dict) else {}
+    error = body.get("error", body)
+    if not isinstance(error, dict):
+        error = {}
+    param = error.get("param") or getattr(exc, "param", None)
+    if param and param != "tool_choice":
+        return False
+    code = error.get("code") or getattr(exc, "code", None)
+    if param == "tool_choice" and code in {
+        "unsupported_parameter",
+        "unsupported_value",
+        "unsupported_parameter_value",
+        "unknown_parameter",
+    }:
+        return True
+    message = str(error.get("message") or exc.message).lower().replace("_", " ")
+    return (param == "tool_choice" or "tool choice" in message) and any(
+        marker in message
+        for marker in (
+            "not supported",
+            "unsupported",
+            "not support",
+            "only auto",
+            "must be auto",
+            "only 'auto'",
+            'only "auto"',
+        )
     )
-    return resp.choices[0].message.content or ""
+
+
+def _openai_final_text(choice: Any) -> str:
+    content = choice.message.content or ""
+    if not content.strip():
+        raise RuntimeError(f"Memory maintenance final request returned no text; finish_reason={choice.finish_reason!r}")
+    return content
 
 
 def _openai_memory_tool_schema() -> dict[str, Any]:
@@ -489,7 +548,7 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     if re.search(r"[|;&<>`$(){}]", command):
         return "Error: shell metacharacters are not allowed"
     try:
-        argv = shlex.split(command)
+        argv = _split_command(command)
     except ValueError as e:
         return f"Error: {e}"
     if not argv:
@@ -523,21 +582,33 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     return f"Error: command {executable!r} is not allowed"
 
 
+def _split_command(command: str) -> list[str]:
+    """Split quoted arguments while preserving Windows path separators."""
+    if os.name != "nt":
+        return shlex.split(command)
+    lexer = shlex.shlex(command, posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    lexer.escape = ""
+    return list(lexer)
+
+
 def _validate_paths_in_args(args: list[str], allowed_roots: list[Path], *, cwd: Path, allow_hash: bool) -> str:
     for arg in args:
         if arg.startswith("-") or arg in {"*.md", "'*.md'", '"*.md"'}:
             continue
         if allow_hash and re.fullmatch(r"[a-fA-F0-9]{8,64}", arg):
             continue
-        if "/" not in arg and not arg.startswith("."):
+        windows_drive = os.name == "nt" and re.match(r"^[a-zA-Z]:", arg)
+        if "/" not in arg and "\\" not in arg and not arg.startswith(".") and not windows_drive:
             continue
         path = Path(arg).expanduser()
         if not path.is_absolute():
             path = cwd / path
         try:
             resolved = path.resolve()
-        except OSError:
-            continue
+        except (OSError, ValueError) as exc:
+            return f"Error: cannot resolve path {arg!r}: {exc}"
         if not any(_is_relative_to(resolved, root) for root in allowed_roots):
             return f"Error: path {arg!r} is outside allowed memory roots"
     return ""
@@ -551,8 +622,19 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _run_restricted(argv: list[str], cwd: Path) -> str:
+    # Resolve like a shell so Windows .cmd/.bat shims are found; unresolvable
+    # names pass through and fail the same way as before.
+    argv = [shutil.which(argv[0]) or argv[0], *argv[1:]]
+    # cmd.exe can expand these characters after the path check. Native
+    # executables and POSIX commands receive their arguments literally.
+    if (
+        os.name == "nt"
+        and Path(argv[0]).suffix.lower() in {".cmd", ".bat"}
+        and any(re.search(r"[%!^]", arg) for arg in argv)
+    ):
+        return "Error: %, ! and ^ are not supported in Windows batch commands"
     text_options = {}
-    if Path(argv[0]).name.lower() in {"memsearch", "memsearch.exe"}:
+    if Path(argv[0]).stem.lower() == "memsearch":
         text_options = {"encoding": "utf-8", "errors": "strict"}
     try:
         result = subprocess.run(
@@ -578,9 +660,11 @@ def _parse_task_response(raw: str) -> dict[str, str]:
         text = match.group(1)
 
     try:
-        data = json.loads(text)
+        # strict=False: models often emit the markdown `content` with raw newlines
+        # inside the JSON string, which strict parsing rejects as control characters.
+        data = json.loads(text, strict=False)
     except json.JSONDecodeError as initial_error:
-        decoder = json.JSONDecoder()
+        decoder = json.JSONDecoder(strict=False)
         last_object: dict[str, Any] | None = None
         last_action_object: dict[str, Any] | None = None
 
@@ -694,22 +778,6 @@ def _record_failure_state(
     )
     state[state_key] = entry
     _save_state(state_path, state)
-
-
-@contextlib.contextmanager
-def _file_lock(path: Path):
-    try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        yield False
-        return
-    try:
-        os.write(fd, str(os.getpid()).encode())
-        yield True
-    finally:
-        os.close(fd)
-        with contextlib.suppress(OSError):
-            path.unlink()
 
 
 def _now() -> str:

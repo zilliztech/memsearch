@@ -145,15 +145,18 @@ def test_codex_stop_hook_filters_host_envelope_from_journal(tmp_path: Path) -> N
     assert result.stdout == "{}\n"
 
     deadline = time.monotonic() + 10
-    journal_files: list[Path] = []
+    journal = ""
     while time.monotonic() < deadline:
         journal_files = list((memsearch_dir / "memory").glob("*.md"))
-        if journal_files and journal_files[0].stat().st_size:
-            break
+        if journal_files:
+            assert len(journal_files) == 1
+            journal = journal_files[0].read_text(encoding="utf-8")
+            # The worker appends a blank line after the summary. The heading and anchor appear first.
+            if journal.endswith("\n\n"):
+                break
         time.sleep(0.05)
 
-    assert len(journal_files) == 1
-    journal = journal_files[0].read_text(encoding="utf-8")
+    assert journal.endswith("\n\n"), "capture worker did not finish writing the journal entry"
     assert "AGENTS.md instructions" not in journal
     assert "environment_context" not in journal
     assert "[User]: Remember the synthetic orchard marker." in journal

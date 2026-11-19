@@ -167,9 +167,7 @@ $ memsearch config set plugins.codex.project_review.output_file .memsearch/PROJE
 Set plugins.codex.project_review.output_file = .memsearch/PROJECT.md in /home/user/.memsearch/config.toml
 ```
 
-Supported plugin platforms are `claude-code`, `codex`, `opencode`, and
-`openclaw`. Supported plugin tasks are `summarize`, `project_review`,
-`user_profile`, and `memory_to_skill`.
+Platform keys are `claude-code`, `codex`, `dsh`, `opencode`, `openclaw`, and `workbuddy`. All support `summarize`. The first five also support the background tasks `project_review`, `user_profile`, and `memory_to_skill`.
 
 #### `memsearch config get`
 
@@ -304,6 +302,7 @@ provider = "openai"
 | `llm.providers.<name>.model` | string | `""` | Default model for a named plugin summarization provider |
 | `llm.providers.<name>.base_url` | string | `""` | OpenAI-compatible API base URL for a named provider |
 | `llm.providers.<name>.api_key` | string | `""` | API key for a named provider (supports `env:VAR_NAME` syntax) |
+| `plugins.workbuddy.summarize.provider` | string | `""` | Named API provider for WorkBuddy capture. Empty or `native` skips capture. |
 | `plugins.claude-code.summarize.provider` | string | `""` | Claude Code summarize provider route (empty/`native` = native summarizer) |
 | `plugins.claude-code.summarize.model` | string | `""` | Claude Code native model override, or named provider model override |
 | `plugins.codex.summarize.provider` | string | `""` | Codex summarize provider route (empty/`native` = native summarizer) |

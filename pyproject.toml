@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "memsearch"
-version = "0.4.23"
+version = "0.4.24"
 description = "Semantic memory search for markdown knowledge bases"
 readme = "README.md"
 license = "MIT"
@@ -27,6 +27,8 @@ dependencies = [
     "tomli_w>=1.0",
     "tomli>=2.0; python_version < '3.11'",
     "openai>=1.0",
+    "filelock>=3.16",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

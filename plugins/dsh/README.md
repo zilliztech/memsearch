@@ -232,6 +232,9 @@ through the DSH logger.
   maintenance work is executed by a one-shot DSH headless agent (the same
   `dsh --profile headless` mechanism as summarization), booted with
   `MEMSEARCH_DSH_SUMMARIZE=1` so the plugin stays inert inside it.
+  Each native maintenance call has a ten-minute limit; the full runner allows
+  31 minutes for all three tasks and cleanup. Failed tasks can retry on a later
+  trigger, and interrupted runs do not permanently block maintenance.
 - **Skill review panel (web only)** — a non-blocking dock strip above the
   composer (registered into the `conversation.input.dock` slot) lists skill
   candidates distilled into `.memsearch/skill-candidates/`. It is served by the

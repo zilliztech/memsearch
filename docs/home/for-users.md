@@ -9,7 +9,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep your agents working from the same project memory.
 
 ## Choose Your Platform
 
@@ -20,6 +20,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 | [**DeepSeek Harness**](../platforms/dsh/index.md) | `dsh plugin --profile <name> add @zilliz/memsearch-dsh` · [Models page key setup](../platforms/dsh/installation.md#native-summary-credentials) | Stable |
 | [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install --force` + hook permissions | Stable |
 | [**OpenCode**](../platforms/opencode/index.md) | `opencode plugin add @zilliz/memsearch-opencode` | Stable |
+| [**WorkBuddy**](../platforms/workbuddy.md) | Desktop marketplace + named API provider | New |
 
 ## What Happens Automatically
 
@@ -50,5 +51,6 @@ Each platform adapts the same architecture to its own plugin system:
 - **DeepSeek Harness**: [Full guide →](../platforms/dsh/index.md)
 - **OpenClaw**: [Full guide →](../platforms/openclaw/index.md)
 - **OpenCode**: [Full guide →](../platforms/opencode/index.md)
+- **WorkBuddy**: [Full guide →](../platforms/workbuddy.md)
 
 See the [Platform Comparison](../platforms/index.md) for a detailed feature matrix.

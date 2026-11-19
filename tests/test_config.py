@@ -10,6 +10,7 @@ import tomli_w
 from memsearch.config import (
     EmbeddingConfig,
     MemSearchConfig,
+    PluginPlatformConfig,
     PluginsConfig,
     _dict_to_config,
     deep_merge,
@@ -600,6 +601,13 @@ def test_plugins_config_defaults():
     assert cfg.codex.summarize.model == ""
     assert cfg.opencode.summarize.model == ""
     assert cfg.openclaw.summarize.model == ""
+
+
+def test_plugins_config_keeps_existing_positional_arguments():
+    cc, codex, opencode, openclaw, dsh = (PluginPlatformConfig() for _ in range(5))
+    cfg = PluginsConfig(cc, codex, opencode, openclaw, dsh)
+    assert cfg.openclaw is openclaw and cfg.dsh is dsh
+    assert cfg.workbuddy is not openclaw
 
 
 def test_compact_config_new_fields():

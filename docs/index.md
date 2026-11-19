@@ -17,7 +17,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep your agents working from the same project memory.
 
 ### Claude Code Plugin
 
@@ -95,16 +95,19 @@ opencode plugin add @zilliz/memsearch-opencode
 
 [:octicons-arrow-right-24: OpenCode Plugin docs](platforms/opencode/index.md){ .md-button }
 
+??? info "WorkBuddy"
+    Use a named API provider to save conversations to project memory. [Set up WorkBuddy](platforms/workbuddy.md).
+
 ### One Memory, All Platforms
 
 All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.
 
-| | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Plugin type** | Shell hooks | Shell hooks | Native ESM plugin | TS plugin | TS plugin |
-| **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | Execution events + SQLite recovery |
-| **Recall** | SKILL.md (fork) | SKILL.md | Native skill | memory_search tool | memory_search tool |
-| **Install** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` |
+| | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [WorkBuddy](platforms/workbuddy.md) |
+|---|:---:|:---:|:---:|:---:|:---:| :---: |
+| **Plugin type** | Shell hooks | Shell hooks | Native ESM plugin | TS plugin | TS plugin | Shell hooks |
+| **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | Execution events + SQLite recovery | Stop hook + API provider |
+| **Recall** | SKILL.md (fork) | SKILL.md | Native skill | memory_search tool | memory_search tool | SKILL.md |
+| **Install** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` | Desktop marketplace |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 

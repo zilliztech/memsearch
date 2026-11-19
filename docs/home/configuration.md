@@ -180,8 +180,7 @@ memsearch config get milvus.uri  # show specific value
 
 ## Plugin Summarization Routing
 
-Plugins keep their existing native/default summarizer unless you set a
-platform-specific override. These settings do not fall back to `llm.model`.
+WorkBuddy requires a named API provider to capture turns. Other plugins use their native summarizer by default. These settings do not fall back to `llm.model`.
 
 ```bash
 memsearch config set plugins.claude-code.summarize.model haiku
@@ -200,8 +199,7 @@ memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```
 
-Set `plugins.<platform>.summarize.provider` to `native`, or leave it empty, to
-preserve the current plugin behavior.
+For WorkBuddy, select the same provider with `memsearch config set plugins.workbuddy.summarize.provider openai`. See [WorkBuddy setup](../platforms/workbuddy.md).
 
 You can disable automatic capture for a platform globally while keeping the
 plugin installed:

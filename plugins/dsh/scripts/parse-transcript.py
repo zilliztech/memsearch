@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["zstandard>=0.23"]
+# ///
 """Parse a DSH session artifact into readable [User]/[Assistant] turns.
 
 Level-3 progressive disclosure for the memsearch ``memory-recall`` skill:
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -42,25 +47,33 @@ def _read_bytes(path: Path) -> bytes:
 
 
 def _zstd_decompress(raw: bytes) -> bytes:
-    """Decompress a zstd frame via the zstandard module or the zstd CLI."""
+    """Read every independent frame in a DSH append-only session log."""
     try:
         import zstandard  # type: ignore[import-not-found]
-
-        return zstandard.ZstdDecompressor().decompress(raw)
     except ImportError:
-        pass
-    try:
-        import zstd  # type: ignore[import-not-found]
-
-        return zstd.uncompress(raw)
-    except ImportError:
-        pass
+        zstandard = None
+    if zstandard is not None:
+        parts = []
+        while raw:
+            decoder = zstandard.ZstdDecompressor().decompressobj()
+            parts.append(decoder.decompress(raw))
+            if not decoder.eof:
+                raise RuntimeError("incomplete zstd frame in session log")
+            raw = decoder.unused_data
+        return b"".join(parts)
     zstd_bin = shutil.which("zstd")
     if not zstd_bin:
         raise RuntimeError(
-            "cannot decompress session.jsonl.zstd: install the Python `zstandard` package or the `zstd` CLI binary"
+            "cannot decompress session log: install the Python `zstandard` package or the `zstd` CLI binary, "
+            "or run this script with `uv run --script` to use its declared dependencies"
         )
-    result = subprocess.run([zstd_bin, "-d", "-c"], input=raw, capture_output=True, check=False)
+    result = subprocess.run(
+        [zstd_bin, "-d", "-c"],
+        input=raw,
+        capture_output=True,
+        check=False,
+        **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}),
+    )
     if result.returncode != 0:
         raise RuntimeError(f"zstd -d failed: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
@@ -162,6 +175,9 @@ def _render_turn(turn: dict) -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Render a DSH session artifact as readable turns.")
     parser.add_argument("--db", required=True, help="Session log file or directory (from an anchor db: field).")
     parser.add_argument("--session", default="", help="Expected session id (validated when given).")
