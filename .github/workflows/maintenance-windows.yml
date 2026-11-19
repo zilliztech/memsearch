@@ -7,6 +7,9 @@ on:
       - 'src/memsearch/skills.py'
       - 'tests/test_maintenance.py'
       - 'tests/test_maintenance_compat.py'
+      - 'tests/test_maintenance_runner.py'
+      - 'tests/test_maintenance_launch.py'
+      - 'plugins/*/scripts/maintenance-runner.py'
       - '.github/workflows/maintenance-windows.yml'
   push:
     branches: [main]
@@ -15,6 +18,9 @@ on:
       - 'src/memsearch/skills.py'
       - 'tests/test_maintenance.py'
       - 'tests/test_maintenance_compat.py'
+      - 'tests/test_maintenance_runner.py'
+      - 'tests/test_maintenance_launch.py'
+      - 'plugins/*/scripts/maintenance-runner.py'
       - '.github/workflows/maintenance-windows.yml'
 
 permissions:
@@ -32,4 +38,4 @@ jobs:
       - name: Install core and test dependencies
         run: uv sync --locked
       - name: Check maintenance responses and native command launching
-        run: uv run python -m pytest tests/test_maintenance.py tests/test_maintenance_compat.py -q
+        run: uv run python -m pytest tests/test_maintenance.py tests/test_maintenance_compat.py tests/test_maintenance_runner.py tests/test_maintenance_launch.py -q
