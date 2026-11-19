@@ -45,28 +45,45 @@ def _kill_command_tree(process: subprocess.Popen) -> None:
             child.kill()
 
 
-def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> str:
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=env,
-        cwd=str(cwd),
-        creationflags=_CREATE_NO_WINDOW,
-    )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _kill_command_tree(process)
+def resolve_executable(cmd: list[str], env: dict[str, str]) -> list[str]:
+    """Resolve PATH launchers, including Windows npm .cmd/.bat shims."""
+    executable = shutil.which(cmd[0], path=env.get("PATH"))
+    return [executable or cmd[0], *cmd[1:]]
+
+
+def run_command(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int, input_text: str | None = None) -> str:
+    # File-backed stdin avoids a blocking pipe write before communicate's
+    # timeout starts on Windows, even if the CLI never reads its input.
+    with contextlib.ExitStack() as stack:
+        stdin = None
+        if input_text is not None:
+            stdin = stack.enter_context(tempfile.TemporaryFile(mode="w+b"))
+            stdin.write(input_text.encode("utf-8"))
+            stdin.seek(0)
+        process = subprocess.Popen(
+            resolve_executable(cmd, env),
+            stdin=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            cwd=str(cwd),
+            creationflags=_CREATE_NO_WINDOW,
+        )
         try:
-            process.communicate(timeout=5)
+            stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            # An escaped descendant may retain a pipe. Closing a buffered
-            # stream here can block on Windows' communicate reader thread;
-            # reap the direct child without waiting indefinitely for EOF.
-            process.wait(timeout=5)
-        raise
+            _kill_command_tree(process)
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                # An escaped descendant may retain a pipe. Closing a buffered
+                # stream here can block on Windows' communicate reader thread;
+                # reap the direct child without waiting indefinitely for EOF.
+                process.wait(timeout=5)
+            raise
     stdout = (stdout or "").strip()
     stderr = (stderr or "").strip()
     if process.returncode != 0:
@@ -99,9 +116,11 @@ def claude_safe_mode_args() -> list[str]:
         return _CLAUDE_SAFE_MODE_ARGS
     try:
         result = subprocess.run(
-            ["claude", "--help"],
+            resolve_executable(["claude", "--help"], dict(os.environ)),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
             creationflags=_CREATE_NO_WINDOW,
@@ -252,11 +271,12 @@ def run_native_provider(ctx, prompt: str) -> str:
         cmd += [
             "--system-prompt",
             "You are a maintenance task runner. Output only the requested JSON object.",
-            prompt,
         ]
         env["CLAUDECODE"] = ""
         env["MEMSEARCH_DISABLE"] = "1"
-        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
+        # Journal prompts can exceed Windows command-line limits. Keep content
+        # on stdin, where batch launchers cannot expand shell metacharacters.
+        return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120, input_text=prompt)
 
     if ctx.platform == "codex":
         with tempfile.NamedTemporaryFile(
@@ -282,10 +302,10 @@ def run_native_provider(ctx, prompt: str) -> str:
             cmd += ["-p", profile]
         if model:
             cmd += ["-m", model]
-        cmd.append(prompt)
+        cmd.append("-")
         env["MEMSEARCH_IN_STOP_WORKER"] = "1"
         try:
-            run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
+            run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120, input_text=prompt)
             return output_path.read_text(encoding="utf-8", errors="replace").strip()
         finally:
             output_path.unlink(missing_ok=True)
@@ -308,13 +328,20 @@ def run_native_provider(ctx, prompt: str) -> str:
         # is instructed to output only a JSON object, which we then extract.
         # DSH_CLI may be a full command line (e.g. `node /path/to/bin.js`).
         cli = os.environ.get("DSH_CLI", "dsh").strip()
-        cmd = [*shlex.split(cli), "--profile", "headless"]
+        lexer = shlex.shlex(cli, posix=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        if os.name == "nt":
+            lexer.escape = ""  # Preserve Windows paths, including UNC paths.
+        command = list(lexer)
+        if not command:
+            raise ValueError("DSH_CLI must name an executable")
+        cmd = [*command, "--profile", "headless"]
         if model:
             cmd += ["--patch", f"agent-default-model={{model:{model}}}"]
-        cmd.append(prompt)
         env["MEMSEARCH_DSH_SUMMARIZE"] = "1"  # keep the plugin inert inside the sub-agent
         env["MEMSEARCH_DISABLE"] = "1"
-        out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=DSH_MAINTENANCE_TIMEOUT_SECONDS)
+        out = run_command(cmd, env=env, cwd=ctx.project_dir, timeout=DSH_MAINTENANCE_TIMEOUT_SECONDS, input_text=prompt)
         return extract_task_json_output(out)
 
     raise RuntimeError(f"Unsupported native maintenance platform {ctx.platform!r}")
@@ -382,7 +409,7 @@ def main() -> int:
             cfg,
             force=args.force,
         )
-    except (KeyError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+    except (KeyError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
         sys.stderr.write(f"Maintenance error: {exc}\n")
         return 1
     finally:

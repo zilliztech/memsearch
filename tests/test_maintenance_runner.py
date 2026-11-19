@@ -76,8 +76,9 @@ def test_codex_native_runner_uses_profile_and_last_message(tmp_path: Path, monke
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input_text=None):
         captured["cmd"] = cmd
+        captured["input"] = input_text
         captured["env"] = env
         captured["cwd"] = cwd
         output_path = Path(cmd[cmd.index("-o") + 1])
@@ -97,6 +98,8 @@ def test_codex_native_runner_uses_profile_and_last_message(tmp_path: Path, monke
 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
     assert captured["cmd"][0:2] == ["codex", "exec"]
+    assert captured["cmd"][-1] == "-"
+    assert captured["input"] == "prompt"
     assert captured["cmd"][captured["cmd"].index("-p") + 1] == "zilliz"
     assert "-o" in captured["cmd"]
     assert "features.hooks=false" in captured["cmd"]
@@ -107,8 +110,9 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input_text=None):
         captured["cmd"] = cmd
+        captured["input"] = input_text
         captured["env"] = env
         captured["cwd"] = cwd
         return '{"action":"none","reason":"ok"}'
@@ -125,7 +129,8 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     assert json.loads(result) == {"action": "none", "reason": "ok"}
     assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["cmd"][0:2] == ["claude", "-p"]
-    assert captured["cmd"][-1] == "maintenance prompt"
+    assert captured["input"] == "maintenance prompt"
+    assert "maintenance prompt" not in captured["cmd"]
     assert captured["cmd"][captured["cmd"].index("--system-prompt") + 1] != "maintenance prompt"
     assert captured["env"]["CLAUDECODE"] == ""
 
@@ -133,7 +138,7 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
 def test_openclaw_native_runner_extracts_json_from_noisy_output(tmp_path: Path, monkeypatch) -> None:
     runner = _load_runner()
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input_text=None):
         return "\n".join(
             [
                 "[plugins] [memsearch] Plugin loaded.",
@@ -203,9 +208,10 @@ def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, mon
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input_text=None):
         assert timeout == 600
         captured["cmd"] = cmd
+        captured["input"] = input_text
         captured["env"] = env
         captured["cwd"] = cwd
         return '{"action":"none","reason":"ok"}'
@@ -221,7 +227,8 @@ def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, mon
     result = runner.run_native_provider(ctx, "maintenance prompt")
 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
-    assert captured["cmd"] == ["node", "/opt/dsh/bin.js", "--flag", "--profile", "headless", "maintenance prompt"]
+    assert captured["cmd"] == ["node", "/opt/dsh/bin.js", "--flag", "--profile", "headless"]
+    assert captured["input"] == "maintenance prompt"
     assert captured["cwd"] == tmp_path
     assert captured["env"]["DSH_CLI"] == "node /opt/dsh/bin.js --flag"
     assert captured["env"]["MEMSEARCH_DSH_SUMMARIZE"] == "1"  # plugin inert inside the sub-agent
@@ -232,8 +239,9 @@ def test_dsh_native_runner_defaults_to_plain_dsh_command(tmp_path: Path, monkeyp
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
+    def fake_run_command(cmd, *, env, cwd, timeout, input_text=None):
         captured["cmd"] = cmd
+        captured["input"] = input_text
         return '{"action":"none","reason":"ok"}'
 
     monkeypatch.setattr(runner, "run_command", fake_run_command)
@@ -247,7 +255,8 @@ def test_dsh_native_runner_defaults_to_plain_dsh_command(tmp_path: Path, monkeyp
     result = runner.run_native_provider(ctx, "maintenance prompt")
 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
-    assert captured["cmd"] == ["dsh", "--profile", "headless", "maintenance prompt"]
+    assert captured["cmd"] == ["dsh", "--profile", "headless"]
+    assert captured["input"] == "maintenance prompt"
 
 
 def test_run_command_raises_with_exit_details(tmp_path: Path, monkeypatch) -> None:
