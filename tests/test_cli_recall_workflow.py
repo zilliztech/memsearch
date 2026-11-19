@@ -116,3 +116,46 @@ def test_expand_warns_when_indexed_source_becomes_empty(indexed_memory):
     expanded = json.loads(result.stdout)
     assert expanded["content"] == ""
     assert "anchor" not in expanded
+
+
+def test_existing_memory_reindexes_under_a_new_default_collection(monkeypatch, tmp_path):
+    """A collection-name correction rebuilds the index from untouched Markdown."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("memsearch.config.GLOBAL_CONFIG_PATH", tmp_path / "no-global.toml")
+    monkeypatch.setattr(core_module, "get_provider", lambda *_args, **_kwargs: FixtureEmbedding())
+    memory = tmp_path / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    source = memory / "2026-11-19.md"
+    original = "# Existing session\n\n- Keep cedar-852 for 47 minutes.\n"
+    source.write_text(original, encoding="utf-8")
+    original_mtime = source.stat().st_mtime_ns
+    runner = CliRunner()
+    uri = ["--milvus-uri", str(tmp_path / "index.db")]
+    # Default names for the same C:\repo project before and after normalization.
+    old_collection = "ms_repo_52bba149"
+    new_collection = "ms_repo_8ecf695f"
+
+    def invoke(*args):
+        result = runner.invoke(cli, [*args, *uri])
+        assert result.exit_code == 0, result.output
+        return result
+
+    invoke("index", str(memory), "--default-collection", old_collection)
+    # The startup index command does not need --force or a data migration.
+    invoke("index", str(memory), "--default-collection", new_collection)
+    for collection in (new_collection, old_collection):
+        result = invoke("search", "cedar-852", "--json-output", "--default-collection", collection)
+        hits = json.loads(result.stdout)
+        assert len(hits) == 1
+        assert hits[0]["source"] == str(source)
+        assert "47 minutes" in hits[0]["content"]
+        result = invoke("expand", hits[0]["chunk_hash"], "--json-output", "--default-collection", collection)
+        assert "cedar-852" in json.loads(result.stdout)["content"]
+
+    # An explicit existing collection continues to override the new default.
+    (tmp_path / ".memsearch.toml").write_text(f'[milvus]\ncollection = "{old_collection}"\n', encoding="utf-8")
+    result = runner.invoke(cli, ["config", "get", "milvus.collection", "--default-collection", new_collection])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == old_collection
+    assert source.read_text(encoding="utf-8") == original
+    assert source.stat().st_mtime_ns == original_mtime

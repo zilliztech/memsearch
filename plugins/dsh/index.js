@@ -174,13 +174,8 @@ function deriveCollection(projectDir, override) {
 }
 
 /**
- * Win32 native paths keep backslash separators (`realpathSync.native` returns
- * `C:\repo`), while the bash-side plugins normalize drive paths to forward
- * slashes before hashing (plugins/claude-code/hooks/common.sh, #753) and the
- * opencode fallback does the same (plugins/opencode/derive-collection.ts), so
- * every platform plugin shares one collection per project directory. Hash the
- * normalized spelling on Windows or dsh memories land in a separate Milvus
- * collection from Claude Code/Codex/OpenCode on the same checkout.
+ * Use the same Windows path separators as the shell helpers and OpenCode's
+ * native fallback so the same project shares one default collection.
  */
 export function normalizeCollectionPath(absolute) {
   if (process.platform !== 'win32') return absolute

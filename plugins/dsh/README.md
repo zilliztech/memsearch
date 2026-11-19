@@ -117,9 +117,14 @@ Everything else — provider/model, Milvus, collection, memory dir — comes fro
   `custom-llm` section below).
 - **Milvus** → `[milvus] uri` in memsearch config.
 - **Collection** → derived from the project path (`derive-collection.sh`),
-  or `--collection` passed to the memsearch CLI.
+  overridden by `[milvus] collection` in memsearch config or `--collection`
+  passed to the memsearch CLI.
 - **Memory dir** → `MEMSEARCH_DIR` env (explicit → global scope), else
   `<project>/.memsearch`.
+
+When upgrading from a Windows version that used a separate DSH collection,
+startup rebuilds the shared index from existing Markdown. The original files
+and old collection are retained; explicit `[milvus] collection` settings still apply.
 
 ### Maintenance tasks (PROJECT.md / USER.md / skills)
 
