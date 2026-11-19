@@ -488,7 +488,7 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
     """Run a restricted read-only memory command."""
     if not command.strip():
         return "Error: empty command"
-    if re.search(r"[|;&<>`$(){}%!^]", command):
+    if re.search(r"[|;&<>`$(){}]", command):
         return "Error: shell metacharacters are not allowed"
     try:
         argv = _split_command(command)
@@ -526,21 +526,14 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
 
 
 def _split_command(command: str) -> list[str]:
-    """Split a drill-down command without eating Windows path separators.
-
-    POSIX-mode shlex treats backslash as an escape, so ``C:\\Users\\x`` becomes
-    ``C:Usersx`` -- a drive-relative path that slips past the root check below.
-    On Windows, split in non-POSIX mode and strip the surrounding quotes it keeps.
-    """
+    """Split quoted arguments while preserving Windows path separators."""
     if os.name != "nt":
         return shlex.split(command)
-    return [_strip_quotes(token) for token in shlex.split(command, posix=False)]
-
-
-def _strip_quotes(token: str) -> str:
-    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
-        return token[1:-1]
-    return token
+    lexer = shlex.shlex(command, posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    lexer.escape = ""
+    return list(lexer)
 
 
 def _validate_paths_in_args(args: list[str], allowed_roots: list[Path], *, cwd: Path, allow_hash: bool) -> str:
@@ -549,15 +542,16 @@ def _validate_paths_in_args(args: list[str], allowed_roots: list[Path], *, cwd: 
             continue
         if allow_hash and re.fullmatch(r"[a-fA-F0-9]{8,64}", arg):
             continue
-        if "/" not in arg and "\\" not in arg and not arg.startswith("."):
+        windows_drive = os.name == "nt" and re.match(r"^[a-zA-Z]:", arg)
+        if "/" not in arg and "\\" not in arg and not arg.startswith(".") and not windows_drive:
             continue
         path = Path(arg).expanduser()
         if not path.is_absolute():
             path = cwd / path
         try:
             resolved = path.resolve()
-        except OSError:
-            continue
+        except (OSError, ValueError) as exc:
+            return f"Error: cannot resolve path {arg!r}: {exc}"
         if not any(_is_relative_to(resolved, root) for root in allowed_roots):
             return f"Error: path {arg!r} is outside allowed memory roots"
     return ""
@@ -574,6 +568,14 @@ def _run_restricted(argv: list[str], cwd: Path) -> str:
     # Resolve like a shell so Windows .cmd/.bat shims are found; unresolvable
     # names pass through and fail the same way as before.
     argv = [shutil.which(argv[0]) or argv[0], *argv[1:]]
+    # cmd.exe can expand these characters after the path check. Native
+    # executables and POSIX commands receive their arguments literally.
+    if (
+        os.name == "nt"
+        and Path(argv[0]).suffix.lower() in {".cmd", ".bat"}
+        and any(re.search(r"[%!^]", arg) for arg in argv)
+    ):
+        return "Error: %, ! and ^ are not supported in Windows batch commands"
     text_options = {}
     if Path(argv[0]).stem.lower() == "memsearch":
         text_options = {"encoding": "utf-8", "errors": "strict"}

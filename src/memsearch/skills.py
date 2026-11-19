@@ -185,7 +185,7 @@ def _parse_distill_response(raw: str) -> list[dict[str, Any]]:
     if match:
         text = match.group(1)
     try:
-        data = json.loads(text)
+        data = json.loads(text, strict=False)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"memory_to_skill LLM did not return valid JSON: {e}") from e
     skills = data.get("skills")
