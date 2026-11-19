@@ -354,7 +354,7 @@ def _run_openai_with_tools(
     tools = [_openai_memory_tool_schema()]
     chosen_model = model or "gpt-5-mini"
     tool_call_count = 0
-    while tool_call_count < MAX_TOOL_CALLS:
+    for _ in range(MAX_TOOL_CALLS):
         resp = client.chat.completions.create(
             model=chosen_model,
             messages=messages,
@@ -364,20 +364,13 @@ def _run_openai_with_tools(
         msg = resp.choices[0].message
         tool_calls = msg.tool_calls or []
         if not tool_calls:
-            return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
+            return msg.content or ""
         messages.append(msg.model_dump(exclude_none=True))
         for call in tool_calls:
             if tool_call_count < MAX_TOOL_CALLS:
+                args = json.loads(call.function.arguments or "{}")
+                output = run_memory_command(str(args.get("command", "")), ctx)
                 tool_call_count += 1
-                try:
-                    args = json.loads(call.function.arguments or "{}")
-                except (json.JSONDecodeError, TypeError) as exc:
-                    output = f"Error: invalid memory tool arguments: {exc}"
-                else:
-                    if not isinstance(args, dict):
-                        output = "Error: memory tool arguments must be a JSON object"
-                    else:
-                        output = run_memory_command(str(args.get("command", "")), ctx)
             else:
                 output = "Error: memory tool call limit reached"
             messages.append(
@@ -387,15 +380,7 @@ def _run_openai_with_tools(
                     "content": output,
                 }
             )
-    # The closing request keeps the tools and asks for none of them, which is
-    # the OpenAI way to say "answer now". Some endpoints do not implement that
-    # choice: Z.AI (Zhipu GLM) documents tool_choice as "only auto" and
-    # rejects every other value. A gateway in front of such an endpoint either
-    # rejects the request outright or answers with tool calls anyway. When
-    # either happens, the same intent is expressed by declaring no tools at
-    # all, which every endpoint understands. The tools stay available for the
-    # whole drill, so only this last answer loses them.
-    closing_failure: str | None = None
+    # Preserve the normal closing request; retry only a proven incompatibility.
     try:
         resp = client.chat.completions.create(
             model=chosen_model,
@@ -403,42 +388,62 @@ def _run_openai_with_tools(
             tools=tools,
             tool_choice="none",
         )
-        msg = resp.choices[0].message
-        if not msg.tool_calls:
-            return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
-        closing_failure = "the endpoint answered tool_choice=none with a tool call"
-    # Any rejection (HTTP 400 included) counts as the gateway refusing the
-    # closing shape; the tool-less retry below is the remedy.
-    except Exception as exc:
-        closing_failure = f"the closing request failed: {type(exc).__name__}: {exc}"
-    resp = client.chat.completions.create(
-        model=chosen_model,
-        messages=messages,
-    )
-    msg = resp.choices[0].message
-    if msg.tool_calls:
-        raise RuntimeError(
-            "memory distillation final request asked for a tool even after the "
-            f"tools were withdrawn ({closing_failure}); the endpoint does not "
-            "honour tool_choice=none"
+    except openai.APIStatusError as exc:
+        if not _unsupported_tool_choice(exc):
+            raise
+        closing_failure = f"tool_choice=none was rejected (HTTP {exc.status_code})"
+    else:
+        if not resp.choices[0].message.tool_calls:
+            return _openai_final_text(resp.choices[0])
+        closing_failure = "the endpoint returned tool calls despite tool_choice=none"
+
+    # Keep the completed drill history, without adding unanswered tool calls
+    # from the rejected closing response. Never execute more tools here.
+    resp = client.chat.completions.create(model=chosen_model, messages=messages)
+    if resp.choices[0].message.tool_calls:
+        raise RuntimeError(f"Memory maintenance final request returned tool calls without tools ({closing_failure})")
+    return _openai_final_text(resp.choices[0])
+
+
+def _unsupported_tool_choice(exc: Any) -> bool:
+    """Recognize an explicit parameter/value rejection, not an arbitrary API error."""
+    if exc.status_code not in (400, 422):
+        return False
+    body = exc.body if isinstance(exc.body, dict) else {}
+    error = body.get("error", body)
+    if not isinstance(error, dict):
+        error = {}
+    param = error.get("param") or getattr(exc, "param", None)
+    if param and param != "tool_choice":
+        return False
+    code = error.get("code") or getattr(exc, "code", None)
+    if param == "tool_choice" and code in {
+        "unsupported_parameter",
+        "unsupported_value",
+        "unsupported_parameter_value",
+        "unknown_parameter",
+    }:
+        return True
+    message = str(error.get("message") or exc.message).lower().replace("_", " ")
+    return (param == "tool_choice" or "tool choice" in message) and any(
+        marker in message
+        for marker in (
+            "not supported",
+            "unsupported",
+            "not support",
+            "only auto",
+            "must be auto",
+            "only 'auto'",
+            'only "auto"',
         )
-    return _answer_text(msg, getattr(resp.choices[0], "finish_reason", None))
-
-
-def _answer_text(msg: Any, finish_reason: Any) -> str:
-    """The assistant text of a reply, or an error naming why there is none.
-
-    An empty answer is reported with the reply's own diagnostics: the caller
-    of a distillation task needs to tell "the model said nothing" apart from
-    "the model answered with something unusable".
-    """
-    content = msg.content or ""
-    if content.strip():
-        return content
-    raise RuntimeError(
-        "memory distillation final request returned no text; "
-        f"tool_calls={len(msg.tool_calls or [])}, finish_reason={finish_reason!r}"
     )
+
+
+def _openai_final_text(choice: Any) -> str:
+    content = choice.message.content or ""
+    if not content.strip():
+        raise RuntimeError(f"Memory maintenance final request returned no text; finish_reason={choice.finish_reason!r}")
+    return content
 
 
 def _openai_memory_tool_schema() -> dict[str, Any]:
