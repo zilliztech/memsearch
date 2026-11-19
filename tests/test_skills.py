@@ -511,3 +511,117 @@ def test_cli_distill_native_gives_guidance_not_crash(monkeypatch) -> None:
     assert result.exit_code == 2
     assert "needs an API provider" in result.stderr
     assert "Native maintenance providers" not in (result.stderr + result.output)  # no raw traceback
+
+
+def _write_failed_maintenance_state(project: Path) -> None:
+    mem_root = project / ".memsearch"
+    mem_root.mkdir(parents=True, exist_ok=True)
+    state_path = mem_root / ".maintenance-state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "codex.project_review": {
+                    "last_action": "error",
+                    "last_checked_at": "2026-11-08T00:00:00+00:00",
+                    "last_failed_at": "2026-11-08T00:30:00+00:00",
+                    "last_error": "RuntimeError: provider timeout",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return mem_root
+
+
+def test_last_maintenance_status_reads_failure(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    mem_root = _write_failed_maintenance_state(project)
+
+    status = skills_mod.last_maintenance_status(mem_root)
+
+    assert status["task"] == "codex.project_review"  # the state key names the task
+    assert status["last_action"] == "error"
+    assert status["last_failed_at"] == "2026-11-08T00:30:00+00:00"
+    assert "provider timeout" in status["last_error"]
+
+
+def test_last_maintenance_status_picks_the_most_recent_task(tmp_path: Path) -> None:
+    """With several task entries, the latest last_checked_at wins, key as task."""
+    project = tmp_path / "repo"
+    mem_root = project / ".memsearch"
+    mem_root.mkdir(parents=True)
+    (mem_root / ".maintenance-state.json").write_text(
+        json.dumps(
+            {
+                "codex.memory_to_skill": {
+                    "last_action": "replace",
+                    "last_checked_at": "2026-11-08T01:00:00+00:00",
+                    "last_success_at": "2026-11-08T01:00:00+00:00",
+                },
+                "codex.project_review": {
+                    "last_action": "error",
+                    "last_checked_at": "2026-11-08T02:00:00+00:00",
+                    "last_failed_at": "2026-11-08T02:00:00+00:00",
+                    "last_error": "RuntimeError: newer task failed",
+                },
+                "codex.user_profile": {
+                    "last_action": "error",
+                    "last_checked_at": "2026-11-08T00:30:00+00:00",
+                    "last_failed_at": "2026-11-08T00:30:00+00:00",
+                    "last_error": "RuntimeError: older task failed",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = skills_mod.last_maintenance_status(mem_root)
+
+    assert status["task"] == "codex.project_review"
+    assert status["last_action"] == "error"
+    assert "newer task failed" in status["last_error"]
+
+
+def test_last_maintenance_status_missing_or_broken_state_is_empty(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    mem_root = project / ".memsearch"
+    mem_root.mkdir(parents=True)
+
+    assert skills_mod.last_maintenance_status(mem_root) == {}
+
+    (mem_root / ".maintenance-state.json").write_text("{not json", encoding="utf-8")
+    assert skills_mod.last_maintenance_status(mem_root) == {}
+
+
+def test_candidate_review_summary_includes_last_maintenance(tmp_path: Path) -> None:
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    skills_mod.add(
+        "Review Me",
+        "Review this candidate. Use when testing summaries.",
+        "## Review\n\n1. Check it",
+        project_dir=project,
+    )
+    mem_root = _write_failed_maintenance_state(project)
+
+    summary = skills_mod.candidate_review_summary(mem_root)
+
+    assert summary["last_maintenance"]["last_action"] == "error"
+
+
+def test_cli_skills_status_reports_maintenance_failure(tmp_path: Path, monkeypatch) -> None:
+    from click.testing import CliRunner
+
+    from memsearch.cli import cli
+
+    project = tmp_path / "repo"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    _write_failed_maintenance_state(project)
+
+    result = CliRunner().invoke(cli, ["skills", "status"])
+
+    assert result.exit_code == 0
+    assert "Last maintenance run failed (2026-11-08T00:30:00+00:00):" in result.output
+    assert "RuntimeError: provider timeout" in result.output
+    assert ".memsearch/.maintenance-state.json" in result.output

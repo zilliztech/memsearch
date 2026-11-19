@@ -1461,9 +1461,17 @@ def skills_status(json_output: bool, hint: bool) -> None:
         return
     if summary["pending_count"] == 0:
         click.echo("No candidate skill versions pending install.")
-        return
-    click.echo(skills_mod.format_candidate_hint(summary))
-    click.echo(f"New: {summary['new_count']}; updated: {summary['updated_count']}.")
+    else:
+        click.echo(skills_mod.format_candidate_hint(summary))
+        click.echo(f"New: {summary['new_count']}; updated: {summary['updated_count']}.")
+    maintenance = summary.get("last_maintenance") or {}
+    error = str(maintenance.get("last_error") or "")
+    if error:
+        click.echo("")
+        when = maintenance.get("last_failed_at") or maintenance.get("last_checked_at") or "unknown time"
+        click.echo(f"Last maintenance run failed ({when}):")
+        click.echo(f"  {error}")
+        click.echo("  Full detail: .memsearch/.maintenance-state.json")
 
 
 @skills_group.command("install")
