@@ -78,6 +78,8 @@ class JinaEmbedding:
         return await batched_embed(texts, self._embed_batch, self._batch_size)
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        from .utils import order_indexed_embeddings
+
         body: dict = {
             "model": self._model,
             "input": texts,
@@ -97,4 +99,6 @@ class JinaEmbedding:
         )
         resp.raise_for_status()
         payload = resp.json()
-        return [item["embedding"] for item in payload["data"]]
+        return order_indexed_embeddings(
+            [(item.get("index"), item["embedding"]) for item in payload["data"]], len(texts)
+        )

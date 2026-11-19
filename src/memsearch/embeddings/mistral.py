@@ -62,8 +62,12 @@ class MistralEmbedding:
         return await batched_embed(texts, self._embed_batch, self._batch_size)
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        from .utils import order_indexed_embeddings
+
         resp = await self._client.embeddings.create_async(model=self._model, inputs=texts)
-        return [item.embedding for item in resp.data]
+        return order_indexed_embeddings(
+            [(item.index, item.embedding) for item in resp.data], len(texts), allow_unindexed=True
+        )
 
 
 def _detect_dimension(client, model: str) -> int:
