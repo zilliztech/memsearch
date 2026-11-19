@@ -10,6 +10,7 @@ site/
 
 # Virtual environments
 .venv/
+plugins/dsh/node_modules/
 
 # Testing & linting
 .pytest_cache/

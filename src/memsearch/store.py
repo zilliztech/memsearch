@@ -93,7 +93,7 @@ class MilvusStore:
         description: str = "",
         _create_if_missing: bool = False,
     ) -> None:
-        is_local = not uri.startswith(("http", "tcp"))
+        is_local = not uri.startswith(("http", "tcp", "unix:"))
         resolved = str(Path(uri).expanduser()) if is_local else uri
         self._connect_kwargs: dict[str, Any] = {"uri": resolved}
         if token:

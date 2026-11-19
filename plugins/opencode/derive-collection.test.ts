@@ -36,14 +36,8 @@ for (const projectDir of [
   });
 }
 
-test("returns the existing fallback when collection derivation fails", () => {
-  const result = deriveCollectionNameFromScript(
-    SCRIPT_PATH,
-    "/tmp/project",
-    () => {
-      throw new Error("recorded failure");
-    }
-  );
-
-  assert.equal(result, "ms_opencode_default");
+test("fails closed when collection derivation fails", () => {
+  assert.throws(() => deriveCollectionNameFromScript(SCRIPT_PATH, "/tmp/project", () => {
+    throw new Error("fixture failure");
+  }), /refusing a shared fallback/);
 });

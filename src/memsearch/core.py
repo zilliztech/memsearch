@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable, Iterator
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -331,11 +331,14 @@ class MemSearch:
         base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
         memory_dir = base / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
-        compact_file = memory_dir / f"{date.today()}.md"
-        compact_heading = "\n\n## Memory Compact\n\n"
+        # Time-stamp the heading (like the plugins' ``## Session HH:MM``) so two
+        # compactions on the same day stay distinguishable in the daily file.
+        now = datetime.now()
+        compact_file = memory_dir / f"{now.date()}.md"
+        compact_heading = f"\n\n## Memory Compact {now:%H:%M}\n\n"
         with open(compact_file, "a", encoding="utf-8") as f:
             if compact_file.stat().st_size == 0:
-                f.write(f"# {date.today()}\n")
+                f.write(f"# {now.date()}\n")
             f.write(compact_heading)
             f.write(summary)
             f.write("\n")

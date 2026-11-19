@@ -10,12 +10,10 @@ flowchart LR
     CAPTURE --> MD[".memsearch/memory/YYYY-MM-DD.md"]
     MD --> INDEX[Milvus hybrid index]
 
-    PROMPT[Next user prompt] --> SEARCH[Search project memory]
-    SEARCH -->|chunks returned| INJECT[Inject before model step 1]
-    SEARCH -->|no chunks returned| CLEAN[Leave context unchanged]
-
-    QUESTION[History question] --> SKILL[memory-recall skill]
-    SKILL --> SEARCH
+    PROMPT[Next user prompt] --> HINT[Recall hint when memory exists]
+    HINT --> DECIDE[Agent decides whether history is useful]
+    DECIDE -->|needed| SKILL[memory-recall skill]
+    SKILL --> SEARCH[Search project memory]
     SKILL --> EXPAND[Expand markdown section]
     EXPAND --> TRANSCRIPT[Read original DSH transcript]
 ```
@@ -32,11 +30,11 @@ The plugin listens for DSH `session/event` notifications and handles completed t
 
 Capture jobs are serialized so summarizers do not overlap. Session and turn anchors make writes idempotent if DSH replays an event.
 
-## Selective Pre-Step Injection
+## Recall Hint
 
-At the first model step of a new turn, the plugin searches memory using the user's question. When the search returns chunks, it injects a small set of candidate snippets and a `[memsearch] Retrieved memory context attached.` marker. When the search returns no chunks, the model context is left unchanged. The model still evaluates whether each retrieved chunk is relevant.
+At the first model step of a new turn, the plugin adds a brief `memory-recall` reminder when the project has memory files. The agent decides whether the question needs historical context and invokes the skill to search when useful. `injectEnabled` controls this reminder.
 
-This keeps routine turns lightweight while still surfacing past decisions when they matter.
+Search results enter the conversation through the skill's normal tool calls.
 
 ## Native Memory Recall
 
@@ -91,7 +89,7 @@ Each task runs only when new journal content exists and its minimum interval has
 
 | Path | Purpose |
 |------|---------|
-| `plugins/dsh/index.js` | DSH lifecycle integration, host routes, capture, injection, and maintenance |
+| `plugins/dsh/index.js` | DSH lifecycle integration, host routes, capture, recall hints, and maintenance |
 | `plugins/dsh/client.js` | Web dock, candidate review UI, and read-only memory browser |
 | `plugins/dsh/skills/` | Native `memory-recall`, `memory-config`, and memory-to-skill instructions |
 | `plugins/dsh/scripts/` | Summarization, transcript parsing, collection derivation, and maintenance helpers |

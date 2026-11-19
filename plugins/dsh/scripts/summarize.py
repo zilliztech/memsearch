@@ -32,12 +32,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 # The child inherits the host's console code page (e.g. cp1251 on ru-RU
 # Windows); summaries legitimately contain multiplication/approximation signs and CJK.
 # Force UTF-8 with replacement so printing the summary never crashes.
+if sys.stdin and hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
@@ -46,6 +50,35 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 # ---------------------------------------------------------------------------
 # memsearch importability bootstrap (shared with plugins/_shared/scripts)
 # ---------------------------------------------------------------------------
+
+
+# Keep helper processes hidden when invoked from a Windows GUI host.
+_CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
+def _reexec(argv: list[str], env: dict[str, str]) -> None:
+    """Windows exec launches a child; wait and propagate its actual exit status."""
+    if os.name == "nt":
+        # Suppress console allocation and keep output connected to the host.
+        # GUI hosts may provide no usable stdout/stderr handles.
+        streams = {}
+        for name, stream in (("stdout", sys.stdout), ("stderr", sys.stderr)):
+            try:
+                stream.fileno()
+            except (AttributeError, OSError, ValueError):
+                stream = subprocess.DEVNULL
+            streams[name] = stream
+        raise SystemExit(
+            subprocess.run(
+                argv,
+                env=env,
+                check=False,
+                creationflags=_CREATE_NO_WINDOW,
+                stdin=subprocess.DEVNULL,
+                **streams,
+            ).returncode
+        )
+    os.execvpe(argv[0], argv, env)
 
 
 def ensure_memsearch_importable(transcript: str = "") -> None:
@@ -91,27 +124,25 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
     if transcript:
         reexec_env["MEMSEARCH_DSH_TRANSCRIPT"] = transcript
 
-    memsearch_bin = _which("memsearch")
+    memsearch_bin = shutil.which("memsearch")
     if memsearch_bin:
         try:
             first_line = Path(memsearch_bin).read_text(encoding="utf-8", errors="ignore").splitlines()[0]
             if first_line.startswith("#!"):
                 python_bin = first_line[2:].strip().split()[0]
                 if python_bin:
-                    os.execvpe(
-                        python_bin,
+                    _reexec(
                         [python_bin, str(Path(__file__).resolve()), *sys.argv[1:]],
                         reexec_env,
                     )
         except (OSError, UnicodeDecodeError):
             pass
 
-    uv = _which("uv")
+    uv = shutil.which("uv")
     if not uv:
         return
 
-    os.execvpe(
-        uv,
+    _reexec(
         [
             uv,
             "run",
@@ -123,17 +154,6 @@ def ensure_memsearch_importable(transcript: str = "") -> None:
         ],
         reexec_env,
     )
-
-
-def _which(name: str) -> str | None:
-    """Return the first PATH match for ``name`` (no shell involved)."""
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        if not directory:
-            continue
-        candidate = Path(directory) / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
 
 
 # ---------------------------------------------------------------------------

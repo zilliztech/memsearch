@@ -201,7 +201,7 @@ ${CONTENT}"
 
   local _uri
   _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
-  if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]]; then
+  if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]] || [[ "$_uri" == unix:* ]]; then
     kill_orphaned_index
     run_memsearch index "$MEMORY_DIR" >/dev/null
   fi
@@ -349,7 +349,7 @@ if [ ${#CONTENT} -gt "$MAX_CONTENT_CHARS" ]; then
   CONTENT="$(printf '%s' "$CONTENT" | _truncate_chars "$MAX_CONTENT_CHARS")...(truncated)"
 fi
 
-WORK_FILE="$(mktemp "${TMPDIR:-/tmp}/memsearch-stop.XXXXXX.json")"
+WORK_FILE="$(mktemp "${TMPDIR:-/tmp}/memsearch-stop.XXXXXX")"
 python3 - "$WORK_FILE" "$NOW" "$MEMORY_FILE" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CONTENT" "$USER_QUESTION" "$LAST_MSG" <<'PY'
 from pathlib import Path
 import json

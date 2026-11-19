@@ -106,6 +106,25 @@ jobs:
         if: steps.registry.outputs.exists == 'false'
         run: npm install --package-lock=false
 
+      - name: Setup uv
+        if: steps.registry.outputs.exists == 'false'
+        uses: astral-sh/setup-uv@v7
+
+      - name: Setup Python
+        if: steps.registry.outputs.exists == 'false'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install core for plugin integration tests
+        if: steps.registry.outputs.exists == 'false'
+        working-directory: .
+        run: uv sync --locked
+
+      - name: Check package types
+        if: steps.registry.outputs.exists == 'false'
+        run: npm run typecheck
+
       - name: Test package
         if: steps.registry.outputs.exists == 'false'
         run: npm test

@@ -1,0 +1,59 @@
+{
+  "provenance": "V2 session_message rows from official @opencode/cli 2.0.32 migration of the synthetic cedar-8174 fixture; no V1 tables are read by this test.",
+  "session_id": "ses_memsearch_migration001",
+  "stored_project_id": "global",
+  "requester_project_id": "75cb59f7b590125d573cc107225b08c8d7313d26",
+  "messages": [
+    {
+      "id": "msg_memsearch_migration001",
+      "session_id": "ses_memsearch_migration001",
+      "type": "user",
+      "seq": 0,
+      "data": {
+        "text": "Synthetic migration fact: cedar-8174 uses a 23-hour retention interval.",
+        "time": {
+          "created": 1792479000000
+        }
+      },
+      "time_created": 1792479000000,
+      "time_updated": 1792479001000
+    },
+    {
+      "id": "msg_memsearch_migration002",
+      "session_id": "ses_memsearch_migration001",
+      "type": "assistant",
+      "seq": 1,
+      "data": {
+        "agent": "build",
+        "model": {
+          "providerID": "openai",
+          "id": "gpt-4o",
+          "variant": "default"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "The synthetic cedar-8174 interval is 23 hours."
+          }
+        ],
+        "finish": "stop",
+        "cost": 0,
+        "tokens": {
+          "input": 1,
+          "output": 1,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "time": {
+          "created": 1792479000001,
+          "completed": 1792479001000
+        }
+      },
+      "time_created": 1792479000001,
+      "time_updated": 1792479001000
+    }
+  ]
+}

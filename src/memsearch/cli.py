@@ -10,12 +10,14 @@ from pathlib import Path
 
 import click
 
+from .chunker import _HEADING_RE
 from .config import (
     GLOBAL_CONFIG_PATH,
     PROJECT_CONFIG_PATH,
     ConfigEnvVarError,
     MemSearchConfig,
     config_to_dict,
+    deep_merge,
     get_config_value,
     load_config_file,
     resolve_config,
@@ -432,7 +434,9 @@ def search(
 
 @cli.command()
 @click.argument("chunk_hash")
-@click.option("--section/--no-section", default=True, help="Show full heading section (default).")
+@click.option(
+    "--section/--no-section", default=True, help="Show full heading section (default) or only the chunk's own lines."
+)
 @click.option("--lines", "-n", default=None, type=int, help="Show N lines before/after instead of full section.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
 @_common_options
@@ -454,7 +458,8 @@ def expand(
     """Expand a memory chunk to show full context. [Claude Code plugin: L2]
 
     Look up CHUNK_HASH in the index, then read the source markdown file
-    to return the surrounding context (full heading section by default).
+    to return the surrounding context (full heading section by default,
+    or the chunk's own lines with --no-section).
 
     Part of the progressive disclosure workflow (search -> expand -> transcript).
     """
@@ -499,6 +504,17 @@ def expand(
             sys.exit(1)
 
         all_lines = read_utf8_text_replace(source_path).splitlines()
+        if start_line > len(all_lines):
+            click.echo(
+                f"Warning: chunk start_line {start_line} is past the end of {source} "
+                f"({len(all_lines)} lines); the index is out of sync with the file. "
+                "Re-run 'memsearch index <path>' to refresh it.",
+                err=True,
+            )
+
+        if lines is None and not section:
+            # Chunk-only view: same range as `--lines 0`
+            lines = 0
 
         if lines is not None:
             # Show N lines before/after the chunk
@@ -571,27 +587,24 @@ def _extract_section(
     Walks backward to find the section heading, then forward to the next
     heading of equal or higher level (or EOF).
     """
-    # Find section start — walk backward to the heading
+    # Find section start — walk backward to the heading, starting at the
+    # chunk's own first line (clamped in case the file shrank since indexing)
     section_start = start_line - 1  # 0-indexed
     if heading_level > 0:
-        for i in range(start_line - 2, -1, -1):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_start = i
-                    break
+        for i in range(min(start_line, len(all_lines)) - 1, -1, -1):
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_start = i
+                break
 
     # Find section end — walk forward to the next heading of same or higher level
     section_end = len(all_lines)
     if heading_level > 0:
         for i in range(start_line, len(all_lines)):
-            line = all_lines[i]
-            if line.startswith("#"):
-                level = len(line) - len(line.lstrip("#"))
-                if level <= heading_level:
-                    section_end = i
-                    break
+            m = _HEADING_RE.match(all_lines[i])
+            if m and len(m.group(1)) <= heading_level:
+                section_end = i
+                break
 
     content = "\n".join(all_lines[section_start:section_end])
     return content, section_start + 1, section_end
@@ -831,7 +844,7 @@ def compact(
 
 
 @cli.command()
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option("--plugin", required=True, help="Plugin platform name (e.g. claude-code, workbuddy).")
 @click.option("--agent-name", default="", help="Agent display name for the summarize prompt.")
 def summarize(plugin: str, agent_name: str) -> None:
     """Summarize stdin using a configured memsearch-managed LLM provider."""
@@ -1247,7 +1260,8 @@ def config_init(project: bool) -> None:
         default=current.prompts.user_profile,
     )
 
-    save_config(result, target)
+    # The global wizard edits a subset of settings. Keep named providers and other unprompted keys.
+    save_config(deep_merge(existing, result), target)
     click.echo(f"\nConfig saved to {target}")
 
 
@@ -1476,12 +1490,13 @@ def skills_install(name: str, paths: tuple[str, ...]) -> None:
 @click.option("--turn", "-t", default=None, help="Target turn/session id (prefix match); shows surrounding context.")
 @click.option("--context", "-c", default=3, type=int, help="Turns of context to show before/after --turn.")
 @click.option("--json-output", "-j", is_flag=True, help="Output as JSON.")
-def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool) -> None:
+@click.option("--for-summary", is_flag=True, hidden=True)
+def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool, for_summary: bool) -> None:
     """Show original conversation turns, with tool calls, from a session transcript.
 
     L3 of progressive recall (search -> expand -> transcript): pass the transcript
     path from a journal anchor to recover the exact commands, flags, and paths the
-    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw formats.
+    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw / WorkBuddy formats.
     """
     from . import transcript as transcript_mod
 
@@ -1496,6 +1511,9 @@ def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool)
     except (FileNotFoundError, OSError) as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1) from None
+    if for_summary:
+        click.echo(json.dumps(transcript_mod.last_exchange(turns), ensure_ascii=False))
+        return
     turns = transcript_mod.select_turns(turns, turn, context)
     if json_output:
         payload = [

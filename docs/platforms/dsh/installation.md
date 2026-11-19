@@ -25,9 +25,23 @@ Install the published npm package into the profile you use:
 dsh plugin --profile web add @zilliz/memsearch-dsh
 ```
 
-Replace `web` with another profile name when appropriate. The command adds the package to that profile and inserts the MemSearch plugin into its bundle layers.
+Replace `web` with the profile you use, then restart it or start a new session.
 
-Restart the profile, or begin a new DSH session, so the plugin mounts.
+### Native summary credentials
+
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
+
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
+```
+
+If you set `DSH_HOME`, use `profiles/headless/cordis.patch.yml` under that
+directory. Keys exported in DSH's launch environment are already available to
+native summaries.
 
 ### Install from Source
 
@@ -35,6 +49,8 @@ Use a local checkout when developing the plugin:
 
 ```bash
 git clone https://github.com/zilliztech/memsearch.git
+cd memsearch/plugins/dsh
+npm install --omit=peer
 dsh plugin --profile web add /absolute/path/to/memsearch/plugins/dsh
 ```
 
@@ -42,12 +58,9 @@ The plugin is plain ESM with no build step. Restart the profile after changing t
 
 ## 3. Verify the Installation
 
-Complete a normal DSH turn, then check the project memory directory:
-
-```bash
-ls .memsearch/memory/
-cat .memsearch/memory/$(date +%Y-%m-%d).md
-```
+Complete a turn, then open today's file in the project's `.memsearch/memory/`
+directory and check for a summary of what you discussed. If the entry reports
+`MISSING_CREDENTIAL`, check the [native summary credentials](#native-summary-credentials).
 
 You can also ask DSH to use the registered skill:
 
@@ -59,12 +72,12 @@ In a web profile, look for the compact **MemSearch** capsule above the composer.
 
 ## Plugin Settings
 
-The plugin works without configuration. Its DSH profile settings control lifecycle behavior:
+The DSH profile settings control capture, recall hints, and summarization.
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `captureEnabled` | `true` | Capture completed turns into the daily memory journal |
-| `injectEnabled` | `true` | Search and inject returned memory candidates before the first model step |
+| `injectEnabled` | `true` | Remind the agent to use memory-recall before the first model step when memory exists |
 | `summarizeEnabled` | `true` | Summarize turns before writing them |
 | `summarizeMode` | `auto` | Use a configured API provider when present; otherwise use a one-shot DSH headless agent |
 
@@ -121,6 +134,7 @@ Removing the plugin does not delete `.memsearch` markdown files or the Milvus in
 
 - **No memory file appears:** confirm the plugin mounted in the DSH session log and that `captureEnabled` is still `true`.
 - **The recall skill is missing:** restart the profile after installation and confirm `@zilliz/memsearch-dsh` is present in that profile.
-- **Summarization reports an unavailable note:** verify `dsh` is on `PATH`, or check the configured `[plugins.dsh.summarize]` provider.
+- **A required command is missing:** make MemSearch and Python 3 available on the profile's `PATH`. `MEMSEARCH_CMD` and `MEMSEARCH_PYTHON` can select explicit executable paths. For native summaries, Desktop users can enable **Manage dsh Command… → Install**, or set `DSH_CLI` to the CLI entry. The bundled Windows `dsh.cmd` is supported. Quote paths containing spaces, then restart DSH so it inherits the updated environment.
+- **Summarization reports an unavailable note:** inspect the reported dependency or execution error. Once the command starts, check the headless profile's model configuration or the configured `[plugins.dsh.summarize]` provider.
 - **The web dock is absent:** the dock requires a web profile; capture, injection, and recall still work in TUI and headless profiles.
 - **First search cannot download the model:** pre-cache the ONNX model from an environment with access to Hugging Face, or configure another [embedding provider](../../home/configuration.md).

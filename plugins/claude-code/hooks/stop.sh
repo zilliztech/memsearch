@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop hook: parse transcript, summarize with claude -p, and save to memory.
+# Stop hook: parse transcript, summarize the latest exchange, and save to memory.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
@@ -46,41 +46,36 @@ fi
 TRANSCRIPT_PATH=$(_json_val "$INPUT" "transcript_path" "")
 
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
+  if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+    printf '%s\n' '[memsearch] WorkBuddy Stop did not supply a readable transcript_path; no memory saved.' >&2
+  fi
   echo '{}'
   exit 0
 fi
 
 # Check if transcript is empty (< 3 lines = no real content)
-LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
-if [ "$LINE_COUNT" -lt 3 ]; then
+if [ "$PLUGIN_PLATFORM" = claude-code ] && [ "$(wc -l < "$TRANSCRIPT_PATH")" -lt 3 ]; then
   echo '{}'
   exit 0
 fi
 
 ensure_memory_dir
 
-SUMMARIZE_ENABLED=$(_memsearch config get plugins.claude-code.summarize.enabled 2>/dev/null || echo "true")
+SUMMARIZE_ENABLED=$(_memsearch config get "plugins.$PLUGIN_PLATFORM.summarize.enabled" 2>/dev/null || echo "true")
 if [ "$SUMMARIZE_ENABLED" = "false" ]; then
   echo '{}'
   exit 0
 fi
 
-# Parse transcript — extract the last turn only (one user question + all responses)
-PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
-
-if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ] || [ "$PARSED" = "(no user message found)" ] || [ "$PARSED" = "(empty turn)" ]; then
-  echo '{}'
-  exit 0
-fi
-
-# Determine today's date and current time
-TODAY=$(date +%Y-%m-%d)
-NOW=$(date +%H:%M)
-MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
-
-# Extract session ID and last user turn UUID for progressive disclosure anchors
-SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
-LAST_USER_TURN_UUID=$(python3 -c "
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  exchange=$(_memsearch transcript "$TRANSCRIPT_PATH" --for-summary) || { echo '{}'; exit 0; }
+  PARSED=$(_json_val "$exchange" text "")
+  LAST_USER_TURN_UUID=$(_json_val "$exchange" turn "")
+else
+  # Parse in a subshell to reuse the resolved Python command without changing
+  # this hook's state. Extract the last turn only (one question + all responses).
+  PARSED=$(source "$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
+  LAST_USER_TURN_UUID=$(run_python -c "
 import json, sys
 uuid = ''
 with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
@@ -101,9 +96,24 @@ with open(sys.argv[1], encoding='utf-8', errors='replace') as f:
         except: pass
 print(uuid)
 " "$TRANSCRIPT_PATH" 2>/dev/null || true)
+fi
+
+if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ] || [ "$PARSED" = "(no user message found)" ] || [ "$PARSED" = "(empty turn)" ]; then
+  echo '{}'
+  exit 0
+fi
+
+# Determine today's date and current time
+TODAY=$(date +%Y-%m-%d)
+NOW=$(date +%H:%M)
+MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
+
+# Extract session ID and last user turn UUID for progressive disclosure anchors
+SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
 
 # Load summarization prompt: user custom (via config) > plugin built-in template
 AGENT_NAME="Claude Code"
+if [ "$PLUGIN_PLATFORM" = workbuddy ]; then AGENT_NAME="WorkBuddy"; fi
 PROMPT_FILE=""
 if memsearch_available; then
   PROMPT_FILE=$(_memsearch config get prompts.summarize 2>/dev/null || true)
@@ -111,8 +121,8 @@ if memsearch_available; then
 fi
 if [ -n "$PROMPT_FILE" ] && [ -f "$PROMPT_FILE" ]; then
   SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$PROMPT_FILE")
-elif [ -f "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt" ]; then
-  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "${CLAUDE_PLUGIN_ROOT}/prompts/summarize.txt")
+elif [ -f "$SCRIPT_DIR/../prompts/summarize.txt" ]; then
+  SYSTEM_PROMPT=$(sed "s/{{AGENT_NAME}}/$AGENT_NAME/g" "$SCRIPT_DIR/../prompts/summarize.txt")
 else
   SYSTEM_PROMPT="You are a third-person note-taker. Summarize the transcript as 2-10 bullet points. Write in third person. Mandatory language rule: write every bullet in the same primary language as the [User] text. If User mixes languages, use the dominant user-facing language. Do NOT answer User's question. Output ONLY bullet points."
 fi
@@ -126,7 +136,7 @@ SUMMARY_STATUS=0
 SUMMARY_FAILURE=""
 SUMMARIZE_PROVIDER=""
 if memsearch_available; then
-  SUMMARIZE_PROVIDER=$(_memsearch config get plugins.claude-code.summarize.provider 2>/dev/null || true)
+  SUMMARIZE_PROVIDER=$(_memsearch config get "plugins.$PLUGIN_PLATFORM.summarize.provider" 2>/dev/null || true)
 fi
 
 _run_summarizer() {
@@ -143,11 +153,15 @@ _run_summarizer() {
 if [ -n "$SUMMARIZE_PROVIDER" ] && [ "$SUMMARIZE_PROVIDER" != "native" ] && memsearch_available; then
   set +e
   SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 _run_summarizer "${MEMSEARCH_CMD[@]}" summarize \
-    --plugin claude-code \
+    --plugin "$PLUGIN_PLATFORM" \
     --agent-name "$AGENT_NAME" \
     2>/dev/null)
   SUMMARY_STATUS=$?
   set -e
+elif [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+  # Capture is opt-in via an explicit API provider. Never use the host login.
+  echo '{}'
+  exit 0
 elif command -v claude &>/dev/null; then
   SUMMARIZE_MODEL="haiku"
   if memsearch_available; then
@@ -177,6 +191,15 @@ ${PARSED}"
     2>/dev/null)
   SUMMARY_STATUS=$?
   set -e
+  # Native CLI errors can arrive on stdout even with a successful exit status.
+  # Match response prefixes only, not error terms mentioned in valid summaries.
+  if [ "$SUMMARY_STATUS" -eq 0 ]; then
+    case "$SUMMARY" in
+      "You've hit your limit"*|"API Error:"*)
+        SUMMARY_FAILURE="summarizer returned an error response"
+        ;;
+    esac
+  fi
 else
   SUMMARY_FAILURE="summarizer unavailable"
 fi
@@ -191,6 +214,11 @@ elif [ -z "$SUMMARY_FAILURE" ] && [ -z "$SUMMARY" ]; then
   SUMMARY_FAILURE="summarizer returned empty output"
 fi
 if [ -n "$SUMMARY_FAILURE" ]; then
+  if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+    printf '[memsearch] WorkBuddy summary skipped: %s. Check the configured API provider.\n' "$SUMMARY_FAILURE" >&2
+    echo '{}'
+    exit 0
+  fi
   SUMMARY="- Memory summary unavailable: ${SUMMARY_FAILURE}; transcript content was omitted. Use the transcript anchor for progressive disclosure."
 fi
 
@@ -214,9 +242,13 @@ fi
 # Lite mode keeps the SessionStart one-shot index: restarting it after every
 # turn can permanently starve a slow index before it completes.
 _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
-if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]]; then
-  kill_orphaned_index
-  run_memsearch index "$MEMORY_DIR"
+if [[ "$_uri" == http* ]] || [[ "$_uri" == tcp* ]] || [[ "$_uri" == unix:* ]]; then
+  if [ "$PLUGIN_PLATFORM" = workbuddy ]; then
+    index_workbuddy_memory >/dev/null 2>&1 || true
+  else
+    kill_orphaned_index
+    run_memsearch index "$MEMORY_DIR"
+  fi
 fi
 
 echo '{}'

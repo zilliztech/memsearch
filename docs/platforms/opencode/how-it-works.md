@@ -1,227 +1,35 @@
 # How It Works
 
-## What Happens Automatically
+The plugin combines host execution events with a read-only SQLite projection reader. Events trigger immediate work; the database determines what can safely be captured. One finite helper handles a serialized batch, and a project file lock coordinates concurrent host instances.
 
-| Event | What memsearch does |
-|-------|-------------------|
-| **Plugin loads** | Detects memsearch CLI, derives collection name, ensures default ONNX config |
-| **Session starts** | Starts capture daemon, runs initial index, injects recent memories via `system.transform` |
-| **Conversation continues** | Capture daemon polls SQLite for new turns, summarizes, saves to `.md`, re-indexes |
-| **LLM needs history** | Calls `memory_search`, `memory_get`, or `memory_transcript` tools |
+## Completion and ownership
 
----
+The reader uses `session_v2` and `session_message`, ordered by the per-session `seq` column. It requires completed assistant messages, settled tools, and a terminal boundary. A streamed response alone does not qualify. Persisted failed/interrupted runs advance without a summary; host shutdown without an idle boundary remains pending for resumption.
 
-## Architecture
+A following user message alone does not qualify a live turn; retrying, unfinished, or failed final responses cannot become successful summaries.
 
-```mermaid
-graph TB
-    subgraph "Capture"
-        SQLITE[("OpenCode SQLite<br/>~/.local/share/opencode/opencode.db")] --> DAEMON["capture-daemon.py<br/>(background poller, 10s interval)"]
-        DAEMON --> SUMMARIZE["opencode run<br/>(isolated XDG_CONFIG_HOME)"]
-        SUMMARIZE --> MD["memory/YYYY-MM-DD.md"]
-    end
+Capture, requesting-session checks and L3 use the canonical physical checkout root (or exact non-Git directory) plus workspace. Host project IDs may change and are diagnostic metadata, not ownership or durable cursor keys. Git subdirectories and symlink aliases resolve to their checkout; nested repositories, separate worktrees and unrelated same-name directories stay separate. Session metadata is filtered before selecting message content, and location-switch boundaries exclude prior-location payloads from the query. Subagents and copied fork history are excluded from capture. Synthetic, compaction, reasoning and raw tool content are omitted.
 
-    subgraph "Index"
-        MD --> INDEX["memsearch index<br/>(triggered after each capture batch)"]
-        INDEX --> MIL[(Milvus)]
-    end
+## Durable capture
 
-    subgraph "Recall"
-        TOOLS["memory_search<br/>memory_get<br/>memory_transcript"] --> MIL
-        TOOLS --> SQLITE
-    end
+The helper stores a pending turn before inference. Once summarized, it durably stores the intended append and its file offset/hash, appends and fsyncs the Markdown, commits the sequence cursor, and indexes. It can complete its own partial append or recognize a finished append after a checkpoint failure. Conflicting journal edits stop automatic repair. A failed index remains dirty for retry without appending the summary again.
 
-    subgraph "Cold Start"
-        INJECT["system.transform hook"] --> RECENT["Recent memories<br/>injected into system prompt"]
-    end
+Capture state lives in `.memsearch/opencode-turns.db`. Markdown is the source of truth, with `<!-- session:... turn:... db:... -->` anchors linking summaries to original conversations. On first activation, existing settled history is baselined atomically; incomplete turns remain eligible. Setup establishes the baseline without inference, then registers tools, Skills and hooks before subscribing to execution events. Subsequent recovery scans replay missed work, including events that arrived during setup.
 
-    style SQLITE fill:#2a3a5c,stroke:#d66b6b,color:#a8b2c1
-    style MD fill:#2a3a5c,stroke:#e0976b,color:#a8b2c1
-    style MIL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
-    style DAEMON fill:#2a3a5c,stroke:#7bc67e,color:#a8b2c1
-```
+Completion events wake capture immediately. A 15-second scan covers lost or early events. Recovery also runs before prompts, context injection, search and expansion. Host shutdown has a three-second limit: the plugin gives its helper a short grace period, then cancels it. Pending inference and indexing resume on the next activation before recall. A forced exit can leave work pending.
 
----
+Search and expansion use a query mode of the same finite helper. It takes the capture/index project lock and revalidates the requesting session after waiting, then runs the CLI query. All plugin-owned index/search/expand commands acquire `~/.memsearch/.opencode-cli.lock` after the project lock, coordinating different checkouts that share HOME and the default Milvus Lite database. The HOME lock is released when the CLI operation completes or is cancelled; it does not cover summaries or optional maintenance. CLI access from other programs is outside this coordination.
 
-## Capture Daemon
+## Inference and maintenance
 
-Unlike Claude Code and Codex (which use hook-based capture), OpenCode uses a **background Python daemon** (`capture-daemon.py`). This design choice exists because OpenCode's plugin hooks don't support the kind of external capture that Claude Code's `Stop` hook enables -- there's no hook that fires after each response with access to the conversation transcript.
+`plugins.opencode.summarize.provider` selects native or a named shared API provider. Native inference calls `ctx.generate.text` with only the bounded summary prompt. It creates no session, invokes no tools and does not include current session history. It never uses `ctx.session.generate`.
 
-### Why a Daemon?
+Native model precedence is task override → resolved title-agent model → host default. The default applies when title-agent lookup succeeds without a model; lookup failure produces an unavailable note without invoking a different model. Named providers use `memsearch summarize --plugin opencode --agent-name OpenCode`, including provider endpoint, environment-key and model overrides.
 
-OpenCode stores all conversations in a SQLite database (`~/.local/share/opencode/opencode.db`). The daemon polls this database directly, which means:
+Custom `prompts.summarize` overrides the packaged shared prompt. Genuine failures write the established unavailable note; cancellation leaves pending work. Raw dialogue is never a fallback. Disabling summarization prevents calls to either route.
 
-- **No hook limitations** -- capture works regardless of which hooks OpenCode exposes
-- **Reliable detection** -- new turns are detected by tracking a per-session completed-turn cursor, not by fragile event timing
-- **Crash resilience** -- derived state is persisted to `.memsearch/opencode-turns.db`, so daemon restarts can replay safely without duplicating captured markdown
+Enabled PROJECT.md/USER.md maintenance and Skill distillation reuse shared Python prompts, provider resolution, due-state and digest logic. A separate finite background helper runs maintenance after capture, without holding the capture lock or delaying prompt/context/search recovery. Shutdown cancels it. Native maintenance uses its task override or host default, via stateless inference. It has no transcript tools; candidate Skills must not invent exact commands requiring L3 verification. Candidates are installed only after an explicit user request.
 
-### Daemon Flow
+## Context and recall
 
-```mermaid
-sequenceDiagram
-    participant DB as OpenCode SQLite
-    participant Daemon as capture-daemon.py
-    participant LLM as opencode run
-    participant File as YYYY-MM-DD.md
-    participant Index as memsearch index
-
-    loop Every 10 seconds
-        Daemon->>DB: Query sessions for project_dir
-        DB->>Daemon: Messages newer than the last completed turn cursor
-        alt New turns found
-            Daemon->>Daemon: Group into turns via user message + assistant descendants
-            Daemon->>LLM: Summarize turn (isolated config)
-            LLM->>Daemon: 2-10 bullet points
-            Daemon->>File: Append with session anchor
-            Daemon->>Daemon: Update turn cursor (persist to sidecar DB)
-            Daemon->>Index: memsearch index (background)
-        end
-    end
-```
-
-Step by step:
-
-1. **Poll SQLite** -- queries the `session` and `message` tables for the current project directory, looking for messages newer than the last completed turn cursor
-2. **Group into turns** -- groups each `user` message with its assistant/tool descendants until the next `user` message
-3. **Extract text** -- reads message text into a readable format and skips raw tool parts
-4. **Summarize** -- calls `opencode run` with the turn text and a third-person summarization prompt
-5. **Write to memory** -- appends the summary to `.memsearch/memory/YYYY-MM-DD.md` with `<!-- session:ID turn:ID db:PATH -->` anchors
-6. **Persist state** -- writes the completed-turn cursor and derived turn ordering to `.memsearch/opencode-turns.db`
-7. **Re-index** -- triggers `memsearch index` in the background
-
-OpenCode SQLite remains the source of truth for original transcript reads. The
-sidecar database is derived capture state only. If markdown append succeeds and
-the sidecar write fails later, the next daemon replay uses the existing
-session+turn anchor to avoid duplicate memory entries and repair the sidecar.
-
-### LLM Summarization with Isolation
-
-The daemon summarizes turns via `opencode run` -- but it must avoid triggering the memsearch plugin recursively. It achieves this with **XDG isolation**:
-
-```python
-result = subprocess.run(
-    ["opencode", "run", "-m", small_model, prompt],
-    env={
-        "XDG_CONFIG_HOME": "~/.codex/tmp/opencode-memsearch-summarize",
-        "XDG_DATA_HOME": "~/.codex/tmp/opencode-memsearch-summarize/data",
-        "MEMSEARCH_NO_WATCH": "1",
-    },
-)
-```
-
-The isolated `XDG_CONFIG_HOME` contains a copy of `opencode.json` (for provider/model config) but **no `plugins/` directory** -- so the memsearch plugin doesn't load in the summarization subprocess. The `MEMSEARCH_NO_WATCH` env var provides an additional guard.
-
-The daemon also reads `small_model` from `opencode.json` config, using a lighter model for summarization when available. Set `plugins.opencode.summarize.model` to override only this native capture model. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.opencode.summarize.provider` to that name. Empty or `native` preserves the current `small_model` / plugin default behavior, and this setting does not fall back to `llm.model`.
-
-### Daemon Self-Management
-
-- **PID file** -- `.memsearch/.capture.pid` ensures only one daemon runs per project
-- **Stale PID cleanup** -- on startup, the plugin checks if the PID is still alive; dead PIDs are cleaned up
-- **Signal handling** -- daemon cleans up its PID file on SIGTERM/SIGINT
-- **Auto-start** -- the TypeScript plugin starts the daemon on plugin load and on each tool invocation (ensuring it's running even after a crash)
-
----
-
-## Cold-Start Context
-
-On session start, the `experimental.chat.system.transform` hook injects recent memories into the system prompt:
-
-```typescript
-"experimental.chat.system.transform": async (_input, output) => {
-  const context = getRecentMemories(memoryDir);
-  if (context) {
-    output.system.push(
-      `[memsearch] Memory available. You have access to memory_search, ` +
-      `memory_get, and memory_transcript tools for recalling past sessions.\n\n${context}`
-    );
-  }
-}
-```
-
-This reads the last 15 lines from the 2 most recent daily `.md` files, extracting bullet points and role-labeled lines. The injected context serves two purposes:
-
-1. **Immediate awareness** -- the LLM knows what happened recently without needing to search
-2. **Tool discovery** -- the message explicitly tells the LLM about the available memory tools
-
----
-
-## Memory Files
-
-```
-your-project/.memsearch/memory/
-├── 2026-03-25.md
-├── 2026-03-26.md
-└── 2026-03-27.md
-```
-
-### Example Memory File
-
-```markdown
-# 2026-03-26
-
-## Session 14:30
-
-### 14:30
-<!-- session:ses_abc123 turn:msg_123abc db:~/.local/share/opencode/opencode.db -->
-- User asked about authentication flow in the Express API
-- OpenCode explained the OAuth2 implementation in auth.ts
-- OpenCode modified token refresh logic in refresh.ts to handle expired tokens
-- Added error handling for revoked refresh tokens
-
-### 15:15
-<!-- session:ses_abc123 turn:msg_456def db:~/.local/share/opencode/opencode.db -->
-- User reported 500 error on /api/users endpoint
-- OpenCode traced the issue to a missing null check in userController.ts
-- OpenCode added optional chaining and a 404 response for missing users
-- [Tool: bash `npm test`] — all tests pass
-
-## Session 17:00
-
-### 17:00
-<!-- session:ses_def456 turn:msg_789ghi db:~/.local/share/opencode/opencode.db -->
-- User asked to refactor the middleware chain for better error handling
-- OpenCode created a centralized error handler in middleware/errorHandler.ts
-- Removed try/catch blocks from individual route handlers
-- Added structured error logging with request ID correlation
-```
-
-The `<!-- session:... turn:... db:~/.local/share/opencode/opencode.db -->` anchors are used by the `memory_transcript` tool to query the original conversation from OpenCode's SQLite database. The sidecar database is not required for transcript reads.
-
----
-
-## Differences from Other Plugins
-
-| Aspect | OpenCode | Claude Code | OpenClaw | Codex |
-|--------|----------|-------------|----------|-------|
-| **Capture** | SQLite daemon (polling) | Stop hook (event-driven) | agent_end hook (event-driven) | Stop hook (event-driven) |
-| **Summarizer** | `opencode run` (isolated) | `claude -p --model haiku` | `openclaw agent --local` | `codex exec` (isolated) |
-| **L3 source** | OpenCode SQLite DB | Claude Code JSONL | OpenClaw JSONL | Codex rollout JSONL |
-| **Recall trigger** | Tool-based (LLM decides) | Skill in forked subagent (`context: fork`) | Tool-based (LLM decides) | Skill-based (main context) |
-| **Install** | npm + opencode.json | Plugin marketplace | `openclaw plugins install --force` + hook permissions | `install.sh` + hooks.json |
-| **Recursion prevention** | XDG_CONFIG_HOME isolation | `CLAUDECODE=` env var | `MEMSEARCH_NO_WATCH` flag | Isolated CODEX_HOME |
-
----
-
-## Plugin Files
-
-```
-plugins/opencode/
-├── package.json                    # npm package with @opencode-ai/plugin peer dep
-├── index.ts                        # Main plugin: tools, hooks, daemon management
-├── install.sh                      # Installation script
-├── skills/
-│   └── memory-recall/
-│       └── SKILL.md                # Memory recall skill
-└── scripts/
-    ├── derive-collection.sh        # Per-project collection name
-    ├── capture-daemon.py           # Background SQLite poller + summarizer
-    └── parse-transcript.py         # SQLite session reader for L3 drill-down
-```
-
-| File | Purpose |
-|------|---------|
-| `index.ts` | Main plugin. Registers 3 tools, system.transform hook, daemon lifecycle management |
-| `capture-daemon.py` | Background Python daemon. Polls OpenCode's SQLite, renders turns from User/Assistant text while skipping tool output, summarizes via `opencode run`, writes to daily `.md`, triggers re-indexing |
-| `parse-transcript.py` | SQLite session reader for L3 drill-down. Reads original messages from OpenCode's database by session ID |
-| `derive-collection.sh` | Generates deterministic per-project Milvus collection names from project paths |
-| `install.sh` | Installation script: symlinks plugin, copies skill to `~/.agents/skills/`, installs dependencies |
+The context hook preserves host `SystemPart` metadata while idempotently adding recent daily journal excerpts and recall/candidate hints. Tools and Skills use the requesting session's checkout, and collection defaults never override explicit collection config. See [memory tools](memory-tools.md) for the recall workflow.

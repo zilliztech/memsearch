@@ -9,7 +9,7 @@ You are performing memory retrieval for memsearch. Search past memories and retu
 
 Determine the collection name by running:
 ```
-bash -c 'if [ -n "${MEMSEARCH_DIR:-}" ]; then bash __INSTALL_DIR__/scripts/derive-collection.sh "$MEMSEARCH_DIR"; else root=$(git rev-parse --show-toplevel 2>/dev/null || true); if [ -n "$root" ]; then bash __INSTALL_DIR__/scripts/derive-collection.sh "$root"; else bash __INSTALL_DIR__/scripts/derive-collection.sh; fi; fi'
+bash -c 'exec bash "$1" "${MEMSEARCH_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"' _ __DERIVE_COLLECTION_SCRIPT__
 ```
 
 ## Steps

@@ -5,10 +5,12 @@ import {
   mkdirSync,
   readdirSync,
   writeFileSync,
-  unlinkSync
+  unlinkSync,
+  realpathSync
 } from "node:fs";
-import { join, dirname, isAbsolute } from "node:path";
+import { join, dirname, isAbsolute, resolve, relative, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url));
 function getMemsearchDir(projectDir) {
   const explicit = process.env.MEMSEARCH_DIR?.trim();
@@ -175,6 +177,183 @@ function envWithOverrides(overrides) {
   }
   return { ...env, ...overrides };
 }
+const SESSION_REFERENCE_PREFIX = "openclaw-session:";
+async function loadTranscriptSdk() {
+  try {
+    return await import("openclaw/plugin-sdk/session-transcript-runtime");
+  } catch (error) {
+    const missing = ["ERR_PACKAGE_PATH_NOT_EXPORTED", "ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(error.code);
+    if (missing && /(?:package 'openclaw'|openclaw\/plugin-sdk\/session-transcript-runtime|openclaw\/dist\/plugin-sdk\/(?:root-alias\.cjs\/)?session-transcript-runtime|session-transcript-runtime.*openclaw)/.test(error.message.split("\n")[0])) {
+      return void 0;
+    }
+    throw error;
+  }
+}
+async function loadSessionVisibilitySdk() {
+  const [visibility, routing] = await Promise.all([
+    import("openclaw/plugin-sdk/session-visibility"),
+    import("openclaw/plugin-sdk/routing")
+  ]);
+  return { ...visibility, ...routing };
+}
+function resolveStateDir(runtime) {
+  return runtime.state?.resolveStateDir?.() || process.env.OPENCLAW_STATE_DIR?.trim() || join(process.env.HOME || "~", ".openclaw");
+}
+function createTranscriptAccess(runtime, config = {}, loadSdk = loadTranscriptSdk, loadPolicy = loadSessionVisibilitySdk) {
+  let sdkPromise;
+  let policyPromise;
+  const sdk = () => sdkPromise ??= loadSdk();
+  const currentConfig = (ctx) => ctx.getRuntimeConfig?.() ?? ctx.runtimeConfig ?? ctx.config ?? config;
+  function assertCaller(ctx, signal) {
+    signal?.throwIfAborted();
+    ctx?.assertInvocationCurrent?.();
+    ctx?.assertMemoryAudienceCurrent?.();
+    if (!ctx?.agentId || ctx.sandboxed || ctx.fsPolicy?.workspaceOnly || ctx.sessionKey?.split(":").includes("incognito")) {
+      throw new Error("Transcript access requires an unsandboxed, identified session");
+    }
+  }
+  function storePath(agentId, cfg) {
+    const resolveStore = runtime.agent?.session?.resolveStorePath ?? runtime.channel?.session?.resolveStorePath;
+    return resolveStore ? resolveStore(cfg?.session?.store, { agentId }) : join(resolveStateDir(runtime), "agents", agentId, "sessions", "sessions.json");
+  }
+  async function authorizeTarget(policy, scope, ctx, signal) {
+    assertCaller(ctx, signal);
+    const cfg = currentConfig(ctx);
+    if (scope.agentId !== ctx.agentId || scope.storePath !== storePath(ctx.agentId, cfg)) {
+      throw new Error("Transcript reference is outside the current profile/agent store");
+    }
+    for (const key of [ctx.sessionKey, scope.sessionKey]) {
+      if (typeof key !== "string" || key.trim() !== key || policy.parseAgentSessionKey(key)?.agentId !== ctx.agentId || policy.isIncognitoSessionKey(key)) {
+        throw new Error("Transcript access requires canonical, non-incognito session keys for the current agent");
+      }
+    }
+    if (policy.isSubagentSessionKey(ctx.sessionKey) || policy.isAcpSessionKey(ctx.sessionKey) || cfg.session?.scope === "global") {
+      throw new Error("Transcript access does not support this auxiliary/global session read scope");
+    }
+    const crossSession = scope.sessionKey !== ctx.sessionKey || scope.sessionId !== ctx.sessionId;
+    if (crossSession && cfg.gateway?.roles) {
+      throw new Error("Role-controlled cross-session transcript access requires host caller authorization");
+    }
+    const getEntry = runtime.agent?.session?.getSessionEntryAsync;
+    if (typeof getEntry !== "function") throw new Error("Host cannot confirm target session metadata");
+    const entry = await getEntry({
+      agentId: ctx.agentId,
+      sessionKey: scope.sessionKey,
+      storePath: scope.storePath,
+      readConsistency: "latest"
+    });
+    assertCaller(ctx, signal);
+    if (!entry || entry.sessionId !== scope.sessionId || entry.incognito === true || entry.visibility !== void 0 && entry.visibility !== "shared") {
+      throw new Error("Target session metadata is missing, changed, draft or incognito");
+    }
+    const access = policy.createSessionVisibilityRowChecker({
+      action: "history",
+      requesterAgentId: ctx.agentId,
+      defaultAgentId: ctx.agentId,
+      requesterSessionKey: ctx.sessionKey,
+      mainSessionKey: policy.buildAgentMainSessionKey({ agentId: ctx.agentId, mainKey: cfg.session?.mainKey }),
+      visibility: policy.resolveEffectiveSessionToolsVisibility({ cfg, sandboxed: ctx.sandboxed === true }),
+      a2aPolicy: policy.createAgentToAgentPolicy(cfg, { sandboxed: ctx.sandboxed === true })
+    }).check({
+      key: scope.sessionKey,
+      agentId: ctx.agentId,
+      ownerSessionKey: entry.ownerSessionKey,
+      spawnedBy: entry.spawnedBy,
+      parentSessionKey: entry.parentSessionKey
+    });
+    if (!access.allowed) throw new Error(access.error || "Session history visibility denied");
+  }
+  async function checkedIdentity(reader, scope) {
+    const identity = await reader.resolveSessionTranscriptIdentity(scope);
+    if (identity.agentId !== scope.agentId || identity.sessionId !== scope.sessionId || identity.sessionKey !== scope.sessionKey) {
+      throw new Error("Transcript session identity changed; refusing a different session");
+    }
+  }
+  return {
+    async capture(ctx) {
+      if (!ctx.sessionId || !ctx.agentId) return "";
+      assertCaller(ctx);
+      if (!/^[a-zA-Z0-9_-]+$/.test(ctx.agentId) || !/^[a-zA-Z0-9_-]+$/.test(ctx.sessionId)) {
+        throw new Error("Invalid transcript agent/session identity");
+      }
+      const agentId = ctx.agentId;
+      const store = storePath(agentId, currentConfig(ctx));
+      const scope = { agentId, sessionId: ctx.sessionId, sessionKey: ctx.sessionKey, storePath: store };
+      const reader = await sdk();
+      if (reader) {
+        if (!scope.sessionKey) throw new Error("Transcript SDK requires hook context sessionKey");
+        await checkedIdentity(reader, scope);
+        assertCaller(ctx);
+        const ref = new URL(`${SESSION_REFERENCE_PREFIX}//${encodeURIComponent(agentId)}/${encodeURIComponent(scope.sessionId)}`);
+        ref.searchParams.set("sessionKey", scope.sessionKey);
+        ref.searchParams.set("store", store);
+        return ref.href;
+      }
+      const path = join(dirname(store), `${scope.sessionId}.jsonl`);
+      return existsSync(path) ? path : "";
+    },
+    async read(reference, ctx, signal) {
+      assertCaller(ctx, signal);
+      const cfg = currentConfig(ctx);
+      const currentStore = storePath(ctx.agentId, cfg);
+      if (!reference.startsWith(SESSION_REFERENCE_PREFIX)) {
+        const root = dirname(currentStore);
+        const file = resolve(reference);
+        const inside = (base, target) => {
+          const rel = relative(base, target);
+          return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+        };
+        if (!isAbsolute(reference) || !inside(resolve(root), file) || !file.endsWith(".jsonl") || existsSync(file) && !inside(realpathSync(root), realpathSync(file))) {
+          throw new Error("Legacy transcript is outside the current profile/agent store");
+        }
+        const modern = await sdk();
+        assertCaller(ctx, signal);
+        if (modern) {
+          throw new Error("Use an SDK-generated session reference on this host; JSONL paths lack exact target key metadata");
+        }
+        if (basename(file) !== `${ctx.sessionId}.jsonl` && (["self", "tree"].includes(cfg.tools?.sessions?.visibility) || cfg.gateway?.roles)) {
+          throw new Error("Legacy transcript cannot confirm access under restricted session policy");
+        }
+        return void 0;
+      }
+      const ref = new URL(reference);
+      const scope = {
+        agentId: decodeURIComponent(ref.hostname),
+        sessionId: decodeURIComponent(ref.pathname.slice(1)),
+        sessionKey: ref.searchParams.get("sessionKey"),
+        storePath: ref.searchParams.get("store")
+      };
+      if (!scope.agentId || !scope.sessionId || !scope.sessionKey || !scope.storePath || !isAbsolute(scope.storePath) || ref.username || ref.password || ref.port || ref.hash) {
+        throw new Error("Invalid OpenClaw session transcript reference");
+      }
+      if (scope.agentId !== ctx.agentId || scope.storePath !== currentStore) {
+        throw new Error("Transcript reference is outside the current profile/agent store");
+      }
+      const reader = await sdk();
+      if (!reader) throw new Error("This host does not provide the OpenClaw session transcript SDK");
+      if (typeof reader.resolveSessionTranscriptIdentity !== "function" || typeof reader.readVisibleSessionTranscriptMessageEntries !== "function") {
+        throw new Error("This host lacks the required session transcript SDK readers");
+      }
+      const policy = await (policyPromise ??= loadPolicy());
+      await authorizeTarget(policy, scope, ctx, signal);
+      await checkedIdentity(reader, scope);
+      assertCaller(ctx, signal);
+      const entries = await reader.readVisibleSessionTranscriptMessageEntries(scope);
+      await authorizeTarget(policy, scope, ctx, signal);
+      assertCaller(ctx, signal);
+      const messages = entries.map((entry) => entry.message).filter((m) => m?.role === "user" || m?.role === "assistant");
+      const lastUser = messages.findLastIndex((m) => m.role === "user");
+      if (lastUser < 0) return "(no user message found)";
+      const lines = messages.slice(lastUser).map((m) => {
+        const text = typeof m.content === "string" ? m.content : (m.content || []).filter((block) => block.type === "text").map((block) => block.text || "").join("\n");
+        return text.trim() ? `[${m.role === "user" ? "User" : "Assistant"}]: ${text}` : "";
+      }).filter(Boolean);
+      const output = ["=== Transcript of a conversation between User and an AI assistant ===", ...lines].join("\n");
+      return output.length > 32e3 ? `${output.slice(0, 32e3)}
+[Transcript output truncated]` : output;
+    }
+  };
+}
 var index_default = {
   id: "memsearch",
   name: "memsearch",
@@ -187,6 +366,7 @@ var index_default = {
     const autoRecall = pluginConfig.autoRecall !== false && !isChildProcess;
     const logger = api.logger;
     const home = process.env.HOME || "~";
+    const transcripts = createTranscriptAccess(api.runtime, api.config);
     async function runCmd(argv, opts) {
       return api.runtime.system.runCommandWithTimeout(argv, opts || {});
     }
@@ -223,24 +403,24 @@ var index_default = {
       _memsearchCmd = "memsearch";
       return _memsearchCmd;
     }
-    async function getMemsearchConfigValue(key) {
+    async function getMemsearchConfigValue(key, cwd = projectDir) {
       const cmd = await getMemsearchCmd();
       const r = await runCmd(
         ["bash", "-c", `${cmd} config get '${shellEscape(key)}'`],
-        { timeoutMs: 5e3, cwd: projectDir }
+        { timeoutMs: 5e3, cwd }
       );
       return r.stdout?.trim() || "";
     }
-    async function getSkillCandidateHint() {
+    async function getSkillCandidateHint(cwd) {
       try {
         const cmd = await getMemsearchCmd();
         const r = await runCmd(
           [
             "bash",
             "-c",
-            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(projectDir))}' ${cmd} skills status --hint`
+            `MEMSEARCH_DIR='${shellEscape(getMemsearchDir(cwd))}' ${cmd} skills status --hint`
           ],
-          { timeoutMs: 5e3, cwd: projectDir }
+          { timeoutMs: 5e3, cwd }
         );
         if (r.code !== 0) return "";
         return r.stdout?.trim().split("\n")[0] || "";
@@ -248,18 +428,18 @@ var index_default = {
         return "";
       }
     }
-    async function wakeMaintenance() {
+    async function wakeMaintenance(cwd = projectDir) {
       try {
         const runner = join(PLUGIN_DIR, "scripts", "maintenance-runner.py");
         runCmd(
           [
             "bash",
             "-c",
-            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(projectDir)}' --memsearch-dir '${shellEscape(getMemsearchDir(projectDir))}'`
+            `python3 '${shellEscape(runner)}' --platform openclaw --project-dir '${shellEscape(cwd)}' --memsearch-dir '${shellEscape(getMemsearchDir(cwd))}'`
           ],
           {
             timeoutMs: 12e4,
-            cwd: projectDir,
+            cwd,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
           }
         ).catch(() => {
@@ -267,11 +447,8 @@ var index_default = {
       } catch {
       }
     }
-    let _collectionNameFor = "";
-    let _collectionName = "ms_openclaw_default";
-    let _compatibleCollectionFor = "";
-    async function requireDefaultCollectionSupport(scopeDir, collection) {
-      if (_compatibleCollectionFor === scopeDir) return;
+    const collections = /* @__PURE__ */ new Map();
+    async function requireDefaultCollectionSupport(cwd, collection) {
       const cmd = await getMemsearchCmd();
       const r = await runCmd(
         [
@@ -279,46 +456,45 @@ var index_default = {
           "-c",
           `${cmd} config get milvus.collection --default-collection '${shellEscape(collection)}'`
         ],
-        { timeoutMs: 5e3, cwd: projectDir }
+        { timeoutMs: 5e3, cwd }
       );
       if (r.code !== 0) {
         throw new Error(
           "Installed memsearch CLI is incompatible with this plugin; --default-collection support is required. Upgrade memsearch core and the plugin together."
         );
       }
-      _compatibleCollectionFor = scopeDir;
     }
-    async function getCollectionName() {
-      const scopeDir = getCollectionScopeDir(projectDir);
-      if (_collectionNameFor !== scopeDir) {
+    async function getCollectionName(cwd = projectDir) {
+      const scopeDir = getCollectionScopeDir(cwd);
+      const key = JSON.stringify([cwd, scopeDir]);
+      if (!collections.has(key)) collections.set(key, (async () => {
+        let collection = "ms_openclaw_default";
         const script = join(PLUGIN_DIR, "scripts", "derive-collection.sh");
         try {
           const r = await runCmd(["bash", script, scopeDir], { timeoutMs: 5e3 });
           if (r.code === 0 && r.stdout?.trim()) {
-            _collectionName = r.stdout.trim();
-          } else {
-            _collectionName = "ms_openclaw_default";
+            collection = r.stdout.trim();
           }
         } catch {
-          _collectionName = "ms_openclaw_default";
         }
-        _collectionNameFor = scopeDir;
-      }
-      await requireDefaultCollectionSupport(scopeDir, _collectionName);
-      return _collectionName;
+        await requireDefaultCollectionSupport(cwd, collection);
+        return collection;
+      })().catch((error) => {
+        collections.delete(key);
+        throw error;
+      }));
+      return collections.get(key);
     }
     let agentId = "main";
-    let projectDir = join(home, ".openclaw", "workspace");
+    let projectDir = join(resolveStateDir(api.runtime), "workspace");
     let memoryDir = getMemoryDir(projectDir);
     function updateAgentContext(ctx) {
-      const newId = ctx?.agentId;
-      const newWorkspace = ctx?.workspaceDir;
-      if (newId && (newId !== agentId || newWorkspace && newWorkspace !== projectDir)) {
+      const newId = ctx?.agentId || agentId;
+      const newWorkspace = ctx?.workspaceDir || api.runtime.agent?.resolveAgentWorkspaceDir?.(api.config, newId);
+      if (newId !== agentId || newWorkspace && newWorkspace !== projectDir) {
         agentId = newId;
-        projectDir = newWorkspace || join(home, ".openclaw", `workspace-${agentId}`);
+        projectDir = newWorkspace || join(resolveStateDir(api.runtime), agentId === "main" ? "workspace" : `workspace-${agentId}`);
         memoryDir = getMemoryDir(projectDir);
-        _collectionNameFor = "";
-        _compatibleCollectionFor = "";
         logger?.info?.(
           `[memsearch] Agent context updated: ${agentId}, dir: ${projectDir}`
         );
@@ -327,6 +503,7 @@ var index_default = {
     api.registerTool(
       (ctx) => {
         updateAgentContext(ctx);
+        const toolProjectDir = projectDir;
         return {
           name: "memory_search",
           label: "Memory Search",
@@ -349,14 +526,14 @@ var index_default = {
             const topK = params.top_k || 5;
             try {
               const cmd = await getMemsearchCmd();
-              const collection = await getCollectionName();
+              const collection = await getCollectionName(toolProjectDir);
               const result = await runCmd(
                 [
                   "bash",
                   "-c",
                   `${cmd} search '${shellEscape(params.query)}' --top-k ${topK} --json-output --default-collection ${collection}`
                 ],
-                { timeoutMs: 3e4, cwd: projectDir }
+                { timeoutMs: 3e4, cwd: toolProjectDir }
               );
               const failure = commandFailure("Search", result);
               if (failure) {
@@ -379,6 +556,7 @@ var index_default = {
     api.registerTool(
       (ctx) => {
         updateAgentContext(ctx);
+        const toolProjectDir = projectDir;
         return {
           name: "memory_get",
           label: "Memory Get",
@@ -396,14 +574,14 @@ var index_default = {
           async execute(_toolCallId, params) {
             try {
               const cmd = await getMemsearchCmd();
-              const collection = await getCollectionName();
+              const collection = await getCollectionName(toolProjectDir);
               const result = await runCmd(
                 [
                   "bash",
                   "-c",
                   `${cmd} expand '${shellEscape(params.chunk_hash)}' --default-collection ${collection}`
                 ],
-                { timeoutMs: 15e3, cwd: projectDir }
+                { timeoutMs: 15e3, cwd: toolProjectDir }
               );
               const failure = commandFailure("Expand", result);
               if (failure) {
@@ -429,24 +607,33 @@ var index_default = {
         return {
           name: "memory_transcript",
           label: "Memory Transcript",
-          description: "Retrieve the original conversation from a past session transcript. Use after memory_get when the expanded result contains a transcript anchor (<!-- session:UUID transcript:PATH -->). Returns the formatted dialogue with [User] and [Assistant] labels.",
+          description: "Retrieve the original conversation from a past session transcript. Use after memory_get when the expanded result contains a transcript anchor (<!-- session:UUID transcript:REFERENCE -->). Pass its exact reference unchanged. Returns the formatted dialogue with [User] and [Assistant] labels.",
           parameters: {
             type: "object",
             properties: {
               transcript_path: {
                 type: "string",
-                description: "Path to the .jsonl transcript file (from the anchor comment)"
+                description: "Exact transcript reference from the anchor: openclaw-session URI or legacy .jsonl path"
               }
             },
             required: ["transcript_path"]
           },
-          async execute(_toolCallId, params) {
+          async execute(_toolCallId, params, signal) {
             try {
+              const transcript = await transcripts.read(params.transcript_path, ctx, signal);
+              if (transcript !== void 0) {
+                return { content: [{ type: "text", text: transcript }] };
+              }
               const scriptPath = join(PLUGIN_DIR, "scripts", "parse-transcript.sh");
               const result = await runCmd(
                 ["bash", scriptPath, params.transcript_path],
                 { timeoutMs: 15e3 }
               );
+              signal?.throwIfAborted();
+              ctx?.assertInvocationCurrent?.();
+              ctx?.assertMemoryAudienceCurrent?.();
+              const failure = commandFailure("Transcript", result);
+              if (failure) return { content: [{ type: "text", text: failure }] };
               const output = result.stdout?.trim() || result.stderr || "No transcript content";
               return { content: [{ type: "text", text: output }] };
             } catch (e) {
@@ -462,10 +649,13 @@ var index_default = {
       { name: "memory_transcript" }
     );
     if (autoRecall) {
-      api.on("before_prompt_build", async () => {
+      api.on("before_prompt_build", async (_event, ctx) => {
+        updateAgentContext(ctx);
+        const promptProjectDir = projectDir;
+        const promptMemoryDir = memoryDir;
         try {
-          const context = getRecentMemories(memoryDir);
-          const skillHint = await getSkillCandidateHint();
+          const context = getRecentMemories(promptMemoryDir);
+          const skillHint = await getSkillCandidateHint(promptProjectDir);
           const blocks = [context, skillHint].filter(Boolean);
           if (blocks.length > 0) {
             return { prependContext: blocks.join("\n\n") };
@@ -479,16 +669,16 @@ var index_default = {
       });
     }
     if (autoCapture) {
-      async function summarizeWithLLM(turnText) {
+      async function summarizeWithLLM(turnText, captureProjectDir) {
         const agentName = "OpenClaw";
         let systemPrompt = "";
         let customPromptFile = "";
         try {
-          customPromptFile = await getMemsearchConfigValue("prompts.summarize");
+          customPromptFile = await getMemsearchConfigValue("prompts.summarize", captureProjectDir);
         } catch {
         }
         if (customPromptFile && !isAbsolute(customPromptFile)) {
-          customPromptFile = join(projectDir, customPromptFile);
+          customPromptFile = join(captureProjectDir, customPromptFile);
         }
         if (customPromptFile && existsSync(customPromptFile)) {
           systemPrompt = readFileSync(customPromptFile, "utf-8").replace(/\{\{AGENT_NAME\}\}/g, agentName);
@@ -502,23 +692,23 @@ var index_default = {
         }
         let summarizeModel = "";
         try {
-          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model");
+          summarizeModel = await getMemsearchConfigValue("plugins.openclaw.summarize.model", captureProjectDir);
         } catch {
         }
         let summarizeProvider = "";
         try {
-          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider");
+          summarizeProvider = await getMemsearchConfigValue("plugins.openclaw.summarize.provider", captureProjectDir);
         } catch {
         }
         if (summarizeProvider && summarizeProvider !== "native") {
           try {
             const cmd = await getMemsearchCmd();
-            const tmpInput = `/tmp/memsearch-summarize-input-${Date.now()}.txt`;
+            const tmpInput = `/tmp/memsearch-summarize-input-${randomUUID()}.txt`;
             writeFileSync(tmpInput, turnText, "utf-8");
             const shellCmd = `cat ${JSON.stringify(tmpInput)} | ${cmd} summarize --plugin openclaw --agent-name OpenClaw`;
             const result = await runCmd(["bash", "-c", shellCmd], {
               timeoutMs: 6e4,
-              cwd: projectDir,
+              cwd: captureProjectDir,
               env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
             });
             try {
@@ -537,12 +727,12 @@ var index_default = {
 
 Transcript:
 ${turnText}`;
-          const tmpFile = `/tmp/memsearch-summarize-${Date.now()}.txt`;
-          const modelArg = summarizeModel ? ` --model ${JSON.stringify(summarizeModel)}` : "";
-          const shellCmd = `openclaw agent --local --session-id memsearch-summarize${modelArg} -m ${JSON.stringify(msgText)} > ${JSON.stringify(tmpFile)} 2>/dev/null`;
+          const tmpFile = `/tmp/memsearch-summarize-${randomUUID()}.txt`;
+          const modelArg = summarizeModel ? ` --model '${shellEscape(summarizeModel)}'` : "";
+          const shellCmd = `openclaw agent --local --session-id ${randomUUID()}${modelArg} -m '${shellEscape(msgText)}' > ${JSON.stringify(tmpFile)} 2>/dev/null`;
           await runCmd(["bash", "-c", shellCmd], {
             timeoutMs: 6e4,
-            cwd: projectDir,
+            cwd: captureProjectDir,
             env: envWithOverrides({ MEMSEARCH_NO_WATCH: "1", MEMSEARCH_DISABLE: "1" })
           });
           if (existsSync(tmpFile)) {
@@ -560,13 +750,22 @@ ${turnText}`;
         }
         return tailTruncate(turnText, 1500);
       }
-      async function writeTurnCapture(turnText, sessionId) {
+      async function writeTurnCapture(turnText, ctx, provenance) {
         try {
           if (turnText.length < 1) return;
-          ensureDir(memoryDir);
+          const captureMemoryDir = ctx.memoryDir;
+          let anchor = "";
+          try {
+            const reference = await provenance;
+            if (reference) anchor = `<!-- session:${ctx.sessionId} transcript:${reference} -->
+`;
+          } catch (error) {
+            logger?.warn?.(`[memsearch] Transcript provenance unavailable: ${error.message}`);
+          }
+          ensureDir(captureMemoryDir);
           const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
           const now = (/* @__PURE__ */ new Date()).toTimeString().slice(0, 5);
-          const memoryFile = join(memoryDir, `${today}.md`);
+          const memoryFile = join(captureMemoryDir, `${today}.md`);
           if (!existsSync(memoryFile)) {
             writeFileSync(
               memoryFile,
@@ -580,32 +779,28 @@ ${turnText}`;
           }
           let summary;
           try {
-            summary = await summarizeWithLLM(turnText);
+            summary = await summarizeWithLLM(turnText, ctx.projectDir);
           } catch {
             summary = turnText;
           }
           const cleanSummary = summary.split("\n").filter((line) => !isNoiseLine(line)).join("\n").trim();
           if (!cleanSummary) return;
-          let anchor = "";
-          if (sessionId) {
-            const transcriptPath = `${home}/.openclaw/agents/${agentId}/sessions/${sessionId}.jsonl`;
-            anchor = `<!-- session:${sessionId} transcript:${transcriptPath} -->
-`;
-          }
           const entry = `### ${now}
 ${anchor}${cleanSummary}
 
 `;
+          ctx.assertInvocationCurrent?.();
+          ctx.assertMemoryAudienceCurrent?.();
           appendFileSync(memoryFile, entry, "utf-8");
           const cmd = await getMemsearchCmd();
-          const collection = await getCollectionName();
+          const collection = await getCollectionName(ctx.projectDir);
           runCmd(
             [
               "bash",
               "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`
+              `${cmd} index '${shellEscape(captureMemoryDir)}' --default-collection ${collection}`
             ],
-            { timeoutMs: 6e4, cwd: projectDir }
+            { timeoutMs: 6e4, cwd: ctx.projectDir }
           ).catch((err) => {
             logger?.warn?.(`[memsearch] Index failed: ${err.message}`);
           });
@@ -614,50 +809,67 @@ ${anchor}${cleanSummary}
           logger?.warn?.(`[memsearch] Capture failed: ${e.message}`);
         }
       }
-      api.on("agent_end", async (event) => {
+      api.on("agent_end", async (event, ctx) => {
+        if (event.success === false || !ctx?.agentId || ctx.sandboxed || ctx.sessionKey?.split(":").includes("incognito") || ctx.memoryAudience && (ctx.memoryAudience.kind !== "owner-private" || ctx.memoryAudience.agentId !== ctx.agentId)) return;
+        ctx.assertMemoryAudienceCurrent?.();
+        updateAgentContext(ctx);
+        const captureContext = Object.freeze({
+          ...ctx,
+          agentId: ctx?.agentId,
+          projectDir,
+          memoryDir,
+          sessionId: ctx?.sessionId || "",
+          sessionKey: ctx?.sessionKey
+        });
         const messages = event.messages || [];
         if (messages.length < 2) return;
+        const lastTurn = extractLastTurn(messages);
+        if (!lastTurn || lastTurn.length < 50) return;
+        const provenance = transcripts.capture(captureContext).catch((error) => {
+          logger?.warn?.(`[memsearch] Transcript provenance unavailable: ${error.message}`);
+          return "";
+        });
         let summarizeEnabled = "true";
         try {
-          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled");
+          summarizeEnabled = await getMemsearchConfigValue("plugins.openclaw.summarize.enabled", captureContext.projectDir);
         } catch {
         }
         if (summarizeEnabled === "false") {
-          wakeMaintenance().catch(() => {
+          wakeMaintenance(captureContext.projectDir).catch(() => {
           });
           return;
         }
-        const lastTurn = extractLastTurn(messages);
-        if (!lastTurn || lastTurn.length < 50) return;
-        const sessionId = event.sessionId || "";
-        await writeTurnCapture(lastTurn, sessionId);
-        wakeMaintenance().catch(() => {
+        await writeTurnCapture(lastTurn, captureContext, provenance);
+        wakeMaintenance(captureContext.projectDir).catch(() => {
         });
       });
     }
-    api.on("session_start", async () => {
+    api.on("session_start", async (_event, ctx) => {
+      updateAgentContext(ctx);
+      const sessionProjectDir = projectDir;
+      const sessionMemoryDir = memoryDir;
       try {
         const cmd = await getMemsearchCmd();
-        const collection = await getCollectionName();
+        const collection = await getCollectionName(sessionProjectDir);
         const configFile = join(home, ".memsearch", "config.toml");
-        const localConfig = join(projectDir, ".memsearch.toml");
+        const localConfig = join(sessionProjectDir, ".memsearch.toml");
         if (!existsSync(configFile) && !existsSync(localConfig)) {
           try {
             await runCmd(
               ["bash", "-c", `${cmd} config set embedding.provider onnx`],
-              { timeoutMs: 5e3, cwd: projectDir }
+              { timeoutMs: 5e3, cwd: sessionProjectDir }
             );
           } catch {
           }
         }
-        if (existsSync(memoryDir)) {
+        if (existsSync(sessionMemoryDir)) {
           runCmd(
             [
               "bash",
               "-c",
-              `${cmd} index '${shellEscape(memoryDir)}' --default-collection ${collection}`
+              `${cmd} index '${shellEscape(sessionMemoryDir)}' --default-collection ${collection}`
             ],
-            { timeoutMs: 12e4, cwd: projectDir }
+            { timeoutMs: 12e4, cwd: sessionProjectDir }
           ).catch((err) => {
             logger?.warn?.(
               `[memsearch] Initial index failed: ${err.message}`
@@ -748,6 +960,7 @@ ${anchor}${cleanSummary}
         }
       });
     }, {
+      commands: ["memsearch"],
       descriptors: [{
         name: "memsearch",
         description: "Semantic memory search and management",
@@ -766,6 +979,7 @@ ${anchor}${cleanSummary}
   }
 };
 export {
+  createTranscriptAccess,
   index_default as default,
   getCollectionScopeDir,
   getMemsearchDir

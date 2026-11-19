@@ -1,3 +1,6 @@
+> Historical snapshot: plugin 0.3.19 inspected against OpenClaw 2026.9.4.
+> Its PASS status does not validate the current 0.3.20 candidate. See [current compatibility](compatibility.md).
+
 # OpenClaw Plugin Compatibility Report
 
 Generated: deterministic

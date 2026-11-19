@@ -20,12 +20,12 @@
         # (summarize provider/model, Milvus, collection, memory dir) comes from
         # memsearch config / environment, mirroring the other platform plugins.
         #   captureEnabled (bool, default true)   — capture completed turns
-        #   injectEnabled (bool, default true)    — inject returned memory candidates
+        #   injectEnabled (bool, default true)    — remind the agent to use memory-recall
         #   summarizeEnabled (bool, default true) — summarize turns before writing
         #   summarizeMode (string, default 'auto')
         #       -> 'auto'         if [plugins.dsh.summarize] provider is set in
         #                          memsearch config → custom-llm, else
-        #                          dsh-headless (zero-config)
+        #                          dsh-headless
         #       -> 'dsh-headless' one-shot dsh headless agent; the model is the
         #                          user's DSH default from settings.yaml
         #                          `agent-default-model`. Missing CLI fails

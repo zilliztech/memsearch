@@ -25,14 +25,14 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/427b7152-bc16-408c-a8b0-59a2b05fd1e0" alt="memsearch demo" width="800">
+  <img src="https://github.com/user-attachments/assets/5d7ea7cd-7a01-471d-9f2d-cff45fd15696" alt="MemSearch saves a memory from Claude Code and recalls it in a later Codex session." width="800">
 </p>
 
 ## 📰 What's New
 
 - **Optional Jev reranking** — rerank memory search results with Jev through the TypeSafe API, with no local model download. See [configuration](docs/home/configuration.md#optional-remote-reranking) and the [Chinese/English evaluation](evaluation/reranking-evaluation.md).
 
-- **DeepSeek Harness support** — MemSearch now brings automatic capture, pre-step memory injection, native skill-based recall, background maintenance, and a read-only memory browser to [DeepSeek Harness (DSH)](https://zilliztech.github.io/memsearch/platforms/dsh/).
+- **DeepSeek Harness support** — MemSearch now brings automatic capture, recall hints, native skill-based recall, background maintenance, and a read-only memory browser to [DeepSeek Harness (DSH)](https://zilliztech.github.io/memsearch/platforms/dsh/).
 - **Skills from memory** — MemSearch now distills the workflows you repeat into reusable, installable agent skills (a third "procedural memory" layer) and keeps them up to date in the background. See [Skills from Memory](#skills-from-memory).
 - **Advanced memory maintenance** — optional background tasks keep durable `PROJECT.md` and `USER.md` notes current across sessions. See [Advanced Memory Maintenance](#advanced-memory-maintenance).
 
@@ -40,7 +40,7 @@
 
 ### Why memsearch?
 
-- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex](plugins/codex/README.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), and [OpenCode](plugins/opencode/README.md). A conversation in one agent becomes searchable context in all others — no extra setup
+- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex](plugins/codex/README.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [WorkBuddy](docs/platforms/workbuddy.md). A conversation in one agent becomes searchable context in all others — no extra setup
 - 👥 **For Agent Users**, install a plugin and get persistent memory with zero effort; **for Agent Developers**, use the full [CLI](https://zilliztech.github.io/memsearch/cli/) and [Python API](https://zilliztech.github.io/memsearch/python-api/) to build memory and harness engineering into your own agents
 - 📄 **Markdown is the source of truth** — inspired by [OpenClaw](https://github.com/openclaw/openclaw). Your memories are just `.md` files — human-readable, editable, version-controllable. Milvus is a "shadow index": a derived, rebuildable cache
 - 🔍 **Progressive retrieval, hybrid search, smart dedup, live sync** — 3-layer recall (search → expand → transcript); dense vector + BM25 sparse + RRF reranking; SHA-256 content hashing skips unchanged content; file watcher auto-indexes in real time
@@ -49,7 +49,7 @@
 
 ## 🧑‍💻 For Agent Users
 
-Pick your platform, install the plugin, and you're done. Each plugin captures conversations automatically and provides semantic recall with zero configuration.
+Choose your agent below for installation and configuration.
 
 <details open>
 <summary><h3>For Claude Code Users</h3></summary>
@@ -116,19 +116,22 @@ $memory-recall what did we discuss about deployment?
 <summary><h3>For DeepSeek Harness Users</h3></summary>
 
 ```bash
-# Install the published plugin into your DSH profile
 uv tool install "memsearch[onnx]"
 dsh plugin --profile web add @zilliz/memsearch-dsh
-# Restart that DSH profile, or start a new session
 ```
 
-After installing, use DSH normally. Completed turns are captured automatically, and relevant memories are injected before the first model step only when they are useful.
+For default summaries with an API key saved on DSH's **Models** page, give
+`headless` jobs access to saved keys. Add or update this top-level entry in
+`~/.dsh/profiles/headless/cordis.patch.yml`, or ask `memory-config` to do it.
 
-**Verify it's working:**
-
-```bash
-ls .memsearch/memory/
+```yaml
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+  disabled: false
 ```
+
+Restart your DSH profile or start a new session. Complete a turn, then open
+today's file in `.memsearch/memory/` and check for a summary of what you discussed.
 
 **Recall memories** — ask naturally or tell DSH to use the registered `memory-recall` skill:
 
@@ -181,30 +184,24 @@ We discussed batch size limits before, what did we decide?
 <details>
 <summary><h3>For OpenCode Users</h3></summary>
 
-```json
-// In ~/.config/opencode/opencode.json
-{ "plugin": ["@zilliz/memsearch-opencode"] }
-```
-
-After installing, chat in TUI as usual. A background daemon captures conversations.
-
-**Verify it's working:**
+MemSearch gives OpenCode persistent memory across sessions. Install the plugin:
 
 ```bash
-ls .memsearch/memory/    # daily .md files appear after a few conversations
+opencode plugin add @zilliz/memsearch-opencode
 ```
 
-**Recall memories** — two ways to trigger:
+Completed turns are summarized into `.memsearch/memory/` and indexed for recall. Pending work resumes after an interruption.
 
-```
-/memory-recall what did we discuss about authentication?
-```
-Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
-```
-We discussed the authentication flow before, what was the approach?
-```
+Ask about previous decisions or debugging sessions, and OpenCode can search memory, expand relevant notes, and look up the original conversation. The `memory-recall`, `memory-config`, and `memory-to-skill` Skills are included.
 
 > 📖 [OpenCode Plugin docs](https://zilliztech.github.io/memsearch/platforms/opencode/)
+
+</details>
+
+<details>
+<summary><h3>For WorkBuddy Users</h3></summary>
+
+Follow the [WorkBuddy setup guide](docs/platforms/workbuddy.md) to install the CLI and configure a summary API provider. Then add `zilliztech/memsearch` under **Skills → Kits** and install **memsearch**.
 
 </details>
 
@@ -214,10 +211,10 @@ All plugins share the same memsearch backend. Configure once, works everywhere.
 
 #### Embedding
 
-Defaults to **ONNX bge-m3** — runs locally on CPU, no API key, no cost. On first launch the model (~558 MB) is downloaded from HuggingFace Hub.
+Use **ONNX bge-m3** for local CPU embeddings with no API key. On first launch the model (~558 MB) is downloaded from HuggingFace Hub.
 
 ```bash
-memsearch config set embedding.provider onnx     # default — local, free
+memsearch config set embedding.provider onnx     # local, free
 memsearch config set embedding.provider openai   # needs OPENAI_API_KEY
 memsearch config set embedding.provider ollama   # local, any model
 ```
@@ -266,7 +263,7 @@ memsearch config set milvus.uri http://localhost:19530
 
 #### Capture Summarization Routing
 
-Each plugin keeps its native capture summarizer unless you override it explicitly:
+For agents with a native summarizer, you can override its model:
 
 ```bash
 memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
@@ -320,7 +317,7 @@ Under the hood, candidates live in a git-tracked `.memsearch/skill-candidates/` 
 - **Trace feature history** — understand how a feature evolved across sessions, including the files changed and tradeoffs discussed.
 - **Do code archaeology** — ask when and why a module, config, or workflow was changed before touching it again.
 - **Find the right session to resume** — ask which previous conversation covered a topic, recover the relevant context, and continue from there.
-- **Carry context across agents** — keep Claude Code, Codex, DeepSeek Harness, OpenClaw, and OpenCode working from the same project memory.
+- **Carry context across agents** — keep your agents working from the same project memory.
 
 ---
 
@@ -333,7 +330,7 @@ Beyond ready-to-use plugins, memsearch provides a complete **CLI and Python API*
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                  🧑‍💻 For Agent Users (Plugins)                │
-│ Claude Code · Codex · DSH · OpenClaw · OpenCode · Your App   │
+│ Claude Code · Codex · DSH · OpenClaw · OpenCode · WorkBuddy  │
 │                              │                               │
 ├────────────────────────────┬─────────────────────────────────┤
 │  🛠️ For Agent Developers   │  Build your own with ↓          │
@@ -426,7 +423,7 @@ User: "What did we discuss about batch size?"
 ```bash
 # Install as a global CLI tool — recommended when you mainly use the
 # `memsearch` command or any of the agent plugins (Claude Code, Codex,
-# DSH, OpenClaw, OpenCode), which all shell out to the CLI.
+# DSH, OpenClaw, OpenCode, WorkBuddy), which all shell out to the CLI.
 uv tool install memsearch       # via uv
 pipx install memsearch          # via pipx
 pip install memsearch           # plain pip
@@ -441,7 +438,7 @@ pip install memsearch           # into an activated venv
 <summary><b>Optional embedding providers</b></summary>
 
 ```bash
-# As a CLI tool (recommended — local ONNX, no API key)
+# Install local ONNX support for the CLI
 uv tool install "memsearch[onnx]"
 pipx install "memsearch[onnx]"
 pip install "memsearch[onnx]"
@@ -455,6 +452,8 @@ uv add "memsearch[onnx]"
 </details>
 
 ### 🐍 Python API — Give Your Agent Memory
+
+The Python API defaults to OpenAI (`OPENAI_API_KEY`). For local embeddings, pass `embedding_provider="onnx"`.
 
 ```python
 from memsearch import MemSearch
@@ -677,7 +676,7 @@ Collection priority: integration-derived default → `~/.memsearch/config.toml` 
 ## 🔗 Links
 
 - 📖 [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
-- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex, DeepSeek Harness, OpenClaw, OpenCode
+- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex, DeepSeek Harness, OpenClaw, OpenCode, WorkBuddy
 - 💡 [Design Philosophy](https://zilliztech.github.io/memsearch/design-philosophy/) — why markdown, why Milvus, competitor comparison
 - 🦞 [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
 - 🗄️ [Milvus](https://milvus.io/) | [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — the vector database powering memsearch

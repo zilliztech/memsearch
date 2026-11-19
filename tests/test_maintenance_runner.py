@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -106,11 +107,10 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     runner = _load_runner()
     captured = {}
 
-    def fake_run_command(cmd, *, env, cwd, timeout, input=None):
+    def fake_run_command(cmd, *, env, cwd, timeout):
         captured["cmd"] = cmd
         captured["env"] = env
         captured["cwd"] = cwd
-        captured["input"] = input
         return '{"action":"none","reason":"ok"}'
 
     monkeypatch.setattr(runner, "run_command", fake_run_command)
@@ -125,29 +125,9 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     assert json.loads(result) == {"action": "none", "reason": "ok"}
     assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["cmd"][0:2] == ["claude", "-p"]
-    assert captured["input"] == "maintenance prompt"
-    assert "maintenance prompt" not in captured["cmd"]
+    assert captured["cmd"][-1] == "maintenance prompt"
     assert captured["cmd"][captured["cmd"].index("--system-prompt") + 1] != "maintenance prompt"
     assert captured["env"]["CLAUDECODE"] == ""
-
-
-def test_claude_native_runner_keeps_long_prompts_off_the_command_line(tmp_path: Path, monkeypatch) -> None:
-    runner = _load_runner()
-    captured = {}
-
-    def fake_run_command(cmd, *, env, cwd, timeout, input=None):
-        captured["cmd"] = cmd
-        captured["input"] = input
-        return '{"action":"none","reason":"ok"}'
-
-    monkeypatch.setattr(runner, "run_command", fake_run_command)
-    ctx = SimpleNamespace(platform="claude-code", project_dir=tmp_path, task_config=SimpleNamespace(model=""))
-    prompt = "journal line → åäö\n" * 8000
-
-    runner.run_native_provider(ctx, prompt)
-
-    assert captured["input"] == prompt
-    assert sum(len(arg) + 1 for arg in captured["cmd"]) < 32767
 
 
 def test_openclaw_native_runner_extracts_json_from_noisy_output(tmp_path: Path, monkeypatch) -> None:
@@ -174,66 +154,49 @@ def test_openclaw_native_runner_extracts_json_from_noisy_output(tmp_path: Path, 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
 
 
-def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("provider", ["native", "managed"])
+def test_opencode_maintenance_uses_injected_native_or_shared_api(tmp_path, monkeypatch, provider):
+    from memsearch import maintenance
+    from memsearch.config import MemSearchConfig
+
     runner = _load_runner()
-    home = tmp_path / "home"
-    project = tmp_path / "repo"
-    config_dir = tmp_path / "opencode-config-dir"
-    home.mkdir()
-    project.mkdir()
-    config_dir.mkdir()
+    cfg = MemSearchConfig()
+    cfg.plugins.opencode.project_review.enabled = True
+    cfg.plugins.opencode.project_review.provider = provider
+    cfg.plugins.opencode.project_review.model = "task-model"
+    memory = tmp_path / ".memsearch/memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-10-20.md").write_text("- Durable project decision: synthetic test.\n")
+    calls = []
 
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("USERPROFILE", str(home))  # Path.home() reads this on Windows
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("OPENCODE_CONFIG_DIR", str(config_dir))
-    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"username": "from-content", "plugin": ["content-plugin"]}')
-    monkeypatch.delenv("OPENCODE_CONFIG", raising=False)
-    monkeypatch.delenv("OPENCODE_DISABLE_PROJECT_CONFIG", raising=False)
+    def reply(ctx, prompt):
+        calls.append((ctx.task, ctx.task_config.model))
+        assert "synthetic test" in prompt
+        return json.dumps(
+            {"action": "replace", "reason": "test", "content": "# Project Memory\n\n- Synthetic decision."}
+        )
 
-    (project / "opencode.jsonc").write_text(
-        '{"model": "project/model", "plugin": ["project-plugin"]}',
-        encoding="utf-8",
-    )
-    (config_dir / "opencode.jsonc").write_text(
-        '{"model": "dir/model", "provider": {"openai": {"apiKey": "{file:token.txt}"}}, "plugin": ["dir-plugin"]}',
-        encoding="utf-8",
-    )
+    def native(ctx, prompt):
+        assert provider == "native"
+        return reply(ctx, prompt)
 
-    captured = {}
+    def managed(ctx, prompt, config):
+        assert provider == "managed" and config is cfg
+        return reply(ctx, prompt)
 
-    def fake_run_command(cmd, *, env, cwd, timeout):
-        captured["cmd"] = cmd
-        captured["env"] = env
-        captured["cwd"] = cwd
-        return '{"action":"none","reason":"ok"}'
+    monkeypatch.setattr(maintenance, "run_task_llm", managed)
+    runner.run_maintenance("opencode", tmp_path, str(tmp_path / ".memsearch"), cfg, native_runner=native)
+    assert calls == [("project_review", "task-model")]
+    assert "Synthetic decision" in (tmp_path / ".memsearch/PROJECT.md").read_text()
+    runner.run_maintenance("opencode", tmp_path, str(tmp_path / ".memsearch"), cfg, native_runner=native)
+    assert len(calls) == 1  # Shared input digest / due-state retained.
 
-    monkeypatch.setattr(runner, "run_command", fake_run_command)
-    ctx = SimpleNamespace(
-        platform="opencode",
-        project_dir=project,
-        task_config=SimpleNamespace(model=""),
-    )
 
-    result = runner.run_native_provider(ctx, "maintenance prompt")
-
-    isolated_root = home / ".codex" / "tmp" / "opencode-memsearch-maintenance"
-    isolated_config = json.loads((isolated_root / "opencode" / "opencode.json").read_text(encoding="utf-8"))
-
-    assert json.loads(result) == {"action": "none", "reason": "ok"}
-    assert captured["cmd"] == ["opencode", "run", "maintenance prompt"]
-    assert captured["cwd"] == project
-    assert captured["env"]["XDG_CONFIG_HOME"] == str(isolated_root)
-    assert captured["env"]["XDG_DATA_HOME"] == str(isolated_root / "data")
-    assert captured["env"]["OPENCODE_CONFIG"] == ""
-    assert captured["env"]["OPENCODE_CONFIG_DIR"] == ""
-    assert captured["env"]["OPENCODE_CONFIG_CONTENT"] == ""
-    assert captured["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true"
-    assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
-    assert isolated_config["model"] == "dir/model"
-    assert isolated_config["username"] == "from-content"
-    assert isolated_config["provider"]["openai"]["apiKey"] == f"{{file:{config_dir / 'token.txt'}}}"
-    assert "plugin" not in isolated_config
+def test_opencode_cli_native_requires_live_callback(tmp_path):
+    runner = _load_runner()
+    ctx = SimpleNamespace(platform="opencode", project_dir=tmp_path, task_config=SimpleNamespace(model=""))
+    with pytest.raises(RuntimeError, match="generation callback"):
+        runner.run_native_provider(ctx, "prompt")
 
 
 def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, monkeypatch) -> None:
@@ -241,6 +204,7 @@ def test_dsh_native_runner_uses_headless_profile_and_dsh_cli(tmp_path: Path, mon
     captured = {}
 
     def fake_run_command(cmd, *, env, cwd, timeout):
+        assert timeout == 600
         captured["cmd"] = cmd
         captured["env"] = env
         captured["cwd"] = cwd
@@ -290,11 +254,9 @@ def test_run_command_raises_with_exit_details(tmp_path: Path, monkeypatch) -> No
     runner = _load_runner()
 
     def fake_run(*_args, **_kwargs):
-        return subprocess.CompletedProcess(
-            args=["tool"], returncode=2, stdout="partial output", stderr="bad credentials"
-        )
+        return SimpleNamespace(returncode=2, communicate=lambda **kwargs: ("partial output", "bad credentials"))
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_run)
 
     with pytest.raises(RuntimeError) as exc_info:
         runner.run_command(["tool", "run", "x" * 200], env={}, cwd=tmp_path, timeout=1)
@@ -310,94 +272,52 @@ def test_run_command_success_prefers_stdout(tmp_path: Path, monkeypatch) -> None
     runner = _load_runner()
 
     def fake_run(*_args, **_kwargs):
-        return subprocess.CompletedProcess(args=["tool"], returncode=0, stdout='{"ok": true}', stderr="warning")
+        return SimpleNamespace(returncode=0, communicate=lambda **kwargs: ('{"ok": true}', "warning"))
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_run)
 
     assert runner.run_command(["tool"], env={}, cwd=tmp_path, timeout=1) == '{"ok": true}'
 
 
-def test_run_command_resolves_executable_on_path_and_sends_utf8_input(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("task", ["project_review", "memory_to_skill"])
+def test_timed_out_maintenance_records_failure_and_retries(tmp_path, task):
+    from memsearch.config import MemSearchConfig
+
     runner = _load_runner()
-    seen = {}
+    memory = tmp_path / ".memsearch/memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-11-18.md").write_text("- Retry this synthetic maintenance task.\n")
+    output = tmp_path / ".memsearch/PROJECT.md"
+    output.write_text("Existing project memory.\n")
+    cfg = MemSearchConfig()
+    getattr(cfg.plugins.dsh, task).enabled = True
 
-    def fake_which(name, path=None):
-        seen["which"] = (name, path)
-        return r"C:\Users\me\AppData\Roaming\npm\claude.CMD"
+    def slow(ctx, prompt):
+        return runner.run_command(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            env=os.environ.copy(),
+            cwd=tmp_path,
+            timeout=0.2,
+        )
 
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["kwargs"] = kwargs
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout='{"ok": true}', stderr="")
+    with pytest.raises(subprocess.TimeoutExpired):
+        runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=slow)
+    state_path = tmp_path / ".memsearch/.maintenance-state.json"
+    state = json.loads(state_path.read_text())[f"dsh.{task}"]
+    assert state["last_action"] == "error"
+    assert "TimeoutExpired" in state["last_error"]
+    assert output.read_text() == "Existing project memory.\n"
+    assert not (tmp_path / f".memsearch/.maintenance-dsh-{task}.lock").exists()
+    response = json.dumps({"action": "none", "reason": "retry succeeded", "skills": []})
+    calls = []
 
-    monkeypatch.setattr(runner.shutil, "which", fake_which)
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    def success(ctx, prompt):
+        calls.append(ctx.task)
+        return response
 
-    out = runner.run_command(["claude", "-p"], env={"PATH": "/fake/bin"}, cwd=tmp_path, timeout=1, input="→ prompt")
-
-    assert out == '{"ok": true}'
-    assert seen["which"] == ("claude", "/fake/bin")
-    assert seen["cmd"] == [r"C:\Users\me\AppData\Roaming\npm\claude.CMD", "-p"]
-    assert seen["kwargs"]["input"] == "→ prompt"
-    assert seen["kwargs"]["encoding"] == "utf-8"
-
-
-def test_run_command_passes_unresolvable_names_through(tmp_path: Path, monkeypatch) -> None:
-    runner = _load_runner()
-    seen = {}
-
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
-
-    monkeypatch.setattr(runner.shutil, "which", lambda name, path=None: None)
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
-
-    runner.run_command(["tool", "run"], env={"PATH": ""}, cwd=tmp_path, timeout=1)
-
-    assert seen["cmd"] == ["tool", "run"]
-
-
-def test_run_command_passes_utf8_prompt_through_a_real_process(tmp_path: Path) -> None:
-    runner = _load_runner()
-    import os
-
-    prompt = "journal → åäö \U0001f4da\n" * 5000
-    script = (
-        "import hashlib, sys; "
-        "data = sys.stdin.buffer.read().decode('utf-8').replace('\\r\\n', '\\n'); "
-        "print(hashlib.sha256(data.encode('utf-8')).hexdigest())"
-    )
-
-    out = runner.run_command(
-        [sys.executable, "-c", script], env=dict(os.environ), cwd=tmp_path, timeout=30, input=prompt
-    )
-
-    import hashlib
-
-    assert out == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-
-
-def test_main_still_distills_skills_when_a_review_task_fails(tmp_path: Path, monkeypatch) -> None:
-    runner = _load_runner()
-    project = tmp_path / "repo"
-    (project / ".memsearch" / "memory").mkdir(parents=True)
-    from memsearch import maintenance, skills
-
-    def failing_tasks(**kwargs):
-        raise FileNotFoundError(2, "The system cannot find the file specified")
-
-    distilled = {}
-
-    def fake_distill(**kwargs):
-        distilled["called"] = True
-        return SimpleNamespace(action="skip", reason="not due")
-
-    monkeypatch.setattr(maintenance, "run_due_tasks", failing_tasks)
-    monkeypatch.setattr(skills, "distill", fake_distill)
-    monkeypatch.setattr(
-        sys, "argv", ["maintenance-runner.py", "--platform", "claude-code", "--project-dir", str(project)]
-    )
-
-    assert runner.main() == 1
-    assert distilled["called"] is True
+    runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=success)
+    state = json.loads(state_path.read_text())[f"dsh.{task}"]
+    assert state["last_success_at"]
+    assert "last_error" not in state
+    runner.run_maintenance("dsh", tmp_path, None, cfg, native_runner=success)
+    assert calls == [task], "a completed retry must restore the normal due-state gate"

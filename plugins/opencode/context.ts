@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import type { SystemPart } from "@opencode/ai";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -77,52 +77,16 @@ export function getRecentMemories(
   return `Recent memories (use memory_search for full search):\n${summary.join("\n")}`;
 }
 
-/** Shell-escape a string for safe use inside single quotes. */
-export function shellEscape(s: string): string {
-  return s.replace(/'/g, "'\\''");
-}
-
-export function getSkillCandidateHint(memsearchDir: string, memsearchCmd: string): string {
-  try {
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `MEMSEARCH_DIR='${shellEscape(memsearchDir)}' ${memsearchCmd} skills status --hint`,
-      ],
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    if (result.status !== 0) return "";
-    return (result.stdout || "").trim().split("\n")[0] || "";
-  } catch {
-    return "";
-  }
-}
-
 /** Marks the start of memsearch's injected block within a system message. */
 export const MEMSEARCH_SYSTEM_MARKER = "[memsearch] Memory available.";
 
-/**
- * Merge memsearch's memory context into an `output.system` array without
- * growing it. Some backends (litellm/vllm serving e.g. Qwen models) reject a
- * multi-entry `output.system` array with "system message must be first", so
- * the memory block is folded into the first entry instead of pushed as a new
- * one. If a memsearch block from a previous transform call is already present
- * (identified by MEMSEARCH_SYSTEM_MARKER), it is replaced in place rather than
- * appended again, so repeated calls against the same output stay idempotent.
- */
-export function mergeSystemMemoryContext(
-  system: string[] | undefined,
-  memoryText: string
-): string[] {
-  if (!Array.isArray(system) || system.length === 0) {
-    return [memoryText];
-  }
+/** Fold into the first system part, retaining host metadata and idempotency. */
+export function mergeSystemMemoryContext(system: SystemPart[] | undefined, memoryText: string): SystemPart[] {
+  if (!system?.length) return [{ type: "text", text: memoryText }];
   const result = [...system];
-  const existing = result[0];
-  const markerIndex = existing.indexOf(MEMSEARCH_SYSTEM_MARKER);
-  const base =
-    markerIndex === -1 ? existing : existing.slice(0, markerIndex).replace(/\n+$/, "");
-  result[0] = base ? `${base}\n\n${memoryText}` : memoryText;
+  const first = result[0];
+  const marker = first.text.indexOf(MEMSEARCH_SYSTEM_MARKER);
+  const base = marker === -1 ? first.text : first.text.slice(0, marker).trimEnd();
+  result[0] = { ...first, text: base ? `${base}\n\n${memoryText}` : memoryText };
   return result;
 }

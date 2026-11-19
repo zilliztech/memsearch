@@ -1,5 +1,23 @@
 # Installation
 
+## Requirements
+
+The hooks require **Bash and Python 3**, even if `jq` is installed: Python parses
+session transcripts and handles JSON when `jq` is absent. `jq` is optional.
+The hooks try `python3`, then `python`, then the Windows launcher `py -3`, and
+verify that the command runs Python 3.
+
+On Windows, Claude Code runs hooks in Git Bash. Git for Windows does not include
+Python or `jq`, so install Python 3 and make it available on the hooks' `PATH`.
+The `python3` and `python` commands under
+`%LOCALAPPDATA%\Microsoft\WindowsApps` may be Microsoft Store *App Execution
+Aliases* that print "Python was not found" instead of running Python. The hooks
+skip nonworking aliases and try the next command.
+
+Restart Claude Code after installing Python or changing `PATH`, so the hooks
+inherit the updated environment. If no usable interpreter is found, SessionStart
+reports `ERROR: no working Python 3 found` and `memory capture disabled`.
+
 ## Install from Marketplace (recommended)
 
 ```bash

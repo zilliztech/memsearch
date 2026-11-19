@@ -7,10 +7,15 @@ runs ``scripts/parse-transcript.py`` as a subprocess, the same way the
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "parse-transcript.py"
 
@@ -108,6 +113,7 @@ def _run(db_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
         [sys.executable, str(SCRIPT), "--db", str(db_path), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
 
@@ -259,3 +265,83 @@ def test_limit_controls_turns_without_target(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "=== Turn 3 ===" in result.stdout
     assert "=== Turn 1 ===" not in result.stdout
+
+
+def _compressed_session(tmp_path: Path, *, content_size: bool) -> tuple[Path, bytes]:
+    zstandard = pytest.importorskip("zstandard")
+    batches = [_header() + "\n"]
+    for turn in range(1, 4):
+        records = [
+            _turn_start(turn, turn * 10),
+            _user(f"Question {turn}: 测试记忆", turn * 10 + 1),
+            _tool_call(turn, "read_file", turn * 10 + 2),
+            _assistant(f"Answer {turn}: cedar-849-{turn}", turn, turn * 10 + 3),
+            _turn_end(turn, turn * 10 + 4),
+        ]
+        batches.append("\n".join(_line(record) for record in records) + "\n")
+    compressor = zstandard.ZstdCompressor(write_content_size=content_size, write_checksum=True)
+    path = tmp_path / "session.v4.jsonl.zstd"
+    path.write_bytes(b"".join(compressor.compress(batch.encode("utf-8")) for batch in batches))
+    return path, "".join(batches).encode("utf-8")
+
+
+@pytest.mark.parametrize("content_size", [True, False])
+def test_compressed_transcript_matches_plain(tmp_path: Path, content_size: bool) -> None:
+    compressed, raw = _compressed_session(tmp_path, content_size=content_size)
+    plain = tmp_path / "session.v4.jsonl"
+    plain.write_bytes(raw)
+    expected = _run(plain, "--turn", "2", "--context", "1")
+    actual = _run(compressed, "--turn", "2", "--context", "1")
+    assert expected.returncode == 0, expected.stderr
+    assert actual.returncode == 0, actual.stderr
+    assert actual.stdout == expected.stdout
+    for turn in range(1, 4):
+        assert f"cedar-849-{turn}" in actual.stdout
+    assert "测试记忆" in actual.stdout
+    assert "[Tool call]: read_file" in actual.stdout
+
+
+def test_transcript_output_is_utf8(tmp_path: Path, monkeypatch) -> None:
+    plain = _write_session(tmp_path, [_turn_start(1, 1), _user("测试记忆", 2), _turn_end(1, 3)])
+    monkeypatch.setenv("PYTHONIOENCODING", "ascii")
+    result = _run(plain)
+    assert result.returncode == 0, result.stderr
+    assert "测试记忆" in result.stdout
+
+
+@pytest.mark.parametrize("damage", ["truncated", "checksum"])
+def test_damaged_compressed_transcript_fails_visibly(tmp_path: Path, damage: str) -> None:
+    compressed, _ = _compressed_session(tmp_path, content_size=False)
+    raw = compressed.read_bytes()
+    compressed.write_bytes(raw[:-2] if damage == "truncated" else raw[:-1] + bytes([raw[-1] ^ 1]))
+    result = _run(compressed)
+    assert result.returncode == 1
+    assert not result.stdout
+    assert "Error:" in result.stderr
+    assert "incomplete zstd frame" in result.stderr if damage == "truncated" else "checksum" in result.stderr
+
+
+def _parser_module():
+    spec = importlib.util.spec_from_file_location("dsh_transcript", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.skipif(not shutil.which("zstd"), reason="requires system zstd command")
+@pytest.mark.parametrize("content_size", [True, False])
+def test_system_decoder_reads_all_frames(tmp_path: Path, content_size: bool, monkeypatch) -> None:
+    compressed, expected = _compressed_session(tmp_path, content_size=content_size)
+    parser = _parser_module()
+    monkeypatch.setitem(sys.modules, "zstandard", None)
+    assert parser._read_bytes(compressed) == expected
+
+
+def test_missing_decoder_reports_isolated_dependency_command(monkeypatch) -> None:
+    parser = _parser_module()
+    monkeypatch.setitem(sys.modules, "zstandard", None)
+    monkeypatch.setattr(parser.shutil, "which", lambda _: None)
+    # The legacy package can silently return only the first frame.
+    monkeypatch.setitem(sys.modules, "zstd", SimpleNamespace(uncompress=lambda _: b"partial"))
+    with pytest.raises(RuntimeError, match="uv run --script"):
+        parser._zstd_decompress(b"compressed log")

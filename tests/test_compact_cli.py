@@ -45,6 +45,9 @@ def test_normalize_compact_source_expands_user_home(monkeypatch, tmp_path: Path)
     note.write_text("# note\n")
 
     monkeypatch.setenv("HOME", str(home))
+    # Windows resolves '~' via USERPROFILE first; without this the expansion
+    # lands in the real user profile and the test fails (or pollutes it).
+    monkeypatch.setenv("USERPROFILE", str(home))
 
     normalized = cli_module._normalize_compact_source("~/memory/old-notes.md")
 
