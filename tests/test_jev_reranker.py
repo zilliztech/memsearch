@@ -139,6 +139,8 @@ async def test_search_fetches_extra_candidates_and_returns_jev_top_k(monkeypatch
     mem._embedder = SimpleNamespace(embed=AsyncMock(return_value=[[0.1, 0.2]]))
     mem._store = store
     mem._reranker_model = "jev:jev-1.13.0"
+    mem._reranker_url = None
+    mem._reranker_api_key = None
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
 
     def remote_request(*args, **kwargs):

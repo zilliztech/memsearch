@@ -77,6 +77,80 @@ Local cross-encoder model IDs continue to use the existing ONNX/PyTorch
 backends. See [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for results and
 [Python API](../python-api.md#optional-jev-reranking) for programmatic use.
 
+### Remote rerank service
+
+A model name prefixed with `remote:` sends the candidates to a
+`/v1/rerank`-compatible HTTP service instead of the TypeSafe API or a local
+cross-encoder — a self-hosted deployment (vLLM's `/v1/rerank` and compatible
+services), or any hosted rerank API serving the same payload shape:
+
+```bash
+export MEMSEARCH_REMOTE_RERANKER_URL="http://127.0.0.1:8081/v1/rerank"
+memsearch config set reranker.model "remote:Qwen3-Reranker-8B"
+```
+
+The equivalent setting in `~/.memsearch/config.toml` is:
+
+```toml
+[reranker]
+model = "remote:Qwen3-Reranker-8B"
+```
+
+The text after the prefix is sent as the request `model` field, so it must
+match what the service expects. `MEMSEARCH_REMOTE_RERANKER_URL` is read when
+the request is built; without it, the default is
+`http://127.0.0.1:8081/v1/rerank`, which is the usual shape for an SSH tunnel
+to a machine on the LAN. Hosted relays that authenticate the endpoint take a
+bearer token from `MEMSEARCH_REMOTE_RERANKER_API_KEY` — with a key set,
+plain `http` is accepted only for loopback hosts (`localhost`, `127.0.0.1`,
+`::1`); non-loopback endpoints must serve `https`. HTTP redirects are refused,
+including redirects to the same origin; configure the final endpoint URL
+directly. A redirect raises an HTTP failure without forwarding the key or
+request contents to the destination. Set the endpoint in the environment
+rather than in project config: a remote service is reachable only
+from the host that opens the tunnel, and an untrusted project directory must
+not be able to redirect query and chunk text to an address of its choosing.
+
+The payload is `{"model", "query", "documents"}` and the response is
+`{"results": [{"index", "relevance_score"}]}`. Query and candidate contents
+leave the machine, exactly as they do for Jev. Like every other reranker,
+this only re-scores retrieved chunks, so changing to or from `remote:` needs
+no reindexing. A failed request raises rather than quietly returning the
+unreranked order. See
+[Python API](../python-api.md#optional-remote-rerank-service) for
+programmatic use.
+
+### Rerank credentials in config
+
+The endpoint URL and bearer token for a `remote:` reranker can also be set in
+the **user-level** `~/.memsearch/config.toml` instead of the environment:
+
+```toml
+[reranker]
+model = "remote:Qwen3-Reranker-8B"
+url = "https://api.siliconflow.cn/v1/rerank"
+api_key = "sk-..."   # literal, or "env:MEMSEARCH_REMOTE_RERANKER_API_KEY"
+```
+
+Precedence is **config value → environment variable → built-in default**:
+an empty `url` falls back to `MEMSEARCH_REMOTE_RERANKER_URL`, and an empty
+`api_key` falls back to `MEMSEARCH_REMOTE_RERANKER_API_KEY`; both fall back to
+the in-code defaults when neither is set. `api_key` accepts the `env:VAR_NAME`
+syntax like every other credential field.
+
+This config-level option exists so a `remote:` reranker keeps working even when
+the host process scrubs credential environment variables before spawning
+memsearch (some host harnesses strip names matching
+`/KEY|SECRET|TOKEN|PASSWORD/i`). A literal `api_key` is stored in plaintext in
+the config file — the same trade-off as `embedding.api_key`.
+
+Project-local `.memsearch.toml` cannot set these fields (or `reranker.model`):
+the project-config layer is restricted to low-risk local indexing knobs and
+deliberately cannot redirect network endpoints or carry credentials, so an
+untrusted project directory cannot point query and chunk text at an address of
+its choosing. The transport rules from the previous section (https for
+non-loopback endpoints when a key is set, redirects refused) still apply.
+
 ## Index Exclusions
 
 Ignore support is explicit so upgrades do not silently change an existing

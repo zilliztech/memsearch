@@ -98,6 +98,8 @@ def test_cfg_to_memsearch_kwargs_translates_resolved_config() -> None:
         "ignore_files": [".gitignore", ".cursorignore"],
         "exclude": ["generated/**", "drafts/**"],
         "reranker_model": "",
+        "reranker_url": None,
+        "reranker_api_key": None,
     }
 
 

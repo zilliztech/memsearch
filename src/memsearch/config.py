@@ -97,6 +97,12 @@ class WatchConfig:
 @dataclass
 class RerankerConfig:
     model: str = ""  # empty = disabled; set to model ID to enable
+    # remote: backend endpoint and bearer token. Empty falls back to
+    # MEMSEARCH_REMOTE_RERANKER_URL / MEMSEARCH_REMOTE_RERANKER_API_KEY,
+    # then to the built-in default / unauthenticated. api_key supports
+    # "env:VAR_NAME" like every other credential field.
+    url: str = ""
+    api_key: str = ""
 
 
 @dataclass

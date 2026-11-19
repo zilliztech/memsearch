@@ -11,6 +11,9 @@ Local backends are auto-detected at runtime:
 If neither is installed, reranking is silently skipped.
 
 Model names prefixed with ``jev:`` explicitly select the remote Jev API instead.
+Model names prefixed with ``remote:`` select any ``/v1/rerank``-compatible HTTP
+service — a self-hosted endpoint or a hosted rerank API serving the same
+payload shape — reached via ``MEMSEARCH_REMOTE_RERANKER_URL``.
 """
 
 from __future__ import annotations
@@ -241,6 +244,8 @@ def rerank(
     *,
     model_name: str = DEFAULT_RERANKER,
     top_k: int = 0,
+    url: str | None = None,
+    api_key: str | None = None,
 ) -> list[dict[str, Any]]:
     """Re-score search results with a cross-encoder.
 
@@ -256,11 +261,23 @@ def rerank(
         Search results from MilvusStore.search(). Each dict must have
         a ``content`` key with the chunk text.
     model_name:
-        HuggingFace model ID for the cross-encoder, or ``jev:jev-latest``
-        for remote reranking using ``TYPESAFE_API_KEY``.
+        HuggingFace model ID for the cross-encoder, ``jev:jev-latest``
+        for remote reranking using ``TYPESAFE_API_KEY``, or
+        ``remote:Qwen3-Reranker-8B`` for a rerank HTTP service
+        reached through ``MEMSEARCH_REMOTE_RERANKER_URL``.
     top_k:
         Return only the top-k results after reranking.
         0 means return all results (re-sorted).
+    url:
+        Optional explicit base URL for the ``remote:`` reranker service.
+        Takes precedence over ``MEMSEARCH_REMOTE_RERANKER_URL``; when
+        omitted the environment variable is used as a fallback.
+    api_key:
+        Optional API key for the ``remote:`` reranker service. Takes
+        precedence over ``MEMSEARCH_REMOTE_RERANKER_API_KEY``; when
+        omitted the environment variable is used as a fallback. This
+        lets config files (rather than process env) supply the key,
+        which matters when the host process scrubs credential env vars.
 
     Returns
     -------
@@ -274,6 +291,15 @@ def rerank(
         from .jev_reranker import JevReranker
 
         return JevReranker(model=model_name.removeprefix("jev:")).rerank(query, results, top_k=top_k)
+
+    if model_name.startswith("remote:"):
+        from .remote_reranker import RemoteReranker
+
+        return RemoteReranker(
+            model=model_name.removeprefix("remote:"),
+            url=url,
+            api_key=api_key,
+        ).rerank(query, results, top_k=top_k)
 
     backend = _detect_backend()
     if backend == "onnx":
