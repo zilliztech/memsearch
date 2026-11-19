@@ -31,7 +31,9 @@ test('native collection names match every shell helper for real project paths', 
   fs.symlinkSync(project, link, process.platform === 'win32' ? 'junction' : 'dir')
   for (const directory of [project, link, `${link}${path.sep}..`, path.join(link, 'missing')]) {
     const expected = fromShell(scripts[0], directory)
-    assert.equal(deriveCollection(directory), expected, directory)
+    const shellPath = execFileSync('bash', ['-c', 'realpath -m "$1"', '_', directory], { encoding: 'utf8' }).trim()
+    const resolved = fs.existsSync(directory) ? fs.realpathSync(directory) : directory
+    assert.equal(deriveCollection(directory), expected, JSON.stringify({ directory, shellPath, resolved }))
     for (const script of scripts.slice(1)) assert.equal(fromShell(script, directory), expected, script)
     assert.equal(deriveCollectionNameFromScript(scripts[3], directory), expected)
   }
