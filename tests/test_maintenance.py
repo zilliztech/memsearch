@@ -522,8 +522,8 @@ def test_run_memory_command_decodes_only_memsearch_as_utf8(tmp_path: Path, monke
     memory.mkdir(parents=True)
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
-    stub = stub_dir / "memsearch"
-    stub.write_text(
+    stub_script = stub_dir / "memsearch_stub.py"
+    stub_script.write_text(
         """\
 #!/usr/bin/env python3
 import os
@@ -535,7 +535,14 @@ raise SystemExit(int(os.environ.get("MEMSEARCH_STUB_EXIT", "0")))
 """,
         encoding="utf-8",
     )
-    stub.chmod(0o755)
+    if os.name == "nt":
+        # Windows cannot exec a shebang script; a .cmd shim is what npm/uv installs look like.
+        stub = stub_dir / "memsearch.cmd"
+        stub.write_text(f'@"{sys.executable}" "{stub_script}" %*\r\n', encoding="utf-8")
+    else:
+        stub = stub_dir / "memsearch"
+        stub.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{stub_script}" "$@"\n', encoding="utf-8")
+        stub.chmod(0o755)
     monkeypatch.setenv("PATH", f"{stub_dir}{os.pathsep}{os.environ['PATH']}")
     ctx = TaskContext(
         platform="codex",
@@ -548,15 +555,16 @@ raise SystemExit(int(os.environ.get("MEMSEARCH_STUB_EXIT", "0")))
         input_digest="sha256:test",
     )
 
+    # The hazard: a cp1252 locale cannot decode memsearch's UTF-8 output. Decode the raw
+    # bytes explicitly -- on Windows, subprocess decodes in reader threads, where the
+    # error is swallowed and stdout silently becomes None instead of raising.
+    raw = subprocess.run(
+        [sys.executable, str(stub_script), "expand", "deadbeef"],
+        capture_output=True,
+        check=False,
+    )
     with pytest.raises(UnicodeDecodeError):
-        subprocess.run(
-            [str(stub), "expand", "deadbeef"],
-            capture_output=True,
-            text=True,
-            encoding="cp1252",
-            errors="strict",
-            check=False,
-        )
+        raw.stdout.decode("cp1252", errors="strict")
 
     real_run = subprocess.run
     completed = []
@@ -602,7 +610,7 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
 
     def fake_run(argv, **kwargs):
         calls.append((argv, kwargs))
-        if Path(argv[0]).name.lower() == "memsearch":
+        if Path(argv[0]).stem.lower() == "memsearch":  # argv[0] may be resolved to memsearch.exe
             raise OSError("command failed")
         return subprocess.CompletedProcess(argv, 0, stdout="local output\n", stderr="")
 
