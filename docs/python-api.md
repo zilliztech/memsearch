@@ -57,7 +57,9 @@ MemSearch(
 | `exclude` | `list[str] \| None` | `None` | Additional gitignore-style patterns relative to each directory index root |
 
 `reranker_model` defaults to an empty string (disabled). Set a local
-cross-encoder model ID or `jev:jev-latest` for remote Jev reranking.
+cross-encoder model ID, `jev:jev-latest` for remote Jev reranking, or
+`voyage:rerank-3` for the Voyage AI rerank API (`memsearch[voyage]` and
+`VOYAGE_API_KEY`).
 
 ### Optional Jev reranking
 
