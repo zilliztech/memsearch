@@ -25,6 +25,12 @@ else
   esac
 fi
 
+# Resolved junctions can use MSYS mount aliases such as /tmp. Hash the host
+# path spelling used by native Windows plugins.
+if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then
+  PROJECT_DIR=$(cygpath -m "$PROJECT_DIR")
+fi
+
 # Extract basename and sanitize:
 # - lowercase
 # - replace non-alphanumeric with underscore
