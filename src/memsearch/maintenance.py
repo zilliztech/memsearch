@@ -17,6 +17,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from ._maintenance_lock import file_lock as _file_lock
 from .compact import summarize_text
 from .config import (
     LLMProviderConfig,
@@ -718,22 +719,6 @@ def _record_failure_state(
     )
     state[state_key] = entry
     _save_state(state_path, state)
-
-
-@contextlib.contextmanager
-def _file_lock(path: Path):
-    try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        yield False
-        return
-    try:
-        os.write(fd, str(os.getpid()).encode())
-        yield True
-    finally:
-        os.close(fd)
-        with contextlib.suppress(OSError):
-            path.unlink()
 
 
 def _now() -> str:

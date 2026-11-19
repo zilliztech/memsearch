@@ -52,10 +52,32 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 # ---------------------------------------------------------------------------
 
 
+# Keep helper processes hidden when invoked from a Windows GUI host.
+_CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+
 def _reexec(argv: list[str], env: dict[str, str]) -> None:
     """Windows exec launches a child; wait and propagate its actual exit status."""
     if os.name == "nt":
-        raise SystemExit(subprocess.run(argv, env=env, check=False).returncode)
+        # Suppress console allocation and keep output connected to the host.
+        # GUI hosts may provide no usable stdout/stderr handles.
+        streams = {}
+        for name, stream in (("stdout", sys.stdout), ("stderr", sys.stderr)):
+            try:
+                stream.fileno()
+            except (AttributeError, OSError, ValueError):
+                stream = subprocess.DEVNULL
+            streams[name] = stream
+        raise SystemExit(
+            subprocess.run(
+                argv,
+                env=env,
+                check=False,
+                creationflags=_CREATE_NO_WINDOW,
+                stdin=subprocess.DEVNULL,
+                **streams,
+            ).returncode
+        )
     os.execvpe(argv[0], argv, env)
 
 
