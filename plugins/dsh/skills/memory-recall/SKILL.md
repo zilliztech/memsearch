@@ -53,6 +53,12 @@ you can render the original conversation around that turn:
 
 Pass `--context 0` for just the target turn, or omit `--turn` to see the most recent turns.
 
+If the script reports a missing decompressor, use its declared dependencies in an isolated environment:
+
+```bash
+uv run --script "{{PLUGIN_DIR}}/scripts/parse-transcript.py" --db "<path>" --turn <N> --context 3
+```
+
 ### 4. Report a curated summary
 
 Return a concise summary of the relevant context to the user, citing the memory source files where useful. If the search finds nothing relevant, say so plainly in one line and proceed without it. Do not fabricate memories.

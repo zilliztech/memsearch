@@ -116,6 +116,9 @@ jobs:
       - name: Test maintenance integration
         run: uv run --project ../.. npm run test:integration
 
+      - name: Test compressed and plain session transcripts
+        run: uv run --no-project --with pytest --with zstandard python -m pytest tests/test_parse_transcript.py -q
+
       - name: Check package syntax
         run: |
           node --check index.js
