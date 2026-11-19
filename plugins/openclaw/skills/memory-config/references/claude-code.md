@@ -58,3 +58,10 @@ A fresh Claude Code session is recommended after plugin install/update or
 hook/skill file changes, because the current session may already have loaded
 the old plugin state. TOML changes apply on the next capture/recall/index/
 maintenance invocation.
+
+## Worktree scope
+
+With `MEMSEARCH_WORKTREE_SCOPE=main` in the hook environment, a linked worktree
+uses its main checkout's memory directory and collection. In the "Check memory
+files" commands, replace `git rev-parse --show-toplevel` with
+`dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`.
