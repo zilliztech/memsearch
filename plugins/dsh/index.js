@@ -153,23 +153,35 @@ function detectMemsearchCmd() {
 function deriveCollection(projectDir, override) {
   if (override) return override
   const absoluteInput = isAbsolute(projectDir) ? projectDir : `${process.cwd()}${sep}${projectDir}`
+  // Match the shell helpers and OpenCode, including Windows short-path spelling.
+  const realpath = process.platform === 'win32' ? realpathSync : realpathSync.native
   let absolute
   try {
     // Preserve symlink/.. semantics before any lexical normalization.
-    absolute = realpathSync.native(absoluteInput)
+    absolute = realpath(absoluteInput)
   } catch {
     absolute = parse(absoluteInput).root
     const parts = absoluteInput.slice(absolute.length).split(process.platform === 'win32' ? /[\\/]/ : /\//)
     for (const part of parts) {
       const candidate = join(absolute, part)
-      try { absolute = realpathSync.native(candidate) } catch { absolute = candidate }
+      try { absolute = realpath(candidate) } catch { absolute = candidate }
     }
   }
+  absolute = normalizeCollectionPath(absolute)
   const sanitized = basename(absolute)
     .replace(/[A-Z]/g, letter => letter.toLowerCase())
     .replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
   const hash = createHash('sha256').update(absolute).digest('hex').slice(0, 8)
   return `ms_${sanitized}_${hash}`
+}
+
+/**
+ * Use the same Windows path separators as the shell helpers and OpenCode's
+ * native fallback so the same project shares one default collection.
+ */
+export function normalizeCollectionPath(absolute) {
+  if (process.platform !== 'win32') return absolute
+  return absolute.replaceAll('\\', '/')
 }
 
 function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
