@@ -380,13 +380,70 @@ def _run_openai_with_tools(
                     "content": output,
                 }
             )
-    resp = client.chat.completions.create(
-        model=chosen_model,
-        messages=messages,
-        tools=tools,
-        tool_choice="none",
+    # Preserve the normal closing request; retry only a proven incompatibility.
+    try:
+        resp = client.chat.completions.create(
+            model=chosen_model,
+            messages=messages,
+            tools=tools,
+            tool_choice="none",
+        )
+    except openai.APIStatusError as exc:
+        if not _unsupported_tool_choice(exc):
+            raise
+        closing_failure = f"tool_choice=none was rejected (HTTP {exc.status_code})"
+    else:
+        if not resp.choices[0].message.tool_calls:
+            return _openai_final_text(resp.choices[0])
+        closing_failure = "the endpoint returned tool calls despite tool_choice=none"
+
+    # Keep the completed drill history, without adding unanswered tool calls
+    # from the rejected closing response. Never execute more tools here.
+    resp = client.chat.completions.create(model=chosen_model, messages=messages)
+    if resp.choices[0].message.tool_calls:
+        raise RuntimeError(f"Memory maintenance final request returned tool calls without tools ({closing_failure})")
+    return _openai_final_text(resp.choices[0])
+
+
+def _unsupported_tool_choice(exc: Any) -> bool:
+    """Recognize an explicit parameter/value rejection, not an arbitrary API error."""
+    if exc.status_code not in (400, 422):
+        return False
+    body = exc.body if isinstance(exc.body, dict) else {}
+    error = body.get("error", body)
+    if not isinstance(error, dict):
+        error = {}
+    param = error.get("param") or getattr(exc, "param", None)
+    if param and param != "tool_choice":
+        return False
+    code = error.get("code") or getattr(exc, "code", None)
+    if param == "tool_choice" and code in {
+        "unsupported_parameter",
+        "unsupported_value",
+        "unsupported_parameter_value",
+        "unknown_parameter",
+    }:
+        return True
+    message = str(error.get("message") or exc.message).lower().replace("_", " ")
+    return (param == "tool_choice" or "tool choice" in message) and any(
+        marker in message
+        for marker in (
+            "not supported",
+            "unsupported",
+            "not support",
+            "only auto",
+            "must be auto",
+            "only 'auto'",
+            'only "auto"',
+        )
     )
-    return resp.choices[0].message.content or ""
+
+
+def _openai_final_text(choice: Any) -> str:
+    content = choice.message.content or ""
+    if not content.strip():
+        raise RuntimeError(f"Memory maintenance final request returned no text; finish_reason={choice.finish_reason!r}")
+    return content
 
 
 def _openai_memory_tool_schema() -> dict[str, Any]:
