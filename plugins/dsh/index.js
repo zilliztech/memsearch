@@ -1222,6 +1222,8 @@ export function apply(ctx, config = {}) {
     summarizeEnabled: config.summarizeEnabled !== false,
     summarizeMode: config.summarizeMode,
   }
+  const summarizeTimeoutMs = Number(config.summarizeTimeoutMs)
+  if (Number.isFinite(summarizeTimeoutMs) && summarizeTimeoutMs > 0) opts.summarizeTimeoutMs = summarizeTimeoutMs
 
   const memsearchCmd = detectMemsearchCmd()
   // Legacy plugin-config fields were removed in favor of memsearch config /

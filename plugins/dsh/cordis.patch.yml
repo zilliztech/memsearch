@@ -22,6 +22,7 @@
         #   captureEnabled (bool, default true)   — capture completed turns
         #   injectEnabled (bool, default true)    — remind the agent to use memory-recall
         #   summarizeEnabled (bool, default true) — summarize turns before writing
+        #   summarizeTimeoutMs (number, default 30000) — summarizer timeout in ms
         #   summarizeMode (string, default 'auto')
         #       -> 'auto'         if [plugins.dsh.summarize] provider is set in
         #                          memsearch config → custom-llm, else
