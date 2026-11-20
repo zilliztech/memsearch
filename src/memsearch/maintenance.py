@@ -473,7 +473,7 @@ def _run_anthropic_with_tools(ctx: TaskContext, prompt: str, model: str | None, 
     api_key = resolve_env_ref(provider_cfg.api_key) if provider_cfg.api_key else None
     client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
-    chosen_model = model or "claude-sonnet-4-6"
+    chosen_model = model or "claude-sonnet-5-5"
     for _ in range(MAX_TOOL_CALLS):
         resp = client.messages.create(
             model=chosen_model,

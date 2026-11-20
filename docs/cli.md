@@ -573,7 +573,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 | Provider | Default Model |
 |----------|--------------|
 | `openai` | `gpt-5-mini` |
-| `anthropic` | `claude-sonnet-4-6` |
+| `anthropic` | `claude-sonnet-5-5` |
 | `gemini` | `gemini-3-flash-preview` |
 
 ### Examples

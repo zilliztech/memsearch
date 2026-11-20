@@ -224,7 +224,7 @@ Use an LLM to compress indexed chunks into a summary. The summary is appended to
 | Provider | Default Model |
 |----------|--------------|
 | `openai` | `gpt-5-mini` |
-| `anthropic` | `claude-sonnet-4-6` |
+| `anthropic` | `claude-sonnet-5-5` |
 | `gemini` | `gemini-3-flash-preview` |
 
 ```python
@@ -361,7 +361,7 @@ A complete agent loop: seed knowledge, index it, then recall it during conversat
         context = "\n".join(f"- {m['content'][:200]}" for m in memories)
 
         resp = llm.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5-5",
             max_tokens=1024,
             system=f"You have these memories:\n{context}",
             messages=[{"role": "user", "content": user_input}],
