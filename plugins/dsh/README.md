@@ -107,6 +107,7 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | `injectEnabled` | bool | `true` | Remind the agent to use memory-recall before each turn's first step when memory exists. |
 | `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
 | `summarizeMode` | string | `auto` | Use `custom-llm` when `[plugins.dsh.summarize] provider` is set, or `dsh-headless` otherwise. Select either backend explicitly to pin it. |
+| `summarizeTimeoutMs` | number | `30000` | Timeout in milliseconds for one turn summarization, for both backends. Raise it for slower models. Values that are not positive numbers are ignored. |
 
 Everything else — provider/model, Milvus, collection, memory dir — comes from
 **memsearch config / environment**, exactly like the other platform plugins
