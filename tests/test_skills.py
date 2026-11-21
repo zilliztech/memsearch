@@ -129,6 +129,15 @@ def test_render_skill_md_has_only_standard_frontmatter() -> None:
         assert leaked not in header
 
 
+def test_skill_body_ignores_dashes_inside_frontmatter_values() -> None:
+    md = skills_mod._render_skill_md("deploy", "Build --- then deploy", "## Deploy\n\n1. push")
+    assert skills_mod._skill_body(md) == "## Deploy\n\n1. push"
+
+
+def test_skill_body_without_frontmatter_returns_text() -> None:
+    assert skills_mod._skill_body("## Deploy\n\n1. push\n") == "## Deploy\n\n1. push"
+
+
 def test_distill_skips_unchanged_input(tmp_path: Path) -> None:
     project = tmp_path / "repo"
     _seed_memory(project)

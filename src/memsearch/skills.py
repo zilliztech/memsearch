@@ -103,10 +103,13 @@ def _slugify(name: str) -> str:
 
 def _skill_body(skill_md: str) -> str:
     """Return the markdown body of a SKILL.md, stripping YAML frontmatter."""
-    if skill_md.startswith("---"):
-        parts = skill_md.split("---", 2)
-        if len(parts) == 3:
-            return parts[2].strip()
+    lines = skill_md.splitlines()
+    if lines and lines[0].strip() == "---":
+        # The frontmatter ends at the next line that is exactly "---"; a "---"
+        # inside a value (e.g. the description) must not end it early.
+        for i, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                return "\n".join(lines[i + 1 :]).strip()
     return skill_md.strip()
 
 
