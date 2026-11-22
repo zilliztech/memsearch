@@ -832,6 +832,28 @@ def test_run_task_llm_chain_stops_on_credential_error(tmp_path: Path) -> None:
     assert "[credential]" in message and "invalid api key" in message
 
 
+def test_run_task_llm_chain_single_model_reraises_original_exception(tmp_path: Path) -> None:
+    """With no fallback configured, the original exception type must propagate unchanged."""
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(provider="openai", model="primary-model"),
+        project_dir=tmp_path,
+        memsearch_dir=tmp_path / ".memsearch",
+        input_dir=tmp_path / ".memsearch" / "memory",
+        output_file=tmp_path / ".memsearch" / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+    cfg = MemSearchConfig()
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai")  # no fallback_models
+
+    def runner(attempt_ctx: TaskContext, prompt: str) -> str:
+        raise TimeoutError("the native runner timed out")
+
+    with pytest.raises(TimeoutError, match="the native runner timed out"):
+        maintenance.run_task_llm_chain(ctx, "prompt", cfg, llm_runner=runner, validate=_parse_task_response)
+
+
 def test_run_task_llm_chain_stops_on_unknown_provider_config(tmp_path: Path) -> None:
     """An unknown provider is a config mistake, not something another model can fix."""
     ctx = TaskContext(

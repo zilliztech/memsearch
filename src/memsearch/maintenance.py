@@ -374,7 +374,9 @@ def run_task_llm_chain(
     The first attempt always receives the caller's context unchanged, so hosts
     see the exact object they passed in (a fallback attempt gets a copy with
     ``task_config.model`` overridden). Credential/config failures stop the
-    chain: they would fail identically on every model.
+    chain: they would fail identically on every model. With a single-model
+    chain the original exception is re-raised unchanged, so hosts that relied
+    on the pre-chain behaviour (e.g. catching TimeoutExpired) still see it.
     """
     chain = _provider_model_chain(ctx, cfg)
     failures: list[str] = []
@@ -389,6 +391,10 @@ def run_task_llm_chain(
             return raw
         except Exception as exc:
             kind = _classify_failure(exc)
+            if len(chain) == 1 and kind not in {"credential", "config"}:
+                # Nothing to switch to: preserve the original exception type,
+                # message and traceback (exact pre-chain behaviour).
+                raise
             failures.append(f"{model or '<provider default>'} [{kind}]: {type(exc).__name__}: {exc}")
             if kind in {"credential", "config"}:
                 # Switching models cannot fix a bad key, a missing env ref, or
