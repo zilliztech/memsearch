@@ -454,6 +454,24 @@ def _openai_final_text(choice: Any) -> str:
     return content
 
 
+def _memory_command_description() -> str:
+    """Tell the model exactly which commands exist on this platform.
+
+    On Windows, find/grep are a small read-only subset (no regex, no -i/-E,
+    find needs -type f); naming it here keeps the model from retrying GNU
+    options that can never work. POSIX keeps the full allowed commands.
+    """
+    if _ON_WINDOWS:
+        return (
+            "A read-only command such as memsearch expand, memsearch transcript, find, or grep"
+            " under the memory input directory. On Windows find/grep are a limited subset:"
+            " find requires -type f and supports -maxdepth/-name only; grep supports -r/-l/-n/-c"
+            " with a literal (non-regex, non-case-folding) pattern. Unsupported options return an"
+            " error instead of running."
+        )
+    return "A read-only command such as memsearch expand, memsearch transcript, find, or grep under the memory input directory."
+
+
 def _openai_memory_tool_schema() -> dict[str, Any]:
     return {
         "type": "function",
@@ -465,7 +483,7 @@ def _openai_memory_tool_schema() -> dict[str, Any]:
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "A read-only command such as memsearch expand, memsearch transcript, find, or grep under the memory input directory.",
+                        "description": _memory_command_description(),
                     }
                 },
                 "required": ["command"],
@@ -593,8 +611,12 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
 
 
 def _split_command(command: str) -> list[str]:
-    """Split quoted arguments while preserving Windows path separators."""
-    if not _ON_WINDOWS:
+    """Split quoted arguments while preserving Windows path separators.
+
+    Reads os.name directly (not _ON_WINDOWS): this split does not touch
+    pathlib, and tests fake the platform by patching maintenance.os.
+    """
+    if os.name != "nt":
         return shlex.split(command)
     lexer = shlex.shlex(command, posix=True)
     lexer.whitespace_split = True
@@ -617,7 +639,9 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
 
     find PATH [-maxdepth N] -type f [-name GLOB]; grep [-rlnc] PATTERN
     PATH... . PATTERN is literal text (regular expressions are rejected).
-    Links/reparse points are never traversed. Resource limits fail explicitly.
+    Links/reparse points are never traversed. Resource limits fail explicitly:
+    output past MAX_COMMAND_OUTPUT ends the search with an explicit truncation
+    marker, so a caller never mistakes a partial result for a complete one.
     """
     try:
         roots = [root.resolve(strict=True) for root in allowed_roots if root.exists()]
@@ -701,14 +725,32 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
         scanned_bytes = 0
 
         def emit(text: str) -> bool:
+            """Append one output line. False means the cap was hit and the
+            caller must stop and report the truncation explicitly."""
             nonlocal output_size
             remaining = MAX_COMMAND_OUTPUT - output_size
             if remaining <= 0:
                 return False
             piece = ("\n" if output else "") + text
+            if len(piece) <= remaining:
+                output.append(piece)
+                output_size += len(piece)
+                return True
             output.append(piece[:remaining])
-            output_size += len(piece[:remaining])
-            return len(piece) < remaining
+            output_size += remaining
+            return False
+
+        def truncated() -> str:
+            marker = (
+                f"\nError: output exceeded {MAX_COMMAND_OUTPUT} characters and was truncated; results are incomplete"
+            )
+            # The marker may not fit under the cap; the caller needs the
+            # truncation notice more than the last partial line.
+            joined = "".join(output)
+            if len(joined) + len(marker) > MAX_COMMAND_OUTPUT:
+                drop = len(joined) + len(marker) - MAX_COMMAND_OUTPUT
+                joined = joined[: len(joined) - drop]
+            return joined + marker
 
         def files(path: Path, depth: int = 0):
             nonlocal visited
@@ -730,7 +772,7 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
             for path in files(operand):
                 if mode == "find":
                     if (name is None or fnmatch.fnmatchcase(path.name, name)) and not emit(str(path)):
-                        return "".join(output)
+                        return truncated()
                     continue
                 # Bound bytes before decoding. Binary files are explicitly skipped.
                 with path.open("rb") as stream:
@@ -746,7 +788,7 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                         continue
                     count += 1
                     if "l" in flags and not emit(str(path)):
-                        return "".join(output)
+                        return truncated()
                     if "l" in flags:
                         break
                     if "c" not in flags:
@@ -754,9 +796,9 @@ def _run_windows_memory_search(argv: list[str], cwd: Path, allowed_roots: list[P
                         if "n" in flags:
                             prefix += f"{number}:"
                         if not emit(prefix + line):
-                            return "".join(output)
+                            return truncated()
                 if "c" in flags and "l" not in flags and not emit((f"{path}:" if multiple else "") + str(count)):
-                    return "".join(output)
+                    return truncated()
         return "".join(output)
     except (OSError, ValueError, RuntimeError) as exc:
         return f"Error: {exc}"[:MAX_COMMAND_OUTPUT]

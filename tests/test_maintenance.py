@@ -620,9 +620,17 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert calls[-1][1]["encoding"] == "utf-8"
     assert calls[-1][1]["errors"] == "strict"
 
-    assert run_memory_command(f"find {memory} -type f -name '*.md'", ctx) == "local output"
-    assert "encoding" not in calls[-1][1]
-    assert "errors" not in calls[-1][1]
+    subprocess_calls_after_memsearch = len(calls)
+    if maintenance._ON_WINDOWS:
+        # Windows routes find through the built-in subset (no subprocess), so
+        # there is no encoding/argv passthrough to assert here; the empty
+        # memory dir yields no matches and no extra subprocess call.
+        assert run_memory_command(f"find {memory} -type f -name '*.md'", ctx) == ""
+        assert len(calls) == subprocess_calls_after_memsearch
+    else:
+        assert run_memory_command(f"find {memory} -type f -name '*.md'", ctx) == "local output"
+        assert "encoding" not in calls[-1][1]
+        assert "errors" not in calls[-1][1]
 
 
 def _search_ctx(tmp_path: Path) -> tuple[TaskContext, Path]:
@@ -734,6 +742,85 @@ def test_windows_memory_search_output_is_capped(tmp_path: Path, monkeypatch) -> 
     out = run_memory_command(f"grep redis {big}", ctx)
 
     assert len(out) <= maintenance.MAX_COMMAND_OUTPUT
+
+
+def test_windows_memory_search_reports_truncation_explicitly(tmp_path: Path, monkeypatch) -> None:
+    """A capped output must say so, not look like a complete result."""
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
+    ctx, memory = _search_ctx(tmp_path)
+    big = memory / "big.md"
+    big.write_text("redis line\n" * 3000, encoding="utf-8")
+
+    out = run_memory_command(f"grep redis {big}", ctx)
+
+    assert "truncated" in out
+    assert "incomplete" in out
+    assert len(out) <= maintenance.MAX_COMMAND_OUTPUT
+    # Some real matches still precede the marker, so the caller gets both.
+    assert out.startswith("redis line")
+
+
+def test_windows_memory_search_truncation_marker_fits_cap(tmp_path: Path, monkeypatch) -> None:
+    """The truncation notice must survive even when the last line is huge."""
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
+    ctx, memory = _search_ctx(tmp_path)
+    huge = memory / "huge.md"
+    huge.write_text("redis " + "x" * (maintenance.MAX_COMMAND_OUTPUT * 2) + "\nredis tail\n", encoding="utf-8")
+
+    out = run_memory_command(f"grep redis {huge}", ctx)
+
+    assert len(out) <= maintenance.MAX_COMMAND_OUTPUT
+    assert out.endswith("results are incomplete")
+
+
+def test_windows_memory_search_no_truncation_marker_on_complete_results(tmp_path: Path, monkeypatch) -> None:
+    """Complete results must not claim truncation."""
+    monkeypatch.setattr(maintenance, "_ON_WINDOWS", True)
+    ctx, memory = _search_ctx(tmp_path)
+
+    out = run_memory_command(f"grep -rn redis {memory}", ctx)
+
+    assert "truncated" not in out
+    assert "2026-06-01.md" in out and "deep.md" in out
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-native path semantics")
+def test_windows_memory_search_rejects_junction_on_windows(tmp_path: Path) -> None:
+    """A directory junction must not be traversed (real reparse point, not a symlink)."""
+    ctx, memory = _search_ctx(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.md").write_text("secret redis\n", encoding="utf-8")
+    # mklink /J requires cmd.exe; Python has no junction API.
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(memory / "junction"), str(outside)], check=True, capture_output=True
+    )
+
+    out = run_memory_command(f"grep -r redis {memory}", ctx)
+
+    assert "secret" not in out
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-native path semantics")
+def test_windows_memory_search_accepts_native_windows_paths(tmp_path: Path) -> None:
+    """Backslash separators and drive-letter absolutes must work end to end."""
+    ctx, memory = _search_ctx(tmp_path)
+
+    native = str(memory / "2026-06-01.md")
+    out = run_memory_command(f"grep -n redis {native}", ctx)
+
+    assert "2:- alpha entry about the redis cache" in out
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-native path semantics")
+def test_windows_memory_search_rejects_unc_paths(tmp_path: Path) -> None:
+    """UNC device operands are refused before any filesystem access."""
+    ctx, _memory = _search_ctx(tmp_path)
+
+    out = run_memory_command("grep redis \\\\?\\C:\\nonexistent\\dir", ctx)
+
+    assert out.startswith("Error:")
+    assert "outside allowed memory roots" in out
 
 
 def test_run_memory_command_routes_find_and_grep_through_subset_on_windows(tmp_path: Path, monkeypatch) -> None:
