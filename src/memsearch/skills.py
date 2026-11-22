@@ -341,14 +341,18 @@ def last_maintenance_status(mem_root: Path) -> dict[str, Any]:
     that failed silently looked like a task that simply had nothing to do.
     """
     state_path = mem_root / ".maintenance-state.json"
-    state = None
+    state: Any = None
     if state_path.is_file():
-        with contextlib.suppress(json.JSONDecodeError, OSError):
+        # A corrupt state file (bad JSON, wrong structure, or undecodable
+        # bytes) must degrade to "no status", never crash the CLI.
+        with contextlib.suppress(json.JSONDecodeError, UnicodeError, OSError):
             state = json.loads(state_path.read_text(encoding="utf-8"))
     best_key = ""
     best_entry: dict[str, Any] = {}
     best_order = float("-inf")
-    for key, value in (state or {}).items():
+    if not isinstance(state, dict):
+        state = {}
+    for key, value in state.items():
         if not isinstance(value, dict):
             continue
         checked = str(value.get("last_checked_at") or "")

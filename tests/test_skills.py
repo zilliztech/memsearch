@@ -593,6 +593,25 @@ def test_last_maintenance_status_missing_or_broken_state_is_empty(tmp_path: Path
     assert skills_mod.last_maintenance_status(mem_root) == {}
 
 
+@pytest.mark.parametrize("content", ["[]", '"invalid state"', "42", "[1]"])
+def test_last_maintenance_status_valid_json_wrong_shape_is_empty(tmp_path: Path, content: str) -> None:
+    """Valid JSON that is not the expected dict must degrade, not raise."""
+    mem_root = tmp_path / ".memsearch"
+    mem_root.mkdir(parents=True)
+    (mem_root / ".maintenance-state.json").write_text(content, encoding="utf-8")
+
+    assert skills_mod.last_maintenance_status(mem_root) == {}
+
+
+def test_last_maintenance_status_undecodable_state_is_empty(tmp_path: Path) -> None:
+    """A state file that is not UTF-8 must degrade, not raise."""
+    mem_root = tmp_path / ".memsearch"
+    mem_root.mkdir(parents=True)
+    (mem_root / ".maintenance-state.json").write_bytes(b"\xff\xfe{\x00not utf-8\xff}")
+
+    assert skills_mod.last_maintenance_status(mem_root) == {}
+
+
 def test_candidate_review_summary_includes_last_maintenance(tmp_path: Path) -> None:
     project = tmp_path / "repo"
     _seed_memory(project)
