@@ -18,6 +18,7 @@ from typing import Any
 
 from .compact import summarize_text
 from .config import (
+    ConfigEnvVarError,
     LLMProviderConfig,
     MemSearchConfig,
     PluginMaintenanceTaskConfig,
@@ -297,9 +298,10 @@ def _read_recent_journals(
 def _provider_model_chain(ctx: TaskContext, cfg: MemSearchConfig) -> list[str | None]:
     """The models to try for one task, in order.
 
-    One entry means "make a single attempt": the host-native path, an unknown
-    provider, or a provider with just its own model. ``None`` means "let the
-    provider pick".
+    ``None`` means "let the provider pick its default model": it stands for the
+    provider's own default, so it is only ever a chain entry when no explicit
+    primary model is configured (fallback_models are backups, never replacements
+    for the primary). One non-None entry means "make a single explicit attempt".
     """
     provider_name = (ctx.task_config.provider or "native").strip()
     if provider_name in {"", "native"}:
@@ -308,12 +310,37 @@ def _provider_model_chain(ctx: TaskContext, cfg: MemSearchConfig) -> list[str | 
     if provider_cfg is None:
         return [None]
     primary = (ctx.task_config.model or provider_cfg.model or "").strip()
-    chain: list[str] = []
-    for candidate in [primary, *list(getattr(provider_cfg, "fallback_models", []) or [])]:
+    chain: list[str | None] = [primary or None]
+    for candidate in list(getattr(provider_cfg, "fallback_models", []) or []):
         name = (candidate or "").strip()
         if name and name not in chain:
             chain.append(name)
-    return chain or [None]
+    return chain
+
+
+def _classify_failure(exc: BaseException) -> str:
+    """Group an attempt's failure into one word for the chain's failure report.
+
+    ``switchable`` failures (endpoint errors, unusable output) are worth
+    retrying with the next model; ``credential`` failures (auth, missing env
+    refs) and ``config`` failures (unknown provider) would fail identically on
+    every model, so the chain stops instead of burning the remaining fallbacks.
+    """
+    if isinstance(exc, ConfigEnvVarError):
+        return "credential"
+    message = str(exc)
+    if "Unknown LLM provider" in message or "must be handled by the plugin runner" in message:
+        return "config"
+    # Auth/permission errors from the provider SDKs, matched by name so the
+    # SDKs stay optional imports; 401/403 by status code covers the rest.
+    auth_error_names = {"AuthenticationError", "PermissionDeniedError", "Unauthenticated"}
+    for cls in type(exc).__mro__:
+        if cls.__name__ in auth_error_names:
+            return "credential"
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status in (401, 403):
+        return "credential"
+    return "switchable"
 
 
 def _ctx_with_model(ctx: TaskContext, model: str) -> TaskContext:
@@ -343,20 +370,32 @@ def run_task_llm_chain(
     where JSON was asked for, is not a reason to lose the whole task: the next
     model in ``[llm.providers.<name>].fallback_models`` is tried, and the first
     usable answer wins. ``validate`` raises on an unusable reply (a parse error).
+
+    The first attempt always receives the caller's context unchanged, so hosts
+    see the exact object they passed in (a fallback attempt gets a copy with
+    ``task_config.model`` overridden). Credential/config failures stop the
+    chain: they would fail identically on every model.
     """
     chain = _provider_model_chain(ctx, cfg)
     failures: list[str] = []
-    for model in chain:
-        attempt_ctx = ctx if model is None else _ctx_with_model(ctx, model)
+    for index, model in enumerate(chain):
+        # First attempt: pass the caller's own context through (pre-chain
+        # behaviour). Later attempts override the model on a copy.
+        attempt_ctx = ctx if index == 0 or model is None else _ctx_with_model(ctx, model)
         try:
             raw = llm_runner(attempt_ctx, prompt) if llm_runner else run_task_llm(attempt_ctx, prompt, cfg)
             if validate is not None:
                 validate(raw)
             return raw
-        # Any failure counts as that model being unusable; the next model in
-        # the chain is the remedy.
         except Exception as exc:
-            failures.append(f"{model or '<provider default>'}: {type(exc).__name__}: {exc}")
+            kind = _classify_failure(exc)
+            failures.append(f"{model or '<provider default>'} [{kind}]: {type(exc).__name__}: {exc}")
+            if kind in {"credential", "config"}:
+                # Switching models cannot fix a bad key, a missing env ref, or
+                # a config mistake; skip the remaining fallbacks.
+                raise RuntimeError(
+                    "chain stopped on a failure that switching models cannot fix:\n  " + "\n  ".join(failures)
+                ) from exc
     raise RuntimeError("every configured model failed:\n  " + "\n  ".join(failures))
 
 

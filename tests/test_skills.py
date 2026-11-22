@@ -547,3 +547,40 @@ def test_distill_falls_back_to_next_model(tmp_path: Path) -> None:
     assert calls == ["primary-model", "backup-1"]
     names = [meta["name"] for meta in skills_mod.list_candidates(project / ".memsearch")]
     assert "fallback-flow" in names
+
+
+def test_distill_empty_primary_tries_provider_default_before_fallbacks(tmp_path: Path) -> None:
+    """No explicit model configured: the provider default runs first, fallbacks stay backups."""
+    project = tmp_path / "repo"
+    _seed_memory(project)
+    cfg = MemSearchConfig()
+    _enable(cfg)
+    task_cfg = cfg.plugins.claude_code.memory_to_skill
+    task_cfg.provider = "openai"  # task_cfg.model stays empty
+    cfg.llm.providers["openai"] = LLMProviderConfig(type="openai", fallback_models=["backup-1"])
+
+    calls: list[str | None] = []
+
+    def runner(attempt_ctx, prompt: str) -> str:
+        calls.append(attempt_ctx.task_config.model)
+        if len(calls) == 1:
+            return "prose, definitely not JSON"
+        return json.dumps(
+            {
+                "skills": [
+                    {
+                        "name": "Default First",
+                        "description": "Captured via the provider default.",
+                        "body": "## Default first\n\n1. Step",
+                    }
+                ]
+            }
+        )
+
+    skills_mod.distill(platform="claude-code", project_dir=project, cfg=cfg, llm_runner=runner)
+
+    # First attempt passes the caller's own (empty-model) context through; the
+    # runner resolves the provider default from it. Fallback overrides to backup-1.
+    assert calls == ["", "backup-1"]
+    names = [meta["name"] for meta in skills_mod.list_candidates(project / ".memsearch")]
+    assert "default-first" in names
