@@ -300,3 +300,76 @@ def test_cli_no_window_leaves_call_shape_unchanged(tmp_path, monkeypatch) -> Non
     ms = _RecordingMemSearch.instances[0]
     assert "since" not in ms.search_args
     assert "until" not in ms.search_args
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups (2026-11-23): strict date grammar, since-only prefilter,
+# >36-month degradation warning, prefixed-journal-filename semantics.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["20261123", "2026-6-1", "2026-06-01T00:00:00"])
+async def test_compact_date_grammar_is_rejected_regardless_of_python_version(tmp_path, bad: str) -> None:
+    """``date.fromisoformat`` on Python >= 3.11 accepts forms like "20261123";
+    the API contract is strict YYYY-MM-DD on every interpreter version."""
+    mem = _make_memsearch(FakeStore(_journal_chunks()))
+    with pytest.raises(ValueError, match="expected YYYY-MM-DD"):
+        await mem.search("anything", since=bad)
+
+
+@pytest.mark.asyncio
+async def test_since_only_window_gets_engine_prefilter_up_to_current_month(tmp_path) -> None:
+    """A since-only window is de-facto bounded by today: journals cannot be
+    dated in the future, so the month prefilter is anchored at the current
+    month instead of degrading to post-filter-only fetch."""
+    from datetime import date as _date
+
+    store = FakeStore(_journal_chunks())
+    mem = _make_memsearch(store)
+
+    import asyncio
+
+    await asyncio.wait_for(mem.search("q", since="2026-01-01"), timeout=5)
+    expr = getattr(store, "last_expr", "")
+    this_month = f'source like "%{_date.today():%Y-%m}-%"'
+    assert expr.startswith('source like "%2026-01-%" or ')
+    assert expr.endswith(this_month)  # anchored at today's month, inclusive
+    assert 'source like "%2026-06-%"' in expr
+
+
+@pytest.mark.asyncio
+async def test_until_only_window_keeps_postfilter_only(tmp_path) -> None:
+    """An until-only window is truly unbounded below: no finite pattern list
+    exists, so the engine prefilter stays off (post-filter remains correct)."""
+    store = FakeStore(_journal_chunks())
+    mem = _make_memsearch(store)
+
+    import asyncio
+
+    await asyncio.wait_for(mem.search("q", until="2026-06-30"), timeout=5)
+    assert getattr(store, "last_expr", "") == ""
+
+
+def test_month_patterns_cap_logs_the_degradation(caplog) -> None:
+    """Falling back past _MAX_MONTH_PATTERNS must not be silent: the caller
+    (or log reader) needs to know recall is no longer engine-assisted."""
+    import logging
+
+    from memsearch.core import _month_patterns
+
+    with caplog.at_level(logging.WARNING, logger="memsearch.core"):
+        patterns = _month_patterns(date(2010, 1, 1), date(2026, 1, 1))
+    assert patterns == []
+    assert any("post-filter only" in rec.message for rec in caplog.records)
+
+
+def test_chunk_date_accepts_suffixed_journal_filenames() -> None:
+    """Prefix semantics, by design: 2026-06-01-backup.md is still June 1st.
+    Dates in parent directories remain non-dates."""
+    from memsearch.core import _chunk_date
+
+    assert _chunk_date("2026-06-01-backup.md") == date(2026, 6, 1)
+    assert _chunk_date("2026-06-01 读书.md") == date(2026, 6, 1)
+    assert _chunk_date("2026-06-01.md.bak") == date(2026, 6, 1)
+    assert _chunk_date("2026-06-01/notes/memory.md") is None  # dir date doesn't count

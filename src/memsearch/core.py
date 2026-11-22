@@ -29,10 +29,11 @@ _JOURNAL_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 def _chunk_date(source: str) -> date | None:
     """The date a chunk belongs to, taken from its source file name.
 
-    Daily journals are named ``YYYY-MM-DD.md``; the date must be the file's
-    basename prefix. Dates elsewhere in the path (parent directories, other
-    files) do not count — a chunk is either a dated journal entry or it has
-    no date at all.
+    The date must be the basename's leading ``YYYY-MM-DD`` prefix —
+    ``2026-06-01.md`` and suffixed variants like ``2026-06-01-backup.md``
+    both count as June 1st, anything else (``PROJECT.md``, dates in parent
+    directories) has no date. The exact filename convention is a prefix
+    match by design, not a strict ``YYYY-MM-DD.md``-only rule.
     """
     name = source.replace("\\", "/").rsplit("/", 1)[-1]
     match = _JOURNAL_DATE_RE.match(name)
@@ -63,8 +64,15 @@ def _resolve_date_window(
         if isinstance(value, date):
             return value
         if isinstance(value, str):
+            # Strict YYYY-MM-DD only. ``date.fromisoformat`` alone accepts
+            # extra formats on Python >= 3.11 (e.g. "20261123"), which would
+            # make the same call behave differently across interpreter
+            # versions while the error message claims YYYY-MM-DD.
+            text = value.strip()
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+                raise ValueError(f"invalid {name} date {value!r}: expected YYYY-MM-DD")
             try:
-                return date.fromisoformat(value.strip())
+                return date.fromisoformat(text)
             except ValueError as exc:
                 raise ValueError(f"invalid {name} date {value!r}: expected YYYY-MM-DD ({exc})") from exc
         raise ValueError(f"invalid {name} date {value!r}: expected YYYY-MM-DD")
@@ -85,6 +93,8 @@ def _month_patterns(start: date | None, end: date | None) -> list[str]:
     ``None`` bounds are unbounded, which cannot be expressed as a finite
     pattern list — an empty list disables the engine-side prefilter and the
     exact post-filter remains the only (correct but recall-limited) gate.
+    Ranges beyond ``_MAX_MONTH_PATTERNS`` months degrade the same way; the
+    degradation is logged so callers can tell recall is engine-unassisted.
     """
     if start is None or end is None:
         return []
@@ -92,6 +102,14 @@ def _month_patterns(start: date | None, end: date | None) -> list[str]:
     year, month = start.year, start.month
     while (year, month) <= (end.year, end.month):
         if len(patterns) >= _MAX_MONTH_PATTERNS:
+            logger.warning(
+                "date window %s..%s spans more than %d months; "
+                "engine-side month prefilter disabled, falling back to "
+                "post-filter only (recall within the window is not guaranteed)",
+                start.isoformat(),
+                end.isoformat(),
+                _MAX_MONTH_PATTERNS,
+            )
             return []  # absurd range: prefilter off, post-filter still holds
         patterns.append(f"%{year}-{month:02d}-%")
         month += 1
@@ -346,7 +364,12 @@ class MemSearch:
             # keeps out-of-window (often dominant) chunks out of the fetch
             # pool entirely. The exact post-filter below remains the
             # correctness boundary — month patterns only narrow the scan.
-            months = _month_patterns(start, end)
+            # A since-only window has a de-facto upper bound (today): journals
+            # cannot be dated in the future, so anchoring the pattern list at
+            # today's month restores the prefilter instead of falling back to
+            # a post-filter-only fetch pool. An until-only window stays truly
+            # unbounded below and keeps the post-filter-only fallback.
+            months = _month_patterns(start, end if end is not None else (date.today() if start is not None else None))
             if months:
                 like = " or ".join(f'source like "{m}"' for m in months)
                 filter_expr = like if not filter_expr else f"({filter_expr}) and ({like})"
