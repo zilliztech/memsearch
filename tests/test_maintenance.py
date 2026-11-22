@@ -615,3 +615,43 @@ def test_run_memory_command_preserves_error_fallback_and_local_command_encoding(
     assert run_memory_command(f"find {memory} -name '*.md'", ctx) == "local output"
     assert "encoding" not in calls[-1][1]
     assert "errors" not in calls[-1][1]
+
+
+def test_load_state_rejects_non_dict_and_undecodable_state(tmp_path: Path) -> None:
+    """A corrupt state file yields an empty state instead of a wrong-type crash."""
+    from memsearch.maintenance import _load_state
+
+    state_path = tmp_path / ".maintenance-state.json"
+
+    state_path.write_text("{}", encoding="utf-8")
+    assert _load_state(state_path) == {}
+
+    for content in ["[]", '"invalid state"', "42", "[1]"]:
+        state_path.write_text(content, encoding="utf-8")
+        assert _load_state(state_path) == {}
+
+    state_path.write_bytes(b"\xff\xfe{\x00not utf-8\xff}")
+    assert _load_state(state_path) == {}
+
+
+def test_maintenance_survives_corrupt_state_file(tmp_path: Path) -> None:
+    """A corrupt state file must not stop the task from running and rewriting it."""
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    (memory / "2026-05-27.md").write_text("### 10:00\n- Corrupt state note.\n", encoding="utf-8")
+    state_path = project / ".memsearch" / ".maintenance-state.json"
+    state_path.write_text("42", encoding="utf-8")
+
+    cfg = MemSearchConfig()
+    cfg.plugins.codex.project_review.enabled = True
+
+    result = run_due_tasks(
+        platform="codex",
+        project_dir=project,
+        cfg=cfg,
+        llm_runner=lambda ctx, prompt: json.dumps({"action": "none", "reason": "ran once"}),
+    )
+
+    assert result[0].action == "none"
+    assert isinstance(json.loads(state_path.read_text(encoding="utf-8")), dict)

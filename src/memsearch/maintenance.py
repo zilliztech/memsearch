@@ -654,9 +654,13 @@ def _parse_task_response(raw: str) -> dict[str, str]:
 def _load_state(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
-    with contextlib.suppress(json.JSONDecodeError, OSError):
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {}
+    # A corrupt state file (bad JSON, wrong structure, or undecodable bytes)
+    # degrades to an empty state; a crash here would also keep the task from
+    # ever rewriting a good state file.
+    state: Any = None
+    with contextlib.suppress(json.JSONDecodeError, UnicodeError, OSError):
+        state = json.loads(path.read_text(encoding="utf-8"))
+    return state if isinstance(state, dict) else {}
 
 
 def _save_state(path: Path, state: dict[str, Any]) -> None:
