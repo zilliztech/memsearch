@@ -78,6 +78,21 @@ async def compact_chunks(
         raise ValueError(f"Unknown LLM provider {llm_provider!r}. Available: openai, anthropic, gemini")
 
 
+def resolve_llm_provider(llm_provider: str) -> str:
+    """Validate ``llm_provider`` and return the canonical provider name.
+
+    Maps ``"openai-compatible"`` onto the OpenAI path. Raises ``ValueError``
+    for anything else; callers that must reject bad arguments before doing
+    work (e.g. before a retrieval) can call this directly.
+    """
+    provider = "openai" if llm_provider == "openai-compatible" else llm_provider
+    if provider not in ("openai", "anthropic", "gemini"):
+        raise ValueError(
+            f"Unknown LLM provider type {llm_provider!r}. Available: openai, openai-compatible, anthropic, gemini"
+        )
+    return provider
+
+
 async def summarize_text(
     prompt: str,
     *,
@@ -87,16 +102,12 @@ async def summarize_text(
     api_key: str | None = None,
 ) -> str:
     """Summarize preformatted text with a memsearch-managed LLM provider."""
-    provider = "openai" if llm_provider == "openai-compatible" else llm_provider
+    provider = resolve_llm_provider(llm_provider)
     if provider == "openai":
         return await _compact_openai(prompt, model or "gpt-5-mini", base_url=base_url, api_key=api_key)
     if provider == "anthropic":
         return await _compact_anthropic(prompt, model or "claude-sonnet-4-6")
-    if provider == "gemini":
-        return await _compact_gemini(prompt, model or "gemini-3-flash-preview")
-    raise ValueError(
-        f"Unknown LLM provider type {llm_provider!r}. Available: openai, openai-compatible, anthropic, gemini"
-    )
+    return await _compact_gemini(prompt, model or "gemini-3-flash-preview")
 
 
 async def _compact_openai(prompt: str, model: str, *, base_url: str | None = None, api_key: str | None = None) -> str:

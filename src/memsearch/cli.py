@@ -424,8 +424,9 @@ def search(
 #
 # search returns ranked chunks; synthesize adds a conclusion step: the top-K
 # chunks for a question go to a memsearch-managed LLM, and the answer is
-# grounded in the memories. Empty retrieval short-circuits without any LLM
-# call, so an empty memory base can never produce a hallucinated answer.
+# grounded in the memories. Arguments are validated before retrieval, and
+# empty retrieval short-circuits without any LLM call, so an empty memory
+# base can never produce a hallucinated answer.
 # ======================================================================
 
 
@@ -440,7 +441,12 @@ def search(
 )
 @click.option("--llm-model", default=None, help="Override the LLM model.")
 @click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM.")
-@click.option("--llm-api-key", default=None, help="API key for the LLM (supports env:VAR_NAME).")
+@click.option(
+    "--llm-api-key",
+    default=None,
+    help="API key for the LLM (supports env:VAR_NAME). Only the openai/openai-compatible path uses it; "
+    "anthropic/gemini read ANTHROPIC_API_KEY / GOOGLE_API_KEY from the environment.",
+)
 @_common_options
 def synthesize(
     question: str,
@@ -487,7 +493,7 @@ def synthesize(
                 ms,
                 question,
                 top_k=top_k,
-                max_context_chars=max_context_chars or 16000,
+                max_context_chars=max_context_chars if max_context_chars is not None else 16000,
                 llm_provider=llm_provider,
                 llm_model=llm_model,
                 llm_base_url=llm_base_url,
