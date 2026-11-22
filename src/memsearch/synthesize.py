@@ -76,9 +76,7 @@ async def synthesize(
         heading = _one_line(str(chunk.get("heading", "") or ""))
         content = str(chunk.get("content", "") or "")
         blocks.append(
-            f"<<<MEMORY {nonce}:{i} | source={source} | heading={heading}>>>\n"
-            f"{content}\n"
-            f"<<<END MEMORY {nonce}:{i}>>>"
+            f"<<<MEMORY {nonce}:{i} | source={source} | heading={heading}>>>\n{content}\n<<<END MEMORY {nonce}:{i}>>>"
         )
 
     # results are ranked; keep the highest-ranked blocks that fit the budget.
