@@ -17,6 +17,7 @@
     "index.js",
     "runtime.js",
     "client.js",
+    "locale/",
     "cordis.patch.yml",
     "prompts/",
     "skills/",
@@ -57,3 +58,4 @@
     "@deepseek-ai/dsh-llm": "*"
   }
 }
+

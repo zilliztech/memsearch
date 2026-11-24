@@ -37,6 +37,82 @@ window.__ModuleLoader__.load({
     var NS = 'memsearch-skill-review'
     var CSS_TAG = 'memsearch-skill-review-css'
 
+    var zh = {
+      badge: '🧠 MemSearch',
+      loading: '正在載入技術候選…',
+      count: '{n} 個技術候選等待審查',
+      installed: '{n} 已安裝 · 共 {n} 個',
+      review: '審查',
+      install: '安裝',
+      dismiss: '忽略',
+      collapse: '折疊',
+      refresh: '重新整理',
+      hide: '隱藏',
+      panelTitle: '技術候選',
+      panelNote: '審查在對話中開啟 · 安裝在背景執行',
+      noCandidates: '沒有技術候選。',
+      from: '來自',
+      seen: '出現 {n} 次',
+      installedTo: '已安裝至',
+      reviewQueued: '已將「{name}」的審查排入隊列，代理將在下一輪處理。',
+      installing: '正在將「{name}」安裝至 {target}（背景執行）。',
+      requestFailed: '要求失敗：{message}',
+      memsearchRoot: '.memsearch/',
+      loadingDir: '載入中…',
+      selectFile: '選取檔案以預覽內容（唯讀）。',
+      unsupportedFile: '不支援預覽此檔案類型（.md/.json/.txt/.toml 等文字檔）。',
+      openInFileManager: '正在以檔案管理員開啟 {path}…',
+      openFailed: '無法開啟目錄：{message} — 請手動開啟資料夾。',
+      capsuleTitle: 'MemSearch 技術候選 — 點擊以審查',
+      skillCandidatesTitle: '技術候選',
+      skillCandidatesNote: '審查在對話中開啟 · 安裝在背景執行',
+      loadingShort: '載入中…',
+      noCandidatesShort: '沒有技術候選。',
+      installationNote: '安裝是手動步驟（memsearch skills install）且永不會自動執行。目標目錄遵循 plugins.dsh.memory_to_skill.paths，預設為 ~/.agents/skills。',
+      fileTypeNotSupported: '不支援預覽此檔案類型（.md/.json/.txt/.toml 和類似文字檔）。',
+      openDirectoryFailed: '無法開啟目錄：{message} — 請手動開啟資料夾。'
+    }
+    var en = {
+      badge: '🧠 MemSearch',
+      loading: 'Loading skill candidates…',
+      count: '{n} skill candidates awaiting review',
+      installed: '{n} installed · {n} total',
+      review: 'Review',
+      install: 'Install',
+      dismiss: 'Dismiss',
+      collapse: 'Collapse',
+      refresh: 'Refresh',
+      hide: 'Hide',
+      panelTitle: 'Skill candidates',
+      panelNote: 'Review opens in the conversation · Install runs in the background',
+      noCandidates: 'No skill candidates.',
+      from: 'from',
+      seen: 'seen {n} time(s)',
+      installedTo: 'installed to',
+      reviewQueued: 'Review for "{name}" queued — the agent will handle it next turn.',
+      installing: 'Installing "{name}" to {target} in the background.',
+      requestFailed: 'Request failed: {message}',
+      memsearchRoot: '.memsearch/',
+      loadingDir: 'Loading…',
+      selectFile: 'Select a file to preview its contents (read-only).',
+      unsupportedFile: 'Unsupported file type for preview (.md/.json/.txt/.toml and similar text).',
+      openInFileManager: 'Opening {path} in file manager…',
+      openFailed: 'Could not open directory: {message} — please open the folder manually.',
+      capsuleTitle: 'MemSearch skill candidates — click to review',
+      skillCandidatesTitle: 'Skill candidates',
+      skillCandidatesNote: 'Review opens in the conversation · Install runs in the background',
+      loadingShort: 'Loading…',
+      noCandidatesShort: 'No skill candidates.',
+      installationNote: 'Installation is a manual step (memsearch skills install) and is never automatic. Target directory follows plugins.dsh.memory_to_skill.paths, defaulting to ~/.agents/skills.',
+      fileTypeNotSupported: 'Unsupported file type for preview (.md/.json/.txt/.toml and similar text).',
+      openDirectoryFailed: 'Could not open directory: {message} — please open the folder manually.'
+    }
+    var t = function (key, params) {
+      var val = zh[key] || en[key] || key
+      if (!params) return val
+      return String(val).replace(/{(\w+)}/g, function (_m, p) { return params[p] !== undefined ? params[p] : '{' + p + '}' })
+    }
+
     var CSS =
       '.msr-root{' +
         '--msr-bg:var(--dsw-alias-bg-layer-1,#1c1f26);' +
@@ -464,7 +540,7 @@ window.__ModuleLoader__.load({
           h('span', null, '📁'),
           h('span', { className: 'msr-panel-title' }, '.memsearch/'),
           h('span', { className: 'msr-spacer' }),
-          h('span', null, loading[0] ? 'Loading…' : (rootListing ? rootListing.path : ''))),
+          h('span', null, loading[0] ? t('loadingDir') : (rootListing ? rootListing.path : ''))),
         open[0]
           ? h('div', { className: 'msr-fs-body' },
               h('div', { className: 'msr-fs-tree' },
@@ -517,9 +593,9 @@ window.__ModuleLoader__.load({
           .then(function (r) {
             if (!r.ok || !r.data.ok) throw new Error(r.data.error || 'request failed')
             if (action === 'review') {
-              setToast({ kind: 'ok', text: 'Review queued for ' + name + ' — the agent will pick it up on the next turn.' })
+              setToast({ kind: 'ok', text: t('reviewQueued', { name: name }) })
             } else {
-              setToast({ kind: 'ok', text: 'Installing ' + name + ' to ' + r.data.target + ' in the background.' })
+              setToast({ kind: 'ok', text: t('installing', { name: name, target: r.data.target }) })
               setTimeout(load, 2500)
             }
           })
@@ -539,10 +615,10 @@ window.__ModuleLoader__.load({
           .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data } }) })
           .then(function (r) {
             if (!r.ok) throw new Error(r.data.error || 'could not open directory')
-            setToast({ kind: 'ok', text: 'Opening ' + r.data.path + ' in your file manager…' })
+            setToast({ kind: 'ok', text: t('openInFileManager', { path: r.data.path }) })
           })
           .catch(function (err) {
-            setToast({ kind: 'err', text: String(err && err.message ? err.message : err) + ' — open the folder manually to browse it.' })
+            setToast({ kind: 'err', text: t('openFailed', { message: String(err && err.message ? err.message : err) }) })
           })
           .finally(function () { setBusy(null) })
       }
@@ -559,27 +635,27 @@ window.__ModuleLoader__.load({
       }
 
       var capsule = h(
-        'button', { className: 'msr-capsule', onClick: expand, title: 'MemSearch skill candidates — click to review' },
-        h('span', { className: 'msr-badge', style: { background: 'transparent', padding: 0 } }, '🧠 MemSearch'),
+        'button', { className: 'msr-capsule', onClick: expand, title: t('capsuleTitle') },
+        h('span', { className: 'msr-badge', style: { background: 'transparent', padding: 0 } }, t('badge')),
         h('span', { className: 'msr-capsule-dot ' + (pending.length > 0 ? '' : 'zero') }, String(pending.length)),
         h('span', { className: 'msr-capsule-chev' }, '▾')
       )
 
       var bar = h(
         'div', { className: 'msr-bar' },
-        h('span', { className: 'msr-badge' }, 'MemSearch'),
+        h('span', { className: 'msr-badge' }, t('badge')),
         loading
-          ? h('span', null, 'Loading skill candidates…')
+          ? h('span', null, t('loading'))
           : h('span', null,
               h('span', { className: 'msr-count' }, String(pending.length)),
-              ' skill candidate' + (pending.length === 1 ? '' : 's') + ' awaiting review',
+              t('count', { n: pending.length }),
               h('span', { style: { color: 'var(--msr-text-2)', fontSize: 12 } },
                 ' (installed ' + installed + ' · total ' + visible.length + ')')),
         h('span', { className: 'msr-spacer' }),
         h('button', { className: 'msr-btn', onClick: function () { setOpen(!open[0]) } },
-          open[0] ? 'Collapse' : 'Review'),
-        h('button', { className: 'msr-btn ghost', onClick: function () { setDismissed({}); load() } }, 'Refresh'),
-        h('button', { className: 'msr-btn ghost', onClick: function () { setCollapsed(true) } }, 'Hide')
+          open[0] ? t('collapse') : t('review')),
+        h('button', { className: 'msr-btn ghost', onClick: function () { setDismissed({}); load() } }, t('refresh')),
+        h('button', { className: 'msr-btn ghost', onClick: function () { setCollapsed(true) } }, t('hide'))
       )
 
       var items = visible.map(function (c) {
@@ -593,12 +669,12 @@ window.__ModuleLoader__.load({
             h('div', { className: 'msr-item-meta' },
               c.sources.length > 0
                 ? h('span', null,
-                    'from ',
+                    t('from'),
                     c.sources.slice(0, 3).map(function (s, i) { return h('code', { key: i }, s) }),
                     c.sources.length > 3 ? h('span', null, ' +' + (c.sources.length - 3)) : null)
                 : null,
-              ' · seen ' + c.occurrences + (c.occurrences === 1 ? ' time' : ' times'),
-              c.installedPaths.length > 0 ? ' · installed to ' + c.installedPaths[0] : null),
+              ' · seen ' + t('seen', { n: c.occurrences }),
+              c.installedPaths.length > 0 ? ' · ' + t('installedTo') + ' ' + c.installedPaths[0] : null),
             c.reason ? h('div', { className: 'msr-item-meta', style: { opacity: 0.9 } }, c.reason) : null
           ),
           h('div', { className: 'msr-item-actions' },
@@ -607,14 +683,14 @@ window.__ModuleLoader__.load({
                   className: 'msr-btn primary',
                   disabled: busy[0] === c.name,
                   onClick: function () { act(c.name, 'review') },
-                }, 'Review')
+                }, t('review'))
               : null,
             c.status === 'candidate'
               ? h('button', {
                   className: 'msr-btn',
                   disabled: busy[0] === c.name,
                   onClick: function () { act(c.name, 'install') },
-                }, 'Install')
+                }, t('install'))
               : null,
             h('button', {
               className: 'msr-btn ghost danger',
@@ -626,7 +702,7 @@ window.__ModuleLoader__.load({
                   return next
                 })
               },
-            }, 'Dismiss')
+            }, t('dismiss'))
           )
         )
       })
@@ -635,16 +711,16 @@ window.__ModuleLoader__.load({
         ? h(
             'div', { className: 'msr-panel' },
             h('div', { className: 'msr-panel-head' },
-              h('span', { className: 'msr-panel-title' }, 'Skill candidates'),
+              h('span', { className: 'msr-panel-title' }, t('panelTitle')),
               h('span', { className: 'msr-spacer' }),
-              h('span', { style: { color: 'var(--msr-text-2)' } }, 'Review opens in the conversation · Install runs in the background')),
+              h('span', { style: { color: 'var(--msr-text-2)' } }, t('panelNote'))),
             visible.length === 0
-              ? h('div', { className: 'msr-item', style: { color: 'var(--msr-text-2)' } },
-                  loading ? 'Loading…' : 'No skill candidates.')
+              ? (h('div', { className: 'msr-item', style: { color: 'var(--msr-text-2)' } },
+                  loading ? t('loadingShort') : t('noCandidatesShort')))
               : h('div', { className: 'msr-list' }, items),
             h(MemsearchBrowser, { sessionId: sessionId }),
             h('div', { className: 'msr-note' },
-              'Installation is a manual step (memsearch skills install) and is never automatic. Target directory follows plugins.dsh.memory_to_skill.paths, defaulting to ~/.agents/skills.')
+              t('installationNote'))
           )
         : null
 
