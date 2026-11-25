@@ -709,7 +709,7 @@ $ memsearch expand a1b2c3d4e5f6 --json-output
 
 > 🔌 **Plugin command.** This command is part of the [platform plugins](platforms/index.md)' three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
 
-Parse a session transcript and display its conversation turns **with the tool calls** — the exact commands and their output. Auto-detects Claude Code, Codex (rollout), and OpenClaw JSONL formats. This is "progressive disclosure level 3" -- drilling from a memory chunk down to the original conversation, where the detail the journal summary drops (precise commands, flags, paths) still lives.
+Parse a session transcript and display its conversation turns **with the tool calls** — the exact commands and their output. Auto-detects Claude Code, Codex (rollout), OpenClaw, and WorkBuddy JSONL formats. This is "progressive disclosure level 3" -- drilling from a memory chunk down to the original conversation, where the detail the journal summary drops (precise commands, flags, paths) still lives.
 
 ### Options
 

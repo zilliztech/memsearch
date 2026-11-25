@@ -46,7 +46,7 @@ The plugin registers `memory-recall` through DSH's native skill service. The age
 | **Expand** | Full markdown section around a result | Recover surrounding rationale and outcomes |
 | **Transcript** | Original DSH conversation and tool activity | Confirm exact commands, paths, or wording |
 
-The same markdown journal can contain entries produced by Claude Code, Codex, DSH, OpenClaw, and OpenCode. Recall is not limited to the platform that wrote a memory.
+The same markdown journal can contain entries produced by Claude Code, Codex, DSH, OpenClaw, OpenCode, and WorkBuddy. Recall is not limited to the platform that wrote a memory.
 
 ## Summarization
 
