@@ -55,3 +55,51 @@ def test_linked_worktree_defaults_are_isolated_but_explicit_collection_can_be_sh
     monkeypatch.setattr("memsearch.config.PROJECT_CONFIG_PATH", linked / ".memsearch.toml")
     linked_shared = resolve_config(default_overrides={"milvus": {"collection": linked_default}})
     assert repo_shared.milvus.collection == linked_shared.milvus.collection == "shared_worktree_memory"
+
+
+def _hook_scope(common: Path, project_dir: Path, env: dict[str, str]) -> tuple[str, str]:
+    result = subprocess.run(
+        ["bash", "-c", f'source "{common}" </dev/null; printf "%s\\n%s\\n" "$MEMORY_DIR" "$COLLECTION_NAME"'],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    memory_dir, collection = result.stdout.splitlines()
+    return memory_dir, collection
+
+
+def test_worktree_scope_main_shares_the_main_checkout(tmp_path: Path) -> None:
+    import os
+
+    repo = (tmp_path / "repository").resolve()
+    linked = (tmp_path / "linked-worktree").resolve()
+    repo.mkdir()
+    for cmd in (
+        ["git", "init", "-q", str(repo)],
+        ["git", "-C", str(repo), "-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "--allow-empty", "-m", "i"],
+        ["git", "-C", str(repo), "worktree", "add", "-qb", "linked", str(linked)],
+    ):
+        subprocess.run(cmd, check=True)
+
+    common = Path("plugins/claude-code/hooks/common.sh").resolve()
+    derive = Path("plugins/claude-code/scripts/derive-collection.sh").resolve()
+    base = {k: v for k, v in os.environ.items() if k not in ("MEMSEARCH_DIR", "MEMSEARCH_WORKTREE_SCOPE")}
+
+    def scopes(project: Path, env: dict[str, str]) -> tuple[str, str, str]:
+        memory_dir, collection = _hook_scope(common, project, {**env, "CLAUDE_PROJECT_DIR": str(project)})
+        workspace = subprocess.run(
+            ["bash", str(derive), "--workspace"], cwd=project, check=True, capture_output=True, text=True, env=env
+        ).stdout.strip()
+        return memory_dir, collection, workspace
+
+    shared = {**base, "MEMSEARCH_WORKTREE_SCOPE": "main"}
+    repo_scope = scopes(repo, shared)
+    assert repo_scope[0] == str(repo / ".memsearch" / "memory")
+    assert repo_scope[1] == repo_scope[2]
+    assert scopes(linked, shared) == repo_scope
+
+    isolated = scopes(linked, base)
+    assert isolated[0] == str(linked / ".memsearch" / "memory")
+    assert isolated[1] != repo_scope[1]
+    assert isolated[1] == isolated[2]

@@ -94,6 +94,14 @@ elif [[ "$_PROJECT_DIR" != /* ]]; then
   _PROJECT_DIR="$(pwd)/$_PROJECT_DIR"
 fi
 _GIT_ROOT="$(git -C "$_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
+# Opt-in: a linked worktree shares its main checkout's memory. Submodules and
+# bare repos have a common dir not named .git, so they keep --show-toplevel.
+if [ -n "$_GIT_ROOT" ] && [ "${MEMSEARCH_WORKTREE_SCOPE:-}" = "main" ]; then
+  _GIT_COMMON="$(git -C "$_PROJECT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "")"
+  if [ "$(basename "$_GIT_COMMON")" = ".git" ]; then
+    _GIT_ROOT="$(dirname "$_GIT_COMMON")"
+  fi
+fi
 if [ -n "$_GIT_ROOT" ]; then
   _PROJECT_DIR="$_GIT_ROOT"
 fi

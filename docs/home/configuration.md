@@ -27,6 +27,15 @@ directory-derived collections. To share indexed memory, set the same
 in global config when all projects should share it). Memsearch does not merge
 worktree scopes or migrate previously derived collections automatically.
 
+A shared collection does not move the memory files: each worktree still writes
+its journals to its own `.memsearch/memory`, which is deleted with the
+worktree. To keep worktree sessions with the main checkout instead, set
+`MEMSEARCH_WORKTREE_SCOPE=main` in the environment Claude Code runs hooks in
+(for example the `env` block of `~/.claude/settings.json`). The Claude Code
+hooks and the `memory-recall` skill then resolve a linked worktree to its main
+checkout, for both the memory directory and the derived collection. Submodules
+and repositories without a linked worktree are unaffected.
+
 Since v0.4.11, project-level `.memsearch.toml` is intentionally restricted
 before it is merged. It can only set low-risk local indexing keys:
 `milvus.collection`, `embedding.batch_size`, `chunking.max_chunk_size`,

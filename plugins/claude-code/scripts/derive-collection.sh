@@ -16,6 +16,12 @@ if [ "$PROJECT_DIR" = "--workspace" ]; then
     PROJECT_DIR="$MEMSEARCH_DIR"
   elif ! PROJECT_DIR=$(git rev-parse --show-toplevel 2>&1); then
     PROJECT_DIR=$(pwd)
+  elif [ "${MEMSEARCH_WORKTREE_SCOPE:-}" = "main" ]; then
+    # Same rule as hooks/common.sh.
+    common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "")
+    if [ "$(basename "$common")" = ".git" ]; then
+      PROJECT_DIR=$(dirname "$common")
+    fi
   fi
 fi
 
