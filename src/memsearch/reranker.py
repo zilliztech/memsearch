@@ -10,7 +10,9 @@ Local backends are auto-detected at runtime:
 
 If neither is installed, reranking is silently skipped.
 
-Model names prefixed with ``jev:`` explicitly select the remote Jev API instead.
+Model names prefixed with ``jev:`` or ``voyage:`` explicitly select the remote
+Jev or Voyage AI API instead. Remote backends load no local weights, which keeps
+per-process latency low for short-lived CLI invocations.
 """
 
 from __future__ import annotations
@@ -231,6 +233,52 @@ def _rerank_torch(query: str, results: list[dict[str, Any]], model_name: str, to
 
 
 # ======================================================================
+# Voyage AI backend (hosted API)
+# ======================================================================
+
+_voyage_client: Any = None
+_voyage_client_lock = threading.Lock()
+
+
+def _load_voyage_client() -> Any:
+    """Return a cached Voyage client (reads ``VOYAGE_API_KEY``)."""
+    global _voyage_client
+    with _voyage_client_lock:
+        if _voyage_client is None:
+            import voyageai
+
+            _voyage_client = voyageai.Client()
+            logger.info("Initialised Voyage AI reranker client")
+        return _voyage_client
+
+
+def _voyage_error_types() -> tuple[type[BaseException], ...]:
+    """Voyage's error hierarchy, or an empty tuple when voyageai is absent.
+
+    ``except ()`` never matches, so ``rerank()`` can name this unconditionally;
+    a missing client is already covered by its ImportError branch.
+    """
+    try:
+        from voyageai.error import VoyageError
+    except ImportError:
+        return ()
+    return (VoyageError,)
+
+
+def _rerank_voyage(query: str, results: list[dict[str, Any]], model_name: str, top_k: int) -> list[dict[str, Any]]:
+    """Rerank using the Voyage AI rerank endpoint.
+
+    The API returns its results already ordered by relevance, each carrying the
+    index of the document it scored, so the original result dicts are looked up
+    by that index rather than re-sorted locally.
+    """
+    client = _load_voyage_client()
+    documents = [r["content"] for r in results]
+    response = client.rerank(query, documents, model=model_name, top_k=top_k or None)
+    return [{**results[item.index], "score": float(item.relevance_score)} for item in response.results]
+
+
+# ======================================================================
 # Public API
 # ======================================================================
 
@@ -244,10 +292,6 @@ def rerank(
 ) -> list[dict[str, Any]]:
     """Re-score search results with a cross-encoder.
 
-    Automatically selects the best available backend:
-      1. ONNX Runtime (``memsearch[onnx]``) — preferred, lightweight
-      2. sentence-transformers (``memsearch[local]``) — PyTorch fallback
-
     Parameters
     ----------
     query:
@@ -256,8 +300,9 @@ def rerank(
         Search results from MilvusStore.search(). Each dict must have
         a ``content`` key with the chunk text.
     model_name:
-        HuggingFace model ID for the cross-encoder, or ``jev:jev-latest``
-        for remote reranking using ``TYPESAFE_API_KEY``.
+        HuggingFace model ID for the cross-encoder, ``jev:jev-latest`` for
+        remote reranking using ``TYPESAFE_API_KEY``, or ``voyage:rerank-3``
+        for the Voyage AI rerank API using ``VOYAGE_API_KEY``.
     top_k:
         Return only the top-k results after reranking.
         0 means return all results (re-sorted).
@@ -265,7 +310,8 @@ def rerank(
     Returns
     -------
     list[dict]
-        Results re-sorted by cross-encoder score.
+        Results re-sorted by relevance score, at most ``top_k`` of them. When no
+        backend is available the original order is kept, still capped at ``top_k``.
     """
     if not results:
         return []
@@ -274,6 +320,25 @@ def rerank(
         from .jev_reranker import JevReranker
 
         return JevReranker(model=model_name.removeprefix("jev:")).rerank(query, results, top_k=top_k)
+
+    if model_name.startswith("voyage:"):
+        try:
+            return _rerank_voyage(query, results, model_name.removeprefix("voyage:"), top_k)
+        except ImportError:
+            logger.warning(
+                'Voyage reranking requires the voyageai client (pip install "memsearch[voyage]"); skipping reranking',
+            )
+            return results[:top_k] if top_k > 0 else results
+        except _voyage_error_types() as e:
+            # A missing VOYAGE_API_KEY surfaces here as AuthenticationError, and
+            # transient API trouble as one of its siblings. Degrade to unranked
+            # results the way a missing client does, rather than failing the search.
+            logger.warning(
+                "Voyage rerank failed (%s: %s); skipping reranking",
+                type(e).__name__,
+                e,
+            )
+            return results[:top_k] if top_k > 0 else results
 
     backend = _detect_backend()
     if backend == "onnx":
@@ -286,4 +351,4 @@ def rerank(
         "sentence-transformers is installed; skipping reranking",
         model_name,
     )
-    return results
+    return results[:top_k] if top_k > 0 else results

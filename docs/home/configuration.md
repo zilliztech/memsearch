@@ -73,6 +73,22 @@ cannot enable this remote provider. To disable reranking:
 memsearch config set reranker.model ""
 ```
 
+### Voyage AI
+
+Voyage's hosted rerank API is selected the same way, with a `voyage:` prefix:
+
+```bash
+pip install "memsearch[voyage]"
+export VOYAGE_API_KEY="your-key"
+memsearch config set reranker.model voyage:rerank-3
+```
+
+This sends search queries and retrieved chunk text to Voyage AI. Unlike Jev, a
+Voyage failure never fails the search: if the `voyageai` package is missing or
+the API rejects the call (an unset `VOYAGE_API_KEY`, for instance), memsearch
+logs a warning and returns the unranked results, still capped at the requested
+`--top-k`. The same project-local restriction applies.
+
 Local cross-encoder model IDs continue to use the existing ONNX/PyTorch
 backends. See [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for results and
 [Python API](../python-api.md#optional-jev-reranking) for programmatic use.

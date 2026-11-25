@@ -405,8 +405,8 @@ Indexed 42 chunks.
 
 Run a semantic search query against indexed chunks. Uses [hybrid search](https://milvus.io/docs/multi-vector-search.md) (dense vector cosine similarity + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) full-text) with [RRF](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) reranking for best results.
 
-Optional second-stage reranking can use a local cross-encoder or the remote Jev
-provider after RRF fusion. To enable Jev in trusted global configuration:
+Optional second-stage reranking can use a local cross-encoder or a remote Jev
+or Voyage AI (`reranker.model voyage:rerank-3`) provider after RRF fusion. To enable Jev in trusted global configuration:
 
 ```bash
 export TYPESAFE_API_KEY="your-key"
