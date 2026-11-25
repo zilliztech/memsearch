@@ -206,6 +206,7 @@ await mem.compact(
     llm_model=None,
     prompt_template=None,
     output_dir=None,
+    memory_dir=None,
 ) -> str
 ```
 
@@ -218,6 +219,7 @@ Use an LLM to compress indexed chunks into a summary. The summary is appended to
 | `llm_model` | `str \| None` | `None` | Override the default LLM model |
 | `prompt_template` | `str \| None` | `None` | Custom prompt (must contain `{chunks}` placeholder) |
 | `output_dir` | `str \| Path \| None` | `None` | Where to write the summary. Defaults to the first configured path |
+| `memory_dir` | `str \| Path \| None` | `None` | Write to `memory_dir/YYYY-MM-DD.md` directly, with no `memory/` subfolder. Overrides `output_dir` |
 
 **Default LLM models:**
 

@@ -555,6 +555,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 |------|-------|---------|-------------|
 | `--source` | `-s` | *(all chunks)* | Only compact chunks from this specific source file |
 | `--output-dir` | `-o` | first configured path | Directory to write the compact summary into |
+| `--memory-dir` | | *(none)* | Exact directory for `<date>.md`, with no `memory/` subfolder appended; overrides `-o` |
 | `--llm-provider` | | `openai` | LLM backend for summarization (`openai`, `anthropic`, `gemini`) |
 | `--llm-model` | | provider default | Override the LLM model |
 | `--prompt` | | built-in template | Custom prompt template string (must contain `{chunks}` placeholder) |

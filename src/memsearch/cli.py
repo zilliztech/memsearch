@@ -748,6 +748,12 @@ def watch(
 @click.option(
     "--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into."
 )
+@click.option(
+    "--memory-dir",
+    default=None,
+    type=click.Path(),
+    help="Write the summary to DIR/<date>.md, with no memory/ subfolder (unlike -o). Overrides -o.",
+)
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
 @click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM.")
@@ -758,6 +764,7 @@ def watch(
 def compact(
     source: str | None,
     output_dir: str | None,
+    memory_dir: str | None,
     llm_provider: str | None,
     llm_model: str | None,
     llm_base_url: str | None,
@@ -823,6 +830,7 @@ def compact(
                 output_dir=output_dir,
                 llm_base_url=eff_base_url,
                 llm_api_key=eff_api_key,
+                memory_dir=memory_dir,
             )
         )
         if summary:

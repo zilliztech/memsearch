@@ -277,6 +277,7 @@ class MemSearch:
         output_dir: str | Path | None = None,
         llm_base_url: str | None = None,
         llm_api_key: str | None = None,
+        memory_dir: str | Path | None = None,
     ) -> str:
         """Compress indexed chunks into a summary and append to a daily log.
 
@@ -305,6 +306,10 @@ class MemSearch:
         llm_api_key:
             API key for the LLM provider.  Only used when *llm_provider*
             is ``"openai"``.
+        memory_dir:
+            Exact directory to write ``YYYY-MM-DD.md`` into, with no
+            ``memory/`` subdirectory appended.  Takes precedence over
+            *output_dir* when both are set.
 
         Returns
         -------
@@ -328,8 +333,11 @@ class MemSearch:
         )
 
         # Write summary to memory/YYYY-MM-DD.md (append)
-        base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
-        memory_dir = base / "memory"
+        if memory_dir:
+            memory_dir = Path(memory_dir)
+        else:
+            base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
+            memory_dir = base / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
         # Time-stamp the heading (like the plugins' ``## Session HH:MM``) so two
         # compactions on the same day stay distinguishable in the daily file.
