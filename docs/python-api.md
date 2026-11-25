@@ -363,10 +363,11 @@ A complete agent loop: seed knowledge, index it, then recall it during conversat
         resp = llm.messages.create(
             model="claude-sonnet-5-5",
             max_tokens=1024,
+            extra_body={"thinking": {"type": "between_tools"}},
             system=f"You have these memories:\n{context}",
             messages=[{"role": "user", "content": user_input}],
         )
-        answer = resp.content[0].text
+        answer = "\n".join(block.text for block in resp.content if block.type == "text")
 
         save_memory(f"## {user_input}\n{answer}")
         await mem.index()

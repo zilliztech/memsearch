@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from types import SimpleNamespace
 
@@ -183,6 +184,56 @@ async def test_summarize_text_dispatches_to_anthropic(monkeypatch) -> None:
 
     assert result == "anthropic-note"
     assert captured == {"prompt": "note text", "model": "claude-sonnet-5-5"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["summarize", "compact"])
+@pytest.mark.parametrize("model", [None, "claude-sonnet-5-5", "claude-sonnet-4-6", "custom-model"])
+async def test_anthropic_summary_request_thinking_policy(monkeypatch, operation, model) -> None:
+    anthropic = pytest.importorskip("anthropic")
+    httpx = pytest.importorskip("httpx")
+    requests = []
+
+    def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": body["model"],
+                "content": [{"type": "text", "text": "memory summary"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 3},
+            },
+        )
+
+    async with anthropic.AsyncAnthropic(
+        api_key="test-key",
+        base_url="https://example.invalid",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+    ) as client:
+        monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda: client)
+        if operation == "summarize":
+            result = await compact_module.summarize_text("Remember this.", llm_provider="anthropic", model=model)
+        else:
+            result = await compact_module.compact_chunks(
+                [{"content": "Remember this."}], llm_provider="anthropic", model=model
+            )
+
+    assert result == "memory summary"
+    assert len(requests) == 1
+    body = requests[0]
+    assert body["model"] == (model or "claude-sonnet-5-5")
+    assert body["max_tokens"] == 4096
+    assert "tools" not in body
+    if model in (None, "claude-sonnet-5-5"):
+        assert body["thinking"] == {"type": "between_tools"}
+    else:
+        assert "thinking" not in body
 
 
 @pytest.mark.asyncio

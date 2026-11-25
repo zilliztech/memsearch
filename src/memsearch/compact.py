@@ -121,10 +121,16 @@ async def _compact_anthropic(prompt: str, model: str) -> str:
     import anthropic
 
     client = anthropic.AsyncAnthropic()  # reads ANTHROPIC_API_KEY
+    kwargs: dict[str, Any] = {}
+    if model == "claude-sonnet-5-5":
+        # Without tools, this mode skips thinking and returns only text.
+        # extra_body supports the minimum Anthropic SDK version as well.
+        kwargs["extra_body"] = {"thinking": {"type": "between_tools"}}
     resp = await client.messages.create(
         model=model,
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
+        **kwargs,
     )
     # A model may emit a ThinkingBlock before the TextBlock, in which case
     # content[0] has no .text and indexing it raises AttributeError. Pick the
