@@ -15,6 +15,7 @@
   <a href="https://zilliztech.github.io/memsearch/platforms/dsh/"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square" alt="DeepSeek Harness"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/openclaw/"><img src="https://img.shields.io/badge/OpenClaw-plugin-4a9eff?style=flat-square" alt="OpenClaw"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/opencode/"><img src="https://img.shields.io/badge/OpenCode-plugin-22c55e?style=flat-square" alt="OpenCode"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/workbuddy/"><img src="https://img.shields.io/badge/WorkBuddy-plugin-0f766e?style=flat-square" alt="WorkBuddy"></a>
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/badge/python-%3E%3D3.10-blue?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
   <a href="https://github.com/zilliztech/memsearch/blob/main/LICENSE"><img src="https://img.shields.io/github/license/zilliztech/memsearch?style=flat-square" alt="License"></a>
   <a href="https://github.com/zilliztech/memsearch/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/zilliztech/memsearch/test.yml?branch=main&style=flat-square" alt="Tests"></a>
@@ -279,7 +280,7 @@ memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```
 
-Leave `plugins.<platform>.summarize.provider` empty to preserve the platform's default behavior. Claude Code, Codex, OpenClaw, and OpenCode also accept `native`; DSH selects its headless-agent backend when the provider is unset. Plugin-specific summarize settings do not fall back to `llm.model`.
+[WorkBuddy](docs/platforms/workbuddy.md#configure-memory) requires a named API provider for summaries. For other platforms, leave `plugins.<platform>.summarize.provider` empty to preserve the platform's default behavior. Claude Code, Codex, OpenClaw, and OpenCode also accept `native`; DSH selects its headless-agent backend when the provider is unset. Plugin-specific summarize settings do not fall back to `llm.model`.
 
 You can also disable automatic capture globally for a platform while keeping the plugin installed:
 

@@ -70,11 +70,11 @@ nav:
     - Installation: platforms/opencode/installation.md
     - How It Works: platforms/opencode/how-it-works.md
     - Memory Tools: platforms/opencode/memory-tools.md
+  - WorkBuddy Plugin: platforms/workbuddy.md
   - For Agent Developers:
     - CLI Reference: cli.md
     - Python API: python-api.md
     - Integrations: integrations.md
-  - WorkBuddy: platforms/workbuddy.md
   - Platform Comparison: platforms/index.md
 
 markdown_extensions:
