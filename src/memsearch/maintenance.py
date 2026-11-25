@@ -473,7 +473,7 @@ def _run_anthropic_with_tools(ctx: TaskContext, prompt: str, model: str | None, 
     api_key = resolve_env_ref(provider_cfg.api_key) if provider_cfg.api_key else None
     client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
-    chosen_model = model or "claude-sonnet-4-6"
+    chosen_model = model or "claude-sonnet-5-5"
     for _ in range(MAX_TOOL_CALLS):
         resp = client.messages.create(
             model=chosen_model,
@@ -501,10 +501,15 @@ def _run_anthropic_with_tools(ctx: TaskContext, prompt: str, model: str | None, 
             return "\n".join(text_parts).strip()
         messages.append({"role": "assistant", "content": assistant_content})
         messages.append({"role": "user", "content": tool_results})
+    closing_kwargs: dict[str, Any] = {}
+    if chosen_model == "claude-sonnet-5-5":
+        # Preserve the tools bound to thinking blocks while ending tool use.
+        closing_kwargs = {"tools": [_anthropic_memory_tool_schema()], "tool_choice": {"type": "none"}}
     resp = client.messages.create(
         model=chosen_model,
         max_tokens=4096,
         messages=messages,
+        **closing_kwargs,
     )
     return "\n".join(block.text for block in resp.content if getattr(block, "type", "") == "text").strip()
 

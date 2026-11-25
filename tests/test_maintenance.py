@@ -49,6 +49,109 @@ def test_maintenance_routes_gemini_provider_to_tool_runner(tmp_path: Path, monke
     assert captured == {"model": "gemini-test", "provider_type": "gemini"}
 
 
+def test_anthropic_tool_runner_defaults_to_current_sonnet(tmp_path: Path, monkeypatch) -> None:
+    """The Anthropic tool runner falls back to the current default Sonnet model."""
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured["model"] = kwargs["model"]
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")])
+
+    class FakeAnthropic:
+        def __init__(self, **kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setitem(sys.modules, "anthropic", SimpleNamespace(Anthropic=FakeAnthropic))
+
+    project = tmp_path / "repo"
+    memory = project / ".memsearch" / "memory"
+    memory.mkdir(parents=True)
+    ctx = TaskContext(
+        platform="codex",
+        task="project_review",
+        task_config=PluginMaintenanceTaskConfig(),
+        project_dir=project,
+        memsearch_dir=project / ".memsearch",
+        input_dir=memory,
+        output_file=project / "PROJECT.md",
+        input_digest="sha256:test",
+    )
+
+    result = maintenance._run_anthropic_with_tools(ctx, "prompt", None, LLMProviderConfig())
+
+    assert result == "ok"
+    assert captured == {"model": "claude-sonnet-5-5"}
+
+
+@pytest.mark.parametrize("model", [None, "claude-sonnet-5-5", "claude-sonnet-4-6", "custom-model"])
+def test_anthropic_tool_limit_preserves_thinking_history(monkeypatch, model) -> None:
+    anthropic = pytest.importorskip("anthropic")
+    httpx = pytest.importorskip("httpx")
+    requests = []
+    thinking = {"type": "thinking", "thinking": "", "signature": "test-signature"}
+
+    def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        content = [{"type": "text", "text": "review complete"}]
+        stop_reason = "end_turn"
+        if len(requests) <= maintenance.MAX_TOOL_CALLS:
+            content = [
+                thinking,
+                {
+                    "type": "tool_use",
+                    "id": f"tool_{len(requests)}",
+                    "name": "run_memory_command",
+                    "input": {"command": "memsearch search marker"},
+                },
+            ]
+            stop_reason = "tool_use"
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": body["model"],
+                "content": content,
+                "stop_reason": stop_reason,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 3},
+            },
+        )
+
+    with anthropic.Anthropic(
+        api_key="test-key",
+        base_url="https://example.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(respond)),
+    ) as client:
+        monkeypatch.setattr(anthropic, "Anthropic", lambda: client)
+        monkeypatch.setattr(maintenance, "run_memory_command", lambda command, ctx: "memory result")
+        result = maintenance._run_anthropic_with_tools(SimpleNamespace(), "Review memories", model, LLMProviderConfig())
+
+    assert result == "review complete"
+    assert len(requests) == maintenance.MAX_TOOL_CALLS + 1
+    for index, body in enumerate(requests):
+        assert body["model"] == (model or "claude-sonnet-5-5")
+        assert "thinking" not in body
+        if index:
+            previous = requests[index - 1]["messages"]
+            assert body["messages"][:-2] == previous
+            assistant, user = body["messages"][-2:]
+            assert assistant["content"][0] == thinking
+            assert user["content"] == [
+                {"type": "tool_result", "tool_use_id": f"tool_{index}", "content": "memory result"}
+            ]
+    closing = requests[-1]
+    if model in (None, "claude-sonnet-5-5"):
+        assert all(body["tools"] == requests[0]["tools"] for body in requests)
+        assert closing["tool_choice"] == {"type": "none"}
+    else:
+        assert "tools" not in closing
+        assert "tool_choice" not in closing
+
+
 def test_read_recent_journals_replaces_invalid_utf8_bytes(tmp_path: Path) -> None:
     memory = tmp_path / "memory"
     memory.mkdir()

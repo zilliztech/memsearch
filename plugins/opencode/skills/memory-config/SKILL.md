@@ -170,7 +170,7 @@ api_key = "env:OPENAI_API_KEY"
 
 [llm.providers.anthropic]
 type = "anthropic"
-model = "claude-sonnet-4-6"
+model = "claude-sonnet-5-5"
 api_key = "env:ANTHROPIC_API_KEY"
 
 [llm.providers.gemini]
@@ -183,7 +183,7 @@ Model guidance:
 
 - Normal turn summaries can use small/fast models. See your platform reference file for the native summarize default.
 - Advanced maintenance needs better judgment. See your platform reference file for the native maintenance default.
-- For API providers, defaults are `openai -> gpt-5-mini`, `anthropic -> claude-sonnet-4-6`, and `gemini -> gemini-3-flash-preview`.
+- For API providers, defaults are `openai -> gpt-5-mini`, `anthropic -> claude-sonnet-5-5`, and `gemini -> gemini-3-flash-preview`.
 - If quality matters more than cost for maintenance, set `plugins.<platform>.project_review.model` and `plugins.<platform>.user_profile.model` explicitly.
 
 Advanced maintenance runs after the plugin wakes it, only when enabled, journal input changed, and `min_interval_hours` elapsed. `PROJECT.md` and `USER.md` are maintenance artifacts by default and are not automatically indexed.
