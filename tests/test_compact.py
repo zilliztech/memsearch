@@ -347,6 +347,18 @@ async def test_compact_memory_dir_wins_over_output_dir(monkeypatch, tmp_path: Pa
     assert not out.exists()
 
 
+@pytest.mark.asyncio
+async def test_compact_rejects_empty_memory_dir(monkeypatch, tmp_path: Path) -> None:
+    indexed: list[Path] = []
+    ms = make_compacting_memsearch(monkeypatch, tmp_path, indexed)
+
+    with pytest.raises(ValueError, match="memory_dir must not be empty"):
+        await ms.compact(memory_dir="")
+
+    assert indexed == []
+    assert not (tmp_path / "memory").exists()
+
+
 def test_compact_cli_passes_memory_dir_to_core(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 

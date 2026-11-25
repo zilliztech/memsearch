@@ -309,7 +309,8 @@ class MemSearch:
         memory_dir:
             Exact directory to write ``YYYY-MM-DD.md`` into, with no
             ``memory/`` subdirectory appended.  Takes precedence over
-            *output_dir* when both are set.
+            *output_dir* when both are set.  An empty value raises
+            ``ValueError``.
 
         Returns
         -------
@@ -317,6 +318,9 @@ class MemSearch:
             The generated summary markdown.
         """
         from .store import _escape_filter_value
+
+        if memory_dir is not None and not str(memory_dir):
+            raise ValueError("memory_dir must not be empty")
 
         filter_expr = f'source == "{_escape_filter_value(source)}"' if source else ""
         all_chunks = self._store.query(filter_expr=filter_expr)
@@ -332,8 +336,8 @@ class MemSearch:
             api_key=llm_api_key,
         )
 
-        # Write summary to memory/YYYY-MM-DD.md (append)
-        if memory_dir:
+        # Append summary to <memory dir>/YYYY-MM-DD.md
+        if memory_dir is not None:
             memory_dir = Path(memory_dir)
         else:
             base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
