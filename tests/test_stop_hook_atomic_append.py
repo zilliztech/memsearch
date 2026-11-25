@@ -5,8 +5,9 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
+
+from tests.test_claude_hooks import _write_claude_transcript, _write_executable
 
 SCRIPT = Path("plugins/codex/hooks/stop.sh")
 
@@ -133,47 +134,89 @@ def test_codex_stop_worker_writes_entry_as_contiguous_block(tmp_path: Path) -> N
         assert block.index(block[1]) == 1
 
 
-def test_codex_stop_worker_concurrent_appends_keep_entries_whole(tmp_path: Path) -> None:
+def _interleaving_env(env: dict[str, str], memory_file: Path) -> dict[str, str]:
+    # Exported bash functions shadow the echo/printf builtins inside the hook.
+    # After every call, a foreign line lands in the memory file, the way a
+    # concurrent session's append would between two separate writes.
+    intrude = '{ builtin %s "$@"; [ -e "$SEAM_FILE" ] && builtin echo SEAM >> "$SEAM_FILE"; return 0; }'
+    return {
+        **env,
+        "SEAM_FILE": _bash_path(memory_file),
+        "BASH_FUNC_echo%%": "() " + intrude % "echo",
+        "BASH_FUNC_printf%%": "() " + intrude % "printf",
+    }
+
+
+def _entry_lines(memory_file: Path, marker: str) -> list[str]:
+    lines = memory_file.read_text(encoding="utf-8").splitlines()
+    anchor = next(i for i, line in enumerate(lines) if marker in line)
+    start = max(i for i in range(anchor) if lines[i].startswith("### "))
+    end = next((i for i in range(anchor, len(lines)) if not lines[i].strip()), len(lines))
+    return lines[start:end]
+
+
+def test_codex_stop_worker_entry_survives_interleaving_appender(tmp_path: Path) -> None:
     memory_dir = tmp_path / ".memsearch" / "memory"
     memory_dir.mkdir(parents=True)
     memory_file = memory_dir / "2026-09-10.md"
-    env = _env(tmp_path)
+    work_file = tmp_path / "work.json"
+    _write_work(
+        work_file,
+        memory_file=memory_file,
+        now="11:22",
+        session_id="session-seam",
+        user_question="q?",
+        last_msg="seam summary line",
+    )
+    env = _interleaving_env(_env(tmp_path), memory_file)
 
-    sessions = []
-    for index in range(8):
-        session_id = f"session-{index}"
-        work_file = tmp_path / f"work-{session_id}.json"
-        _write_work(
-            work_file,
-            memory_file=memory_file,
-            now="11:22",
-            session_id=session_id,
-            user_question=f"q{index}",
-            last_msg=f"unique-summary-{index}",
-        )
-        sessions.append(session_id)
-        subprocess.Popen(
-            [_bash_exe(), str(SCRIPT), "--worker", str(work_file)],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    subprocess.run([_bash_exe(), str(SCRIPT), "--worker", str(work_file)], check=True, env=env)
 
-    # Workers append immediately before indexing; wait for all markers.
-    deadline = 20.0
-    waited = 0.0
-    while waited < deadline:
-        text = memory_file.read_text(encoding="utf-8") if memory_file.exists() else ""
-        if all(f"session:{sid}" in text for sid in sessions):
-            break
-        waited += 0.1
-        time.sleep(0.1)
-    else:
-        raise AssertionError("concurrent workers did not finish appending")
+    entry = _entry_lines(memory_file, "session:session-seam")
+    assert "SEAM" not in entry
+    assert entry[0] == "### 11:22"
+    assert "seam summary line" in "\n".join(entry)
 
-    lines = [line for line in memory_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-    for index, session_id in enumerate(sessions):
-        block = _block_for_session(lines, session_id)
-        assert block[0].startswith("### ")
-        assert f"session:{session_id}" in block[1]
-        assert f"unique-summary-{index}" in "\n".join(block)
+
+def test_claude_stop_hook_entry_survives_interleaving_appender(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    transcript = tmp_path / "C:\\Users\\me\\t.jsonl"
+    home.mkdir()
+    fake_bin.mkdir()
+    _write_claude_transcript(transcript, turn_uuid="turn-seam")
+    _write_executable(fake_bin / "memsearch", "#!/usr/bin/env bash\nexit 0\n")
+    _write_executable(
+        fake_bin / "claude",
+        '#!/usr/bin/env bash\n[ "${1:-}" = "--help" ] && exit 0\nbuiltin echo "- Captured a session summary."\n',
+    )
+    _write_executable(
+        fake_bin / "date",
+        '#!/usr/bin/env bash\ncase "${1:-}" in\n  +%Y-%m-%d) builtin echo 2026-07-23 ;;\n'
+        '  +%H:%M) builtin echo 12:34 ;;\n  *) /bin/date "$@" ;;\nesac\n',
+    )
+    memory_file = memsearch_dir / "memory" / "2026-07-23.md"
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PLUGIN_ROOT": str(Path("plugins/claude-code").resolve()),
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+    }
+
+    subprocess.run(
+        ["bash", "plugins/claude-code/hooks/stop.sh"],
+        input=json.dumps({"transcript_path": str(transcript)}),
+        capture_output=True,
+        text=True,
+        env=_interleaving_env(env, memory_file),
+        check=True,
+    )
+
+    entry = _entry_lines(memory_file, "session:")
+    assert "SEAM" not in entry
+    assert entry[0] == "### 12:34"
+    assert f"transcript:{transcript} -->" in entry[1]
+    assert entry[2] == "- Captured a session summary."

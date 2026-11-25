@@ -193,11 +193,11 @@ ${CONTENT}"
   # Single write so concurrent workers on a shared daily file cannot interleave
   # heading, anchor, and summary. No flock: unavailable on macOS.
   SUMMARY_SAFE=$(printf '%s' "$SUMMARY" | _valid_utf8)
-  BLOCK="### $NOW\n"
+  BLOCK="### $NOW"$'\n'
   if [ -n "$SESSION_ID" ]; then
-    BLOCK="${BLOCK}<!-- session:${SESSION_ID} rollout:${TRANSCRIPT_PATH} -->\n"
+    BLOCK="${BLOCK}<!-- session:${SESSION_ID} rollout:${TRANSCRIPT_PATH} -->"$'\n'
   fi
-  printf '%b%s\n\n' "$BLOCK" "$SUMMARY_SAFE" >> "$MEMORY_FILE"
+  cat <<<"${BLOCK}${SUMMARY_SAFE}"$'\n' >> "$MEMORY_FILE"
 
   local _uri
   _uri="${MILVUS_URI:-$(_memsearch config get milvus.uri 2>/dev/null || echo "")}"
