@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 from functools import partial
 
+from ..onnx_telemetry import disable_telemetry
+
 
 class OnnxEmbedding:
     """ONNX Runtime embedding provider.
@@ -35,6 +37,10 @@ class OnnxEmbedding:
                 "Install with: pip install 'memsearch[onnx]' "
                 "or: uv add 'memsearch[onnx]'"
             ) from exc
+
+        # Before any session exists: onnxruntime's telemetry uploader runs on its own thread
+        # and can abort the process at exit, after a successful run.  See onnx_telemetry.
+        disable_telemetry(ort)
 
         from huggingface_hub import hf_hub_download, list_repo_files
         from tokenizers import Tokenizer
