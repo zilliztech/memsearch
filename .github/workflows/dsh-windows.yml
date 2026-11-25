@@ -43,6 +43,8 @@ jobs:
         run: npm install --omit=peer --ignore-scripts --package-lock=false
       - name: Check native command launching
         run: node --test plugins/dsh/tests/runtime.test.js plugins/dsh/tests/skill-paths.test.js
+      - name: Check per-turn summary timeouts
+        run: node --test plugins/dsh/tests/summarize-timeout.test.js
       - name: Select Git Bash for collection parity
         shell: pwsh
         run: |

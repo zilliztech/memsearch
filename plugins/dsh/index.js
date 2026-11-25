@@ -1222,8 +1222,11 @@ export function apply(ctx, config = {}) {
     summarizeEnabled: config.summarizeEnabled !== false,
     summarizeMode: config.summarizeMode,
   }
-  const summarizeTimeoutMs = Number(config.summarizeTimeoutMs)
-  if (Number.isFinite(summarizeTimeoutMs) && summarizeTimeoutMs > 0) opts.summarizeTimeoutMs = summarizeTimeoutMs
+  const summarizeTimeoutMs = config.summarizeTimeoutMs
+  // Node timers accept integer milliseconds through the signed 32-bit limit.
+  if (Number.isInteger(summarizeTimeoutMs) && summarizeTimeoutMs > 0 && summarizeTimeoutMs <= 2147483647) {
+    opts.summarizeTimeoutMs = summarizeTimeoutMs
+  }
 
   const memsearchCmd = detectMemsearchCmd()
   // Legacy plugin-config fields were removed in favor of memsearch config /
