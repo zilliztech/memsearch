@@ -72,7 +72,7 @@ function fixture(t, mode, timeout, { accelerate = true, slow = true } = {}) {
     process.chdir(cwd)
     for (const key of Object.keys(process.env)) if (!(key in environment)) delete process.env[key]
     Object.assign(process.env, environment)
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
   const listeners = {}
   apply({
