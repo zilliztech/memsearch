@@ -199,6 +199,12 @@ ${PARSED}"
         SUMMARY_FAILURE="summarizer returned an error response"
         ;;
     esac
+    # The built-in prompt asks for "- " bullets only, so output without any is a
+    # chat reply, not a summary. A custom prompt may ask for another format.
+    if [ -z "$SUMMARY_FAILURE" ] && [ -n "$SUMMARY" ] && [ ! -f "$PROMPT_FILE" ] &&
+      ! grep -q '^- ' <<<"$SUMMARY"; then
+      SUMMARY_FAILURE="summarizer returned no bullet points"
+    fi
   fi
 else
   SUMMARY_FAILURE="summarizer unavailable"

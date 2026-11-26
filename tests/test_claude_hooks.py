@@ -1402,7 +1402,8 @@ fi
         ("API Error: 429 Too Many Requests", True),
         ('API Error: 401 {"error":{"type":"authentication_error"}}', True),
         ("- No significant changes.", False),
-        ("User investigated rate limits and authentication.", False),
+        ("User investigated rate limits and authentication.", True),
+        ("I can see the working directory is clean. What would you like me to do?", True),
         ("- Added retries for rate limit exceeded responses and HTTP 401, 403, and 429 errors.", False),
         ('- Documented the "You\'ve hit your limit" and "API Error: 429" notices.', False),
         ("- User debugged retries.\nAPI Error: 429 was the response recorded in the transcript.", False),
@@ -1413,6 +1414,7 @@ fi
         "api-auth",
         "short",
         "plain-text",
+        "chat-reply",
         "error-terms",
         "quoted-errors",
         "error-line",
@@ -1435,6 +1437,7 @@ if [ "$1" = config ] && [ "$2" = get ]; then
     embedding.provider) echo onnx ;;
     plugins.claude-code.summarize.enabled) echo true ;;
     plugins.claude-code.summarize.provider) echo "$TEST_SUMMARIZE_PROVIDER" ;;
+    prompts.summarize) echo "${TEST_PROMPT_FILE:-}" ;;
     *) echo "" ;;
   esac
 fi
@@ -1475,13 +1478,22 @@ exit 0
     assert f"<!-- session:session turn:turn-output transcript:{transcript} -->" in memory_text
     if is_error:
         assert summary not in memory_text
-        assert "Memory summary unavailable: summarizer returned an error response" in memory_text
+        is_error_response = summary.startswith(("You've hit your limit", "API Error:"))
+        reason = "an error response" if is_error_response else "no bullet points"
+        assert f"Memory summary unavailable: summarizer returned {reason}" in memory_text
         assert "transcript content was omitted" in memory_text
         assert "Summarize this session" not in memory_text
         assert "I explained the hook behavior." not in memory_text
     else:
         assert summary in memory_text
         assert "Memory summary unavailable" not in memory_text
+
+
+def test_claude_stop_hook_keeps_plain_text_for_custom_prompt(tmp_path: Path, monkeypatch) -> None:
+    prompt = tmp_path / "summarize.txt"
+    prompt.write_text("Summarize the turn as one paragraph.", encoding="utf-8")
+    monkeypatch.setenv("TEST_PROMPT_FILE", str(prompt))
+    test_claude_stop_hook_validates_native_summary_output(tmp_path, "", "User asked about retries.", False)
 
 
 def test_claude_stop_hook_groups_session_headings(tmp_path: Path) -> None:
