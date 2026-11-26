@@ -275,17 +275,18 @@ def _read_recent_journals(
     max_files: int = 12,
     budget: int | None = None,
 ) -> str:
+    """Reads recent journals in chronological order, sharing the budget across files."""
     if not input_dir.is_dir():
         return ""
-    chunks: list[str] = []
+    journals: list[tuple[str, str]] = []
     files = sorted(
         (p for p in input_dir.rglob("*.md") if p.is_file()),
         key=lambda p: p.stat().st_mtime,
     )[-max_files:]
     for path in files:
         with contextlib.suppress(OSError):
-            chunks.append(f"\n<!-- source:{path} -->\n{read_utf8_text_replace(path)}")
-    text = "\n".join(chunks)
+            journals.append((f"\n<!-- source:{path} -->\n", read_utf8_text_replace(path)))
+    text = "\n".join(header + body for header, body in journals)
     if budget is None or len(text) <= budget:
         return text
     if budget <= 0:
@@ -293,7 +294,22 @@ def _read_recent_journals(
     marker = "[older journal entries truncated]\n"
     if budget <= len(marker):
         return text[-budget:]
-    return marker + text[-(budget - len(marker)) :]
+    body_budget = budget - len(marker) - sum(len(header) for header, _ in journals) - (len(journals) - 1)
+    if body_budget <= 0:
+        return marker + text[-(budget - len(marker)) :]
+    return marker + _fit_journal_bodies(journals, body_budget)
+
+
+def _fit_journal_bodies(journals: list[tuple[str, str]], budget: int) -> str:
+    """Allocates unused shares from short journals to longer journals."""
+    by_size = sorted(range(len(journals)), key=lambda index: len(journals[index][1]))
+    chunks = [""] * len(journals)
+    for position, index in enumerate(by_size):
+        header, body = journals[index]
+        retained = min(len(body), budget // (len(journals) - position))
+        chunks[index] = header + (body[-retained:] if retained else "")
+        budget -= retained
+    return "\n".join(chunks)
 
 
 def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:

@@ -260,6 +260,24 @@ def test_newest_entries_within_oversized_journal_survive(
     assert len(journals) <= budget
 
 
+def test_read_recent_journals_shares_budget_between_oversized_files(tmp_path: Path) -> None:
+    for index, body in enumerate(("short", "x" * 2000 + "MIDDLE_END", "y" * 3000 + "NEWEST_END")):
+        journal = tmp_path / f"{index}.md"
+        journal.write_text(body, encoding="utf-8")
+        os.utime(journal, (index, index))
+
+    budget = 1024
+    journals = _read_recent_journals(tmp_path, budget=budget)
+
+    assert "\nshort\n" in journals
+    assert journals.index("MIDDLE_END") < journals.index("NEWEST_END")
+    assert abs(journals.count("x" * 10) - journals.count("y" * 10)) <= 1
+    assert len(journals) == budget
+
+    complete = _read_recent_journals(tmp_path)
+    assert _read_recent_journals(tmp_path, budget=len(complete)) == complete
+
+
 @pytest.mark.parametrize(
     "raw",
     [
