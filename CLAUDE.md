@@ -118,6 +118,7 @@ When modifying hooks/skills, keep in mind:
 | **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | Marketplace (`.claude-plugin/marketplace.json`) |
 | **WorkBuddy plugin** | `plugins/claude-code/.codebuddy-plugin/plugin.json` | Marketplace (`.codebuddy-plugin/marketplace.json`) |
 | **Codex plugin** | *(none)* | `install.sh` (no version management) |
+| **Antigravity plugin** | `plugins/antigravity/plugin.json` | GitHub/local directory (`agy plugin install`) |
 | **DeepSeek Harness plugin** | `plugins/dsh/package.json` | npm (`@zilliz/memsearch-dsh`, trusted publishing via `release-dsh.yml`) |
 | **OpenClaw plugin** | `plugins/openclaw/package.json` | ClawHub (`clawhub package publish`) |
 | **OpenCode plugin** | `plugins/opencode/package.json` | npm (`@zilliz/memsearch-opencode`, trusted publishing via `release.yml`) |

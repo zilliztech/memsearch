@@ -29,6 +29,7 @@ matching your current environment:
 - OpenClaw → `references/openclaw.md`
 - OpenCode → `references/opencode.md`
 - DeepSeek Harness → `references/dsh.md`
+- Antigravity → `references/antigravity.md`
 
 If you are unsure which agent you are, check these environment markers:
 `DSH_HOME`/`~/.dsh` → DeepSeek Harness; `CODEX_HOME`/`~/.codex` → Codex;

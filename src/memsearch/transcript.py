@@ -11,7 +11,7 @@ on-demand, and the background distillation tool calls it too — so the
 format-specific parsing lives in one place instead of being re-derived by each
 agent from raw JSONL.
 
-Auto-detected formats: Claude Code JSONL, Codex rollout JSONL, OpenClaw JSONL and WorkBuddy JSONL.
+Auto-detected formats: Claude Code, Codex rollout, OpenClaw, WorkBuddy, and Antigravity JSONL.
 Unknown formats raise :class:`UnknownTranscriptFormat` so the caller can fall
 back to reading the file directly.
 """
@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 # Truncation strategy: commands are the point, so they are kept in full; tool
 # output is secondary (kept short), and the whole rendering is capped. One budget,
@@ -70,6 +71,8 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 def detect_format(entries: list[dict[str, Any]]) -> str:
     for obj in entries[:80]:
         t = obj.get("type")
+        if t in ("USER_INPUT", "PLANNER_RESPONSE", "GENERIC") and "step_index" in obj:
+            return "antigravity"
         if t in ("event_msg", "response_item"):
             return "codex"
         if t == "message" and isinstance(obj.get("message"), dict) and "role" in obj["message"]:
@@ -286,19 +289,81 @@ def last_exchange(turns: list[Turn]) -> dict[str, str]:
     return {"turn": turns[start].uuid, "text": text}
 
 
-_PARSERS = {"claude": _parse_claude, "codex": _parse_codex, "openclaw": _parse_openclaw, "workbuddy": _parse_workbuddy}
+def _parse_antigravity(entries: list[dict[str, Any]]) -> list[Turn]:
+    """Read public Antigravity step logs; exclude thinking and injected context.
+
+    Confirmed against CLI 1.5.18: planner tool_calls contain name/args;
+    subsequent MODEL/GENERIC steps carry the corresponding results in order.
+    Preserve full argument dictionaries (including capitalized host keys).
+    """
+    turns: list[Turn] = []
+    pending: list[ToolCall] = []
+    for entry in entries:
+        kind = entry.get("type")
+        source = entry.get("source")
+        step = str(entry.get("step_index", ""))
+        text = _as_text(entry.get("content", "")).strip()
+        if kind == "USER_INPUT" and source in (None, "USER_EXPLICIT"):
+            match = re.search(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", text, re.DOTALL)
+            if match:
+                text = match.group(1)
+            else:
+                text = re.sub(
+                    r"<(ADDITIONAL_METADATA|USER_SETTINGS_CHANGE)>.*?</\1>", "", text, flags=re.DOTALL
+                ).strip()
+            pending.clear()
+            if text:
+                turns.append(Turn("user", step, text))
+        elif kind == "PLANNER_RESPONSE" and source in (None, "MODEL"):
+            # Thinking is a separate field/type in public logs, never part of
+            # the spoken content or tool result rendering.
+            turn = Turn("assistant", step, text)
+            for call in entry.get("tool_calls", []):
+                if not isinstance(call, dict):
+                    continue
+                args = call.get("args", {})
+                command = json.dumps(args, ensure_ascii=False) if isinstance(args, dict) else str(args)
+                tool = ToolCall(str(call.get("name", "tool")), command)
+                turn.tools.append(tool)
+                pending.append(tool)
+            if turn.text or turn.tools:
+                turns.append(turn)
+        elif kind == "GENERIC" and source == "MODEL" and pending:
+            # Host timing decorations are not the actual tool result.
+            text = re.sub(r"^(?:Created At|Completed At):[^\n]*\n?", "", text, flags=re.MULTILINE)
+            pending.pop(0).output = _clip(text)
+    return turns
+
+
+_PARSERS = {
+    "claude": _parse_claude,
+    "codex": _parse_codex,
+    "openclaw": _parse_openclaw,
+    "workbuddy": _parse_workbuddy,
+    "antigravity": _parse_antigravity,
+}
 
 
 def parse_transcript(path: str | Path) -> list[Turn]:
     """Parse a transcript file into turns with tool calls. Raises
     :class:`UnknownTranscriptFormat` if the format is not recognized."""
     p = Path(path).expanduser()
+    if not p.is_file() and "%" in str(p):
+        p = Path(unquote(str(p)))
     if not p.is_file():
         raise FileNotFoundError(f"transcript not found: {p}")
     entries = _load_jsonl(p)
     if not entries:
         return []
-    return _PARSERS[detect_format(entries)](entries)
+    kind = detect_format(entries)
+    if kind == "antigravity" and p.name == "transcript.jsonl":
+        companion = p.with_name("transcript_full.jsonl")
+        if companion.is_file():
+            # Use the same public step stream with untruncated content. Merge
+            # by anchor because an actively written full log can lag behind.
+            full = {e.get("step_index"): e for e in _load_jsonl(companion)}
+            entries = [full.get(e.get("step_index"), e) for e in entries]
+    return _PARSERS[kind](entries)
 
 
 def select_turns(turns: list[Turn], turn_id: str | None, context: int) -> list[Turn]:

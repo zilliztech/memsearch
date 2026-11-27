@@ -11,7 +11,7 @@ DSH can host long-running web, TUI, and headless agent sessions across multiple 
 - **Automatic capture** -- completed turns are summarized and appended to `.memsearch/memory/YYYY-MM-DD.md`
 - **On-demand recall** -- a brief reminder lets the agent choose when to search past work
 - **Native skill integration** -- DSH registers the `memory-recall` skill for search, expansion, and transcript drill-down
-- **Cross-agent continuity** -- memories are shared with Claude Code, Codex, OpenClaw, OpenCode, and WorkBuddy when they use the same project
+- **Cross-agent continuity** -- memories are shared with Claude Code, Codex, Antigravity, OpenClaw, OpenCode, and WorkBuddy when they use the same project
 - **Web memory dock** -- the web profile provides a compact skill-candidate review panel and a read-only `.memsearch` browser
 - **Background maintenance** -- optional tasks keep `PROJECT.md`, `USER.md`, and reusable skill candidates current
 

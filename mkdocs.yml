@@ -56,6 +56,10 @@ nav:
     - Installation: platforms/codex/installation.md
     - How It Works: platforms/codex/how-it-works.md
     - Memory Recall: platforms/codex/memory-recall.md
+  - Antigravity Plugin:
+    - Overview: platforms/antigravity/index.md
+    - Installation: platforms/antigravity/installation.md
+    - How It Works: platforms/antigravity/how-it-works.md
   - DeepSeek Harness Plugin:
     - Overview: platforms/dsh/index.md
     - Installation: platforms/dsh/installation.md

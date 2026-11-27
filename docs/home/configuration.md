@@ -120,7 +120,7 @@ memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 
 ## Embedding Provider
 
-The Claude Code, Codex, OpenClaw, OpenCode, and DSH plugins select ONNX when no
+The Claude Code, Codex, Antigravity, OpenClaw, OpenCode, and DSH plugins select ONNX when no
 configuration exists and preserve existing configuration. The CLI defaults to
 OpenAI. The Python API also defaults to OpenAI and takes its settings directly
 as constructor arguments, such as `embedding_provider="onnx"` for local embeddings.
@@ -185,6 +185,7 @@ WorkBuddy requires a named API provider to capture turns. Other plugins use thei
 ```bash
 memsearch config set plugins.claude-code.summarize.model haiku
 memsearch config set plugins.codex.summarize.model gpt-6-sol
+memsearch config set plugins.antigravity.summarize.model gemini-4-hydrogen-low
 memsearch config set plugins.opencode.summarize.model anthropic/claude-haiku
 memsearch config set plugins.openclaw.summarize.model qwen3-coder
 ```
@@ -340,3 +341,4 @@ Each plugin may have additional configuration. See:
 - [OpenClaw Plugin](../platforms/openclaw/index.md)
 - [OpenCode Plugin](../platforms/opencode/index.md)
 - [Codex Plugin](../platforms/codex/index.md)
+- [Antigravity Plugin](../platforms/antigravity/index.md)
