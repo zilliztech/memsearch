@@ -103,7 +103,7 @@ graph TD
     D -->|No| E2["history.jsonl + last_assistant_message<br/>Recover latest user turn"]
     E --> F{"codex exec available?"}
     E2 --> F
-    F -->|Yes| G["codex exec --ephemeral<br/>-s read-only -c features.hooks=false<br/>-m gpt-5.1-codex-mini"]
+    F -->|Yes| G["codex exec --ephemeral<br/>-s read-only -c features.hooks=false<br/>-m gpt-6-sol"]
     F -->|No| H["Local fallback<br/>Truncate raw text"]
     G --> I["Append to YYYY-MM-DD.md<br/>with rollout anchors"]
     H --> I
@@ -126,19 +126,23 @@ This keeps memory capture working on current Codex releases, but rollout drill-d
 
 ### Codex exec Isolation
 
-The Stop hook calls `codex exec` for LLM summarization. To prevent **hook recursion** (the summarization call triggering another Stop hook), it disables hooks in the child process:
+The Stop hook calls `codex exec` with `gpt-6-sol` and reasoning disabled for native summarization. To prevent **hook recursion** (the summarization call triggering another Stop hook), it disables hooks in the child process:
 
 ```bash
 MEMSEARCH_NO_WATCH=1 \
   codex exec --ephemeral --skip-git-repo-check -s read-only \
   -c features.hooks=false \
-  -c model_reasoning_effort='"low"' \
-  -m gpt-5.1-codex-mini "$LLM_PROMPT"
+  -c model_reasoning_effort='"none"' \
+  -m gpt-6-sol "$LLM_PROMPT"
 ```
 
 This avoids assuming `~/.codex/auth.json` exists. Installations that authenticate through Codex's default keyring flow still work, and the child `codex exec` cannot recurse because hooks are disabled explicitly.
 
-Set `plugins.codex.summarize.model` to override only this native capture model. Empty or unset keeps the built-in Codex plugin default. To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.codex.summarize.provider` to that name. Empty or `native` preserves the current behavior, and this setting does not fall back to `llm.model`.
+Set `plugins.codex.summarize.model` to override only this native capture model. Empty or unset selects `gpt-6-sol` with `none` reasoning effort. Other configured native models use `low` reasoning effort.
+
+Background project review, user profiling, and skill distillation use the Codex default model with `medium` reasoning effort, unless their task-specific model setting is provided.
+
+To use a memsearch-managed API provider instead, define `[llm.providers.<name>]` and set `plugins.codex.summarize.provider` to that name. Empty or `native` selects native summarization, and this setting does not fall back to `llm.model`.
 
 ### Local Fallback
 
@@ -255,7 +259,7 @@ When the `rollout:` anchor is populated, the memory-recall skill can use `parse-
 | Aspect | Codex Plugin | Claude Code Plugin |
 |--------|-------------|-------------------|
 | **SessionEnd hook** | Not available -- orphans cleaned at next SessionStart | Available -- clean shutdown |
-| **Summarizer** | `codex exec -m gpt-5.1-codex-mini` | `claude -p --model haiku` |
+| **Summarizer** | `codex exec -m gpt-6-sol` | `claude -p --model haiku` |
 | **Recursion prevention** | `features.hooks=false` on child `codex exec` | `stop_hook_active` flag + `CLAUDECODE=` |
 | **Skill context** | Main context (no `context: fork`) | Forked subagent (`context: fork`) |
 | **Milvus Lite** | One-time index + skip re-index in Stop | Same approach via `start_watch()` logic |
