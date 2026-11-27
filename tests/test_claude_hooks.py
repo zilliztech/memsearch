@@ -234,7 +234,7 @@ def test_claude_session_start_reports_missing_python(
     assert "memory capture disabled" in status
 
 
-def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str]) -> str:
+def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str], symlink: bool = False) -> str:
     script = Path("plugins/claude-code/hooks/session-start.sh")
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
@@ -243,7 +243,12 @@ def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, st
     fake_bin.mkdir()
     (home / ".memsearch").mkdir()
     (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
-    memory.mkdir(parents=True)
+    if symlink:
+        (tmp_path / "journals").mkdir()
+        memory.parent.mkdir()
+        memory.symlink_to(tmp_path / "journals", target_is_directory=True)
+    else:
+        memory.mkdir(parents=True)
 
     for name, content in journals.items():
         (memory / name).write_text(content, encoding="utf-8")
@@ -277,6 +282,16 @@ exit 0
 
     payload = json.loads(result.stdout)
     return payload.get("hookSpecificOutput", {}).get("additionalContext", "")
+
+
+def test_claude_session_start_reads_symlinked_memory_dir(tmp_path: Path) -> None:
+    context = _run_claude_session_start_with_memory(
+        tmp_path,
+        {"2026-01-01.md": "\n## Session 10:00\n\n- a line from a linked folder\n"},
+        symlink=True,
+    )
+
+    assert "a line from a linked folder" in context
 
 
 def test_claude_hook_memsearch_disable_exits_before_writing_memory(tmp_path: Path) -> None:
