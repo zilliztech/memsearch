@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path("plugins/codex/hooks/stop.sh")
 
@@ -12,6 +15,93 @@ SCRIPT = Path("plugins/codex/hooks/stop.sh")
 def _write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
+
+
+@pytest.mark.parametrize("has_timeout", [True, False])
+@pytest.mark.parametrize(
+    ("configured_model", "expected_model", "expected_effort"),
+    [("", "gpt-6-sol", "none"), ("gpt-6-sol", "gpt-6-sol", "none"), ("custom-model", "custom-model", "low")],
+)
+def test_codex_native_summary_model_and_effort(
+    tmp_path: Path, has_timeout: bool, configured_model: str, expected_model: str, expected_effort: str
+) -> None:
+    """Capture a turn with the default or an explicitly configured native model."""
+    memory_file = tmp_path / ".memsearch" / "memory" / "2026-11-27.md"
+    work_file = tmp_path / "work.json"
+    work_file.write_text(
+        json.dumps(
+            {
+                "now": "10:00",
+                "memory_file": str(memory_file),
+                "session_id": "native-summary-test",
+                "content": "The release marker is maple-8412; retention is 47 minutes.",
+                "user_question": "Remember the release settings.",
+                "last_msg": "Recorded the settings.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "memsearch",
+        '#!/bin/sh\ncase "$3" in\n  plugins.codex.summarize.model) printf "%s\\n" "$TEST_MODEL" ;;\nesac\nexit 0\n',
+    )
+    _write_executable(
+        fake_bin / "codex",
+        f"#!{sys.executable}\n"
+        "import json, os, pathlib, sys\n"
+        "pathlib.Path(os.environ['TEST_ARGS']).write_text(json.dumps(sys.argv[1:]))\n"
+        "print('- The release marker is maple-8412; retention is 47 minutes.')\n",
+    )
+    _write_executable(
+        fake_bin / "python3",
+        '#!/bin/sh\ncase "$1" in\n  */maintenance-runner.py) exit 0 ;;\nesac\nexec "$TEST_PYTHON" "$@"\n',
+    )
+    _write_executable(
+        fake_bin / "timeout",
+        '#!/bin/sh\nprintf "%s\\n" "$1" > "$TEST_TIMEOUT"\nshift\nexec "$@"\n',
+    )
+    environment = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "MEMSEARCH_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
+        "MEMSEARCH_NO_WATCH": "1",
+        "PATH": f"{fake_bin}:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_MODEL": configured_model,
+        "TEST_ARGS": str(tmp_path / "args.json"),
+        "TEST_TIMEOUT": str(tmp_path / "timeout.txt"),
+        "TEST_PYTHON": sys.executable,
+    }
+    # Exercise the macOS branch even when GNU timeout is installed on the host.
+    command = 'exec bash "$@"'
+    if not has_timeout:
+        command = (
+            'command() { if [[ "$1" == -v && "$2" == timeout ]]; then return 1; fi; '
+            'builtin command "$@"; }; export -f command; ' + command
+        )
+    result = subprocess.run(
+        ["bash", "-c", command, "_", str(SCRIPT.resolve()), "--worker", str(work_file)],
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    args = json.loads((tmp_path / "args.json").read_text())
+    assert args[args.index("-m") + 1] == expected_model
+    assert f'model_reasoning_effort="{expected_effort}"' in args
+    assert "features.hooks=false" in args
+    assert "--ephemeral" in args
+    timeout_file = tmp_path / "timeout.txt"
+    assert timeout_file.exists() is has_timeout
+    if has_timeout:
+        assert timeout_file.read_text().strip() == "30"
+    journal = memory_file.read_text()
+    assert "<!-- session:native-summary-test " in journal
+    assert "- The release marker is maple-8412; retention is 47 minutes." in journal
+    assert "- User asked:" not in journal
 
 
 def test_codex_stop_worker_fallback_summary_preserves_utf8(tmp_path: Path) -> None:

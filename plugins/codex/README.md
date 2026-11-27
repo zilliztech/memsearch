@@ -87,11 +87,13 @@ memsearch config set milvus.uri http://localhost:19530
 
 ### Summarization routing
 
-The Stop hook uses its built-in Codex summarize model by default. To override only this plugin's native capture model:
+The Stop hook uses `gpt-6-sol` with reasoning disabled for native summaries. To select this model explicitly:
 
 ```bash
-memsearch config set plugins.codex.summarize.model gpt-5.1-codex-mini
+memsearch config set plugins.codex.summarize.model gpt-6-sol
 ```
+
+Other configured native models use `low` reasoning effort. Background project review, user profiling, and skill distillation use the Codex default model with `medium` reasoning effort, unless a model is configured for the individual task.
 
 To use a memsearch-managed API provider instead:
 

@@ -139,7 +139,7 @@ run_worker() {
 Here is the transcript:
 
 ${CONTENT}"
-    local SUMMARIZE_MODEL="gpt-5.1-codex-mini"
+    local SUMMARIZE_MODEL="gpt-6-sol"
     if memsearch_available; then
       local CONFIG_MODEL
       CONFIG_MODEL=$(_memsearch config get plugins.codex.summarize.model 2>/dev/null || true)
@@ -148,13 +148,18 @@ ${CONTENT}"
       fi
     fi
 
+    local SUMMARIZE_EFFORT="low"
+    if [ "$SUMMARIZE_MODEL" = "gpt-6-sol" ]; then
+      SUMMARIZE_EFFORT="none"
+    fi
+
     if command -v timeout &>/dev/null; then
       SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_IN_STOP_WORKER=1 _run_in_project timeout 30 codex exec \
         --ephemeral \
         --skip-git-repo-check \
         -s read-only \
         -c features.hooks=false \
-        -c model_reasoning_effort='"low"' \
+        -c "model_reasoning_effort=\"$SUMMARIZE_EFFORT\"" \
         -m "$SUMMARIZE_MODEL" \
         "$LLM_PROMPT" 2>/dev/null || true)
     else
@@ -163,7 +168,7 @@ ${CONTENT}"
         --skip-git-repo-check \
         -s read-only \
         -c features.hooks=false \
-        -c model_reasoning_effort='"low"' \
+        -c "model_reasoning_effort=\"$SUMMARIZE_EFFORT\"" \
         -m "$SUMMARIZE_MODEL" \
         "$LLM_PROMPT" 2>/dev/null || true)
     fi
