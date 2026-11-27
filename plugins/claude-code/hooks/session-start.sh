@@ -304,7 +304,7 @@ context=""
 
 # Find the 2 most recent daily log files (sorted by filename descending).
 DAILY_JOURNAL_PATTERN='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md'
-recent_files=$(find "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" -print 2>/dev/null | sort -r | head -2 || true)
+recent_files=$(find -H "$MEMORY_DIR" -maxdepth 1 -type f -name "$DAILY_JOURNAL_PATTERN" -print 2>/dev/null | sort -r | head -2 || true)
 
 if [ -n "$recent_files" ]; then
   context="# Recent Memory\n\n"

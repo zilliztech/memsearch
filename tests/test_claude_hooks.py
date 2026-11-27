@@ -234,8 +234,10 @@ def test_claude_session_start_reports_missing_python(
     assert "memory capture disabled" in status
 
 
-def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, str]) -> str:
-    script = Path("plugins/claude-code/hooks/session-start.sh")
+def _run_session_start_with_memory(
+    tmp_path: Path, journals: dict[str, str], *, plugin: str = "claude-code", symlinked: bool = False
+) -> str:
+    script = Path("plugins") / plugin / "hooks" / "session-start.sh"
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
     memory = tmp_path / ".memsearch" / "memory"
@@ -243,10 +245,20 @@ def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, st
     fake_bin.mkdir()
     (home / ".memsearch").mkdir()
     (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
-    memory.mkdir(parents=True)
+    if symlinked:
+        memory.parent.mkdir()
+        target = tmp_path / "synced journals"
+        target.mkdir()
+        memory.symlink_to(target, target_is_directory=True)
+    else:
+        memory.mkdir(parents=True)
 
     for name, content in journals.items():
         (memory / name).write_text(content, encoding="utf-8")
+    external = tmp_path / "external.md"
+    external.write_text("## Session 09:00\n### 09:00\n- Linked file outside the journal directory\n", encoding="utf-8")
+    if symlinked:
+        (memory / "2001-01-03.md").symlink_to(external)
 
     _write_executable(
         fake_bin / "memsearch",
@@ -254,6 +266,12 @@ def _run_claude_session_start_with_memory(tmp_path: Path, journals: dict[str, st
 if [ "$1" = "config" ] && [ "$2" = "list" ]; then
   echo '{"embedding":{"provider":"onnx","model":"","api_key":""},"milvus":{"uri":"http://localhost:19530"}}'
   exit 0
+fi
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo onnx ;;
+    milvus.uri) echo "http://localhost:19530" ;;
+  esac
 fi
 exit 0
 """,
@@ -263,12 +281,14 @@ exit 0
         "HOME": str(home),
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_PROJECT_DIR": str(tmp_path),
         "MEMSEARCH_DIR": str(tmp_path / ".memsearch"),
         "MEMSEARCH_NO_WATCH": "1",
     }
 
     result = subprocess.run(
         ["bash", str(script)],
+        input=json.dumps({"cwd": str(tmp_path)}),
         capture_output=True,
         text=True,
         env=env,
@@ -466,7 +486,7 @@ def test_claude_session_start_recent_memory_keeps_latest_entries_within_budget(t
         ]
     )
 
-    context = _run_claude_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
+    context = _run_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
 
     assert "LATEST_ENTRY" in context
     assert "OLDEST_ENTRY" not in context
@@ -494,7 +514,7 @@ def test_claude_session_start_recent_memory_prioritizes_newest_journal(tmp_path:
 - OLD_DAY_MARKER {older_filler}
 """
 
-    context = _run_claude_session_start_with_memory(
+    context = _run_session_start_with_memory(
         tmp_path,
         {"2026-08-18.md": older, "2026-08-19.md": newest},
     )
@@ -522,7 +542,7 @@ def test_claude_session_start_does_not_fall_back_when_newest_entry_exceeds_budge
 - OLD_DAY_MARKER
 """
 
-    context = _run_claude_session_start_with_memory(
+    context = _run_session_start_with_memory(
         tmp_path,
         {"2026-08-18.md": older, "2026-08-19.md": newest},
     )
@@ -544,7 +564,7 @@ def test_claude_session_start_recent_memory_trims_utf8_on_line_boundaries(tmp_pa
         ]
     )
 
-    context = _run_claude_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
+    context = _run_session_start_with_memory(tmp_path, {"2026-08-19.md": journal})
 
     assert "最新记录" in context
     assert len(context.encode("utf-8")) <= 1800
@@ -785,6 +805,27 @@ def test_session_start_recent_memory_selects_daily_journals() -> None:
 
         assert "DAILY_JOURNAL_PATTERN" in source
         assert "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md" in source
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires symlinks")
+@pytest.mark.parametrize("plugin", ["claude-code", "codex"])
+def test_session_start_reads_symlinked_journal_directory(tmp_path: Path, plugin: str) -> None:
+    context = _run_session_start_with_memory(
+        tmp_path,
+        {
+            "2001-01-01.md": "## Session 09:00\n### 09:00\n- First saved session\n",
+            "2001-01-02.md": "## Session 09:00\n### 09:00\n- Second saved session\n",
+        },
+        plugin=plugin,
+        symlinked=True,
+    )
+
+    if plugin == "claude-code":
+        assert "First saved session" in context
+        assert "Second saved session" in context
+        assert "Linked file outside the journal directory" not in context
+    else:
+        assert "2 past memory file(s) (2001-01-01 to 2001-01-02)" in context
 
 
 def test_session_start_warns_when_index_state_is_unhealthy(tmp_path: Path) -> None:
