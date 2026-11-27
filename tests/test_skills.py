@@ -80,18 +80,20 @@ def test_distill_creates_candidate_and_commits(tmp_path: Path) -> None:
     assert "distill" in log.stdout
 
 
-def test_distill_prompt_preserves_newest_journal_when_corpus_exceeds_budget(tmp_path: Path) -> None:
+@pytest.mark.parametrize("oversized_is_newest", [False, True])
+def test_distill_prompt_preserves_short_and_oversized_journals(tmp_path: Path, oversized_is_newest: bool) -> None:
     project = tmp_path / "repo"
     memory = project / ".memsearch" / "memory"
     memory.mkdir(parents=True)
 
     oldest = memory / "2026-07-30.md"
     newest = memory / "2026-07-31.md"
-    oldest.write_text(
-        "OLDEST_JOURNAL_MARKER\n" + "x" * (skills_mod.MAX_PROMPT_CHARS + 1_000),
+    oversized, short = (newest, oldest) if oversized_is_newest else (oldest, newest)
+    oversized.write_text(
+        "OVERSIZED_START\n" + "x" * (skills_mod.MAX_PROMPT_CHARS + 1_000) + "\nOVERSIZED_END\n",
         encoding="utf-8",
     )
-    newest.write_text("NEWEST_JOURNAL_MARKER\n", encoding="utf-8")
+    short.write_text("SHORT_JOURNAL_MARKER\n", encoding="utf-8")
     os.utime(oldest, (100, 100))
     os.utime(newest, (200, 200))
 
@@ -113,8 +115,10 @@ def test_distill_prompt_preserves_newest_journal_when_corpus_exceeds_budget(tmp_
         cfg=MemSearchConfig(),
     )
 
-    assert "NEWEST_JOURNAL_MARKER" in prompt
-    assert "OLDEST_JOURNAL_MARKER" not in prompt
+    assert "SHORT_JOURNAL_MARKER" in prompt
+    assert "OVERSIZED_START" not in prompt
+    assert "OVERSIZED_END" in prompt
+    assert prompt.index(f"<!-- source:{oldest} -->") < prompt.index(f"<!-- source:{newest} -->")
     assert "[older journal entries truncated]" in prompt
     assert len(prompt) <= skills_mod.MAX_PROMPT_CHARS
 
