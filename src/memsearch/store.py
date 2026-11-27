@@ -340,6 +340,9 @@ class MilvusStore:
         "end_line",
     ]
 
+    # Cap on how many primary keys one `chunk_hash in [...]` filter may list.
+    _HASH_QUERY_BATCH: ClassVar[int] = 128
+
     def query(self, *, filter_expr: str = "") -> list[dict[str, Any]]:
         """Retrieve chunks by scalar filter (no vector needed)."""
         self._require_collection()
@@ -360,6 +363,33 @@ class MilvusStore:
             output_fields=["chunk_hash"],
         )
         return {r["chunk_hash"] for r in results}
+
+    def rows_by_hashes(self, hashes: list[str]) -> list[dict[str, Any]]:
+        """Fetch full rows (including embeddings) by their chunk_hash keys."""
+        if not hashes:
+            return []
+        self._require_collection()
+        rows: list[dict[str, Any]] = []
+        # Batched so the `in` filter expression stays within backend limits.
+        for start in range(0, len(hashes), self._HASH_QUERY_BATCH):
+            batch = hashes[start : start + self._HASH_QUERY_BATCH]
+            listed = ", ".join(f'"{_escape_filter_value(h)}"' for h in batch)
+            results = self._connected_client().query(
+                collection_name=self._collection,
+                filter=f"chunk_hash in [{listed}]",
+                output_fields=[
+                    "chunk_hash",
+                    "content",
+                    "embedding",
+                    "source",
+                    "heading",
+                    "heading_level",
+                    "start_line",
+                    "end_line",
+                ],
+            )
+            rows.extend(results)
+        return rows
 
     def indexed_sources(self) -> set[str]:
         """Return all distinct source values in the collection."""
