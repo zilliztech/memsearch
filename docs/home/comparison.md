@@ -45,7 +45,7 @@ memsearch is both a CLI engine and a set of native plugins for four coding CLIs,
 
 ## Where memsearch is different
 
-- **Shares project memory across Claude Code, Codex, DeepSeek Harness, OpenClaw, OpenCode, and WorkBuddy.**
+- **Shares project memory across Claude Code, Codex, Antigravity, DeepSeek Harness, OpenClaw, OpenCode, and WorkBuddy.**
 - **Retrieves on demand** instead of stuffing the whole file into every session like Claude Code's built-in memory.
 - **Markdown + Milvus, not an opaque DB.** qmd and Letta's MemFS share the markdown-canonical approach; claude-mem / MemPalace / mem0 keep state in a DB.
 - **Append-only writes, no LLM curation on the write path.** mem0 and Letta's traditional memory depend on LLM write-time curation (powerful but can silently mutate past writes).

@@ -12,6 +12,7 @@
   <a href="https://pypi.org/project/memsearch/"><img src="https://img.shields.io/pypi/v/memsearch?style=flat-square&color=blue" alt="PyPI"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/claude-code/"><img src="https://img.shields.io/badge/Claude_Code-plugin-c97539?style=flat-square&logo=claude&logoColor=white" alt="Claude Code"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/codex/"><img src="https://img.shields.io/badge/Codex-plugin-ff6b35?style=flat-square" alt="Codex"></a>
+  <a href="https://zilliztech.github.io/memsearch/platforms/antigravity/"><img src="https://img.shields.io/badge/Antigravity-plugin-4285f4?style=flat-square" alt="Antigravity"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/dsh/"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square" alt="DeepSeek Harness"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/openclaw/"><img src="https://img.shields.io/badge/OpenClaw-plugin-4a9eff?style=flat-square" alt="OpenClaw"></a>
   <a href="https://zilliztech.github.io/memsearch/platforms/opencode/"><img src="https://img.shields.io/badge/OpenCode-plugin-22c55e?style=flat-square" alt="OpenCode"></a>
@@ -31,6 +32,8 @@
 
 ## 📰 What's New
 
+- **Antigravity support** — automatic memory capture with Hydrogen Low summaries, progressive recall, and optional background maintenance. See the [setup guide](docs/platforms/antigravity/installation.md).
+
 - **Optional Jev reranking** — rerank memory search results with Jev through the TypeSafe API, with no local model download. See [configuration](docs/home/configuration.md#optional-remote-reranking) and the [Chinese/English evaluation](evaluation/reranking-evaluation.md).
 
 - **DeepSeek Harness support** — MemSearch now brings automatic capture, recall hints, native skill-based recall, background maintenance, and a read-only memory browser to [DeepSeek Harness (DSH)](https://zilliztech.github.io/memsearch/platforms/dsh/).
@@ -41,7 +44,7 @@
 
 ### Why memsearch?
 
-- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex](plugins/codex/README.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [WorkBuddy](docs/platforms/workbuddy.md). A conversation in one agent becomes searchable context in all others — no extra setup
+- 🌐 **All Platforms, One Memory** — memories flow across [Claude Code](plugins/claude-code/README.md), [Codex](plugins/codex/README.md), [Antigravity](docs/platforms/antigravity/index.md), [DeepSeek Harness](plugins/dsh/README.md), [OpenClaw](plugins/openclaw/README.md), [OpenCode](plugins/opencode/README.md), and [WorkBuddy](docs/platforms/workbuddy.md). A conversation in one agent becomes searchable context in all others — no extra setup
 - 👥 **For Agent Users**, install a plugin and get persistent memory with zero effort; **for Agent Developers**, use the full [CLI](https://zilliztech.github.io/memsearch/cli/) and [Python API](https://zilliztech.github.io/memsearch/python-api/) to build memory and harness engineering into your own agents
 - 📄 **Markdown is the source of truth** — inspired by [OpenClaw](https://github.com/openclaw/openclaw). Your memories are just `.md` files — human-readable, editable, version-controllable. Milvus is a "shadow index": a derived, rebuildable cache
 - 🔍 **Progressive retrieval, hybrid search, smart dedup, live sync** — 3-layer recall (search → expand → transcript); dense vector + BM25 sparse + RRF reranking; SHA-256 content hashing skips unchanged content; file watcher auto-indexes in real time
@@ -110,6 +113,24 @@ $memory-recall what did we discuss about deployment?
 ```
 
 > 📖 [Codex Plugin docs](https://zilliztech.github.io/memsearch/platforms/codex/)
+
+</details>
+
+<details open>
+<summary><h3>For Antigravity Users</h3></summary>
+
+Install [Antigravity CLI](https://antigravity.google/docs/getting-started/), sign in, and install MemSearch from a checkout:
+
+```bash
+git clone https://github.com/zilliztech/memsearch.git
+cd memsearch
+uv tool install --force ".[onnx]"
+agy plugin install ./plugins/antigravity
+```
+
+Start a new Antigravity conversation in your project. Completed turns are summarized with **Gemini 4 Hydrogen Low** and saved to Markdown. Ask about earlier work to search memory, expand a note, or trace it back to the original conversation.
+
+> 📖 [Antigravity setup and configuration](docs/platforms/antigravity/installation.md)
 
 </details>
 
@@ -280,7 +301,7 @@ memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.codex.summarize.provider openai
 ```
 
-[WorkBuddy](docs/platforms/workbuddy.md#configure-memory) requires a named API provider for summaries. For other platforms, leave `plugins.<platform>.summarize.provider` empty to preserve the platform's default behavior. Claude Code, Codex, OpenClaw, and OpenCode also accept `native`; DSH selects its headless-agent backend when the provider is unset. Plugin-specific summarize settings do not fall back to `llm.model`.
+[WorkBuddy](docs/platforms/workbuddy.md#configure-memory) requires a named API provider for summaries. For other platforms, leave `plugins.<platform>.summarize.provider` empty to preserve the platform's default behavior. Claude Code, Codex, Antigravity, OpenClaw, and OpenCode also accept `native`; DSH selects its headless-agent backend when the provider is unset. Plugin-specific summarize settings do not fall back to `llm.model`.
 
 You can also disable automatic capture globally for a platform while keeping the plugin installed:
 
@@ -307,7 +328,7 @@ Beyond the episodic journals and the semantic `PROJECT.md` / `USER.md` notes, Me
   <img width="1086" height="752" alt="MemSearch skill distillation demo" src="https://github.com/user-attachments/assets/39a90f1c-54e3-4c7a-b168-051f0e096d39">
 </p>
 
-Under the hood, candidates live in a git-tracked `.memsearch/skill-candidates/` store — diffable and revertible, and **inert until you install one** (that step is always yours). An optional background pass can also mine recurring workflows from your history on its own. Distilled skills follow the [Agent Skills](https://agentskills.io) open standard, so one capture is portable across Claude Code, Codex, DSH, OpenClaw, OpenCode, and other compatible agents.
+Under the hood, candidates live in a git-tracked `.memsearch/skill-candidates/` store — diffable and revertible, and **inert until you install one** (that step is always yours). An optional background pass can also mine recurring workflows from your history on its own. Distilled skills follow the [Agent Skills](https://agentskills.io) open standard, so one capture is portable across Claude Code, Codex, Antigravity, DSH, OpenClaw, OpenCode, and other compatible agents.
 
 **Turning it on is also just a sentence:** ask your agent *"enable MemSearch skill distillation"* (or *"make it more eager"*) and it configures things through the `memory-config` skill — it's off by default. Prefer editing files? The same settings live under `[plugins.<agent>.memory_to_skill]` in your MemSearch config. Full guide: **[Skills from Memory](https://zilliztech.github.io/memsearch/home/skills-from-memory/)**.
 
@@ -331,7 +352,8 @@ Beyond ready-to-use plugins, memsearch provides a complete **CLI and Python API*
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                  🧑‍💻 For Agent Users (Plugins)                │
-│ Claude Code · Codex · DSH · OpenClaw · OpenCode · WorkBuddy  │
+│       Claude Code · Codex · Antigravity · DSH                 │
+│              OpenClaw · OpenCode · WorkBuddy                  │
 │                              │                               │
 ├────────────────────────────┬─────────────────────────────────┤
 │  🛠️ For Agent Developers   │  Build your own with ↓          │
@@ -678,7 +700,7 @@ Collection priority: integration-derived default → `~/.memsearch/config.toml` 
 ## 🔗 Links
 
 - 📖 [Documentation](https://zilliztech.github.io/memsearch/) — full guides, API reference, and architecture details
-- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex, DeepSeek Harness, OpenClaw, OpenCode, WorkBuddy
+- 🔌 [Platform Plugins](https://zilliztech.github.io/memsearch/platforms/) — Claude Code, Codex, Antigravity, DeepSeek Harness, OpenClaw, OpenCode, WorkBuddy
 - 💡 [Design Philosophy](https://zilliztech.github.io/memsearch/design-philosophy/) — why markdown, why Milvus, competitor comparison
 - 🦞 [OpenClaw](https://github.com/openclaw/openclaw) — the memory architecture that inspired memsearch
 - 🗄️ [Milvus](https://milvus.io/) | [Zilliz Cloud](https://cloud.zilliz.com/signup?utm_source=github&utm_medium=referral&utm_campaign=memsearch-readme) — the vector database powering memsearch

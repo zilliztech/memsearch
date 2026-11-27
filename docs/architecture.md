@@ -6,7 +6,7 @@ This page explains the technical architecture and key implementation decisions b
 
 ## Cross-Platform Memory Sharing
 
-memsearch provides plugins for [Claude Code](platforms/claude-code/index.md), [Codex](platforms/codex/index.md), [DeepSeek Harness](platforms/dsh/index.md), [OpenClaw](platforms/openclaw/index.md), [OpenCode](platforms/opencode/index.md), and [WorkBuddy](platforms/workbuddy.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
+memsearch provides plugins for [Claude Code](platforms/claude-code/index.md), [Codex](platforms/codex/index.md), [Antigravity](platforms/antigravity/index.md), [DeepSeek Harness](platforms/dsh/index.md), [OpenClaw](platforms/openclaw/index.md), [OpenCode](platforms/opencode/index.md), and [WorkBuddy](platforms/workbuddy.md). All plugins write to the same markdown format and use the same Milvus index, making memories portable across platforms.
 
 ```mermaid
 graph TB
@@ -269,7 +269,7 @@ graph LR
 | **L2: Expand** | Full markdown section around a chunk, including anchor metadata | Medium -- one file section |
 | **L3: Transcript** | Original conversation turns verbatim (user messages, assistant responses, tool calls) | High -- raw dialogue |
 
-The L3 transcript format varies by platform (Claude Code JSONL, Codex rollout JSONL, DSH session database, OpenClaw JSONL, OpenCode SQLite, WorkBuddy JSONL), but the L1/L2 layers are shared across all platforms via the `memsearch` CLI.
+The L3 transcript format varies by platform (Claude Code JSONL, Codex rollout JSONL, Antigravity JSONL, DSH session database, OpenClaw JSONL, OpenCode SQLite, WorkBuddy JSONL), but the L1/L2 layers are shared across all platforms via the `memsearch` CLI.
 
 **Session anchors** in memory files enable the L2-to-L3 bridge:
 

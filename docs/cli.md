@@ -167,7 +167,7 @@ $ memsearch config set plugins.codex.project_review.output_file .memsearch/PROJE
 Set plugins.codex.project_review.output_file = .memsearch/PROJECT.md in /home/user/.memsearch/config.toml
 ```
 
-Platform keys are `claude-code`, `codex`, `dsh`, `opencode`, `openclaw`, and `workbuddy`. All support `summarize`. The first five also support the background tasks `project_review`, `user_profile`, and `memory_to_skill`.
+Platform keys are `claude-code`, `codex`, `antigravity`, `dsh`, `opencode`, `openclaw`, and `workbuddy`. All support `summarize`. All except WorkBuddy also support the background tasks `project_review`, `user_profile`, and `memory_to_skill`.
 
 #### `memsearch config get`
 
@@ -709,7 +709,7 @@ $ memsearch expand a1b2c3d4e5f6 --json-output
 
 > 🔌 **Plugin command.** This command is part of the [platform plugins](platforms/index.md)' three-level progressive disclosure workflow (`search` → `expand` → `transcript`), but works as a standalone CLI tool for any JSONL transcript.
 
-Parse a session transcript and display its conversation turns **with the tool calls** — the exact commands and their output. Auto-detects Claude Code, Codex (rollout), OpenClaw, and WorkBuddy JSONL formats. This is "progressive disclosure level 3" -- drilling from a memory chunk down to the original conversation, where the detail the journal summary drops (precise commands, flags, paths) still lives.
+Parse a session transcript and display its conversation turns **with the tool calls** — the exact commands and their output. Auto-detects Claude Code, Codex (rollout), Antigravity, OpenClaw, and WorkBuddy JSONL formats. This is "progressive disclosure level 3" -- drilling from a memory chunk down to the original conversation, where the detail the journal summary drops (precise commands, flags, paths) still lives.
 
 ### Options
 

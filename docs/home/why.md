@@ -2,9 +2,9 @@
 
 ## One Memory, Every Agent
 
-memsearch provides persistent memory plugins for coding agents including [Claude Code](../platforms/claude-code/index.md), [Codex](../platforms/codex/index.md), [DeepSeek Harness](../platforms/dsh/index.md), [OpenClaw](../platforms/openclaw/index.md), [OpenCode](../platforms/opencode/index.md), and [WorkBuddy](../platforms/workbuddy.md).
+memsearch provides persistent memory plugins for coding agents including [Claude Code](../platforms/claude-code/index.md), [Codex](../platforms/codex/index.md), [Antigravity](../platforms/antigravity/index.md), [DeepSeek Harness](../platforms/dsh/index.md), [OpenClaw](../platforms/openclaw/index.md), [OpenCode](../platforms/opencode/index.md), and [WorkBuddy](../platforms/workbuddy.md).
 
-Memories written in one platform are searchable from any other. A conversation in Claude Code becomes available context in Codex, DSH, OpenClaw, OpenCode, and WorkBuddy — no extra setup, no manual export.
+Memories written in one platform are searchable from any other. A conversation in Claude Code becomes available context in Codex, Antigravity, DSH, OpenClaw, OpenCode, and WorkBuddy — no extra setup, no manual export.
 
 ## Both for Agent Users and Agent Developers
 

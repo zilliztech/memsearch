@@ -1167,6 +1167,7 @@ def config_init(project: bool) -> None:
         "codex": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "opencode": {"summarize": {}, "project_review": {}, "user_profile": {}},
         "openclaw": {"summarize": {}, "project_review": {}, "user_profile": {}},
+        "antigravity": {"summarize": {}, "project_review": {}, "user_profile": {}, "memory_to_skill": {}},
     }
     result["plugins"]["claude-code"]["summarize"]["enabled"] = click.confirm(
         "  Claude Code automatic summaries enabled",
@@ -1216,6 +1217,19 @@ def config_init(project: bool) -> None:
         "  OpenClaw summarize model",
         default=current.plugins.openclaw.summarize.model,
     )
+    antigravity = current.plugins.antigravity
+    section = result["plugins"]["antigravity"]["summarize"]
+    section["enabled"] = click.confirm(
+        "  Antigravity automatic summaries enabled", default=antigravity.summarize.enabled
+    )
+    section["provider"] = click.prompt(
+        "  Antigravity summarize provider", default=antigravity.summarize.provider or "native"
+    )
+    section["model"] = click.prompt(
+        "  Antigravity summarize model",
+        default=antigravity.summarize.model
+        or ("gemini-4-hydrogen-low" if section["provider"] in {"", "native"} else ""),
+    )
 
     click.echo("\n── Advanced maintenance ──")
     click.echo("  Disabled by default. Configure provider/model if you enable these tasks.")
@@ -1224,13 +1238,18 @@ def config_init(project: bool) -> None:
         ("codex", "Codex", current.plugins.codex),
         ("opencode", "OpenCode", current.plugins.opencode),
         ("openclaw", "OpenClaw", current.plugins.openclaw),
+        ("antigravity", "Antigravity", antigravity),
     ]:
         for task_name, task_label in [("project_review", "project review"), ("user_profile", "user profile")]:
             task = getattr(current_platform, task_name)
             section = result["plugins"][key][task_name]
             section["enabled"] = click.confirm(f"  {label} {task_label} enabled", default=task.enabled)
             section["provider"] = click.prompt(f"  {label} {task_label} provider", default=task.provider)
-            section["model"] = click.prompt(f"  {label} {task_label} model", default=task.model)
+            section["model"] = click.prompt(
+                f"  {label} {task_label} model",
+                default=task.model
+                or ("gemini-4-hydrogen-low" if key == "antigravity" and section["provider"] in {"", "native"} else ""),
+            )
             section["min_interval_hours"] = click.prompt(
                 f"  {label} {task_label} min interval hours",
                 default=task.min_interval_hours,
@@ -1238,6 +1257,22 @@ def config_init(project: bool) -> None:
             )
             section["input_dir"] = click.prompt(f"  {label} {task_label} input dir", default=task.input_dir)
             section["output_file"] = click.prompt(f"  {label} {task_label} output file", default=task.output_file)
+
+    task = antigravity.memory_to_skill
+    section = result["plugins"]["antigravity"]["memory_to_skill"]
+    section["enabled"] = click.confirm("  Antigravity memory to skill enabled", default=task.enabled)
+    section["provider"] = click.prompt("  Antigravity memory to skill provider", default=task.provider)
+    section["model"] = click.prompt(
+        "  Antigravity memory to skill model",
+        default=task.model or ("gemini-4-hydrogen-low" if section["provider"] in {"", "native"} else ""),
+    )
+    section["min_interval_hours"] = click.prompt(
+        "  Antigravity memory to skill min interval hours", default=task.min_interval_hours, type=int
+    )
+    section["input_dir"] = click.prompt("  Antigravity memory to skill input dir", default=task.input_dir)
+    section["min_occurrences"] = click.prompt(
+        "  Antigravity memory to skill min occurrences", default=task.min_occurrences, type=int
+    )
 
     # Prompts
     click.echo("\n── Prompts ──")
@@ -1258,6 +1293,9 @@ def config_init(project: bool) -> None:
     result["prompts"]["user_profile"] = click.prompt(
         "  User profile prompt file",
         default=current.prompts.user_profile,
+    )
+    result["prompts"]["memory_to_skill"] = click.prompt(
+        "  Memory to skill prompt file", default=current.prompts.memory_to_skill
     )
 
     # The global wizard edits a subset of settings. Keep named providers and other unprompted keys.
@@ -1352,7 +1390,9 @@ def skills_group() -> None:
 
 
 @skills_group.command("distill")
-@click.option("--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw).")
+@click.option(
+    "--plugin", required=True, help="Plugin platform name (claude-code, codex, opencode, openclaw, antigravity)."
+)
 @click.option("--force", is_flag=True, help="Run even if input is unchanged or not yet due.")
 def skills_distill(plugin: str, force: bool) -> None:
     """Mine recent memory journals for recurring workflows using a configured API provider.
@@ -1496,7 +1536,7 @@ def transcript_cmd(path: str, turn: str | None, context: int, json_output: bool,
 
     L3 of progressive recall (search -> expand -> transcript): pass the transcript
     path from a journal anchor to recover the exact commands, flags, and paths the
-    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw / WorkBuddy formats.
+    journal summary drops. Auto-detects Claude Code / Codex / OpenClaw / WorkBuddy / Antigravity formats.
     """
     from . import transcript as transcript_mod
 

@@ -546,8 +546,14 @@ def _run_gemini_with_tools(ctx: TaskContext, prompt: str, model: str | None, pro
     return resp.text or ""
 
 
-def run_memory_command(command: str, ctx: TaskContext) -> str:
-    """Run a restricted read-only memory command."""
+def run_memory_command(
+    command: str,
+    ctx: TaskContext,
+    *,
+    executor: Callable[[list[str], Path], str] | None = None,
+) -> str:
+    """Validate a read-only command, optionally using a host's scoped executor."""
+    execute = executor or _run_restricted
     if not command.strip():
         return "Error: empty command"
     if re.search(r"[|;&<>`$(){}]", command):
@@ -569,21 +575,21 @@ def run_memory_command(command: str, ctx: TaskContext) -> str:
         # memory roots (e.g. ~/.claude/projects), so the path check is skipped here;
         # the command itself is the boundary.
         if argv[1] == "transcript":
-            return _run_restricted(argv, ctx.project_dir)
+            return execute(argv, ctx.project_dir)
         checked = _validate_paths_in_args(argv[2:], allowed_roots, cwd=ctx.project_dir, allow_hash=True)
         if checked:
             return checked
-        return _run_restricted(argv, ctx.project_dir)
+        return execute(argv, ctx.project_dir)
     if executable in {"find", "grep"}:
         checked = _validate_paths_in_args(argv[1:], allowed_roots, cwd=ctx.project_dir, allow_hash=False)
         if checked:
             return checked
-        return _run_restricted(argv, ctx.project_dir)
+        return execute(argv, ctx.project_dir)
     if executable == "python3" and len(argv) >= 2 and argv[1].endswith("parse-transcript.py"):
         checked = _validate_paths_in_args(argv[1:], allowed_roots, cwd=ctx.project_dir, allow_hash=False)
         if checked:
             return checked
-        return _run_restricted(argv, ctx.project_dir)
+        return execute(argv, ctx.project_dir)
     return f"Error: command {executable!r} is not allowed"
 
 

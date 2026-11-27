@@ -45,6 +45,19 @@ codex --yolo
 
 [:octicons-arrow-right-24: Codex Plugin docs](platforms/codex/index.md){ .md-button }
 
+### Antigravity Plugin
+
+Automatic Markdown memory, Hydrogen Low summaries using your Antigravity login, and skill-based search across sessions.
+
+Install the plugin from a source checkout:
+
+```bash
+uv tool install --force ".[onnx]"
+agy plugin install ./plugins/antigravity
+```
+
+[:octicons-arrow-right-24: Antigravity setup](platforms/antigravity/installation.md){ .md-button }
+
 ### DeepSeek Harness Plugin
 
 MemSearch saves turn summaries and lets DSH recall them in later sessions.
@@ -102,12 +115,12 @@ opencode plugin add @zilliz/memsearch-opencode
 
 All platforms share the same markdown memory format and derive collection names from the project directory using the same algorithm. A conversation in one agent becomes searchable context in all others -- no extra setup needed.
 
-| | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [WorkBuddy](platforms/workbuddy.md) |
-|---|:---:|:---:|:---:|:---:|:---:| :---: |
-| **Plugin type** | Shell hooks | Shell hooks | Native ESM plugin | TS plugin | TS plugin | Shell hooks |
-| **Capture** | Stop hook + Haiku | Stop hook + Codex | DSH turn events + headless agent | agent_end hook | Execution events + SQLite recovery | Stop hook + API provider |
-| **Recall** | SKILL.md (fork) | SKILL.md | Native skill | memory_search tool | memory_search tool | SKILL.md |
-| **Install** | Plugin marketplace | `install.sh` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` | Desktop marketplace |
+| | [Claude Code](platforms/claude-code/index.md) | [Codex](platforms/codex/index.md) | [Antigravity](platforms/antigravity/index.md) | [DeepSeek Harness](platforms/dsh/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [WorkBuddy](platforms/workbuddy.md) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Plugin type** | Shell hooks | Shell hooks | Python hooks | Native ESM plugin | TS plugin | TS plugin | Shell hooks |
+| **Capture** | Stop hook + Haiku | Stop hook + Codex | Stop hook + Hydrogen Low | DSH turn events + headless agent | agent_end hook | Execution events + SQLite recovery | Stop hook + API provider |
+| **Recall** | SKILL.md (fork) | SKILL.md | SKILL.md | Native skill | memory_search tool | memory_search tool | SKILL.md |
+| **Install** | Plugin marketplace | `install.sh` | `agy plugin install` | `dsh plugin add` | `openclaw plugins install --force` + hook permissions | `opencode plugin add` | Desktop marketplace |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }
 

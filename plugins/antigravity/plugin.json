@@ -1,0 +1,10 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "memsearch",
+  "displayName": "MemSearch",
+  "version": "0.1.0",
+  "description": "Persistent Markdown memory with project-scoped semantic recall and optional offline maintenance.",
+  "author": {"name": "Zilliz", "url": "https://zilliz.com"},
+  "repository": "https://github.com/zilliztech/memsearch",
+  "license": "MIT"
+}

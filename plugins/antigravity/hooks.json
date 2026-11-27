@@ -1,0 +1,8 @@
+{
+  "memsearch": {
+    "enabled": true,
+    "SessionStart": [{"type": "command", "command": "python3 ./scripts/runtime.py session-start", "timeout": 5}],
+    "PreInvocation": [{"type": "command", "command": "python3 ./scripts/runtime.py pre-invocation", "timeout": 5}],
+    "Stop": [{"type": "command", "command": "python3 ./scripts/runtime.py stop", "timeout": 10}]
+  }
+}

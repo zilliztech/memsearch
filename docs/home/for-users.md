@@ -17,6 +17,7 @@ Pick your platform, install the plugin, and you're done. memsearch captures conv
 |----------|---------|----------|
 | [**Claude Code**](../platforms/claude-code/index.md) | Marketplace or `--plugin-dir` | Most mature |
 | [**Codex**](../platforms/codex/index.md) | `bash install.sh` | Stable |
+| [**Antigravity**](../platforms/antigravity/index.md) | Source checkout + `agy plugin install` | New |
 | [**DeepSeek Harness**](../platforms/dsh/index.md) | `dsh plugin --profile <name> add @zilliz/memsearch-dsh` · [Models page key setup](../platforms/dsh/installation.md#native-summary-credentials) | Stable |
 | [**OpenClaw**](../platforms/openclaw/index.md) | `openclaw plugins install --force` + hook permissions | Stable |
 | [**OpenCode**](../platforms/opencode/index.md) | `opencode plugin add @zilliz/memsearch-opencode` | Stable |
@@ -48,6 +49,7 @@ Each platform adapts the same architecture to its own plugin system:
 
 - **Claude Code**: [Full guide →](../platforms/claude-code/index.md)
 - **Codex**: [Full guide →](../platforms/codex/index.md)
+- **Antigravity**: [Full guide →](../platforms/antigravity/index.md)
 - **DeepSeek Harness**: [Full guide →](../platforms/dsh/index.md)
 - **OpenClaw**: [Full guide →](../platforms/openclaw/index.md)
 - **OpenCode**: [Full guide →](../platforms/opencode/index.md)

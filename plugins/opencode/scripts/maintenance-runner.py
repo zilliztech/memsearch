@@ -25,6 +25,7 @@ DEFAULT_NATIVE_MODELS = {
     "opencode": "",
     "openclaw": "",
     "dsh": "",  # dsh-headless uses the user's agent-default-model from settings.yaml
+    "antigravity": "gemini-4-hydrogen-low",
 }
 DSH_MAINTENANCE_TIMEOUT_SECONDS = 600
 _CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -250,6 +251,12 @@ def run_native_provider(ctx, prompt: str) -> str:
     model = ctx.task_config.model or DEFAULT_NATIVE_MODELS.get(ctx.platform, "")
     env = {**os.environ, "MEMSEARCH_NO_WATCH": "1"}
 
+    if ctx.platform == "antigravity":
+        # This branch is only used by the dedicated Antigravity bundle.
+        from agy_maintenance import generate_task
+
+        return generate_task(ctx, prompt)
+
     if ctx.platform == "claude-code":
         cmd = [
             "claude",
@@ -386,7 +393,9 @@ def run_maintenance(platform, project_dir, memsearch_dir, cfg, *, native_runner=
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run plugin-local MemSearch maintenance tasks.")
-    parser.add_argument("--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "dsh"])
+    parser.add_argument(
+        "--platform", required=True, choices=["claude-code", "codex", "opencode", "openclaw", "dsh", "antigravity"]
+    )
     parser.add_argument("--project-dir", default=None)
     parser.add_argument("--memsearch-dir", default=None)
     parser.add_argument("--force", action="store_true")
@@ -395,12 +404,27 @@ def main() -> int:
 
     old_cwd = Path.cwd()
     try:
-        ensure_memsearch_importable()
+        if args.platform == "antigravity":
+            from bootstrap import bootstrap, require_core
+
+            bootstrap(Path(__file__).resolve())
+            require_core()
+        else:
+            ensure_memsearch_importable()
         from memsearch.config import resolve_config
 
         project_dir = Path(args.project_dir or old_cwd).expanduser().resolve()
         os.chdir(project_dir)
-        cfg = resolve_config()
+        if args.platform == "antigravity":
+            from runtime import collection, config, roots
+
+            if args.memsearch_dir:
+                os.environ["MEMSEARCH_DIR"] = args.memsearch_dir
+            project_dir, memory = roots({"workspacePaths": [str(project_dir)]})
+            args.memsearch_dir = str(memory)
+            cfg = config(project_dir, memory, collection(project_dir, memory))
+        else:
+            cfg = resolve_config()
 
         results, skill_result = run_maintenance(
             args.platform,

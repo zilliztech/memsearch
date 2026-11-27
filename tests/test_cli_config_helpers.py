@@ -187,7 +187,7 @@ def test_global_config_init_keeps_workbuddy_provider(tmp_path: Path, monkeypatch
     monkeypatch.setattr(cli_module, "GLOBAL_CONFIG_PATH", target)
     monkeypatch.setattr(cli_module, "resolve_config", MemSearchConfig)
 
-    result = CliRunner().invoke(cli, ["config", "init"], input="\n" * 100)
+    result = CliRunner().invoke(cli, ["config", "init"], input="\n" * 160)
     assert result.exit_code == 0, result.output
     data = load_config_file(target)
     assert data["llm"]["providers"]["team"] == provider
@@ -215,6 +215,41 @@ def test_global_config_init_suggests_current_anthropic_default_model(tmp_path: P
 
     assert result.exit_code == 0, result.output
     assert captured_defaults["  Model"] == "claude-sonnet-5-5"
+
+
+def test_global_wizard_routes_antigravity_and_all_maintenance_tasks(tmp_path, monkeypatch):
+    target = tmp_path / "private.toml"
+    monkeypatch.setattr(cli_module, "GLOBAL_CONFIG_PATH", target)
+    monkeypatch.setattr(cli_module, "resolve_config", MemSearchConfig)
+    monkeypatch.setattr(
+        cli_module.click, "confirm", lambda label, default=False: True if "Antigravity" in label else default
+    )
+    monkeypatch.setattr(
+        cli_module.click, "prompt", lambda label, default="", **kw: 2 if "min occurrences" in label else default
+    )
+    result = CliRunner().invoke(cli, ["config", "init"])
+    assert result.exit_code == 0, result.output
+    cfg = load_config_file(target)["plugins"]["antigravity"]
+    for name in ("summarize", "project_review", "user_profile", "memory_to_skill"):
+        assert cfg[name]["enabled"] and cfg[name]["provider"] == "native"
+        assert cfg[name]["model"] == "gemini-4-hydrogen-low"
+    assert cfg["memory_to_skill"]["min_occurrences"] == 2
+
+
+def test_antigravity_wizard_keeps_named_provider_model_fallback(tmp_path, monkeypatch):
+    target = tmp_path / "private.toml"
+    monkeypatch.setattr(cli_module, "GLOBAL_CONFIG_PATH", target)
+    monkeypatch.setattr(cli_module, "resolve_config", MemSearchConfig)
+    monkeypatch.setattr(cli_module.click, "confirm", lambda label, default=False: default)
+    monkeypatch.setattr(
+        cli_module.click,
+        "prompt",
+        lambda label, default="", **kw: "team" if "Antigravity" in label and label.endswith("provider") else default,
+    )
+    result = CliRunner().invoke(cli, ["config", "init"])
+    assert result.exit_code == 0, result.output
+    for task in load_config_file(target)["plugins"]["antigravity"].values():
+        assert task["provider"] == "team" and task["model"] == ""
 
 
 def test_config_init_preserves_explicitly_disabled_ignore_files(monkeypatch) -> None:
