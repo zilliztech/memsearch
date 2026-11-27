@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from click.testing import CliRunner
 
 from memsearch import compact as compact_module
+from memsearch.cli import cli
+from memsearch.core import MemSearch
 
 
 @pytest.mark.asyncio
@@ -273,3 +279,100 @@ async def test_compact_chunks_rejects_prompt_without_chunks_placeholder() -> Non
 async def test_compact_chunks_rejects_unknown_provider() -> None:
     with pytest.raises(ValueError, match="Unknown LLM provider"):
         await compact_module.compact_chunks([{"content": "x"}], llm_provider="unknown")
+
+
+def make_compacting_memsearch(monkeypatch: pytest.MonkeyPatch, base: Path, indexed: list[Path]) -> MemSearch:
+    class FakeStore:
+        def query(self, filter_expr: str = "", **_: Any) -> list[dict[str, Any]]:
+            return [{"content": "a stored chunk"}]
+
+    class FakeDatetime:
+        @staticmethod
+        def now() -> datetime:
+            return datetime(2026, 11, 25, 9, 15)
+
+    async def fake_compact_chunks(*_args: Any, **_kwargs: Any) -> str:
+        return "- a summary line"
+
+    async def fake_index_file(path: str | Path) -> int:
+        indexed.append(Path(path))
+        return 1
+
+    ms = MemSearch.__new__(MemSearch)
+    ms._paths = [str(base)]
+    ms._store = FakeStore()
+    monkeypatch.setattr("memsearch.core.compact_chunks", fake_compact_chunks)
+    monkeypatch.setattr("memsearch.core.datetime", FakeDatetime)
+    monkeypatch.setattr(ms, "index_file", fake_index_file)
+    return ms
+
+
+@pytest.mark.asyncio
+async def test_compact_memory_dir_writes_and_indexes_date_file_directly(monkeypatch, tmp_path: Path) -> None:
+    indexed: list[Path] = []
+    store = tmp_path / "store-root" / "project"
+    ms = make_compacting_memsearch(monkeypatch, tmp_path, indexed)
+
+    await ms.compact(memory_dir=store)
+
+    expected = store / "2026-11-25.md"
+    assert "- a summary line" in expected.read_text(encoding="utf-8")
+    assert not (store / "memory").exists()
+    assert indexed == [expected]
+
+
+@pytest.mark.asyncio
+async def test_compact_without_memory_dir_keeps_memory_subfolder(monkeypatch, tmp_path: Path) -> None:
+    indexed: list[Path] = []
+    out = tmp_path / "out"
+    ms = make_compacting_memsearch(monkeypatch, tmp_path, indexed)
+
+    await ms.compact(output_dir=out)
+
+    expected = out / "memory" / "2026-11-25.md"
+    assert "- a summary line" in expected.read_text(encoding="utf-8")
+    assert indexed == [expected]
+
+
+@pytest.mark.asyncio
+async def test_compact_memory_dir_wins_over_output_dir(monkeypatch, tmp_path: Path) -> None:
+    indexed: list[Path] = []
+    out = tmp_path / "out"
+    store = tmp_path / "store"
+    ms = make_compacting_memsearch(monkeypatch, tmp_path, indexed)
+
+    await ms.compact(output_dir=out, memory_dir=store)
+
+    assert indexed == [store / "2026-11-25.md"]
+    assert not out.exists()
+
+
+@pytest.mark.asyncio
+async def test_compact_rejects_empty_memory_dir(monkeypatch, tmp_path: Path) -> None:
+    indexed: list[Path] = []
+    ms = make_compacting_memsearch(monkeypatch, tmp_path, indexed)
+
+    with pytest.raises(ValueError, match="memory_dir must not be empty"):
+        await ms.compact(memory_dir="")
+
+    assert indexed == []
+    assert not (tmp_path / "memory").exists()
+
+
+def test_compact_cli_passes_memory_dir_to_core(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    class DummyMemSearch:
+        async def compact(self, **kwargs: Any) -> str:
+            captured.update(kwargs)
+            return ""
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("memsearch.core.MemSearch", lambda **kwargs: DummyMemSearch())
+
+    result = CliRunner().invoke(cli, ["compact", "--memory-dir", str(tmp_path / "store")])
+
+    assert result.exit_code == 0, result.output
+    assert captured["memory_dir"] == str(tmp_path / "store")
