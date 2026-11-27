@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "title": "MemSearch 記憶",
+    "description": "跨平台持久對話記憶：自動擷取每輪對話摘要，支援記憶回溯與技能蒸餾，讓 DSH 與 Claude Code / Codex / OpenClaw / OpenCode 共享同一份記憶庫。"
+  },
+  "badge": "🧠 MemSearch",
+  "loading": "正在載入技術候選…",
+  "count": "{n} 個技術候選等待審查",
+  "installed": "已安裝 {n} 個 · 共 {n} 個",
+  "review": "審查",
+  "install": "安裝",
+  "dismiss": "忽略",
+  "collapse": "折疊",
+  "refresh": "重新整理",
+  "hide": "隱藏",
+  "panelTitle": "技術候選",
+  "panelNote": "審查在對話中開啟 · 安裝在背景執行",
+  "noCandidates": "沒有技術候選。",
+  "from": "來自",
+  "seen": "出現 {n} 次",
+  "installedTo": "已安裝至",
+  "reviewQueued": "已將「{name}」的審查排入隊列，代理將在下一輪處理。",
+  "installing": "正在將「{name}」安裝至 {target}（背景執行）。",
+  "requestFailed": "要求失敗：{message}",
+  "memsearchRoot": ".memsearch/",
+  "loadingDir": "載入中…",
+  "selectFile": "選取檔案以預覽內容（唯讀）。",
+  "unsupportedFile": "不支援預覽此檔案類型（.md/.json/.txt/.toml 等文字檔）。",
+  "openInFileManager": "正在以檔案管理員開啟 {path}…",
+  "openFailed": "無法開啟目錄：{message} — 請手動開啟資料夾。",
+  "skillReviewSkill": {
+    "name": "記憶回溯",
+    "description": "搜尋 MemSearch 持久記憶，尋找與您問題相關的情境。當問題可從過去的工作、決策或專案中受益時使用。",
+    "whenToUse": "使用者參考過去的工作、詢問先前做過什麼，或任務可重複使用早先的內容。查詢成本低，僅需一次索引搜尋。"
+  },
+  "memoryConfigSkill": {
+    "name": "記憶設定",
+    "description": "診斷與設定 MemSearch 記憶行為。適用於詢問 MemSearch 設定、插件摘要、PROJECT.md/USER.md 維護、記憶目錄、索引健康狀態、提供者路由、提示檔或相容性問題。",
+    "whenToUse": "當使用者要求檢查、變更或疑難排解 DeepSeek Harness 上的 MemSearch 記憶設定時使用。"
+  },
+  "memoryToSkillSkill": {
+    "name": "記憶轉技術",
+    "description": "將您 MemSearch 記憶中的工作流程轉換為可重複使用的技術。當要求從剛完成的工作或過去工作中建立/擷取/蒸餾技術、審查技術候選、安裝蒸餾出的技術時使用。",
+    "whenToUse": "當使用者希望將反覆的工作流程寫成技術、審查或安裝 .memsearch/skill-candidates/ 中的蒸餾技術候選，或開啟/調整背景蒸餾時使用。"
+  },
+  "errorDependencyMissing": "MemSearch CLI 未安裝；請將 memsearch 安裝到 PATH，或設定 MEMSEARCH_CMD 指向其可執行檔路徑。",
+  "errorDependencyIncompatible": "已安裝的 memsearch CLI 與此插件不相容；需要 --default-collection 支援。請一併升級 memsearch 核心與插件。",
+  "errorSkillReadFailed": "無法讀取記憶回溯技術：{message}",
+  "errorSummarizeTimedOut": "摘要處理逾時",
+  "errorDshSummarizeTimedOut": "dsh headless 摘要處理逾時",
+  "errorDshCliMissing": "找不到 dsh CLI；請在桌面啟用「管理 dsh 命令」項目，或設定 DSH_CLI 以使用 summarizeMode=dsh-headless。",
+  "errorPythonMissing": "找不到 Python 3；請將 Python 3 安裝到 PATH，或設定 MEMSEARCH_PYTHON 指向其可執行檔路徑。",
+  "captureInertNote": "[memsearch] 摘要子代理：外掛處於休眠狀態",
+  "recallHint": "[memsearch] 如果有需要，可以使用記憶回溯技能來查詢過去會話、決策或專案中的情境。"
+}

@@ -56,7 +56,20 @@ export const name = 'memsearch'
 export const inject = ['agents', 'skills', 'sessionPersistence']
 
 const DEFAULT_AGENT_NAME = 'DeepSeek Harness'
-const RECALL_HINT = '[memsearch] Recall available if needed. Use the memory-recall skill when the question could benefit from past sessions, decisions, or work in this project.'
+const NS = 'memsearch'
+
+let localeDictEn = {}
+let localeDictZh = {}
+try { localeDictEn = JSON.parse(readFileSync(join(PLUGIN_DIR, 'locale', 'en.json'), 'utf-8')) } catch {}
+try { localeDictZh = JSON.parse(readFileSync(join(PLUGIN_DIR, 'locale', 'zh.json'), 'utf-8')) } catch {}
+
+function t(key, params) {
+  const val = localeDictZh[key] || localeDictEn[key] || key
+  if (!params) return val
+  return String(val).replace(/{(\w+)}/g, function (_m, p) { return params[p] !== undefined ? params[p] : '{' + p + '}' })
+}
+
+const RECALL_HINT = t('recallHint')
 const SUMMARIZE_TIMEOUT_MS = 30000
 const CAPTURE_MAX_CHARS = 6000
 const DAILY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/
@@ -1108,12 +1121,8 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootProjectDir) {
     .replaceAll('{{MILVUS_FLAG}}', opts.milvusUri ? `--milvus-uri "${opts.milvusUri}" ` : '')
   const metadata = {
     name: 'memory-recall',
-    description:
-      'Search memsearch persistent memory for context relevant to the user\'s question. ' +
-      'Use when the question could benefit from past sessions, decisions, or work in this project.',
-    whenToUse:
-      'The user references past work, asks what was done before, or the task could reuse ' +
-      'earlier context. Cheap to check; costs one index search.',
+    description: t('skillReviewSkill.description'),
+    whenToUse: t('skillReviewSkill.whenToUse'),
     source: 'runtime',
     provider: 'memsearch',
     invocation: { modelInvocable: true, userInvocable: true },
@@ -1164,13 +1173,8 @@ function registerMemoryConfigSkill(ctx) {
   if (content === null) return
   ctx.skills.register({
     name: 'memory-config',
-    description:
-      'Diagnose and configure MemSearch memory behavior. Use when the user asks about ' +
-      'MemSearch configuration, plugin summarization, PROJECT.md/USER.md maintenance, ' +
-      'memory directories, index health, provider routing, prompt files, or migration/compatibility questions.',
-    whenToUse:
-      'The user asks to check, change, or troubleshoot MemSearch memory settings on ' +
-      'DeepSeek Harness.',
+    description: t('memoryConfigSkill.description'),
+    whenToUse: t('memoryConfigSkill.whenToUse'),
     content,
     source: 'runtime',
     invocation: { modelInvocable: true, userInvocable: true },
@@ -1183,13 +1187,8 @@ function registerMemoryToSkillSkill(ctx) {
   if (content === null) return
   ctx.skills.register({
     name: 'memory-to-skill',
-    description:
-      'Turn workflows from your MemSearch memory into reusable skills. Use when the user ' +
-      'asks to make/create/extract/distill a skill from what they just did or from past work, ' +
-      'review skill candidates, install a distilled skill, or "turn this into a skill".',
-    whenToUse:
-      'The user wants to capture a recurring workflow as a skill, review or install distilled ' +
-      'skill candidates from .memsearch/skill-candidates/, or enable/tune background distillation.',
+    description: t('memoryToSkillSkill.description'),
+    whenToUse: t('memoryToSkillSkill.whenToUse'),
     content,
     source: 'runtime',
     invocation: { modelInvocable: true, userInvocable: true },
@@ -1215,6 +1214,11 @@ export function apply(ctx, config = {}) {
     ctx.logger?.debug?.('[memsearch] summarize sub-agent: plugin inert')
     return
   }
+
+  // Register locale dictionaries with the host locale service so the client
+  // can bind them via ctx.locale.bind(NS). Fallback to module-level dicts
+  // when ctx.locale is unavailable (e.g. headless/TUI profiles).
+  ctx.locale?.register?.(NS, { zh: localeDictZh, en: localeDictEn })
 
   const opts = {
     captureEnabled: config.captureEnabled !== false,

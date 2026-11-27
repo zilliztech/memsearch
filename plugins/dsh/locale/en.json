@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "title": "MemSearch Memory",
+    "description": "Persistent cross-agent conversation memory: automatically summarizes each turn, supports memory recall and skill distillation, lets DSH share the same memory store with Claude Code / Codex / OpenClaw / OpenCode."
+  },
+  "badge": "🧠 MemSearch",
+  "loading": "Loading skill candidates…",
+  "count": "{n} skill candidates awaiting review",
+  "installed": "{n} installed · {n} total",
+  "review": "Review",
+  "install": "Install",
+  "dismiss": "Dismiss",
+  "collapse": "Collapse",
+  "refresh": "Refresh",
+  "hide": "Hide",
+  "panelTitle": "Skill candidates",
+  "panelNote": "Review opens in the conversation · Install runs in the background",
+  "noCandidates": "No skill candidates.",
+  "from": "from",
+  "seen": "seen {n} time(s)",
+  "installedTo": "installed to",
+  "reviewQueued": "Review for \"{name}\" queued — the agent will handle it next turn.",
+  "installing": "Installing \"{name}\" to {target} in the background.",
+  "requestFailed": "Request failed: {message}",
+  "memsearchRoot": ".memsearch/",
+  "loadingDir": "Loading…",
+  "selectFile": "Select a file to preview its contents (read-only).",
+  "unsupportedFile": "Unsupported file type for preview (.md/.json/.txt/.toml and similar text).",
+  "openInFileManager": "Opening {path} in file manager…",
+  "openFailed": "Could not open directory: {message} — please open the folder manually.",
+  "skillReviewSkill": {
+    "name": "Memory-recall",
+    "description": "Search MemSearch persistent memory for context relevant to your question. Use when the question could benefit from past sessions, decisions, or work in this project.",
+    "whenToUse": "The user references past work, asks what was done before, or the task could reuse earlier context. Cheap to check; costs one index search."
+  },
+  "memoryConfigSkill": {
+    "name": "Memory-config",
+    "description": "Diagnose and configure MemSearch memory behavior. For questions about MemSearch configuration, plugin summarization, PROJECT.md/USER.md maintenance, memory directories, index health, provider routing, prompt files, or migration/compatibility issues.",
+    "whenToUse": "When the user asks to check, change, or troubleshoot MemSearch memory settings on DeepSeek Harness."
+  },
+  "memoryToSkillSkill": {
+    "name": "Memory-to-skill",
+    "description": "Turn workflows from your MemSearch memory into reusable skills. Use when asked to create/extract/distill a skill from recently completed or past work, review skill candidates, or install distilled skills.",
+    "whenToUse": "When the user wants to capture a recurring workflow as a skill, review or install distilled skill candidates from .memsearch/skill-candidates/, or enable/tune background distillation."
+  },
+  "errorDependencyMissing": "MemSearch CLI not found; install memsearch on PATH or set MEMSEARCH_CMD to its executable path.",
+  "errorDependencyIncompatible": "Installed memsearch CLI is incompatible with this plugin; --default-collection support is required. Upgrade memsearch core and the plugin together.",
+  "errorSkillReadFailed": "Could not read memory-recall skill: {message}",
+  "errorSummarizeTimedOut": "Summarization timed out",
+  "errorDshSummarizeTimedOut": "dsh headless summarization timed out",
+  "errorDshCliMissing": "dsh CLI not found; enable the Desktop Manage dsh Command entry or set DSH_CLI for summarizeMode=dsh-headless.",
+  "errorPythonMissing": "Python 3 not found; install Python 3 on PATH or set MEMSEARCH_PYTHON to its executable path.",
+  "captureInertNote": "[memsearch] Summarizer sub-agent: plugin inert"
+}
