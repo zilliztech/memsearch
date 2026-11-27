@@ -29,7 +29,7 @@ PROJECT_CONFIG_PATH = Path(".memsearch.toml")
 # Fields that should be parsed as int when set via CLI strings
 _INT_FIELDS = {"max_chunk_size", "overlap_lines", "debounce_ms", "batch_size", "min_interval_hours", "min_occurrences"}
 _BOOL_FIELDS = {"enabled"}
-_LIST_FIELDS = {"paths", "ignore_files", "exclude"}
+_LIST_FIELDS = {"paths", "ignore_files", "exclude", "fallback_models"}
 
 # Project-local config is loaded from the repository being opened, so it must
 # not be able to redirect network endpoints, credentials, LLM routing, prompt
@@ -122,6 +122,10 @@ class LLMProviderConfig:
     model: str = ""
     base_url: str = ""
     api_key: str = ""  # supports "env:VAR_NAME" syntax
+    # Additional models to try, in order, when the primary model's answer is
+    # unusable (an API error, or output the task cannot parse). The first
+    # usable answer wins; an empty list keeps the single-model behaviour.
+    fallback_models: list[str] = field(default_factory=list)
 
 
 @dataclass

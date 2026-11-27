@@ -11,7 +11,7 @@ import shlex
 import shutil
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -20,6 +20,7 @@ from typing import Any
 from ._maintenance_lock import file_lock as _file_lock
 from .compact import summarize_text
 from .config import (
+    ConfigEnvVarError,
     LLMProviderConfig,
     MemSearchConfig,
     PluginMaintenanceTaskConfig,
@@ -117,7 +118,7 @@ def run_due_tasks(
             )
             try:
                 prompt = _build_prompt(ctx, cfg)
-                raw = llm_runner(ctx, prompt) if llm_runner else run_task_llm(ctx, prompt, cfg)
+                raw = run_task_llm_chain(ctx, prompt, cfg, llm_runner=llm_runner, validate=_parse_task_response)
                 parsed = _parse_task_response(raw)
                 now = _now()
 
@@ -294,6 +295,116 @@ def _read_recent_journals(
     if budget <= len(marker):
         return text[-budget:]
     return marker + text[-(budget - len(marker)) :]
+
+
+def _provider_model_chain(ctx: TaskContext, cfg: MemSearchConfig) -> list[str | None]:
+    """The models to try for one task, in order.
+
+    ``None`` means "let the provider pick its default model": it stands for the
+    provider's own default, so it is only ever a chain entry when no explicit
+    primary model is configured (fallback_models are backups, never replacements
+    for the primary). One non-None entry means "make a single explicit attempt".
+    """
+    provider_name = (ctx.task_config.provider or "native").strip()
+    if provider_name in {"", "native"}:
+        return [None]
+    provider_cfg = cfg.llm.providers.get(provider_name)
+    if provider_cfg is None:
+        return [None]
+    primary = (ctx.task_config.model or provider_cfg.model or "").strip()
+    chain: list[str | None] = [primary or None]
+    for candidate in list(getattr(provider_cfg, "fallback_models", []) or []):
+        name = (candidate or "").strip()
+        if name and name not in chain:
+            chain.append(name)
+    return chain
+
+
+def _classify_failure(exc: BaseException) -> str:
+    """Group an attempt's failure into one word for the chain's failure report.
+
+    ``switchable`` failures (endpoint errors, unusable output) are worth
+    retrying with the next model; ``credential`` failures (auth, missing env
+    refs) and ``config`` failures (unknown provider) would fail identically on
+    every model, so the chain stops instead of burning the remaining fallbacks.
+    """
+    if isinstance(exc, ConfigEnvVarError):
+        return "credential"
+    message = str(exc)
+    if "Unknown LLM provider" in message or "must be handled by the plugin runner" in message:
+        return "config"
+    # Auth/permission errors from the provider SDKs, matched by name so the
+    # SDKs stay optional imports; 401/403 by status code covers the rest.
+    auth_error_names = {"AuthenticationError", "PermissionDeniedError", "Unauthenticated"}
+    for cls in type(exc).__mro__:
+        if cls.__name__ in auth_error_names:
+            return "credential"
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status in (401, 403):
+        return "credential"
+    return "switchable"
+
+
+def _ctx_with_model(ctx: TaskContext, model: str) -> TaskContext:
+    """The same task context with its model overridden, for one fallback attempt."""
+    if is_dataclass(ctx) and is_dataclass(ctx.task_config):
+        return replace(ctx, task_config=replace(ctx.task_config, model=model))
+    import copy as _copy
+
+    attempt = _copy.copy(ctx)
+    task_config = _copy.copy(ctx.task_config)
+    task_config.model = model
+    attempt.task_config = task_config
+    return attempt
+
+
+def run_task_llm_chain(
+    ctx: TaskContext,
+    prompt: str,
+    cfg: MemSearchConfig,
+    *,
+    llm_runner: Callable[[TaskContext, str], str] | None = None,
+    validate: Callable[[str], Any] | None = None,
+) -> str:
+    """Run the task prompt, trying each configured model until one yields usable output.
+
+    An endpoint that answers with a tool call it was told not to, or with prose
+    where JSON was asked for, is not a reason to lose the whole task: the next
+    model in ``[llm.providers.<name>].fallback_models`` is tried, and the first
+    usable answer wins. ``validate`` raises on an unusable reply (a parse error).
+
+    The first attempt always receives the caller's context unchanged, so hosts
+    see the exact object they passed in (a fallback attempt gets a copy with
+    ``task_config.model`` overridden). Credential/config failures stop the
+    chain: they would fail identically on every model. With a single-model
+    chain the original exception is re-raised unchanged, so hosts that relied
+    on the pre-chain behaviour (e.g. catching TimeoutExpired) still see it.
+    """
+    chain = _provider_model_chain(ctx, cfg)
+    failures: list[str] = []
+    for index, model in enumerate(chain):
+        # First attempt: pass the caller's own context through (pre-chain
+        # behaviour). Later attempts override the model on a copy.
+        attempt_ctx = ctx if index == 0 or model is None else _ctx_with_model(ctx, model)
+        try:
+            raw = llm_runner(attempt_ctx, prompt) if llm_runner else run_task_llm(attempt_ctx, prompt, cfg)
+            if validate is not None:
+                validate(raw)
+            return raw
+        except Exception as exc:
+            kind = _classify_failure(exc)
+            if len(chain) == 1 and kind not in {"credential", "config"}:
+                # Nothing to switch to: preserve the original exception type,
+                # message and traceback (exact pre-chain behaviour).
+                raise
+            failures.append(f"{model or '<provider default>'} [{kind}]: {type(exc).__name__}: {exc}")
+            if kind in {"credential", "config"}:
+                # Switching models cannot fix a bad key, a missing env ref, or
+                # a config mistake; skip the remaining fallbacks.
+                raise RuntimeError(
+                    "chain stopped on a failure that switching models cannot fix:\n  " + "\n  ".join(failures)
+                ) from exc
+    raise RuntimeError("every configured model failed:\n  " + "\n  ".join(failures))
 
 
 def run_task_llm(ctx: TaskContext, prompt: str, cfg: MemSearchConfig) -> str:
